@@ -45,6 +45,12 @@ This is a GUI file manager application called "nmf" built in Go using the Fyne f
 - Enter to open directories
 - Backspace to go up one directory level
 
+**Icon-Click Navigation** - Custom TappableIcon implementation:
+- Clicking on file/directory icons directly navigates into directories
+- Clicking on file names or file information only selects the item
+- This provides intuitive mouse navigation while preserving selection behavior
+- Implementation uses a custom TappableIcon widget that extends BaseWidget
+
 **Multi-Window Support** - Users can open multiple file manager windows, each maintaining independent state.
 
 **UI Layout** - Uses Fyne's container system:
@@ -58,7 +64,10 @@ This is a GUI file manager application called "nmf" built in Go using the Fyne f
 2. `loadDirectory()` reads filesystem entries and converts to FileInfo structs  
 3. FileInfo data is bound to the UI list widget
 4. Background goroutine watches for directory changes
-5. User interactions (clicks, keyboard) trigger navigation events
+5. User interactions trigger different behaviors:
+   - Icon clicks: Direct navigation via TappableIcon.onTapped
+   - Name/info clicks: Selection via OnSelected callback
+   - Keyboard: Navigation via key event handlers
 6. Navigation calls `loadDirectory()` to update the view
 
 ### Dependencies
@@ -68,6 +77,25 @@ The project uses Fyne v2 for the GUI framework, which provides cross-platform na
 ### File Structure
 
 Single-file application (`main.go`) containing all functionality. The compiled binary is named `nmf`.
+
+### Important Implementation Notes
+
+**TappableIcon Widget** - Custom widget implementation:
+- Extends `widget.BaseWidget` and implements `fyne.Tappable` interface
+- Wraps a standard `widget.Icon` but provides tap event handling
+- Used in list items to enable icon-specific click behavior
+- OnTapped callback is set dynamically in the list's UpdateItem function
+
+**List Item Structure** - Each list item uses a border container:
+- Left: HBox containing padded TappableIcon + filename label
+- Right: File info label (size, date, time)
+- The TappableIcon handles directory navigation
+- Other areas trigger selection via the list's OnSelected callback
+
+**Double-Click Limitation** - Fyne's widget.List does not support native double-click:
+- OnSelected callback is not triggered when re-selecting the same item
+- Custom TappableIcon approach provides better UX than timer-based solutions
+- This is a known limitation of the Fyne framework as of v2.6.1
 
 ## Claude Communication Style
 

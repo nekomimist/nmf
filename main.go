@@ -286,7 +286,8 @@ func (fm *FileManager) setupUI() {
 	fm.fileList = widget.NewListWithData(
 		fm.fileBinding,
 		func() fyne.CanvasObject {
-			icon := widget.NewIcon(theme.FolderIcon())
+			// Create tappable icon (onTapped will be set in UpdateItem)
+			icon := NewTappableIcon(theme.FolderIcon(), nil)
 			name := widget.NewLabel("filename")
 			info := widget.NewLabel("info")
 
@@ -330,13 +331,22 @@ func (fm *FileManager) setupUI() {
 
 			if leftSide != nil && infoLabel != nil {
 				iconPadded := leftSide.Objects[0].(*fyne.Container)
-				icon := iconPadded.Objects[0].(*widget.Icon)
+				icon := iconPadded.Objects[0].(*TappableIcon)
 				nameLabel := leftSide.Objects[1].(*widget.Label)
 
+				// Set icon resource
 				if fileInfo.IsDir {
 					icon.SetResource(theme.FolderIcon())
 				} else {
 					icon.SetResource(theme.FileIcon())
+				}
+
+				// Set onTapped handler for icon
+				icon.onTapped = func() {
+					if fileInfo.IsDir {
+						fm.loadDirectory(fileInfo.Path)
+					}
+					// For files, we could potentially open them here
 				}
 
 				nameLabel.SetText(fileInfo.Name)
@@ -360,15 +370,9 @@ func (fm *FileManager) setupUI() {
 		fm.fileList.HideSeparators = true
 	}
 
-	// Handle double-click
+	// Handle selection only (icon clicks are handled separately)
 	fm.fileList.OnSelected = func(id widget.ListItemID) {
 		fm.selectedIdx = id
-		if id >= 0 && id < len(fm.files) {
-			file := fm.files[id]
-			if file.IsDir {
-				fm.loadDirectory(file.Path)
-			}
-		}
 	}
 
 	// Create toolbar
@@ -426,6 +430,37 @@ func (fm *FileManager) setupUI() {
 			}
 		}
 	})
+}
+
+// TappableIcon is a custom icon widget that can handle tap events
+type TappableIcon struct {
+	widget.BaseWidget
+	icon     *widget.Icon
+	onTapped func()
+}
+
+func NewTappableIcon(resource fyne.Resource, onTapped func()) *TappableIcon {
+	icon := widget.NewIcon(resource)
+	ti := &TappableIcon{
+		icon:     icon,
+		onTapped: onTapped,
+	}
+	ti.ExtendBaseWidget(ti)
+	return ti
+}
+
+func (ti *TappableIcon) Tapped(_ *fyne.PointEvent) {
+	if ti.onTapped != nil {
+		ti.onTapped()
+	}
+}
+
+func (ti *TappableIcon) SetResource(resource fyne.Resource) {
+	ti.icon.SetResource(resource)
+}
+
+func (ti *TappableIcon) CreateRenderer() fyne.WidgetRenderer {
+	return ti.icon.CreateRenderer()
 }
 
 func (fm *FileManager) loadDirectory(path string) {
