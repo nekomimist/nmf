@@ -1,10 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"image/color"
+	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -14,6 +18,33 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
+
+// Config represents the application configuration
+type Config struct {
+	Window WindowConfig `json:"window"`
+	Theme  ThemeConfig  `json:"theme"`
+	UI     UIConfig     `json:"ui"`
+}
+
+// WindowConfig represents window-related settings
+type WindowConfig struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+// ThemeConfig represents theme-related settings
+type ThemeConfig struct {
+	Dark     bool   `json:"dark"`
+	FontSize int    `json:"fontSize"`
+	FontPath string `json:"fontPath"`
+}
+
+// UIConfig represents UI-related settings
+type UIConfig struct {
+	ShowHiddenFiles bool   `json:"showHiddenFiles"`
+	SortBy          string `json:"sortBy"`
+	ItemSpacing     int    `json:"itemSpacing"`
+}
 
 // FileInfo represents a file or directory
 type FileInfo struct {
@@ -33,14 +64,208 @@ type FileManager struct {
 	pathLabel   *widget.Label
 	selectedIdx int
 	fileBinding binding.UntypedList
+	config      *Config
 }
 
-func NewFileManager(app fyne.App, path string) *FileManager {
+// getDefaultConfig returns the default configuration
+func getDefaultConfig() *Config {
+	return &Config{
+		Window: WindowConfig{
+			Width:  800,
+			Height: 600,
+		},
+		Theme: ThemeConfig{
+			Dark:     true,
+			FontSize: 14,
+			FontPath: "",
+		},
+		UI: UIConfig{
+			ShowHiddenFiles: false,
+			SortBy:          "name",
+			ItemSpacing:     4,
+		},
+	}
+}
+
+// getConfigPath returns the path to the configuration file following OS conventions
+func getConfigPath() string {
+	var configDir string
+
+	switch runtime.GOOS {
+	case "windows":
+		// Windows: %APPDATA%\nekomimist\nmf\config.json
+		appData := os.Getenv("APPDATA")
+		if appData == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return "config.json"
+			}
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		configDir = filepath.Join(appData, "nekomimist", "nmf")
+
+	case "darwin":
+		// macOS: ~/Library/Application Support/nekomimist/nmf/config.json
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "config.json"
+		}
+		configDir = filepath.Join(home, "Library", "Application Support", "nekomimist", "nmf")
+
+	default:
+		// Linux/Unix: $XDG_CONFIG_HOME/nekomimist/nmf/config.json or ~/.config/nekomimist/nmf/config.json
+		xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
+		if xdgConfigHome == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return "config.json"
+			}
+			xdgConfigHome = filepath.Join(home, ".config")
+		}
+		configDir = filepath.Join(xdgConfigHome, "nekomimist", "nmf")
+	}
+
+	return filepath.Join(configDir, "config.json")
+}
+
+// loadConfig loads configuration from file or returns default
+func loadConfig() *Config {
+	configPath := getConfigPath()
+
+	data, err := ioutil.ReadFile(configPath)
+	if err != nil {
+		log.Printf("Config file not found, using defaults: %v", err)
+		return getDefaultConfig()
+	}
+
+	var config Config
+	if err := json.Unmarshal(data, &config); err != nil {
+		log.Printf("Error parsing config file, using defaults: %v", err)
+		return getDefaultConfig()
+	}
+
+	return &config
+}
+
+// saveConfig saves configuration to file
+func (config *Config) saveConfig() error {
+	configPath := getConfigPath()
+
+	// Create the config directory if it doesn't exist
+	configDir := filepath.Dir(configPath)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("error creating config directory: %v", err)
+	}
+
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("error marshaling config: %v", err)
+	}
+
+	if err := ioutil.WriteFile(configPath, data, 0644); err != nil {
+		return fmt.Errorf("error writing config file: %v", err)
+	}
+
+	return nil
+}
+
+// CustomTheme implements fyne.Theme with configurable font settings
+type CustomTheme struct {
+	config     *Config
+	customFont fyne.Resource
+}
+
+func NewCustomTheme(config *Config) *CustomTheme {
+	theme := &CustomTheme{config: config}
+
+	// Load custom font if specified
+	if config.Theme.FontPath != "" {
+		theme.loadCustomFont()
+	}
+
+	return theme
+}
+
+// loadCustomFont loads a custom font from the specified path
+func (t *CustomTheme) loadCustomFont() {
+	fontPath := t.config.Theme.FontPath
+
+	// Check if font file exists
+	if _, err := os.Stat(fontPath); os.IsNotExist(err) {
+		log.Printf("Custom font file not found: %s", fontPath)
+		return
+	}
+
+	// Read font file
+	fontData, err := ioutil.ReadFile(fontPath)
+	if err != nil {
+		log.Printf("Error reading font file %s: %v", fontPath, err)
+		return
+	}
+
+	// Create font resource
+	t.customFont = fyne.NewStaticResource(filepath.Base(fontPath), fontData)
+	log.Printf("Loaded custom font: %s", fontPath)
+}
+
+// Color methods from default theme
+func (t *CustomTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
+	if t.config.Theme.Dark {
+		return theme.DarkTheme().Color(name, variant)
+	}
+	return theme.DefaultTheme().Color(name, variant)
+}
+
+// Icon methods from default theme
+func (t *CustomTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
+	if t.config.Theme.Dark {
+		return theme.DarkTheme().Icon(name)
+	}
+	return theme.DefaultTheme().Icon(name)
+}
+
+// Font method with custom font support
+func (t *CustomTheme) Font(style fyne.TextStyle) fyne.Resource {
+	// Return custom font if loaded and available
+	if t.customFont != nil {
+		return t.customFont
+	}
+
+	if t.config.Theme.Dark {
+		return theme.DarkTheme().Font(style)
+	}
+	return theme.DefaultTheme().Font(style)
+}
+
+// Size method with custom font size and spacing support
+func (t *CustomTheme) Size(name fyne.ThemeSizeName) float32 {
+	if name == theme.SizeNameText && t.config.Theme.FontSize > 0 {
+		return float32(t.config.Theme.FontSize)
+	}
+
+	// Custom item spacing support
+	if t.config.UI.ItemSpacing > 0 {
+		switch name {
+		case theme.SizeNamePadding:
+			return float32(t.config.UI.ItemSpacing)
+		case theme.SizeNameInnerPadding:
+			return float32(t.config.UI.ItemSpacing * 2)
+		}
+	}
+
+	if t.config.Theme.Dark {
+		return theme.DarkTheme().Size(name)
+	}
+	return theme.DefaultTheme().Size(name)
+}
+
+func NewFileManager(app fyne.App, path string, config *Config) *FileManager {
 	fm := &FileManager{
 		window:      app.NewWindow("File Manager"),
 		currentPath: path,
 		selectedIdx: -1,
 		fileBinding: binding.NewUntypedList(),
+		config:      config,
 	}
 
 	fm.setupUI()
@@ -130,6 +355,11 @@ func (fm *FileManager) setupUI() {
 		},
 	)
 
+	// Hide separators for compact spacing if itemSpacing is small
+	if fm.config.UI.ItemSpacing <= 2 {
+		fm.fileList.HideSeparators = true
+	}
+
 	// Handle double-click
 	fm.fileList.OnSelected = func(id widget.ListItemID) {
 		fm.selectedIdx = id
@@ -169,7 +399,7 @@ func (fm *FileManager) setupUI() {
 	)
 
 	fm.window.SetContent(content)
-	fm.window.Resize(fyne.NewSize(800, 600))
+	fm.window.Resize(fyne.NewSize(float32(fm.config.Window.Width), float32(fm.config.Window.Height)))
 
 	// Keyboard shortcuts
 	fm.window.Canvas().SetOnTypedKey(func(key *fyne.KeyEvent) {
@@ -255,7 +485,7 @@ func (fm *FileManager) watchDirectory() {
 }
 
 func (fm *FileManager) openNewWindow() {
-	newFM := NewFileManager(fyne.CurrentApp(), fm.currentPath)
+	newFM := NewFileManager(fyne.CurrentApp(), fm.currentPath, fm.config)
 	newFM.window.Show()
 }
 
@@ -273,8 +503,14 @@ func formatFileSize(size int64) string {
 }
 
 func main() {
+	// Load configuration
+	config := loadConfig()
+
 	app := app.New()
-	app.Settings().SetTheme(theme.DarkTheme())
+
+	// Apply custom theme
+	customTheme := NewCustomTheme(config)
+	app.Settings().SetTheme(customTheme)
 
 	// Parse command line arguments for starting directory
 	var startPath string
@@ -302,6 +538,6 @@ func main() {
 		startPath = pwd
 	}
 
-	fm := NewFileManager(app, startPath)
+	fm := NewFileManager(app, startPath, config)
 	fm.window.ShowAndRun()
 }
