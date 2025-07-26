@@ -607,9 +607,13 @@ func (fm *FileManager) setupUI() {
 			}
 		case fyne.KeySpace:
 			if fm.cursorIdx >= 0 && fm.cursorIdx < len(fm.files) {
-				// Toggle selection state of current cursor item
-				fm.selectedItems[fm.cursorIdx] = !fm.selectedItems[fm.cursorIdx]
-				fm.fileList.Refresh()
+				file := fm.files[fm.cursorIdx]
+				// Don't allow selection of parent directory entry
+				if file.Name != ".." {
+					// Toggle selection state of current cursor item
+					fm.selectedItems[fm.cursorIdx] = !fm.selectedItems[fm.cursorIdx]
+					fm.fileList.Refresh()
+				}
 			}
 		case fyne.KeyBackspace:
 			parent := filepath.Dir(fm.currentPath)
@@ -622,6 +626,9 @@ func (fm *FileManager) setupUI() {
 
 // refreshCursor updates only the cursor display without affecting selection
 func (fm *FileManager) refreshCursor() {
+	if fm.cursorIdx >= 0 && fm.cursorIdx < len(fm.files) {
+		fm.fileList.ScrollTo(widget.ListItemID(fm.cursorIdx))
+	}
 	fm.fileList.Refresh()
 }
 
@@ -669,8 +676,31 @@ func (fm *FileManager) loadDirectory(path string) {
 	}
 
 	// Convert to ListItem (FileInfo with index)
-	items := make([]interface{}, 0, len(entries))
-	for i, entry := range entries {
+	items := make([]interface{}, 0, len(entries)+1)
+	index := 0
+
+	// Add parent directory entry if not at root
+	parent := filepath.Dir(path)
+	if parent != path {
+		parentInfo := FileInfo{
+			Name:     "..",
+			Path:     parent,
+			IsDir:    true,
+			Size:     0,
+			Modified: time.Time{},
+		}
+
+		listItem := ListItem{
+			Index:    index,
+			FileInfo: parentInfo,
+		}
+
+		fm.files = append(fm.files, parentInfo)
+		items = append(items, listItem)
+		index++
+	}
+
+	for _, entry := range entries {
 		info, err := entry.Info()
 		if err != nil {
 			continue
@@ -685,12 +715,13 @@ func (fm *FileManager) loadDirectory(path string) {
 		}
 
 		listItem := ListItem{
-			Index:    i,
+			Index:    index,
 			FileInfo: fileInfo,
 		}
 
 		fm.files = append(fm.files, fileInfo)
 		items = append(items, listItem)
+		index++
 	}
 
 	// Update binding
