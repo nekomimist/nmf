@@ -557,6 +557,7 @@ func (fm *FileManager) setupUI() {
 		fm.cursorIdx = id
 		// Clear list selection to avoid double cursor effect when switching back to keyboard
 		fm.fileList.UnselectAll()
+		fm.window.Canvas().Unfocus()
 		fm.refreshCursor()
 	}
 
