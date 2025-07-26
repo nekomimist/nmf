@@ -53,7 +53,6 @@ type CursorStyleConfig struct {
 	Type      string   `json:"type"`      // "underline", "border", "background", "icon", "font"
 	Color     [4]uint8 `json:"color"`     // RGBA color values
 	Thickness int      `json:"thickness"` // Line thickness for underline/border
-	Position  string   `json:"position"`  // "bottom", "top", "left", "right", "full"
 }
 
 // FileInfo represents a file or directory
@@ -97,21 +96,9 @@ func (r *UnderlineCursorRenderer) RenderCursor(bounds fyne.Size, textBounds fyne
 	textHeight := bounds.Height * 0.8         // Most of the height is text
 	textY := (bounds.Height - textHeight) / 2 // Center vertically
 
-	switch config.Position {
-	case "top":
-		underline.Resize(fyne.NewSize(textWidth, thickness))
-		underline.Move(fyne.NewPos(textBounds.X, textY))
-	case "bottom", "":
-		// Position at the bottom of text, not container
-		underline.Resize(fyne.NewSize(textWidth, thickness))
-		underline.Move(fyne.NewPos(textBounds.X, textY+textHeight-thickness))
-	case "left":
-		underline.Resize(fyne.NewSize(thickness, textHeight))
-		underline.Move(fyne.NewPos(textBounds.X, textY))
-	case "right":
-		underline.Resize(fyne.NewSize(thickness, textHeight))
-		underline.Move(fyne.NewPos(textBounds.X+textWidth-thickness, textY))
-	}
+	// Position at the bottom of text
+	underline.Resize(fyne.NewSize(textWidth, thickness))
+	underline.Move(fyne.NewPos(textBounds.X, textY+textHeight-thickness))
 
 	return underline
 }
@@ -218,7 +205,6 @@ func getDefaultConfig() *Config {
 				Type:      "underline",
 				Color:     [4]uint8{255, 255, 255, 255}, // White
 				Thickness: 2,
-				Position:  "bottom",
 			},
 		},
 	}
@@ -443,7 +429,9 @@ func (fm *FileManager) setupUI() {
 			info := widget.NewLabel("info")
 
 			// Left side: icon + name (with minimal spacing)
-			icon.Resize(fyne.NewSize(16, 16)) // Force icon to reasonable size
+			// Size icon based on text height for consistency
+			textSize := fyne.CurrentApp().Settings().Theme().Size(theme.SizeNameText)
+			icon.Resize(fyne.NewSize(textSize, textSize))
 
 			leftSide := container.NewHBox(
 				icon,
@@ -567,6 +555,9 @@ func (fm *FileManager) setupUI() {
 	// Handle cursor movement (both mouse and keyboard)
 	fm.fileList.OnSelected = func(id widget.ListItemID) {
 		fm.cursorIdx = id
+		// Clear list selection to avoid double cursor effect when switching back to keyboard
+		fm.fileList.UnselectAll()
+		fm.refreshCursor()
 	}
 
 	// Create toolbar
