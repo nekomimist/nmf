@@ -378,13 +378,7 @@ func (t *CustomTheme) Size(name fyne.ThemeSizeName) float32 {
 			}
 			return requested
 		case theme.SizeNameInnerPadding:
-			// Also ensure minimum inner padding
-			minInnerPadding := float32(4)
-			requested := float32(t.config.UI.ItemSpacing * 2)
-			if requested < minInnerPadding {
-				return minInnerPadding
-			}
-			return requested
+			return 0
 		}
 	}
 
