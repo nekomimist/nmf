@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -41,12 +42,21 @@ type ThemeConfig struct {
 	FontPath string `json:"fontPath"`
 }
 
+// FileColorConfig represents color settings for different file types
+type FileColorConfig struct {
+	Regular   [4]uint8 `json:"regular"`   // Regular files
+	Directory [4]uint8 `json:"directory"` // Directories
+	Symlink   [4]uint8 `json:"symlink"`   // Symbolic links
+	Hidden    [4]uint8 `json:"hidden"`    // Hidden files
+}
+
 // UIConfig represents UI-related settings
 type UIConfig struct {
 	ShowHiddenFiles bool              `json:"showHiddenFiles"`
 	SortBy          string            `json:"sortBy"`
 	ItemSpacing     int               `json:"itemSpacing"`
 	CursorStyle     CursorStyleConfig `json:"cursorStyle"`
+	FileColors      FileColorConfig   `json:"fileColors"`
 }
 
 // CursorStyleConfig represents cursor appearance settings
@@ -56,6 +66,16 @@ type CursorStyleConfig struct {
 	Thickness int      `json:"thickness"` // Line thickness for underline/border
 }
 
+// FileType represents the type of file
+type FileType int
+
+const (
+	FileTypeRegular FileType = iota
+	FileTypeDirectory
+	FileTypeSymlink
+	FileTypeHidden
+)
+
 // FileInfo represents a file or directory
 type FileInfo struct {
 	Name     string
@@ -63,6 +83,90 @@ type FileInfo struct {
 	IsDir    bool
 	Size     int64
 	Modified time.Time
+	FileType FileType
+}
+
+// determineFileType determines the file type based on file attributes
+func determineFileType(path string, name string, isDir bool) FileType {
+	// Check if it's a symlink first (works on both Linux and Windows)
+	if info, err := os.Lstat(path); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return FileTypeSymlink
+		}
+	}
+
+	// Check for directory
+	if isDir {
+		return FileTypeDirectory
+	}
+
+	// Check for hidden files (starting with .)
+	if strings.HasPrefix(name, ".") {
+		return FileTypeHidden
+	}
+
+	// Check for Windows hidden file attribute (to be implemented)
+	if runtime.GOOS == "windows" && isWindowsHidden(path) {
+		return FileTypeHidden
+	}
+
+	return FileTypeRegular
+}
+
+// getFileTypeColor returns the color for a given file type
+func getFileTypeColor(fileType FileType, colors FileColorConfig) color.RGBA {
+	switch fileType {
+	case FileTypeDirectory:
+		return color.RGBA{R: colors.Directory[0], G: colors.Directory[1], B: colors.Directory[2], A: colors.Directory[3]}
+	case FileTypeSymlink:
+		return color.RGBA{R: colors.Symlink[0], G: colors.Symlink[1], B: colors.Symlink[2], A: colors.Symlink[3]}
+	case FileTypeHidden:
+		return color.RGBA{R: colors.Hidden[0], G: colors.Hidden[1], B: colors.Hidden[2], A: colors.Hidden[3]}
+	default: // FileTypeRegular
+		return color.RGBA{R: colors.Regular[0], G: colors.Regular[1], B: colors.Regular[2], A: colors.Regular[3]}
+	}
+}
+
+// ColoredTextSegment is a custom RichText segment that supports custom colors
+type ColoredTextSegment struct {
+	Text  string
+	Color color.RGBA
+}
+
+func (s *ColoredTextSegment) Inline() bool {
+	return true
+}
+
+func (s *ColoredTextSegment) Textual() string {
+	return s.Text
+}
+
+func (s *ColoredTextSegment) Update(o fyne.CanvasObject) {
+	if text, ok := o.(*canvas.Text); ok {
+		text.Text = s.Text
+		text.Color = s.Color
+		text.Refresh()
+	}
+}
+
+func (s *ColoredTextSegment) Visual() fyne.CanvasObject {
+	text := canvas.NewText(s.Text, s.Color)
+	text.TextStyle = fyne.TextStyle{}
+	// Set appropriate text size from theme
+	text.TextSize = fyne.CurrentApp().Settings().Theme().Size(theme.SizeNameText)
+	return text
+}
+
+func (s *ColoredTextSegment) Select(pos1, pos2 fyne.Position) {
+	// Selection handling - could be implemented if needed
+}
+
+func (s *ColoredTextSegment) SelectedText() string {
+	return s.Text
+}
+
+func (s *ColoredTextSegment) Unselect() {
+	// Unselection handling - could be implemented if needed
 }
 
 // ListItem wraps FileInfo with index for rendering
@@ -329,6 +433,12 @@ func getDefaultConfig() *Config {
 				Color:     [4]uint8{255, 255, 255, 255}, // White
 				Thickness: 2,
 			},
+			FileColors: FileColorConfig{
+				Regular:   [4]uint8{220, 220, 220, 255}, // Light gray - regular files
+				Directory: [4]uint8{135, 206, 250, 255}, // Light sky blue - directories
+				Symlink:   [4]uint8{255, 165, 0, 255},   // Orange - symbolic links
+				Hidden:    [4]uint8{105, 105, 105, 255}, // Dim gray - hidden files
+			},
 		},
 	}
 }
@@ -374,23 +484,83 @@ func getConfigPath() string {
 	return filepath.Join(configDir, "config.json")
 }
 
-// loadConfig loads configuration from file or returns default
+// loadConfig loads configuration from file and merges with defaults
 func loadConfig() *Config {
-	configPath := getConfigPath()
+	// Start with default configuration
+	config := getDefaultConfig()
 
+	configPath := getConfigPath()
 	data, err := ioutil.ReadFile(configPath)
 	if err != nil {
 		log.Printf("Config file not found, using defaults: %v", err)
-		return getDefaultConfig()
+		return config
 	}
 
-	var config Config
-	if err := json.Unmarshal(data, &config); err != nil {
+	// Parse config file into a temporary config
+	var fileConfig Config
+	if err := json.Unmarshal(data, &fileConfig); err != nil {
 		log.Printf("Error parsing config file, using defaults: %v", err)
-		return getDefaultConfig()
+		return config
 	}
 
-	return &config
+	// Merge file config with defaults
+	mergeConfigs(config, &fileConfig)
+	return config
+}
+
+// mergeConfigs merges file config values into default config
+func mergeConfigs(defaultConfig *Config, fileConfig *Config) {
+	// Merge Window config
+	if fileConfig.Window.Width != 0 {
+		defaultConfig.Window.Width = fileConfig.Window.Width
+	}
+	if fileConfig.Window.Height != 0 {
+		defaultConfig.Window.Height = fileConfig.Window.Height
+	}
+
+	// Merge Theme config
+	// Note: for bool values, we can't distinguish between false and unset, so we always use file value
+	defaultConfig.Theme.Dark = fileConfig.Theme.Dark
+	if fileConfig.Theme.FontSize != 0 {
+		defaultConfig.Theme.FontSize = fileConfig.Theme.FontSize
+	}
+	if fileConfig.Theme.FontPath != "" {
+		defaultConfig.Theme.FontPath = fileConfig.Theme.FontPath
+	}
+
+	// Merge UI config
+	defaultConfig.UI.ShowHiddenFiles = fileConfig.UI.ShowHiddenFiles
+	if fileConfig.UI.SortBy != "" {
+		defaultConfig.UI.SortBy = fileConfig.UI.SortBy
+	}
+	if fileConfig.UI.ItemSpacing != 0 {
+		defaultConfig.UI.ItemSpacing = fileConfig.UI.ItemSpacing
+	}
+
+	// Merge CursorStyle config
+	if fileConfig.UI.CursorStyle.Type != "" {
+		defaultConfig.UI.CursorStyle.Type = fileConfig.UI.CursorStyle.Type
+	}
+	if fileConfig.UI.CursorStyle.Color != [4]uint8{0, 0, 0, 0} {
+		defaultConfig.UI.CursorStyle.Color = fileConfig.UI.CursorStyle.Color
+	}
+	if fileConfig.UI.CursorStyle.Thickness != 0 {
+		defaultConfig.UI.CursorStyle.Thickness = fileConfig.UI.CursorStyle.Thickness
+	}
+
+	// Merge FileColors config
+	if fileConfig.UI.FileColors.Regular != [4]uint8{0, 0, 0, 0} {
+		defaultConfig.UI.FileColors.Regular = fileConfig.UI.FileColors.Regular
+	}
+	if fileConfig.UI.FileColors.Directory != [4]uint8{0, 0, 0, 0} {
+		defaultConfig.UI.FileColors.Directory = fileConfig.UI.FileColors.Directory
+	}
+	if fileConfig.UI.FileColors.Symlink != [4]uint8{0, 0, 0, 0} {
+		defaultConfig.UI.FileColors.Symlink = fileConfig.UI.FileColors.Symlink
+	}
+	if fileConfig.UI.FileColors.Hidden != [4]uint8{0, 0, 0, 0} {
+		defaultConfig.UI.FileColors.Hidden = fileConfig.UI.FileColors.Hidden
+	}
 }
 
 // saveConfig saves configuration to file
@@ -546,7 +716,8 @@ func (fm *FileManager) setupUI() {
 		func() fyne.CanvasObject {
 			// Create tappable icon (onTapped will be set in UpdateItem)
 			icon := NewTappableIcon(theme.FolderIcon(), nil)
-			name := widget.NewLabel("filename")
+			// Use RichText for colored filename display
+			nameRichText := widget.NewRichTextFromMarkdown("filename")
 			info := widget.NewLabel("info")
 
 			// Left side: icon + name (with minimal spacing)
@@ -556,7 +727,7 @@ func (fm *FileManager) setupUI() {
 
 			leftSide := container.NewHBox(
 				icon,
-				name,
+				nameRichText,
 			)
 
 			// Use border container to align name left and info right
@@ -602,9 +773,9 @@ func (fm *FileManager) setupUI() {
 				}
 
 				if leftSide != nil && infoLabel != nil && len(leftSide.Objects) >= 2 {
-					// Structure is now: [icon, nameLabel]
+					// Structure is now: [icon, nameRichText]
 					if icon, ok := leftSide.Objects[0].(*TappableIcon); ok {
-						nameLabel := leftSide.Objects[1].(*widget.Label)
+						nameRichText := leftSide.Objects[1].(*widget.RichText)
 
 						// Set icon resource
 						if fileInfo.IsDir {
@@ -620,7 +791,17 @@ func (fm *FileManager) setupUI() {
 							}
 						}
 
-						nameLabel.SetText(fileInfo.Name)
+						// Get color based on file type and create custom text segment
+						fileColor := getFileTypeColor(fileInfo.FileType, fm.config.UI.FileColors)
+
+						// Create a custom text segment with color
+						coloredSegment := &ColoredTextSegment{
+							Text:  fileInfo.Name,
+							Color: fileColor,
+						}
+
+						nameRichText.Segments = []widget.RichTextSegment{coloredSegment}
+						nameRichText.Refresh()
 
 						if fileInfo.IsDir {
 							infoLabel.SetText(fmt.Sprintf("<dir> %s %s",
@@ -782,6 +963,7 @@ func (fm *FileManager) loadDirectory(path string) {
 			IsDir:    true,
 			Size:     0,
 			Modified: time.Time{},
+			FileType: FileTypeDirectory, // Parent directory is always a directory
 		}
 
 		listItem := ListItem{
@@ -800,12 +982,16 @@ func (fm *FileManager) loadDirectory(path string) {
 			continue
 		}
 
+		fullPath := filepath.Join(path, entry.Name())
+		fileType := determineFileType(fullPath, entry.Name(), entry.IsDir())
+
 		fileInfo := FileInfo{
 			Name:     entry.Name(),
-			Path:     filepath.Join(path, entry.Name()),
+			Path:     fullPath,
 			IsDir:    entry.IsDir(),
 			Size:     info.Size(),
 			Modified: info.ModTime(),
+			FileType: fileType,
 		}
 
 		listItem := ListItem{
@@ -820,14 +1006,20 @@ func (fm *FileManager) loadDirectory(path string) {
 
 	// Update binding
 	fm.fileBinding.Set(items)
-	// Set cursor to first item if directory is not empty
+
+	// Clear selections when changing directory
+	fm.selectedItems = make(map[int]bool)
+
+	// Set cursor to first item if directory is not empty and refresh cursor
 	if len(fm.files) > 0 {
 		fm.cursorIdx = 0
+		// Ensure focus is on key handler for keyboard navigation
+		fm.window.Canvas().Focus(fm.keyHandler)
+		// Refresh cursor display immediately
+		fm.refreshCursor()
 	} else {
 		fm.cursorIdx = -1
 	}
-	// Clear selections when changing directory
-	fm.selectedItems = make(map[int]bool)
 }
 
 func (fm *FileManager) watchDirectory() {
@@ -844,7 +1036,14 @@ func (fm *FileManager) watchDirectory() {
 
 		if info.ModTime().After(lastModTime) {
 			lastModTime = info.ModTime()
+			// Save current cursor position to restore after refresh
+			savedCursorIdx := fm.cursorIdx
 			fm.loadDirectory(fm.currentPath)
+			// Try to restore cursor position if still valid
+			if savedCursorIdx >= 0 && savedCursorIdx < len(fm.files) {
+				fm.cursorIdx = savedCursorIdx
+				fm.refreshCursor()
+			}
 		}
 	}
 }

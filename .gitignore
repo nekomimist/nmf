@@ -51,3 +51,7 @@ config.local.json
 # Temporary files
 *.tmp
 *.temp
+
+# garbage
+fyne-cross/
+Icon.png
