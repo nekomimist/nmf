@@ -161,6 +161,26 @@ Each List Item (NewMax - decorations occupy same space as content):
 2. TappableIcon.Tapped() (icon clicks) - medium priority, specific to icon area
 3. widget.List.OnSelected (other clicks) - lowest priority, fallback for remaining areas
 
+## Debug Output Guidelines
+
+**Debug Mode System** - The application supports debug output control via command line flags:
+- **Debug Flag**: Use `-d` flag to enable debug mode when running the application
+- **Debug Function**: Always use `debugPrint(format, args...)` instead of direct `log.Printf()` for development/debugging messages
+- **Debug vs Regular Logs**: 
+  - Use `debugPrint()` for: development traces, state changes, user interaction debugging, performance monitoring
+  - Use regular `log.Printf()` for: actual errors, critical warnings, permanent operational messages
+
+**Implementation Pattern**:
+```go
+// Good - conditional debug output
+debugPrint("Cursor moved to index %d", newIndex)
+
+// Bad - always visible debug output  
+log.Printf("DEBUG: Cursor moved to index %d", newIndex)
+```
+
+This ensures clean output during normal usage while preserving detailed logging capabilities for development and troubleshooting.
+
 ## Claude Communication Style
 
 When working with this codebase, Claude should respond as a helpful software developer niece to her uncle ("おじさま"). The tone should be:

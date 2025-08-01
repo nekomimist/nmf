@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"image/color"
 	"io/ioutil"
@@ -21,6 +22,16 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
+
+// Global debug flag
+var debugMode bool
+
+// debugPrint prints debug messages only when debug mode is enabled
+func debugPrint(format string, args ...interface{}) {
+	if debugMode {
+		log.Printf("DEBUG: "+format, args...)
+	}
+}
 
 // Config represents the application configuration
 type Config struct {
@@ -297,7 +308,7 @@ func (kw *KeyableWidget) KeyDown(key *fyne.KeyEvent) {
 	switch key.Name {
 	case desktop.KeyShiftLeft, desktop.KeyShiftRight:
 		kw.fm.shiftPressed = true
-		log.Printf("DEBUG: Shift key pressed (state: %t)", kw.fm.shiftPressed)
+		debugPrint("Shift key pressed (state: %t)", kw.fm.shiftPressed)
 	}
 }
 
@@ -305,17 +316,17 @@ func (kw *KeyableWidget) KeyUp(key *fyne.KeyEvent) {
 	switch key.Name {
 	case desktop.KeyShiftLeft, desktop.KeyShiftRight:
 		kw.fm.shiftPressed = false
-		log.Printf("DEBUG: Shift key released (state: %t)", kw.fm.shiftPressed)
+		debugPrint("Shift key released (state: %t)", kw.fm.shiftPressed)
 	}
 }
 
 // Implement fyne.Focusable interface
 func (kw *KeyableWidget) FocusGained() {
-	log.Println("DEBUG: KeyableWidget gained focus")
+	debugPrint("KeyableWidget gained focus")
 }
 
 func (kw *KeyableWidget) FocusLost() {
-	log.Println("DEBUG: KeyableWidget lost focus")
+	debugPrint("KeyableWidget lost focus")
 }
 
 func (kw *KeyableWidget) TypedRune(r rune) {
@@ -342,7 +353,7 @@ func (kw *KeyableWidget) TypedKey(key *fyne.KeyEvent) {
 	case fyne.KeyUp:
 		if fm.shiftPressed {
 			// Move up 20 items or to the beginning
-			log.Println("DEBUG: Shift+Up detected via TypedKey!")
+			debugPrint("Shift+Up detected via TypedKey!")
 			newIdx := fm.cursorIdx - 20
 			if newIdx < 0 {
 				newIdx = 0
@@ -358,7 +369,7 @@ func (kw *KeyableWidget) TypedKey(key *fyne.KeyEvent) {
 	case fyne.KeyDown:
 		if fm.shiftPressed {
 			// Move down 20 items or to the end
-			log.Println("DEBUG: Shift+Down detected via TypedKey!")
+			debugPrint("Shift+Down detected via TypedKey!")
 			newIdx := fm.cursorIdx + 20
 			if newIdx >= len(fm.files) {
 				newIdx = len(fm.files) - 1
@@ -621,7 +632,7 @@ func (t *CustomTheme) loadCustomFont() {
 
 	// Create font resource
 	t.customFont = fyne.NewStaticResource(filepath.Base(fontPath), fontData)
-	log.Printf("Loaded custom font: %s", fontPath)
+	debugPrint("Loaded custom font: %s", fontPath)
 }
 
 // Color methods from default theme
@@ -1067,21 +1078,25 @@ func formatFileSize(size int64) string {
 }
 
 func main() {
-	// Load configuration
-	config := loadConfig()
-
-	app := app.New()
-
-	// Apply custom theme
-	customTheme := NewCustomTheme(config)
-	app.Settings().SetTheme(customTheme)
-
-	// Parse command line arguments for starting directory
+	// Parse command line flags
 	var startPath string
-	if len(os.Args) > 1 {
-		// Use provided path argument
-		startPath = os.Args[1]
+	flag.BoolVar(&debugMode, "d", false, "Enable debug mode")
+	flag.StringVar(&startPath, "path", "", "Starting directory path")
+	flag.Parse()
 
+	// If no path specified via flag, check remaining arguments
+	if startPath == "" && flag.NArg() > 0 {
+		startPath = flag.Arg(0)
+	}
+
+	// If still no path, use current working directory
+	if startPath == "" {
+		pwd, err := os.Getwd()
+		if err != nil {
+			log.Fatalf("Error getting current directory: %v", err)
+		}
+		startPath = pwd
+	} else {
 		// Validate the path exists and is a directory
 		if info, err := os.Stat(startPath); err != nil {
 			log.Fatalf("Error accessing path '%s': %v", startPath, err)
@@ -1093,14 +1108,16 @@ func main() {
 		if absPath, err := filepath.Abs(startPath); err == nil {
 			startPath = absPath
 		}
-	} else {
-		// Default to current working directory
-		pwd, err := os.Getwd()
-		if err != nil {
-			log.Fatalf("Error getting current directory: %v", err)
-		}
-		startPath = pwd
 	}
+
+	// Load configuration
+	config := loadConfig()
+
+	app := app.New()
+
+	// Apply custom theme
+	customTheme := NewCustomTheme(config)
+	app.Settings().SetTheme(customTheme)
 
 	fm := NewFileManager(app, startPath, config)
 	fm.window.ShowAndRun()
