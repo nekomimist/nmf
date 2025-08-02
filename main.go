@@ -135,20 +135,9 @@ func determineFileType(path string, name string, isDir bool) FileType {
 	return FileTypeRegular
 }
 
-// getFileColor returns the color for a given file based on type and status
-func getFileColor(fileInfo FileInfo, colors FileColorConfig) color.RGBA {
-	// Status-based colors take precedence
-	switch fileInfo.Status {
-	case StatusAdded:
-		return color.RGBA{R: 0, G: 200, B: 0, A: 255} // Bright green for added files
-	case StatusDeleted:
-		return color.RGBA{R: 128, G: 128, B: 128, A: 180} // Gray with transparency for deleted files
-	case StatusModified:
-		return color.RGBA{R: 255, G: 200, B: 0, A: 255} // Orange/yellow for modified files
-	}
-
-	// Normal status - use file type colors
-	switch fileInfo.FileType {
+// getTextColor returns the text color based on file type
+func getTextColor(fileType FileType, colors FileColorConfig) color.RGBA {
+	switch fileType {
 	case FileTypeDirectory:
 		return color.RGBA{R: colors.Directory[0], G: colors.Directory[1], B: colors.Directory[2], A: colors.Directory[3]}
 	case FileTypeSymlink:
@@ -157,6 +146,21 @@ func getFileColor(fileInfo FileInfo, colors FileColorConfig) color.RGBA {
 		return color.RGBA{R: colors.Hidden[0], G: colors.Hidden[1], B: colors.Hidden[2], A: colors.Hidden[3]}
 	default: // FileTypeRegular
 		return color.RGBA{R: colors.Regular[0], G: colors.Regular[1], B: colors.Regular[2], A: colors.Regular[3]}
+	}
+}
+
+// getStatusBackgroundColor returns the background color based on file status
+// Returns nil for normal status (no background)
+func getStatusBackgroundColor(status FileStatus) *color.RGBA {
+	switch status {
+	case StatusAdded:
+		return &color.RGBA{R: 0, G: 200, B: 0, A: 80} // Semi-transparent green background
+	case StatusDeleted:
+		return &color.RGBA{R: 128, G: 128, B: 128, A: 60} // Semi-transparent gray background
+	case StatusModified:
+		return &color.RGBA{R: 255, G: 200, B: 0, A: 80} // Semi-transparent orange background
+	default: // StatusNormal
+		return nil // No background
 	}
 }
 
@@ -240,14 +244,9 @@ func (r *UnderlineCursorRenderer) RenderCursor(bounds fyne.Size, textBounds fyne
 		thickness = 2
 	}
 
-	// Calculate text area dimensions (rough estimation)
-	textWidth := bounds.Width * 0.8           // Most of the width is text
-	textHeight := bounds.Height * 0.8         // Most of the height is text
-	textY := (bounds.Height - textHeight) / 2 // Center vertically
-
-	// Position at the bottom of text
-	underline.Resize(fyne.NewSize(textWidth, thickness))
-	underline.Move(fyne.NewPos(textBounds.X, textY+textHeight-thickness))
+	// Simple full-width underline at bottom edge
+	underline.Resize(fyne.NewSize(bounds.Width, thickness))
+	underline.Move(fyne.NewPos(0, bounds.Height-thickness))
 
 	return underline
 }
@@ -843,13 +842,13 @@ func (fm *FileManager) setupUI() {
 							}
 						}
 
-						// Get color based on file type and status
-						fileColor := getFileColor(fileInfo, fm.config.UI.FileColors)
+						// Get text color based on file type
+						textColor := getTextColor(fileInfo.FileType, fm.config.UI.FileColors)
 
-						// Create a custom text segment with color and style
+						// Create a custom text segment with text color only
 						coloredSegment := &ColoredTextSegment{
 							Text:          fileInfo.Name,
-							Color:         fileColor,
+							Color:         textColor,
 							Strikethrough: fileInfo.Status == StatusDeleted,
 						}
 
@@ -878,7 +877,18 @@ func (fm *FileManager) setupUI() {
 			// Clear all decoration elements first
 			outerContainer.Objects = []fyne.CanvasObject{border}
 
-			// Add selection background if selected
+			// Add status background if file has a status (covers entire item like selection)
+			statusBGColor := getStatusBackgroundColor(fileInfo.Status)
+			if statusBGColor != nil {
+				statusBG := canvas.NewRectangle(*statusBGColor)
+				statusBG.Resize(obj.Size())
+				statusBG.Move(fyne.NewPos(0, 0))
+				// Wrap status background in WithoutLayout container
+				statusContainer := container.NewWithoutLayout(statusBG)
+				outerContainer.Objects = append(outerContainer.Objects, statusContainer)
+			}
+
+			// Add selection background if selected (covers entire item)
 			if isSelected {
 				selectionBG := canvas.NewRectangle(color.RGBA{R: 100, G: 150, B: 200, A: 100})
 				selectionBG.Resize(obj.Size())
@@ -888,13 +898,9 @@ func (fm *FileManager) setupUI() {
 				outerContainer.Objects = append(outerContainer.Objects, selectionContainer)
 			}
 
-			// Add cursor if at cursor position
+			// Add cursor if at cursor position (covers entire item like status/selection)
 			if isCursor {
-				// Calculate text position (icon width + padding)
-				iconWidth := float32(16)                         // Fixed icon size
-				padding := float32(fm.config.UI.ItemSpacing * 2) // Padding around icon
-				textPos := fyne.NewPos(iconWidth+padding, 0)
-				cursor := fm.cursorRenderer.RenderCursor(obj.Size(), textPos, fm.config.UI.CursorStyle)
+				cursor := fm.cursorRenderer.RenderCursor(obj.Size(), fyne.NewPos(0, 0), fm.config.UI.CursorStyle)
 
 				// Wrap cursor in a container that won't be affected by NewMax
 				cursorContainer := container.NewWithoutLayout(cursor)

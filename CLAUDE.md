@@ -123,11 +123,13 @@ Single-file application (`main.go`) containing all functionality. The compiled b
 - **Helper Functions**: `getCurrentCursorIndex()`, `setCursorByIndex()` for path↔index conversion
 - **Auto-cleanup**: Deleted files automatically removed from selection map
 
-**FileStatus Visual System** - Dynamic file appearance:
-- **ColoredTextSegment**: Custom RichText segment supporting colors and strikethrough
-- **Status-based Colors**: Green (added), Gray (deleted), Orange (modified), Normal (file-type based)
-- **Visual Indicators**: Deleted files show ⊠ prefix for clear visual feedback
-- **Color Precedence**: Status colors override file-type colors
+**Dual-Layer Color System** - Separated status and file type visualization:
+- **Text Color Management**: `getTextColor()` returns file type-based text colors (directories=blue, symlinks=orange, etc.)
+- **Background Color Management**: `getStatusBackgroundColor()` returns status-based semi-transparent backgrounds
+- **Status Background Layer**: Full-width semi-transparent backgrounds for Added (green), Deleted (gray), Modified (orange)
+- **ColoredTextSegment**: Simplified custom RichText segment for text color and strikethrough only
+- **Visual Indicators**: Deleted files show ⊠ prefix with strikethrough effect
+- **Layer Independence**: Status backgrounds and file type text colors work independently for clear visual separation
 
 **Fyne Data Binding Integration** - Automatic UI synchronization:
 - **Auto-refresh**: `fileBinding.Set()` automatically triggers UI updates
@@ -189,10 +191,10 @@ Single-file application (`main.go`) containing all functionality. The compiled b
 **Cursor Rendering Architecture** - Pluggable visual cursor system:
 - **Interface Design**: `CursorRenderer` interface with `RenderCursor()` method
 - **Multiple Implementations**: UnderlineCursorRenderer, BorderCursorRenderer, BackgroundCursorRenderer
-- **Canvas Primitives**: All cursors built using `canvas.NewRectangle()` with precise positioning
+- **Canvas Primitives**: All cursors built using `canvas.NewRectangle()` with full-width positioning
 - **Configuration-driven**: Cursor style, color, thickness controlled via `CursorStyleConfig`
-- **Position Calculation**: Text position calculated as `iconWidth + padding` for accurate cursor placement
-- **Size Adaptation**: Cursor dimensions calculated relative to list item bounds
+- **Unified Positioning**: All cursor types cover entire list item width for visual consistency
+- **Simplified Implementation**: Underline cursor renders as full-width line at bottom edge
 
 **Layered UI Structure** - Multi-level overlay and event handling:
 ```
@@ -206,14 +208,21 @@ Each List Item (NewMax - decorations occupy same space as content):
 ├── Layer 1: Content (NewBorder)
 │   ├── Left: Icon + Name (NewHBox)
 │   └── Right: File Info
-├── Layer 2: Selection Background (NewWithoutLayout - absolute positioning)
-└── Layer 3: Cursor Display (NewWithoutLayout - absolute positioning)
+├── Layer 2: Status Background (NewWithoutLayout - absolute positioning, full-width)
+├── Layer 3: Selection Background (NewWithoutLayout - absolute positioning, full-width)
+└── Layer 4: Cursor Display (NewWithoutLayout - absolute positioning, full-width)
 ```
 
 **Event Flow Priority**:
 1. KeyableWidget (keyboard events) - highest priority due to explicit focus
 2. TappableIcon.Tapped() (icon clicks) - medium priority, specific to icon area
 3. widget.List.OnSelected (other clicks) - lowest priority, fallback for remaining areas
+
+**Decoration Layer Rendering Order** (bottom to top):
+1. **Content Layer**: File information (icon, name, size, date)
+2. **Status Background**: Semi-transparent colored backgrounds for file status changes
+3. **Selection Background**: Blue background for selected files  
+4. **Cursor Layer**: Visual cursor indicator (underline, border, or background style)
 
 ## Debug Output Guidelines
 
@@ -240,9 +249,10 @@ This ensures clean output during normal usage while preserving detailed logging 
 **Incremental File Monitoring** - The application now features advanced real-time file change detection:
 
 **Visual Status Indicators**:
-- **Green files**: Newly added files appear in bright green at the bottom of the list
-- **Gray files with ⊠**: Deleted files are grayed out and marked with ⊠ symbol
-- **Orange files**: Modified files (size/timestamp changes) appear in orange
+- **Green background**: Newly added files have semi-transparent green background covering entire row
+- **Gray background with ⊠**: Deleted files have semi-transparent gray background with ⊠ symbol prefix
+- **Orange background**: Modified files have semi-transparent orange background covering entire row
+- **File type colors**: Text color reflects file type (directories=blue, symlinks=orange, hidden=gray, regular=light gray)
 - **Manual refresh**: Use toolbar refresh button to clear all status colors and return to normal view
 
 **State Preservation During Changes**:
