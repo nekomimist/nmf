@@ -325,7 +325,7 @@ type FileManager struct {
 	currentPath    string
 	files          []FileInfo
 	fileList       *widget.List
-	pathLabel      *widget.Label
+	pathEntry      *widget.Entry
 	cursorPath     string          // Current cursor file path
 	selectedFiles  map[string]bool // Set of selected file paths
 	fileBinding    binding.UntypedList
@@ -629,9 +629,12 @@ func NewFileManager(app fyne.App, path string, config *Config) *FileManager {
 }
 
 func (fm *FileManager) setupUI() {
-	// Path label
-	fm.pathLabel = widget.NewLabel(fm.currentPath)
-	fm.pathLabel.TextStyle = fyne.TextStyle{Bold: true}
+	// Path entry for direct path input
+	fm.pathEntry = widget.NewEntry()
+	fm.pathEntry.SetText(fm.currentPath)
+	fm.pathEntry.OnSubmitted = func(path string) {
+		fm.navigateToPath(path)
+	}
 
 	// Create file list
 	fm.fileList = widget.NewListWithData(
@@ -817,7 +820,7 @@ func (fm *FileManager) setupUI() {
 
 	// Layout without overlay
 	content := container.NewBorder(
-		container.NewVBox(toolbar, fm.pathLabel),
+		container.NewVBox(toolbar, fm.pathEntry),
 		nil, nil, nil,
 		fm.fileList,
 	)
@@ -1005,6 +1008,60 @@ func (ti *TappableIcon) CreateRenderer() fyne.WidgetRenderer {
 	return widget.NewSimpleRenderer(ti.icon)
 }
 
+// navigateToPath handles path entry validation and navigation
+func (fm *FileManager) navigateToPath(inputPath string) {
+	// Trim whitespace from input
+	path := strings.TrimSpace(inputPath)
+
+	// Handle empty path - do nothing
+	if path == "" {
+		fm.pathEntry.SetText(fm.currentPath) // Reset to current path
+		return
+	}
+
+	// Handle tilde expansion for home directory
+	if strings.HasPrefix(path, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			debugPrint("Error getting home directory: %v", err)
+			fm.pathEntry.SetText(fm.currentPath) // Reset to current path
+			return
+		}
+		path = strings.Replace(path, "~", home, 1)
+	}
+
+	// Convert to absolute path if it's relative
+	if !filepath.IsAbs(path) {
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			debugPrint("Error converting to absolute path: %v", err)
+			fm.pathEntry.SetText(fm.currentPath) // Reset to current path
+			return
+		}
+		path = absPath
+	}
+
+	// Validate the path exists and is a directory
+	info, err := os.Stat(path)
+	if err != nil {
+		debugPrint("Path does not exist: %s - %v", path, err)
+		fm.pathEntry.SetText(fm.currentPath) // Reset to current path
+		return
+	}
+
+	if !info.IsDir() {
+		debugPrint("Path is not a directory: %s", path)
+		fm.pathEntry.SetText(fm.currentPath) // Reset to current path
+		return
+	}
+
+	// Path is valid, navigate to it
+	fm.loadDirectory(path)
+
+	// Remove focus from path entry after successful navigation
+	fm.window.Canvas().Unfocus()
+}
+
 func (fm *FileManager) loadDirectory(path string) {
 	// Stop current directory watcher if running
 	if fm.dirWatcher != nil {
@@ -1012,7 +1069,7 @@ func (fm *FileManager) loadDirectory(path string) {
 	}
 
 	fm.currentPath = path
-	fm.pathLabel.SetText(path)
+	fm.pathEntry.SetText(path)
 	fm.files = []FileInfo{}
 
 	// Read directory

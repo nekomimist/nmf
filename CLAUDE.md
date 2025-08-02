@@ -9,7 +9,7 @@ This is a GUI file manager application called "nmf" built in Go using the Fyne f
 ## Common Commands
 
 ### Build and Run
-- `go run main.go` - Compile and run the file manager application
+- `go run .` - Compile and run the file manager application
 - `go build` - Build the executable (outputs to `nmf`)
 - `go build -o nmf-custom` - Build with custom output name
 
