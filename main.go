@@ -984,10 +984,11 @@ func (ti *TappableIcon) Tapped(_ *fyne.PointEvent) {
 
 func (ti *TappableIcon) SetResource(resource fyne.Resource) {
 	ti.icon.SetResource(resource)
+	ti.Refresh()
 }
 
 func (ti *TappableIcon) CreateRenderer() fyne.WidgetRenderer {
-	return ti.icon.CreateRenderer()
+	return widget.NewSimpleRenderer(ti.icon)
 }
 
 func (fm *FileManager) loadDirectory(path string) {
