@@ -87,6 +87,16 @@ const (
 	FileTypeHidden
 )
 
+// FileStatus represents the current status of a file in the directory watcher
+type FileStatus int
+
+const (
+	StatusNormal   FileStatus = iota
+	StatusAdded               // 新規追加されたファイル
+	StatusDeleted             // 削除されたファイル
+	StatusModified            // 変更されたファイル
+)
+
 // FileInfo represents a file or directory
 type FileInfo struct {
 	Name     string
@@ -95,6 +105,7 @@ type FileInfo struct {
 	Size     int64
 	Modified time.Time
 	FileType FileType
+	Status   FileStatus // ファイルの現在のステータス
 }
 
 // determineFileType determines the file type based on file attributes
@@ -124,9 +135,20 @@ func determineFileType(path string, name string, isDir bool) FileType {
 	return FileTypeRegular
 }
 
-// getFileTypeColor returns the color for a given file type
-func getFileTypeColor(fileType FileType, colors FileColorConfig) color.RGBA {
-	switch fileType {
+// getFileColor returns the color for a given file based on type and status
+func getFileColor(fileInfo FileInfo, colors FileColorConfig) color.RGBA {
+	// Status-based colors take precedence
+	switch fileInfo.Status {
+	case StatusAdded:
+		return color.RGBA{R: 0, G: 200, B: 0, A: 255} // Bright green for added files
+	case StatusDeleted:
+		return color.RGBA{R: 128, G: 128, B: 128, A: 180} // Gray with transparency for deleted files
+	case StatusModified:
+		return color.RGBA{R: 255, G: 200, B: 0, A: 255} // Orange/yellow for modified files
+	}
+
+	// Normal status - use file type colors
+	switch fileInfo.FileType {
 	case FileTypeDirectory:
 		return color.RGBA{R: colors.Directory[0], G: colors.Directory[1], B: colors.Directory[2], A: colors.Directory[3]}
 	case FileTypeSymlink:
@@ -138,10 +160,11 @@ func getFileTypeColor(fileType FileType, colors FileColorConfig) color.RGBA {
 	}
 }
 
-// ColoredTextSegment is a custom RichText segment that supports custom colors
+// ColoredTextSegment is a custom RichText segment that supports custom colors and styles
 type ColoredTextSegment struct {
-	Text  string
-	Color color.RGBA
+	Text          string
+	Color         color.RGBA
+	Strikethrough bool
 }
 
 func (s *ColoredTextSegment) Inline() bool {
@@ -162,7 +185,17 @@ func (s *ColoredTextSegment) Update(o fyne.CanvasObject) {
 
 func (s *ColoredTextSegment) Visual() fyne.CanvasObject {
 	text := canvas.NewText(s.Text, s.Color)
-	text.TextStyle = fyne.TextStyle{}
+	text.TextStyle = fyne.TextStyle{
+		Bold:      false,
+		Italic:    false,
+		Monospace: false,
+	}
+
+	// For deleted files, we'll use a visual indication by prefixing with strikethrough-like chars
+	if s.Strikethrough {
+		text.Text = "⊠ " + s.Text
+	}
+
 	// Set appropriate text size from theme
 	text.TextSize = fyne.CurrentApp().Settings().Theme().Size(theme.SizeNameText)
 	return text
@@ -335,13 +368,13 @@ func (kw *KeyableWidget) TypedRune(r rune) {
 	case '<':
 		// Move to first item
 		if len(fm.files) > 0 {
-			fm.cursorIdx = 0
+			fm.setCursorByIndex(0)
 			fm.refreshCursor()
 		}
 	case '>':
 		// Move to last item
 		if len(fm.files) > 0 {
-			fm.cursorIdx = len(fm.files) - 1
+			fm.setCursorByIndex(len(fm.files) - 1)
 			fm.refreshCursor()
 		}
 	}
@@ -351,51 +384,55 @@ func (kw *KeyableWidget) TypedKey(key *fyne.KeyEvent) {
 	fm := kw.fm
 	switch key.Name {
 	case fyne.KeyUp:
+		currentIdx := fm.getCurrentCursorIndex()
 		if fm.shiftPressed {
 			// Move up 20 items or to the beginning
 			debugPrint("Shift+Up detected via TypedKey!")
-			newIdx := fm.cursorIdx - 20
+			newIdx := currentIdx - 20
 			if newIdx < 0 {
 				newIdx = 0
 			}
-			fm.cursorIdx = newIdx
+			fm.setCursorByIndex(newIdx)
 			fm.refreshCursor()
 		} else {
-			if fm.cursorIdx > 0 {
-				fm.cursorIdx--
+			if currentIdx > 0 {
+				fm.setCursorByIndex(currentIdx - 1)
 				fm.refreshCursor()
 			}
 		}
 	case fyne.KeyDown:
+		currentIdx := fm.getCurrentCursorIndex()
 		if fm.shiftPressed {
 			// Move down 20 items or to the end
 			debugPrint("Shift+Down detected via TypedKey!")
-			newIdx := fm.cursorIdx + 20
+			newIdx := currentIdx + 20
 			if newIdx >= len(fm.files) {
 				newIdx = len(fm.files) - 1
 			}
-			fm.cursorIdx = newIdx
+			fm.setCursorByIndex(newIdx)
 			fm.refreshCursor()
 		} else {
-			if fm.cursorIdx < len(fm.files)-1 {
-				fm.cursorIdx++
+			if currentIdx < len(fm.files)-1 {
+				fm.setCursorByIndex(currentIdx + 1)
 				fm.refreshCursor()
 			}
 		}
 	case fyne.KeyReturn:
-		if fm.cursorIdx >= 0 && fm.cursorIdx < len(fm.files) {
-			file := fm.files[fm.cursorIdx]
+		currentIdx := fm.getCurrentCursorIndex()
+		if currentIdx >= 0 && currentIdx < len(fm.files) {
+			file := fm.files[currentIdx]
 			if file.IsDir {
 				fm.loadDirectory(file.Path)
 			}
 		}
 	case fyne.KeySpace:
-		if fm.cursorIdx >= 0 && fm.cursorIdx < len(fm.files) {
-			file := fm.files[fm.cursorIdx]
+		currentIdx := fm.getCurrentCursorIndex()
+		if currentIdx >= 0 && currentIdx < len(fm.files) {
+			file := fm.files[currentIdx]
 			// Don't allow selection of parent directory entry
 			if file.Name != ".." {
 				// Toggle selection state of current cursor item
-				fm.selectedItems[fm.cursorIdx] = !fm.selectedItems[fm.cursorIdx]
+				fm.selectedFiles[file.Path] = !fm.selectedFiles[file.Path]
 				fm.fileList.Refresh()
 			}
 		}
@@ -414,13 +451,14 @@ type FileManager struct {
 	files          []FileInfo
 	fileList       *widget.List
 	pathLabel      *widget.Label
-	cursorIdx      int          // Current cursor position
-	selectedItems  map[int]bool // Set of selected items
+	cursorPath     string          // Current cursor file path
+	selectedFiles  map[string]bool // Set of selected file paths
 	fileBinding    binding.UntypedList
 	config         *Config
-	cursorRenderer CursorRenderer // Cursor display renderer
-	shiftPressed   bool           // Track Shift key state
-	keyHandler     *KeyableWidget // Key event handler
+	cursorRenderer CursorRenderer    // Cursor display renderer
+	shiftPressed   bool              // Track Shift key state
+	keyHandler     *KeyableWidget    // Key event handler
+	dirWatcher     *DirectoryWatcher // Directory change watcher
 }
 
 // getDefaultConfig returns the default configuration
@@ -696,8 +734,8 @@ func NewFileManager(app fyne.App, path string, config *Config) *FileManager {
 	fm := &FileManager{
 		window:         app.NewWindow("File Manager"),
 		currentPath:    path,
-		cursorIdx:      -1,
-		selectedItems:  make(map[int]bool),
+		cursorPath:     "",
+		selectedFiles:  make(map[string]bool),
 		fileBinding:    binding.NewUntypedList(),
 		config:         config,
 		cursorRenderer: NewCursorRenderer(config.UI.CursorStyle),
@@ -707,11 +745,14 @@ func NewFileManager(app fyne.App, path string, config *Config) *FileManager {
 	// Create key handler for desktop.Keyable implementation
 	fm.keyHandler = NewKeyableWidget(fm)
 
+	// Create directory watcher
+	fm.dirWatcher = NewDirectoryWatcher(fm)
+
 	fm.setupUI()
 	fm.loadDirectory(path)
 
-	// Start file system watcher
-	go fm.watchDirectory()
+	// Start watching after initial load
+	fm.dirWatcher.Start()
 
 	return fm
 }
@@ -802,13 +843,14 @@ func (fm *FileManager) setupUI() {
 							}
 						}
 
-						// Get color based on file type and create custom text segment
-						fileColor := getFileTypeColor(fileInfo.FileType, fm.config.UI.FileColors)
+						// Get color based on file type and status
+						fileColor := getFileColor(fileInfo, fm.config.UI.FileColors)
 
-						// Create a custom text segment with color
+						// Create a custom text segment with color and style
 						coloredSegment := &ColoredTextSegment{
-							Text:  fileInfo.Name,
-							Color: fileColor,
+							Text:          fileInfo.Name,
+							Color:         fileColor,
+							Strikethrough: fileInfo.Status == StatusDeleted,
 						}
 
 						nameRichText.Segments = []widget.RichTextSegment{coloredSegment}
@@ -829,8 +871,9 @@ func (fm *FileManager) setupUI() {
 			}
 
 			// Handle 4 display states
-			isCursor := index == fm.cursorIdx
-			isSelected := fm.selectedItems[index]
+			currentCursorIdx := fm.getCurrentCursorIndex()
+			isCursor := index == currentCursorIdx
+			isSelected := fm.selectedFiles[fileInfo.Path]
 
 			// Clear all decoration elements first
 			outerContainer.Objects = []fyne.CanvasObject{border}
@@ -867,7 +910,7 @@ func (fm *FileManager) setupUI() {
 
 	// Handle cursor movement (both mouse and keyboard)
 	fm.fileList.OnSelected = func(id widget.ListItemID) {
-		fm.cursorIdx = id
+		fm.setCursorByIndex(id)
 		// Clear list selection to avoid double cursor effect when switching back to keyboard
 		fm.fileList.UnselectAll()
 		fm.window.Canvas().Unfocus()
@@ -910,10 +953,33 @@ func (fm *FileManager) setupUI() {
 	// All key handling is now done via KeyableWidget
 }
 
+// getCurrentCursorIndex returns the current cursor index based on cursor path
+func (fm *FileManager) getCurrentCursorIndex() int {
+	if fm.cursorPath == "" {
+		return -1
+	}
+	for i, file := range fm.files {
+		if file.Path == fm.cursorPath {
+			return i
+		}
+	}
+	return -1
+}
+
+// setCursorByIndex sets the cursor to the specified index
+func (fm *FileManager) setCursorByIndex(index int) {
+	if index >= 0 && index < len(fm.files) {
+		fm.cursorPath = fm.files[index].Path
+	} else {
+		fm.cursorPath = ""
+	}
+}
+
 // refreshCursor updates only the cursor display without affecting selection
 func (fm *FileManager) refreshCursor() {
-	if fm.cursorIdx >= 0 && fm.cursorIdx < len(fm.files) {
-		fm.fileList.ScrollTo(widget.ListItemID(fm.cursorIdx))
+	cursorIdx := fm.getCurrentCursorIndex()
+	if cursorIdx >= 0 {
+		fm.fileList.ScrollTo(widget.ListItemID(cursorIdx))
 	}
 	fm.fileList.Refresh()
 }
@@ -950,6 +1016,11 @@ func (ti *TappableIcon) CreateRenderer() fyne.WidgetRenderer {
 }
 
 func (fm *FileManager) loadDirectory(path string) {
+	// Stop current directory watcher if running
+	if fm.dirWatcher != nil {
+		fm.dirWatcher.Stop()
+	}
+
 	fm.currentPath = path
 	fm.pathLabel.SetText(path)
 	fm.files = []FileInfo{}
@@ -975,6 +1046,7 @@ func (fm *FileManager) loadDirectory(path string) {
 			Size:     0,
 			Modified: time.Time{},
 			FileType: FileTypeDirectory, // Parent directory is always a directory
+			Status:   StatusNormal,
 		}
 
 		listItem := ListItem{
@@ -1003,6 +1075,7 @@ func (fm *FileManager) loadDirectory(path string) {
 			Size:     info.Size(),
 			Modified: info.ModTime(),
 			FileType: fileType,
+			Status:   StatusNormal,
 		}
 
 		listItem := ListItem{
@@ -1019,44 +1092,258 @@ func (fm *FileManager) loadDirectory(path string) {
 	fm.fileBinding.Set(items)
 
 	// Clear selections when changing directory
-	fm.selectedItems = make(map[int]bool)
+	fm.selectedFiles = make(map[string]bool)
 
 	// Set cursor to first item if directory is not empty and refresh cursor
 	if len(fm.files) > 0 {
-		fm.cursorIdx = 0
+		fm.setCursorByIndex(0)
 		// Ensure focus is on key handler for keyboard navigation
 		fm.window.Canvas().Focus(fm.keyHandler)
 		// Refresh cursor display immediately
 		fm.refreshCursor()
 	} else {
-		fm.cursorIdx = -1
+		fm.cursorPath = ""
+	}
+
+	// Restart directory watcher for new path
+	if fm.dirWatcher != nil {
+		fm.dirWatcher.Start()
 	}
 }
 
-func (fm *FileManager) watchDirectory() {
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
+// DirectoryWatcher handles incremental directory change detection
+type DirectoryWatcher struct {
+	fm            *FileManager
+	previousFiles map[string]FileInfo // Previous state for comparison
+	ticker        *time.Ticker
+	stopChan      chan bool
+	changeChan    chan *PendingChanges // Channel for thread-safe change communication
+	stopped       bool                 // Track if watcher is already stopped
+}
 
-	lastModTime := time.Now()
+// PendingChanges represents file changes waiting to be applied
+type PendingChanges struct {
+	Added    []FileInfo
+	Deleted  []FileInfo
+	Modified []FileInfo
+}
 
-	for range ticker.C {
-		info, err := os.Stat(fm.currentPath)
+// NewDirectoryWatcher creates a new directory watcher
+func NewDirectoryWatcher(fm *FileManager) *DirectoryWatcher {
+	return &DirectoryWatcher{
+		fm:            fm,
+		previousFiles: make(map[string]FileInfo),
+		stopChan:      make(chan bool),
+		changeChan:    make(chan *PendingChanges, 10), // Buffered channel
+	}
+}
+
+// Start begins watching the current directory for changes
+func (dw *DirectoryWatcher) Start() {
+	if dw.ticker != nil && !dw.stopped {
+		return // Already running
+	}
+
+	dw.stopped = false
+
+	// Recreate channels if they were closed
+	if dw.stopChan == nil {
+		dw.stopChan = make(chan bool)
+	}
+	if dw.changeChan == nil {
+		dw.changeChan = make(chan *PendingChanges, 10)
+	}
+
+	dw.ticker = time.NewTicker(2 * time.Second)
+	dw.updateSnapshot() // Take initial snapshot
+
+	// Start directory monitoring goroutine
+	ticker := dw.ticker // Capture ticker reference for this goroutine
+	go func() {
+		defer ticker.Stop() // Clean up ticker when goroutine exits
+		for {
+			select {
+			case <-ticker.C:
+				dw.checkForChanges()
+			case <-dw.stopChan:
+				return
+			}
+		}
+	}()
+
+	// Start change processing goroutine
+	go func() {
+		for {
+			select {
+			case changes := <-dw.changeChan:
+				// Apply data changes (binding auto-updates UI)
+				dw.applyDataChanges(changes.Added, changes.Deleted, changes.Modified)
+			case <-dw.stopChan:
+				return
+			}
+		}
+	}()
+}
+
+// Stop stops the directory watcher
+func (dw *DirectoryWatcher) Stop() {
+	if dw.stopped {
+		return // Already stopped, do nothing
+	}
+
+	dw.stopped = true
+	dw.ticker = nil // Just clear reference, goroutine will handle cleanup
+
+	// Close channels safely
+	close(dw.stopChan)
+	dw.stopChan = nil
+
+	// Close change channel too
+	close(dw.changeChan)
+	dw.changeChan = nil
+}
+
+// updateSnapshot updates the current file snapshot
+func (dw *DirectoryWatcher) updateSnapshot() {
+	dw.previousFiles = make(map[string]FileInfo)
+
+	// Take snapshot of current files (excluding ".." entry)
+	for _, file := range dw.fm.files {
+		if file.Name != ".." {
+			dw.previousFiles[file.Path] = file
+		}
+	}
+}
+
+// checkForChanges detects and handles file system changes
+func (dw *DirectoryWatcher) checkForChanges() {
+	// Read current directory state
+	entries, err := os.ReadDir(dw.fm.currentPath)
+	if err != nil {
+		return // Skip this check if directory read fails
+	}
+
+	currentFiles := make(map[string]FileInfo)
+
+	// Build current file map
+	for _, entry := range entries {
+		fullPath := filepath.Join(dw.fm.currentPath, entry.Name())
+		info, err := entry.Info()
 		if err != nil {
 			continue
 		}
 
-		if info.ModTime().After(lastModTime) {
-			lastModTime = info.ModTime()
-			// Save current cursor position to restore after refresh
-			savedCursorIdx := fm.cursorIdx
-			fm.loadDirectory(fm.currentPath)
-			// Try to restore cursor position if still valid
-			if savedCursorIdx >= 0 && savedCursorIdx < len(fm.files) {
-				fm.cursorIdx = savedCursorIdx
-				fm.refreshCursor()
+		fileType := determineFileType(fullPath, entry.Name(), entry.IsDir())
+		fileInfo := FileInfo{
+			Name:     entry.Name(),
+			Path:     fullPath,
+			IsDir:    entry.IsDir(),
+			Size:     info.Size(),
+			Modified: info.ModTime(),
+			FileType: fileType,
+			Status:   StatusNormal,
+		}
+		currentFiles[fullPath] = fileInfo
+	}
+
+	// Detect changes
+	added, deleted, modified := dw.detectChanges(currentFiles)
+
+	// Apply changes if any detected
+	if len(added) > 0 || len(deleted) > 0 || len(modified) > 0 {
+		// Send changes to processing channel (if not stopped)
+		if !dw.stopped && dw.changeChan != nil {
+			select {
+			case dw.changeChan <- &PendingChanges{
+				Added:    added,
+				Deleted:  deleted,
+				Modified: modified,
+			}:
+				// Changes sent successfully
+			default:
+				// Channel full, skip this update
+				debugPrint("Change channel full, skipping update")
 			}
 		}
 	}
+}
+
+// detectChanges compares current and previous states to find differences
+func (dw *DirectoryWatcher) detectChanges(currentFiles map[string]FileInfo) (added, deleted, modified []FileInfo) {
+	// Find added files
+	for path, file := range currentFiles {
+		if _, exists := dw.previousFiles[path]; !exists {
+			file.Status = StatusAdded
+			added = append(added, file)
+		} else {
+			// Check for modifications
+			prevFile := dw.previousFiles[path]
+			if !file.Modified.Equal(prevFile.Modified) || file.Size != prevFile.Size {
+				file.Status = StatusModified
+				modified = append(modified, file)
+			}
+		}
+	}
+
+	// Find deleted files
+	for path, file := range dw.previousFiles {
+		if _, exists := currentFiles[path]; !exists {
+			file.Status = StatusDeleted
+			deleted = append(deleted, file)
+		}
+	}
+
+	return added, deleted, modified
+}
+
+// applyDataChanges applies detected changes to the file manager data (thread-safe)
+func (dw *DirectoryWatcher) applyDataChanges(added, deleted, modified []FileInfo) {
+	debugPrint("Applying changes: %d added, %d deleted, %d modified", len(added), len(deleted), len(modified))
+
+	// Track if we need to rebuild the binding
+	needsBindingUpdate := len(added) > 0 || len(deleted) > 0 || len(modified) > 0
+
+	// Handle deleted files - mark as deleted but keep in list
+	for _, deletedFile := range deleted {
+		for i, file := range dw.fm.files {
+			if file.Path == deletedFile.Path {
+				dw.fm.files[i].Status = StatusDeleted
+				// Remove from selections if selected
+				delete(dw.fm.selectedFiles, deletedFile.Path)
+				break
+			}
+		}
+	}
+
+	// Handle modified files - update status
+	for _, modifiedFile := range modified {
+		for i, file := range dw.fm.files {
+			if file.Path == modifiedFile.Path {
+				dw.fm.files[i] = modifiedFile
+				break
+			}
+		}
+	}
+
+	// Handle added files - append to end
+	for _, addedFile := range added {
+		dw.fm.files = append(dw.fm.files, addedFile)
+	}
+
+	// Update binding to reflect all changes (this auto-refreshes UI)
+	if needsBindingUpdate {
+		items := make([]interface{}, len(dw.fm.files))
+		for i, file := range dw.fm.files {
+			items[i] = ListItem{
+				Index:    i,
+				FileInfo: file,
+			}
+		}
+		dw.fm.fileBinding.Set(items)
+	}
+
+	// Update snapshot for next comparison
+	dw.updateSnapshot()
 }
 
 func (fm *FileManager) openNewWindow() {

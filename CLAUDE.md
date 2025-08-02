@@ -31,18 +31,39 @@ This is a GUI file manager application called "nmf" built in Go using the Fyne f
 **FileManager struct** - The main application controller that manages:
 - Window state and UI components
 - Current directory path and file listing
-- File selection state
+- Path-based selection state (selectedFiles map[string]bool)
+- Path-based cursor position (cursorPath string)
 - Data binding for the file list
+- DirectoryWatcher for incremental change detection
 
-**FileInfo struct** - Represents file/directory metadata including name, path, type, size, and modification time.
+**FileInfo struct** - Extended file/directory metadata including:
+- Basic attributes: name, path, type, size, modification time
+- **Status field**: Normal/Added/Deleted/Modified for change tracking
+
+**DirectoryWatcher struct** - Incremental change detection system:
+- Compares filesystem snapshots to detect added/deleted/modified files
+- Thread-safe communication via channels (changeChan, stopChan)
+- Maintains previous file state for differential analysis
 
 ### Key Features
 
-**Real-time Directory Watching** - Uses a polling mechanism (2-second intervals) to detect directory changes and automatically refresh the file list.
+**Incremental Directory Watching** - Advanced change detection system:
+- **Non-destructive updates**: Added files appear at list end, deleted files are grayed out
+- **State preservation**: Selections and cursor position maintained during updates
+- **Visual feedback**: Color-coded status (green=added, gray=deleted, orange=modified)
+- **Thread-safe**: Channel-based communication between background watcher and UI
 
-**Keyboard Navigation** - Full keyboard support:
-- Arrow keys for navigation
+**Path-based State Management** - Robust state tracking:
+- **Cursor position**: Stored as file path instead of index for persistence
+- **File selections**: Path-based mapping survives directory changes
+- **Auto-cleanup**: Deleted files automatically removed from selections
+
+**Advanced Keyboard Navigation** - Full keyboard support:
+- Arrow keys for navigation (↑/↓)
+- Shift+Arrow for fast navigation (20 items at once)
+- `</>` keys for first/last item navigation
 - Enter to open directories
+- Space to toggle file selection
 - Backspace to go up one directory level
 
 **Icon-Click Navigation** - Custom TappableIcon implementation:
@@ -57,18 +78,27 @@ This is a GUI file manager application called "nmf" built in Go using the Fyne f
 - Toolbar with back/home/refresh/new window actions
 - Path label showing current directory
 - File list with icons, names, and size/type information
+- Dynamic color coding based on file status
 
 ### Data Flow
 
-1. Application starts with current working directory
-2. `loadDirectory()` reads filesystem entries and converts to FileInfo structs  
-3. FileInfo data is bound to the UI list widget
-4. Background goroutine watches for directory changes
-5. User interactions trigger different behaviors:
+1. **Application Start**: Current working directory loaded, DirectoryWatcher initialized
+2. **Initial Load**: `loadDirectory()` reads filesystem and creates FileInfo structs with StatusNormal
+3. **Data Binding**: FileInfo data bound to UI list widget with automatic refresh
+4. **Background Monitoring**: DirectoryWatcher polls filesystem every 2 seconds
+5. **Change Detection**: Compares current filesystem state with previous snapshot
+6. **Incremental Updates**: 
+   - **Added files**: Appended to list with StatusAdded (green)
+   - **Deleted files**: Status changed to StatusDeleted (gray + ⊠ symbol)
+   - **Modified files**: Status updated to StatusModified (orange)
+7. **UI Auto-refresh**: Fyne data binding automatically updates UI when changes applied
+8. **User Interactions**:
    - Icon clicks: Direct navigation via TappableIcon.onTapped
-   - Name/info clicks: Selection via OnSelected callback
-   - Keyboard: Navigation via key event handlers
-6. Navigation calls `loadDirectory()` to update the view
+   - Name/info clicks: Selection via OnSelected callback  
+   - Keyboard: Navigation via KeyableWidget event handlers
+9. **Directory Navigation**: 
+   - DirectoryWatcher stops → `loadDirectory()` → DirectoryWatcher restarts
+   - All file statuses reset to StatusNormal in new directory
 
 ### Dependencies
 
@@ -79,6 +109,30 @@ The project uses Fyne v2 for the GUI framework, which provides cross-platform na
 Single-file application (`main.go`) containing all functionality. The compiled binary is named `nmf`.
 
 ### Important Implementation Notes
+
+**DirectoryWatcher Thread Safety** - Advanced goroutine coordination:
+- **Dual Goroutine Architecture**: Separate goroutines for filesystem monitoring and change processing
+- **Channel Communication**: Uses buffered `changeChan` for thread-safe data transfer
+- **Lifecycle Management**: `Start()`/`Stop()` methods with proper channel cleanup and recreation
+- **Resource Safety**: Ticker references captured locally to prevent nil pointer dereference
+- **State Tracking**: `stopped` flag prevents double-stop and enables safe restart
+
+**Path-based State Management** - Persistent state across changes:
+- **Cursor Tracking**: `cursorPath` string instead of `cursorIdx` int for persistence
+- **Selection Persistence**: `selectedFiles map[string]bool` survives file additions/deletions
+- **Helper Functions**: `getCurrentCursorIndex()`, `setCursorByIndex()` for path↔index conversion
+- **Auto-cleanup**: Deleted files automatically removed from selection map
+
+**FileStatus Visual System** - Dynamic file appearance:
+- **ColoredTextSegment**: Custom RichText segment supporting colors and strikethrough
+- **Status-based Colors**: Green (added), Gray (deleted), Orange (modified), Normal (file-type based)
+- **Visual Indicators**: Deleted files show ⊠ prefix for clear visual feedback
+- **Color Precedence**: Status colors override file-type colors
+
+**Fyne Data Binding Integration** - Automatic UI synchronization:
+- **Auto-refresh**: `fileBinding.Set()` automatically triggers UI updates
+- **Thread-safe Updates**: Data binding handles cross-thread UI refresh safely
+- **Incremental Updates**: Only changed data triggers binding refresh, not entire list rebuild
 
 **TappableIcon Widget** - Custom widget implementation:
 - Extends `widget.BaseWidget` and implements `fyne.Tappable` interface
@@ -180,6 +234,31 @@ log.Printf("DEBUG: Cursor moved to index %d", newIndex)
 ```
 
 This ensures clean output during normal usage while preserving detailed logging capabilities for development and troubleshooting.
+
+## Real-time File Change Features
+
+**Incremental File Monitoring** - The application now features advanced real-time file change detection:
+
+**Visual Status Indicators**:
+- **Green files**: Newly added files appear in bright green at the bottom of the list
+- **Gray files with ⊠**: Deleted files are grayed out and marked with ⊠ symbol
+- **Orange files**: Modified files (size/timestamp changes) appear in orange
+- **Manual refresh**: Use toolbar refresh button to clear all status colors and return to normal view
+
+**State Preservation During Changes**:
+- **Selections maintained**: Files you've marked (with Space key) remain selected even when other files are added/deleted
+- **Cursor position preserved**: Your current position in the list is maintained during directory updates
+- **Auto-cleanup**: Deleted files are automatically removed from your selection set
+
+**Usage Scenarios**:
+- **File operations**: Continue working while background processes add/remove files
+- **Build monitoring**: Watch compilation outputs appear in real-time without losing your place
+- **Download tracking**: See new downloads appear immediately while maintaining your current navigation context
+
+**Performance Notes**:
+- **2-second polling**: Directory changes detected every 2 seconds
+- **Incremental updates**: Only changed files trigger UI updates, not entire directory refresh
+- **Thread-safe**: All background monitoring is safely isolated from UI operations
 
 ## Claude Communication Style
 
