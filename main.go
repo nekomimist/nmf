@@ -825,6 +825,20 @@ func (fm *FileManager) setupUI() {
 	fm.window.SetContent(content)
 	fm.window.Resize(fyne.NewSize(float32(fm.config.Window.Width), float32(fm.config.Window.Height)))
 
+	// Setup window close handler to properly stop DirectoryWatcher
+	fm.window.SetCloseIntercept(func() {
+		debugPrint("Window close intercepted - initiating cleanup for path: %s", fm.currentPath)
+		if fm.dirWatcher != nil {
+			debugPrint("Stopping DirectoryWatcher...")
+			fm.dirWatcher.Stop()
+			debugPrint("DirectoryWatcher.Stop() completed successfully")
+		} else {
+			debugPrint("DirectoryWatcher was nil, skipping stop")
+		}
+		debugPrint("Proceeding with window close")
+		fm.window.Close()
+	})
+
 	// Setup keyboard handling via desktop.Canvas
 	dc, ok := (fm.window.Canvas()).(desktop.Canvas)
 	if ok {
