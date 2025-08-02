@@ -332,6 +332,7 @@ type FileManager struct {
 	config         *Config
 	cursorRenderer CursorRenderer    // Cursor display renderer
 	shiftPressed   bool              // Track Shift key state
+	ctrlPressed    bool              // Track Ctrl key state
 	dirWatcher     *DirectoryWatcher // Directory change watcher
 }
 
@@ -851,13 +852,25 @@ func (fm *FileManager) setupUI() {
 			case desktop.KeyShiftLeft, desktop.KeyShiftRight:
 				fm.shiftPressed = true
 				debugPrint("Shift key pressed (state: %t)", fm.shiftPressed)
+			case desktop.KeyControlLeft, desktop.KeyControlRight:
+				fm.ctrlPressed = true
+				debugPrint("Ctrl key pressed (state: %t)", fm.ctrlPressed)
+			case fyne.KeyN:
+				// Ctrl+N - Open new window
+				if fm.ctrlPressed {
+					fm.openNewWindow()
+				}
 			}
 		})
 
 		dc.SetOnKeyUp(func(ev *fyne.KeyEvent) {
-			if ev.Name == desktop.KeyShiftLeft || ev.Name == desktop.KeyShiftRight {
+			switch ev.Name {
+			case desktop.KeyShiftLeft, desktop.KeyShiftRight:
 				fm.shiftPressed = false
 				debugPrint("Shift key released (state: %t)", fm.shiftPressed)
+			case desktop.KeyControlLeft, desktop.KeyControlRight:
+				fm.ctrlPressed = false
+				debugPrint("Ctrl key released (state: %t)", fm.ctrlPressed)
 			}
 		})
 
@@ -935,11 +948,28 @@ func (fm *FileManager) setupUI() {
 				}
 
 			case fyne.KeyPeriod:
-				// Shift+Period = '>' - Move to last item
-				if fm.shiftPressed && len(fm.files) > 0 {
-					fm.setCursorByIndex(len(fm.files) - 1)
-					fm.refreshCursor()
+				if fm.shiftPressed {
+					// Shift+Period = '>' - Move to last item
+					if len(fm.files) > 0 {
+						fm.setCursorByIndex(len(fm.files) - 1)
+						fm.refreshCursor()
+					}
+				} else {
+					// Period key - Refresh current directory
+					fm.loadDirectory(fm.currentPath)
 				}
+
+			case fyne.KeyBackTick:
+				// Shift+` - Navigate to home directory
+				if fm.shiftPressed {
+					homeDir, err := os.UserHomeDir()
+					if err != nil {
+						debugPrint("Failed to get home directory: %v", err)
+					} else {
+						fm.loadDirectory(homeDir)
+					}
+				}
+
 			}
 		})
 	}
