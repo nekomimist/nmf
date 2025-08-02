@@ -58,17 +58,18 @@ This is a GUI file manager application called "nmf" built in Go using the Fyne f
 - **File selections**: Path-based mapping survives directory changes
 - **Auto-cleanup**: Deleted files automatically removed from selections
 
-**Advanced Keyboard Navigation** - Full keyboard support:
-- Arrow keys for navigation (↑/↓)
+**Advanced Keyboard Navigation** - Full keyboard support with key repeat:
+- Arrow keys for navigation (↑/↓) with OS key repeat support
 - Shift+Arrow for fast navigation (20 items at once)
-- `</>` keys for first/last item navigation
+- `Shift+,/Shift+.` keys for first/last item navigation (physical key detection)
 - Enter to open directories
 - Space to toggle file selection
 - Backspace to go up one directory level
 
-**Icon-Click Navigation** - Custom TappableIcon implementation:
+**Icon-Click Navigation** - Custom TappableIcon implementation with restored mouse processing:
 - Clicking on file/directory icons directly navigates into directories
 - Clicking on file names or file information only selects the item
+- **Mouse Processing Restored**: Elimination of transparent overlay widgets enables full mouse functionality
 - This provides intuitive mouse navigation while preserving selection behavior
 - Implementation uses a custom TappableIcon widget that extends BaseWidget
 
@@ -95,7 +96,7 @@ This is a GUI file manager application called "nmf" built in Go using the Fyne f
 8. **User Interactions**:
    - Icon clicks: Direct navigation via TappableIcon.onTapped
    - Name/info clicks: Selection via OnSelected callback  
-   - Keyboard: Navigation via KeyableWidget event handlers
+   - Keyboard: Navigation via desktop.Canvas SetOnKeyDown/Up and SetOnTypedKey handlers
 9. **Directory Navigation**: 
    - DirectoryWatcher stops → `loadDirectory()` → DirectoryWatcher restarts
    - All file statuses reset to StatusNormal in new directory
@@ -153,32 +154,41 @@ Single-file application (`main.go`) containing all functionality. The compiled b
 - Custom TappableIcon approach provides better UX than timer-based solutions
 - This is a known limitation of the Fyne framework as of v2.6.1
 
-**Keyboard Event Handling Architecture** - Advanced key input processing:
-- **KeyableWidget**: Invisible overlay widget that implements `desktop.Keyable` and `fyne.Focusable`
-- **True Shift Key Detection**: Uses KeyDown/KeyUp events to track Shift key state accurately
-- **Event Flow**: KeyableWidget receives focus → handles all key events via TypedKey/TypedRune methods
-- **Canvas Event Bypass**: Does NOT use Canvas.SetOnTypedKey to avoid focus conflicts
-- **Modifier State Management**: Real-time tracking of Shift key press/release for precise simultaneous key detection
+**Keyboard Event Handling Architecture** - Separated key processing with key repeat support:
+- **desktop.Canvas Integration**: Direct canvas-level keyboard event handling without overlay widgets
+- **Separated Processing**: Modifier keys (Shift) handled via SetOnKeyDown/Up, normal keys via SetOnTypedKey
+- **Key Repeat Support**: SetOnTypedKey provides automatic OS-level key repeat for navigation keys
+- **True Shift Detection**: Physical Shift key state tracked via KeyDown/KeyUp events
+- **Mouse Processing Restored**: No invisible overlay widgets blocking mouse interactions
+
+**Separated Key Processing Implementation**:
+- **SetOnKeyDown/Up Handler**: Modifier keys only (desktop.KeyShiftLeft, desktop.KeyShiftRight)
+  - Tracks `fm.shiftPressed` boolean state in real-time
+  - Enables accurate simultaneous key detection (e.g., Shift+Arrow)
+- **SetOnTypedKey Handler**: All functional keys with OS key repeat support
+  - Arrow keys (↑↓) - automatic key repeat for smooth navigation
+  - Action keys (Enter, Space, Backspace) - standard behavior
+  - Combination keys (Shift+Comma for '<', Shift+Period for '>') - physical key detection
+- **Key Repeat Benefits**: Holding arrow keys provides smooth, fast scrolling
+- **Future Extensibility**: Alt, Ctrl modifiers can be added using same pattern
 
 **Advanced Keyboard Shortcuts**:
 - `↑/↓` - Single item navigation
 - `Shift+↑/↓` - Jump 20 items (with boundary protection)
-- `</>` - Navigate to first/last item
+- `Shift+,/Shift+.` - Navigate to first/last item (physical key detection)
 - `Enter` - Open directories
 - `Space` - Toggle selection (excluding parent ".." entry)
 - `Backspace` - Navigate to parent directory
 
-**Focus Management**: KeyableWidget maintains focus to intercept all keyboard input, overlaid transparently over the file list widget using container.NewMax().
+**Direct Canvas Events**: Keyboard events are handled directly at the canvas level without requiring focus management or widget overlays.
 
 ### Advanced Fyne Architecture Details
 
-**KeyableWidget Overlay System** - Sophisticated transparent overlay implementation:
-- **Positioning**: Uses `container.NewMax(fm.fileList, fm.keyHandler)` to overlay KeyableWidget on top of file list
-- **Coverage Area**: Covers exactly the same area as the file list widget (not entire window)
-- **Physical Boundaries**: Has actual widget boundaries but renders as completely transparent using empty Card widget
-- **Focus Strategy**: Receives explicit focus via `fm.window.Canvas().Focus(fm.keyHandler)` to capture all keyboard events
-- **Event Precedence**: Intercepts keyboard input before it reaches the underlying file list widget
-- **Implementation**: CreateRenderer() returns `widget.NewCard("", "", widget.NewLabel("")).CreateRenderer()` for invisibility
+**Simplified UI Architecture** - Direct widget hierarchy without overlays:
+- **Single Layer Structure**: File list widget directly in container without invisible overlays
+- **Canvas-Level Events**: Keyboard handling at desktop.Canvas level without widget-level interception
+- **Native Mouse Handling**: TappableIcon and List.OnSelected work without interference
+- **Reduced Complexity**: Eliminated transparent widget overlays and focus management complexity
 
 **List Item Decoration System** - Dynamic visual feedback per list item:
 - **Base Structure**: Each list item created with `container.NewMax(borderContainer)` as outer container
@@ -196,13 +206,11 @@ Single-file application (`main.go`) containing all functionality. The compiled b
 - **Unified Positioning**: All cursor types cover entire list item width for visual consistency
 - **Simplified Implementation**: Underline cursor renders as full-width line at bottom edge
 
-**Layered UI Structure** - Multi-level overlay and event handling:
+**Simplified UI Structure** - Clean hierarchy without overlays:
 ```
 Window Content (NewBorder)
 ├── Top: Toolbar + Path Label (NewVBox)
-└── Center: File Area (NewMax - both occupy same space)
-    ├── Layer 1: File List Widget (widget.List)
-    └── Layer 2: KeyableWidget (transparent overlay)
+└── Center: File List Widget (widget.List) - direct placement
 
 Each List Item (NewMax - decorations occupy same space as content):
 ├── Layer 1: Content (NewBorder)
@@ -214,8 +222,8 @@ Each List Item (NewMax - decorations occupy same space as content):
 ```
 
 **Event Flow Priority**:
-1. KeyableWidget (keyboard events) - highest priority due to explicit focus
-2. TappableIcon.Tapped() (icon clicks) - medium priority, specific to icon area
+1. desktop.Canvas keyboard events (SetOnKeyDown/Up, SetOnTypedKey) - highest priority, canvas-level
+2. TappableIcon.Tapped() (icon clicks) - medium priority, specific to icon area  
 3. widget.List.OnSelected (other clicks) - lowest priority, fallback for remaining areas
 
 **Decoration Layer Rendering Order** (bottom to top):

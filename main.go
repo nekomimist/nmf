@@ -319,130 +319,6 @@ func NewCursorRenderer(config CursorStyleConfig) CursorRenderer {
 	}
 }
 
-// KeyableWidget implements desktop.Keyable for handling key events
-type KeyableWidget struct {
-	widget.BaseWidget
-	fm *FileManager
-}
-
-func NewKeyableWidget(fm *FileManager) *KeyableWidget {
-	kw := &KeyableWidget{fm: fm}
-	kw.ExtendBaseWidget(kw)
-	return kw
-}
-
-func (kw *KeyableWidget) CreateRenderer() fyne.WidgetRenderer {
-	// Invisible widget, just for key handling
-	return widget.NewCard("", "", widget.NewLabel("")).CreateRenderer()
-}
-
-func (kw *KeyableWidget) KeyDown(key *fyne.KeyEvent) {
-	switch key.Name {
-	case desktop.KeyShiftLeft, desktop.KeyShiftRight:
-		kw.fm.shiftPressed = true
-		debugPrint("Shift key pressed (state: %t)", kw.fm.shiftPressed)
-	}
-}
-
-func (kw *KeyableWidget) KeyUp(key *fyne.KeyEvent) {
-	switch key.Name {
-	case desktop.KeyShiftLeft, desktop.KeyShiftRight:
-		kw.fm.shiftPressed = false
-		debugPrint("Shift key released (state: %t)", kw.fm.shiftPressed)
-	}
-}
-
-// Implement fyne.Focusable interface
-func (kw *KeyableWidget) FocusGained() {
-	debugPrint("KeyableWidget gained focus")
-}
-
-func (kw *KeyableWidget) FocusLost() {
-	debugPrint("KeyableWidget lost focus")
-}
-
-func (kw *KeyableWidget) TypedRune(r rune) {
-	fm := kw.fm
-	switch r {
-	case '<':
-		// Move to first item
-		if len(fm.files) > 0 {
-			fm.setCursorByIndex(0)
-			fm.refreshCursor()
-		}
-	case '>':
-		// Move to last item
-		if len(fm.files) > 0 {
-			fm.setCursorByIndex(len(fm.files) - 1)
-			fm.refreshCursor()
-		}
-	}
-}
-
-func (kw *KeyableWidget) TypedKey(key *fyne.KeyEvent) {
-	fm := kw.fm
-	switch key.Name {
-	case fyne.KeyUp:
-		currentIdx := fm.getCurrentCursorIndex()
-		if fm.shiftPressed {
-			// Move up 20 items or to the beginning
-			debugPrint("Shift+Up detected via TypedKey!")
-			newIdx := currentIdx - 20
-			if newIdx < 0 {
-				newIdx = 0
-			}
-			fm.setCursorByIndex(newIdx)
-			fm.refreshCursor()
-		} else {
-			if currentIdx > 0 {
-				fm.setCursorByIndex(currentIdx - 1)
-				fm.refreshCursor()
-			}
-		}
-	case fyne.KeyDown:
-		currentIdx := fm.getCurrentCursorIndex()
-		if fm.shiftPressed {
-			// Move down 20 items or to the end
-			debugPrint("Shift+Down detected via TypedKey!")
-			newIdx := currentIdx + 20
-			if newIdx >= len(fm.files) {
-				newIdx = len(fm.files) - 1
-			}
-			fm.setCursorByIndex(newIdx)
-			fm.refreshCursor()
-		} else {
-			if currentIdx < len(fm.files)-1 {
-				fm.setCursorByIndex(currentIdx + 1)
-				fm.refreshCursor()
-			}
-		}
-	case fyne.KeyReturn:
-		currentIdx := fm.getCurrentCursorIndex()
-		if currentIdx >= 0 && currentIdx < len(fm.files) {
-			file := fm.files[currentIdx]
-			if file.IsDir {
-				fm.loadDirectory(file.Path)
-			}
-		}
-	case fyne.KeySpace:
-		currentIdx := fm.getCurrentCursorIndex()
-		if currentIdx >= 0 && currentIdx < len(fm.files) {
-			file := fm.files[currentIdx]
-			// Don't allow selection of parent directory entry
-			if file.Name != ".." {
-				// Toggle selection state of current cursor item
-				fm.selectedFiles[file.Path] = !fm.selectedFiles[file.Path]
-				fm.fileList.Refresh()
-			}
-		}
-	case fyne.KeyBackspace:
-		parent := filepath.Dir(fm.currentPath)
-		if parent != fm.currentPath {
-			fm.loadDirectory(parent)
-		}
-	}
-}
-
 // FileManager is the main file manager struct
 type FileManager struct {
 	window         fyne.Window
@@ -456,7 +332,6 @@ type FileManager struct {
 	config         *Config
 	cursorRenderer CursorRenderer    // Cursor display renderer
 	shiftPressed   bool              // Track Shift key state
-	keyHandler     *KeyableWidget    // Key event handler
 	dirWatcher     *DirectoryWatcher // Directory change watcher
 }
 
@@ -741,9 +616,6 @@ func NewFileManager(app fyne.App, path string, config *Config) *FileManager {
 		shiftPressed:   false,
 	}
 
-	// Create key handler for desktop.Keyable implementation
-	fm.keyHandler = NewKeyableWidget(fm)
-
 	// Create directory watcher
 	fm.dirWatcher = NewDirectoryWatcher(fm)
 
@@ -943,20 +815,117 @@ func (fm *FileManager) setupUI() {
 		}),
 	)
 
-	// Layout with key handler (invisible but focusable)
+	// Layout without overlay
 	content := container.NewBorder(
 		container.NewVBox(toolbar, fm.pathLabel),
 		nil, nil, nil,
-		container.NewMax(fm.fileList, fm.keyHandler), // Overlay key handler
+		fm.fileList,
 	)
 
 	fm.window.SetContent(content)
 	fm.window.Resize(fyne.NewSize(float32(fm.config.Window.Width), float32(fm.config.Window.Height)))
 
-	// Focus the key handler so it can receive key events
-	fm.window.Canvas().Focus(fm.keyHandler)
+	// Setup keyboard handling via desktop.Canvas
+	dc, ok := (fm.window.Canvas()).(desktop.Canvas)
+	if ok {
 
-	// All key handling is now done via KeyableWidget
+		dc.SetOnKeyDown(func(ev *fyne.KeyEvent) {
+			switch ev.Name {
+			case desktop.KeyShiftLeft, desktop.KeyShiftRight:
+				fm.shiftPressed = true
+				debugPrint("Shift key pressed (state: %t)", fm.shiftPressed)
+			}
+		})
+
+		dc.SetOnKeyUp(func(ev *fyne.KeyEvent) {
+			if ev.Name == desktop.KeyShiftLeft || ev.Name == desktop.KeyShiftRight {
+				fm.shiftPressed = false
+				debugPrint("Shift key released (state: %t)", fm.shiftPressed)
+			}
+		})
+
+		// Handle normal keys with key repeat support
+		fm.window.Canvas().SetOnTypedKey(func(ev *fyne.KeyEvent) {
+			switch ev.Name {
+			case fyne.KeyUp:
+				currentIdx := fm.getCurrentCursorIndex()
+				if fm.shiftPressed {
+					// Move up 20 items or to the beginning
+					debugPrint("Shift+Up detected via SetOnTypedKey!")
+					newIdx := currentIdx - 20
+					if newIdx < 0 {
+						newIdx = 0
+					}
+					fm.setCursorByIndex(newIdx)
+					fm.refreshCursor()
+				} else {
+					if currentIdx > 0 {
+						fm.setCursorByIndex(currentIdx - 1)
+						fm.refreshCursor()
+					}
+				}
+
+			case fyne.KeyDown:
+				currentIdx := fm.getCurrentCursorIndex()
+				if fm.shiftPressed {
+					// Move down 20 items or to the end
+					debugPrint("Shift+Down detected via SetOnTypedKey!")
+					newIdx := currentIdx + 20
+					if newIdx >= len(fm.files) {
+						newIdx = len(fm.files) - 1
+					}
+					fm.setCursorByIndex(newIdx)
+					fm.refreshCursor()
+				} else {
+					if currentIdx < len(fm.files)-1 {
+						fm.setCursorByIndex(currentIdx + 1)
+						fm.refreshCursor()
+					}
+				}
+
+			case fyne.KeyReturn:
+				currentIdx := fm.getCurrentCursorIndex()
+				if currentIdx >= 0 && currentIdx < len(fm.files) {
+					file := fm.files[currentIdx]
+					if file.IsDir {
+						fm.loadDirectory(file.Path)
+					}
+				}
+
+			case fyne.KeySpace:
+				currentIdx := fm.getCurrentCursorIndex()
+				if currentIdx >= 0 && currentIdx < len(fm.files) {
+					file := fm.files[currentIdx]
+					// Don't allow selection of parent directory entry
+					if file.Name != ".." {
+						// Toggle selection state of current cursor item
+						fm.selectedFiles[file.Path] = !fm.selectedFiles[file.Path]
+						fm.fileList.Refresh()
+					}
+				}
+
+			case fyne.KeyBackspace:
+				parent := filepath.Dir(fm.currentPath)
+				if parent != fm.currentPath {
+					fm.loadDirectory(parent)
+				}
+
+			case fyne.KeyComma:
+				// Shift+Comma = '<' - Move to first item
+				if fm.shiftPressed && len(fm.files) > 0 {
+					fm.setCursorByIndex(0)
+					fm.refreshCursor()
+				}
+
+			case fyne.KeyPeriod:
+				// Shift+Period = '>' - Move to last item
+				if fm.shiftPressed && len(fm.files) > 0 {
+					fm.setCursorByIndex(len(fm.files) - 1)
+					fm.refreshCursor()
+				}
+			}
+		})
+	}
 }
 
 // getCurrentCursorIndex returns the current cursor index based on cursor path
@@ -1103,8 +1072,6 @@ func (fm *FileManager) loadDirectory(path string) {
 	// Set cursor to first item if directory is not empty and refresh cursor
 	if len(fm.files) > 0 {
 		fm.setCursorByIndex(0)
-		// Ensure focus is on key handler for keyboard navigation
-		fm.window.Canvas().Focus(fm.keyHandler)
 		// Refresh cursor display immediately
 		fm.refreshCursor()
 	} else {
