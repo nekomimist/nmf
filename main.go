@@ -926,11 +926,17 @@ func (fm *FileManager) setupUI() {
 				currentIdx := fm.getCurrentCursorIndex()
 				if currentIdx >= 0 && currentIdx < len(fm.files) {
 					file := fm.files[currentIdx]
-					// Don't allow selection of parent directory entry
-					if file.Name != ".." {
+					// Don't allow selection of parent directory entry or deleted files
+					if file.Name != ".." && file.Status != StatusDeleted {
 						// Toggle selection state of current cursor item
 						fm.selectedFiles[file.Path] = !fm.selectedFiles[file.Path]
 						fm.fileList.Refresh()
+
+						// Move cursor to next file (same as Down key without Shift)
+						if currentIdx < len(fm.files)-1 {
+							fm.setCursorByIndex(currentIdx + 1)
+							fm.refreshCursor()
+						}
 					}
 				}
 
@@ -1282,9 +1288,9 @@ func (dw *DirectoryWatcher) Stop() {
 func (dw *DirectoryWatcher) updateSnapshot() {
 	dw.previousFiles = make(map[string]FileInfo)
 
-	// Take snapshot of current files (excluding ".." entry)
+	// Take snapshot of current files (excluding ".." entry and deleted files)
 	for _, file := range dw.fm.files {
-		if file.Name != ".." {
+		if file.Name != ".." && file.Status != StatusDeleted {
 			dw.previousFiles[file.Path] = file
 		}
 	}
