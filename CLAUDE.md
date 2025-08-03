@@ -77,7 +77,7 @@ This is a GUI file manager application called "nmf" built in Go using the Fyne f
 
 **UI Layout** - Uses Fyne's container system:
 - Toolbar with back/home/refresh/new window actions
-- Path label showing current directory
+- Path entry for direct path input and navigation
 - File list with icons, names, and size/type information
 - Dynamic color coding based on file status
 
@@ -209,7 +209,7 @@ Single-file application (`main.go`) containing all functionality. The compiled b
 **Simplified UI Structure** - Clean hierarchy without overlays:
 ```
 Window Content (NewBorder)
-├── Top: Toolbar + Path Label (NewVBox)
+├── Top: Toolbar + Path Entry (NewVBox)
 └── Center: File List Widget (widget.List) - direct placement
 
 Each List Item (NewMax - decorations occupy same space as content):
