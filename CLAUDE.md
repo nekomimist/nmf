@@ -45,6 +45,12 @@ This is a GUI file manager application called "nmf" built in Go using the Fyne f
 - Thread-safe communication via channels (changeChan, stopChan)
 - Maintains previous file state for differential analysis
 
+**DirectoryTreeDialog struct** - Tree-based directory navigation dialog:
+- Lazy loading tree widget for efficient directory browsing
+- Root toggle between filesystem root ("/") and parent directory
+- Focus management for seamless keyboard interaction
+- Custom tree rendering with folder icons and directory names
+
 ### Key Features
 
 **Incremental Directory Watching** - Advanced change detection system:
@@ -75,8 +81,17 @@ This is a GUI file manager application called "nmf" built in Go using the Fyne f
 
 **Multi-Window Support** - Users can open multiple file manager windows, each maintaining independent state.
 
+**Tree Navigation Dialog** - Advanced directory selection system:
+- **Lazy Loading**: Only loads directory children when needed for optimal performance
+- **Root Toggle**: Switch between filesystem root ("/") and parent directory as tree root
+- **Dual Access**: Toolbar button (📁 folder icon) and keyboard shortcut (Ctrl+T)
+- **Focus Management**: Automatically focuses tree widget when dialog opens, returns focus when closed
+- **Tree Widget Integration**: Uses Fyne's Tree widget with custom childUIDs, isBranch, create, and update functions
+- **Visual Feedback**: Folder icons with directory names, expandable branches
+- **Initial Expansion**: Shows only root level directories initially, expandable on-demand
+
 **UI Layout** - Uses Fyne's container system:
-- Toolbar with back/home/refresh/new window actions
+- Toolbar with back/home/refresh/tree dialog/new window actions
 - Path entry for direct path input and navigation
 - File list with icons, names, and size/type information
 - Dynamic color coding based on file status
@@ -179,6 +194,8 @@ Single-file application (`main.go`) containing all functionality. The compiled b
 - `Enter` - Open directories
 - `Space` - Toggle selection (excluding parent ".." entry)
 - `Backspace` - Navigate to parent directory
+- `Ctrl+T` - Open directory tree navigation dialog
+- `Ctrl+N` - Open new file manager window
 
 **Direct Canvas Events**: Keyboard events are handled directly at the canvas level without requiring focus management or widget overlays.
 
@@ -277,6 +294,39 @@ This ensures clean output during normal usage while preserving detailed logging 
 - **2-second polling**: Directory changes detected every 2 seconds
 - **Incremental updates**: Only changed files trigger UI updates, not entire directory refresh
 - **Thread-safe**: All background monitoring is safely isolated from UI operations
+
+## Directory Tree Navigation Dialog
+
+**Implementation Architecture** - Complete tree-based navigation system:
+
+**Core Components**:
+- **DirectoryTreeDialog struct**: Main dialog controller with tree state management
+- **Tree Widget**: Fyne widget.Tree with custom lazy loading functions
+- **Root Management**: Dynamic root switching between "/" and parent directory
+- **Focus Control**: Automatic focus management for seamless user interaction
+
+**Key Implementation Details**:
+- **Lazy Loading Functions**: 
+  - `childUIDs(TreeNodeID) []TreeNodeID`: Returns child directory paths as TreeNodeID
+  - `isBranch(TreeNodeID) bool`: Determines if a path is a directory
+  - `create(bool) CanvasObject`: Creates folder icon + label UI
+  - `update(TreeNodeID, bool, CanvasObject)`: Updates UI with directory name
+- **Event Handlers**:
+  - `OnSelected`: Updates selected path for navigation
+  - `OnBranchOpened`: Debug logging for tree expansion
+- **UI Structure**: Border container with toggle buttons (top) and scrollable tree (center)
+- **Size Management**: Fixed 500x400 tree size with scrollable container for large directory trees
+
+**User Experience**:
+- **Access Methods**: Toolbar button (📁) or Ctrl+T keyboard shortcut
+- **Root Toggle**: "Root /" and "Parent Dir" buttons with visual importance indicators
+- **Navigation**: Click directory to select, OK button to navigate, Cancel to abort
+- **Focus Flow**: Tree gets focus on open, main window unfocused on close
+
+**Integration Points**:
+- **Toolbar Integration**: Added folder icon button between refresh and new window actions
+- **Keyboard Integration**: Ctrl+T handled in SetOnKeyDown for proper modifier detection
+- **Navigation Callback**: Selected directory passed to FileManager.loadDirectory()
 
 ## Claude Communication Style
 

@@ -18,6 +18,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -317,6 +318,236 @@ func NewCursorRenderer(config CursorStyleConfig) CursorRenderer {
 		// Default to underline for unknown types
 		return &UnderlineCursorRenderer{}
 	}
+}
+
+// DirectoryTreeDialog represents a directory tree navigation dialog
+type DirectoryTreeDialog struct {
+	tree         *widget.Tree
+	currentRoot  string // Current root path: "/" or parent directory
+	selectedPath string // Currently selected directory path
+	parentPath   string // Parent directory of current FileManager path
+	rootMode     bool   // true = filesystem root "/", false = parent directory
+}
+
+// NewDirectoryTreeDialog creates a new directory tree dialog
+func NewDirectoryTreeDialog(currentPath string) *DirectoryTreeDialog {
+	parentPath := filepath.Dir(currentPath)
+
+	dialog := &DirectoryTreeDialog{
+		selectedPath: currentPath,
+		parentPath:   parentPath,
+		rootMode:     true, // Start with filesystem root
+		currentRoot:  "/",
+	}
+
+	dialog.createTree()
+	return dialog
+}
+
+// createTree creates the tree widget with lazy loading
+func (dtd *DirectoryTreeDialog) createTree() {
+	dtd.tree = widget.NewTree(
+		// childUIDs function - returns child directories
+		func(uid widget.TreeNodeID) []widget.TreeNodeID {
+			children := dtd.getDirectoryChildren(string(uid))
+			result := make([]widget.TreeNodeID, len(children))
+			for i, child := range children {
+				result[i] = widget.TreeNodeID(child)
+			}
+			return result
+		},
+		// isBranch function - all paths are branches (directories)
+		func(uid widget.TreeNodeID) bool {
+			return dtd.isDirectory(string(uid))
+		},
+		// create function - creates node UI
+		func(branch bool) fyne.CanvasObject {
+			icon := widget.NewIcon(theme.FolderIcon())
+			icon.Resize(fyne.NewSize(16, 16))
+			label := widget.NewLabel("Directory")
+			return container.NewHBox(icon, label)
+		},
+		// update function - updates node UI with directory name
+		func(uid widget.TreeNodeID, branch bool, obj fyne.CanvasObject) {
+			hbox := obj.(*fyne.Container)
+			if len(hbox.Objects) >= 2 {
+				if label, ok := hbox.Objects[1].(*widget.Label); ok {
+					label.SetText(dtd.getDisplayName(string(uid)))
+				}
+			}
+		},
+	)
+
+	// Set selection handler
+	dtd.tree.OnSelected = func(uid widget.TreeNodeID) {
+		dtd.selectedPath = string(uid)
+		debugPrint("Directory selected: %s", uid)
+	}
+
+	// Set branch open handler for lazy loading
+	dtd.tree.OnBranchOpened = func(uid widget.TreeNodeID) {
+		debugPrint("Branch opened: %s", uid)
+	}
+
+	// Set initial root node
+	dtd.tree.Root = widget.TreeNodeID(dtd.currentRoot)
+}
+
+// getDirectoryChildren returns child directories for lazy loading
+func (dtd *DirectoryTreeDialog) getDirectoryChildren(path string) []string {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		debugPrint("Error reading directory %s: %v", path, err)
+		return []string{}
+	}
+
+	var children []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			childPath := filepath.Join(path, entry.Name())
+			// Skip hidden directories unless they're important system ones
+			if !strings.HasPrefix(entry.Name(), ".") || entry.Name() == ".." {
+				children = append(children, childPath)
+			}
+		}
+	}
+
+	return children
+}
+
+// isDirectory checks if a path is a directory
+func (dtd *DirectoryTreeDialog) isDirectory(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
+}
+
+// getDisplayName returns the display name for a directory path
+func (dtd *DirectoryTreeDialog) getDisplayName(path string) string {
+	if path == "/" {
+		return "/"
+	}
+	base := filepath.Base(path)
+	if base == "." {
+		return filepath.Dir(path)
+	}
+	return base
+}
+
+// toggleRoot switches between filesystem root and parent directory
+func (dtd *DirectoryTreeDialog) toggleRoot() {
+	dtd.rootMode = !dtd.rootMode
+
+	if dtd.rootMode {
+		dtd.currentRoot = "/"
+	} else {
+		dtd.currentRoot = dtd.parentPath
+	}
+
+	// Refresh tree with new root
+	dtd.tree.Refresh()
+
+	// Expand the root level initially
+	dtd.expandInitialLevel()
+}
+
+// expandInitialLevel expands only the root level
+func (dtd *DirectoryTreeDialog) expandInitialLevel() {
+	// Set the root node first
+	dtd.tree.Root = widget.TreeNodeID(dtd.currentRoot)
+
+	// Only expand the root level to show first-level directories
+	dtd.tree.OpenBranch(widget.TreeNodeID(dtd.currentRoot))
+}
+
+// ShowDialog shows the directory tree dialog
+func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(string)) {
+	// Create root toggle buttons
+	rootButton := widget.NewButton("Root /", func() {
+		if !dtd.rootMode {
+			dtd.toggleRoot()
+		}
+	})
+
+	parentButton := widget.NewButton("Parent Dir", func() {
+		if dtd.rootMode {
+			dtd.toggleRoot()
+		}
+	})
+
+	// Update button styles based on current mode
+	updateButtonStyles := func() {
+		if dtd.rootMode {
+			rootButton.Importance = widget.HighImportance
+			parentButton.Importance = widget.MediumImportance
+		} else {
+			rootButton.Importance = widget.MediumImportance
+			parentButton.Importance = widget.HighImportance
+		}
+	}
+	updateButtonStyles()
+
+	// Button callbacks that update styles
+	rootButton.OnTapped = func() {
+		if !dtd.rootMode {
+			dtd.toggleRoot()
+			updateButtonStyles()
+		}
+	}
+
+	parentButton.OnTapped = func() {
+		if dtd.rootMode {
+			dtd.toggleRoot()
+			updateButtonStyles()
+		}
+	}
+
+	// Create top control panel
+	buttonPanel := container.NewHBox(rootButton, parentButton)
+
+	// Set tree size and minimum size
+	dtd.tree.Resize(fyne.NewSize(500, 400))
+
+	// Create scrollable container for the tree
+	treeScroll := container.NewScroll(dtd.tree)
+	treeScroll.SetMinSize(fyne.NewSize(500, 400))
+
+	// Create main content
+	content := container.NewBorder(
+		buttonPanel, // top
+		nil,         // bottom
+		nil,         // left
+		nil,         // right
+		treeScroll,  // center
+	)
+
+	// Set minimum size for the entire content
+	content.Resize(fyne.NewSize(550, 500))
+
+	// Expand initial level
+	dtd.expandInitialLevel()
+
+	// Show dialog with custom content
+	dialog.ShowCustomConfirm(
+		"Select Directory",
+		"OK",
+		"Cancel",
+		content,
+		func(response bool) {
+			// ダイアログが閉じられたときにメインウィンドウのフォーカスを解除
+			parent.Canvas().Unfocus()
+			
+			if response && dtd.selectedPath != "" {
+				callback(dtd.selectedPath)
+			}
+		},
+		parent,
+	)
+	
+	// ダイアログ表示後、ツリーにフォーカスを当てる
+	parent.Canvas().Focus(dtd.tree)
 }
 
 // FileManager is the main file manager struct
@@ -814,6 +1045,9 @@ func (fm *FileManager) setupUI() {
 		widget.NewToolbarAction(theme.ViewRefreshIcon(), func() {
 			fm.loadDirectory(fm.currentPath)
 		}),
+		widget.NewToolbarAction(theme.FolderIcon(), func() {
+			fm.showDirectoryTreeDialog()
+		}),
 		widget.NewToolbarAction(theme.FolderNewIcon(), func() {
 			fm.openNewWindow()
 		}),
@@ -846,19 +1080,26 @@ func (fm *FileManager) setupUI() {
 	// Setup keyboard handling via desktop.Canvas
 	dc, ok := (fm.window.Canvas()).(desktop.Canvas)
 	if ok {
-
 		dc.SetOnKeyDown(func(ev *fyne.KeyEvent) {
 			switch ev.Name {
 			case desktop.KeyShiftLeft, desktop.KeyShiftRight:
 				fm.shiftPressed = true
 				debugPrint("Shift key pressed (state: %t)", fm.shiftPressed)
+
 			case desktop.KeyControlLeft, desktop.KeyControlRight:
 				fm.ctrlPressed = true
 				debugPrint("Ctrl key pressed (state: %t)", fm.ctrlPressed)
+
 			case fyne.KeyN:
 				// Ctrl+N - Open new window
 				if fm.ctrlPressed {
 					fm.openNewWindow()
+				}
+
+			case fyne.KeyT:
+				// Ctrl+T - Show directory tree dialog
+				if fm.ctrlPressed {
+					fm.showDirectoryTreeDialog()
 				}
 			}
 		})
@@ -868,6 +1109,7 @@ func (fm *FileManager) setupUI() {
 			case desktop.KeyShiftLeft, desktop.KeyShiftRight:
 				fm.shiftPressed = false
 				debugPrint("Shift key released (state: %t)", fm.shiftPressed)
+
 			case desktop.KeyControlLeft, desktop.KeyControlRight:
 				fm.ctrlPressed = false
 				debugPrint("Ctrl key released (state: %t)", fm.ctrlPressed)
@@ -975,7 +1217,6 @@ func (fm *FileManager) setupUI() {
 						fm.loadDirectory(homeDir)
 					}
 				}
-
 			}
 		})
 	}
@@ -1430,6 +1671,15 @@ func (dw *DirectoryWatcher) applyDataChanges(added, deleted, modified []FileInfo
 func (fm *FileManager) openNewWindow() {
 	newFM := NewFileManager(fyne.CurrentApp(), fm.currentPath, fm.config)
 	newFM.window.Show()
+}
+
+// showDirectoryTreeDialog shows the directory tree navigation dialog
+func (fm *FileManager) showDirectoryTreeDialog() {
+	dialog := NewDirectoryTreeDialog(fm.currentPath)
+	dialog.ShowDialog(fm.window, func(selectedPath string) {
+		debugPrint("Directory selected from tree dialog: %s", selectedPath)
+		fm.loadDirectory(selectedPath)
+	})
 }
 
 func formatFileSize(size int64) string {
