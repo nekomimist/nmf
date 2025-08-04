@@ -1,0 +1,230 @@
+package config
+
+import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"os"
+	"path/filepath"
+	"runtime"
+
+	"nmf/internal/fileinfo"
+)
+
+// Config represents the application configuration
+type Config struct {
+	Window WindowConfig `json:"window"`
+	Theme  ThemeConfig  `json:"theme"`
+	UI     UIConfig     `json:"ui"`
+}
+
+// WindowConfig represents window-related settings
+type WindowConfig struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+// ThemeConfig represents theme-related settings
+type ThemeConfig struct {
+	Dark     bool   `json:"dark"`
+	FontSize int    `json:"fontSize"`
+	FontPath string `json:"fontPath"`
+}
+
+// UIConfig represents UI-related settings
+type UIConfig struct {
+	ShowHiddenFiles bool                     `json:"showHiddenFiles"`
+	SortBy          string                   `json:"sortBy"`
+	ItemSpacing     int                      `json:"itemSpacing"`
+	CursorStyle     CursorStyleConfig        `json:"cursorStyle"`
+	FileColors      fileinfo.FileColorConfig `json:"fileColors"`
+}
+
+// CursorStyleConfig represents cursor appearance settings
+type CursorStyleConfig struct {
+	Type      string   `json:"type"`      // "underline", "border", "background", "icon", "font"
+	Color     [4]uint8 `json:"color"`     // RGBA color values
+	Thickness int      `json:"thickness"` // Line thickness for underline/border
+}
+
+// Manager provides configuration management functionality
+type Manager struct {
+	configPath string
+}
+
+// NewManager creates a new configuration manager
+func NewManager() *Manager {
+	return &Manager{
+		configPath: getConfigPath(),
+	}
+}
+
+// Load loads configuration from file and merges with defaults
+func (m *Manager) Load() (*Config, error) {
+	// Start with default configuration
+	config := getDefaultConfig()
+
+	data, err := ioutil.ReadFile(m.configPath)
+	if err != nil {
+		log.Printf("Config file not found, using defaults: %v", err)
+		return config, nil
+	}
+
+	// Parse config file into a temporary config
+	var fileConfig Config
+	if err := json.Unmarshal(data, &fileConfig); err != nil {
+		return nil, fmt.Errorf("error parsing config file: %w", err)
+	}
+
+	// Merge file config with defaults
+	mergeConfigs(config, &fileConfig)
+	return config, nil
+}
+
+// Save saves configuration to file
+func (m *Manager) Save(config *Config) error {
+	// Create the config directory if it doesn't exist
+	configDir := filepath.Dir(m.configPath)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("error creating config directory: %w", err)
+	}
+
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("error marshaling config: %w", err)
+	}
+
+	if err := ioutil.WriteFile(m.configPath, data, 0644); err != nil {
+		return fmt.Errorf("error writing config file: %w", err)
+	}
+
+	return nil
+}
+
+// getDefaultConfig returns the default configuration
+func getDefaultConfig() *Config {
+	return &Config{
+		Window: WindowConfig{
+			Width:  800,
+			Height: 600,
+		},
+		Theme: ThemeConfig{
+			Dark:     true,
+			FontSize: 14,
+			FontPath: "",
+		},
+		UI: UIConfig{
+			ShowHiddenFiles: false,
+			SortBy:          "name",
+			ItemSpacing:     4,
+			CursorStyle: CursorStyleConfig{
+				Type:      "underline",
+				Color:     [4]uint8{255, 255, 255, 255}, // White
+				Thickness: 2,
+			},
+			FileColors: fileinfo.FileColorConfig{
+				Regular:   [4]uint8{220, 220, 220, 255}, // Light gray - regular files
+				Directory: [4]uint8{135, 206, 250, 255}, // Light sky blue - directories
+				Symlink:   [4]uint8{255, 165, 0, 255},   // Orange - symbolic links
+				Hidden:    [4]uint8{105, 105, 105, 255}, // Dim gray - hidden files
+			},
+		},
+	}
+}
+
+// getConfigPath returns the path to the configuration file following OS conventions
+func getConfigPath() string {
+	var configDir string
+
+	switch runtime.GOOS {
+	case "windows":
+		// Windows: %APPDATA%\nekomimist\nmf\config.json
+		appData := os.Getenv("APPDATA")
+		if appData == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return "config.json"
+			}
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		configDir = filepath.Join(appData, "nekomimist", "nmf")
+
+	case "darwin":
+		// macOS: ~/Library/Application Support/nekomimist/nmf/config.json
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "config.json"
+		}
+		configDir = filepath.Join(home, "Library", "Application Support", "nekomimist", "nmf")
+
+	default:
+		// Linux/Unix: $XDG_CONFIG_HOME/nekomimist/nmf/config.json or ~/.config/nekomimist/nmf/config.json
+		xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
+		if xdgConfigHome == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return "config.json"
+			}
+			xdgConfigHome = filepath.Join(home, ".config")
+		}
+		configDir = filepath.Join(xdgConfigHome, "nekomimist", "nmf")
+	}
+
+	return filepath.Join(configDir, "config.json")
+}
+
+// mergeConfigs merges file config values into default config
+func mergeConfigs(defaultConfig *Config, fileConfig *Config) {
+	// Merge Window config
+	if fileConfig.Window.Width != 0 {
+		defaultConfig.Window.Width = fileConfig.Window.Width
+	}
+	if fileConfig.Window.Height != 0 {
+		defaultConfig.Window.Height = fileConfig.Window.Height
+	}
+
+	// Merge Theme config
+	// Note: for bool values, we can't distinguish between false and unset, so we always use file value
+	defaultConfig.Theme.Dark = fileConfig.Theme.Dark
+	if fileConfig.Theme.FontSize != 0 {
+		defaultConfig.Theme.FontSize = fileConfig.Theme.FontSize
+	}
+	if fileConfig.Theme.FontPath != "" {
+		defaultConfig.Theme.FontPath = fileConfig.Theme.FontPath
+	}
+
+	// Merge UI config
+	defaultConfig.UI.ShowHiddenFiles = fileConfig.UI.ShowHiddenFiles
+	if fileConfig.UI.SortBy != "" {
+		defaultConfig.UI.SortBy = fileConfig.UI.SortBy
+	}
+	if fileConfig.UI.ItemSpacing != 0 {
+		defaultConfig.UI.ItemSpacing = fileConfig.UI.ItemSpacing
+	}
+
+	// Merge CursorStyle config
+	if fileConfig.UI.CursorStyle.Type != "" {
+		defaultConfig.UI.CursorStyle.Type = fileConfig.UI.CursorStyle.Type
+	}
+	if fileConfig.UI.CursorStyle.Color != [4]uint8{0, 0, 0, 0} {
+		defaultConfig.UI.CursorStyle.Color = fileConfig.UI.CursorStyle.Color
+	}
+	if fileConfig.UI.CursorStyle.Thickness != 0 {
+		defaultConfig.UI.CursorStyle.Thickness = fileConfig.UI.CursorStyle.Thickness
+	}
+
+	// Merge FileColors config
+	if fileConfig.UI.FileColors.Regular != [4]uint8{0, 0, 0, 0} {
+		defaultConfig.UI.FileColors.Regular = fileConfig.UI.FileColors.Regular
+	}
+	if fileConfig.UI.FileColors.Directory != [4]uint8{0, 0, 0, 0} {
+		defaultConfig.UI.FileColors.Directory = fileConfig.UI.FileColors.Directory
+	}
+	if fileConfig.UI.FileColors.Symlink != [4]uint8{0, 0, 0, 0} {
+		defaultConfig.UI.FileColors.Symlink = fileConfig.UI.FileColors.Symlink
+	}
+	if fileConfig.UI.FileColors.Hidden != [4]uint8{0, 0, 0, 0} {
+		defaultConfig.UI.FileColors.Hidden = fileConfig.UI.FileColors.Hidden
+	}
+}

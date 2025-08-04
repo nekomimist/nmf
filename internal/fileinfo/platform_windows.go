@@ -1,7 +1,7 @@
 //go:build windows
 // +build windows
 
-package main
+package fileinfo
 
 import (
 	"syscall"
@@ -12,8 +12,8 @@ const (
 	FILE_ATTRIBUTE_HIDDEN = 0x02
 )
 
-// isWindowsHidden checks if a file has the Windows hidden attribute
-func isWindowsHidden(path string) bool {
+// IsWindowsHidden checks if a file has the Windows hidden attribute
+func IsWindowsHidden(path string) bool {
 	// Convert Go string to UTF-16 for Windows API
 	pathPtr, err := syscall.UTF16PtrFromString(path)
 	if err != nil {
