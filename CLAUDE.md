@@ -12,7 +12,7 @@ nmf/
 ├── main.go                         # Application entry point (713 lines)
 └── internal/
     ├── config/                     # Configuration management
-    │   ├── config.go              # Settings, defaults, file I/O
+    │   ├── config.go              # Settings, defaults, file I/O, cursor memory
     │   ├── interfaces.go          # ManagerInterface for testability
     │   └── config_test.go         # Unit tests
     ├── fileinfo/                   # File operations and metadata
@@ -47,7 +47,8 @@ nmf/
 ### Key Features
 
 - **Real-time Monitoring**: Green=added, orange=modified, gray+⊠=deleted files
-- **Path-based State**: Cursor/selection survive directory changes
+- **Cursor Position Memory**: Remembers cursor position per directory (up to 100 dirs with LRU)
+- **Smart Navigation**: Parent directory navigation returns to originating folder
 - **Keyboard Navigation**: Arrow keys, Shift+Arrow (fast), Space (select), Enter (open)
 - **Mouse Navigation**: Icon clicks navigate, name clicks select
 - **Multi-window**: Independent file manager instances

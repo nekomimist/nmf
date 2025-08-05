@@ -81,6 +81,77 @@ func (fm *FileManager) RemoveFromSelections(path string) {
 	delete(fm.selectedFiles, path)
 }
 
+// saveCursorPosition saves the current cursor position for the given directory
+func (fm *FileManager) saveCursorPosition(dirPath string) {
+	currentIdx := fm.getCurrentCursorIndex()
+	if currentIdx < 0 || currentIdx >= len(fm.files) {
+		return
+	}
+
+	fileName := fm.files[currentIdx].Name
+	// Don't save position for parent directory entry
+	if fileName == ".." {
+		return
+	}
+
+	cursorMemory := &fm.config.UI.CursorMemory
+
+	// Clean up old entries if we exceed max entries
+	if len(cursorMemory.Entries) >= cursorMemory.MaxEntries {
+		fm.cleanupOldCursorEntries()
+	}
+
+	// Save the cursor position and update last used time
+	cursorMemory.Entries[dirPath] = fileName
+	cursorMemory.LastUsed[dirPath] = time.Now()
+
+	// Save config to disk
+	if err := fm.configManager.Save(fm.config); err != nil {
+		debugPrint("Error saving cursor position config: %v", err)
+	}
+}
+
+// restoreCursorPosition restores the cursor position for the given directory
+func (fm *FileManager) restoreCursorPosition(dirPath string) string {
+	cursorMemory := &fm.config.UI.CursorMemory
+
+	fileName, exists := cursorMemory.Entries[dirPath]
+	if !exists {
+		return ""
+	}
+
+	// Update last used time
+	cursorMemory.LastUsed[dirPath] = time.Now()
+
+	return fileName
+}
+
+// cleanupOldCursorEntries removes the oldest entries when maxEntries is exceeded
+func (fm *FileManager) cleanupOldCursorEntries() {
+	cursorMemory := &fm.config.UI.CursorMemory
+
+	if len(cursorMemory.Entries) < cursorMemory.MaxEntries {
+		return
+	}
+
+	// Find the oldest entry
+	var oldestPath string
+	var oldestTime *time.Time
+
+	for path, lastUsed := range cursorMemory.LastUsed {
+		if oldestTime == nil || lastUsed.Before(*oldestTime) {
+			oldestPath = path
+			oldestTime = &lastUsed
+		}
+	}
+
+	// Remove the oldest entry
+	if oldestPath != "" {
+		delete(cursorMemory.Entries, oldestPath)
+		delete(cursorMemory.LastUsed, oldestPath)
+	}
+}
+
 func NewFileManager(app fyne.App, path string, config *config.Config, configManager *config.Manager) *FileManager {
 	fm := &FileManager{
 		window:         app.NewWindow("File Manager"),
@@ -554,10 +625,18 @@ func (fm *FileManager) navigateToPath(inputPath string) {
 }
 
 func (fm *FileManager) loadDirectory(path string) {
+	// Save current cursor position before changing directory
+	if fm.currentPath != "" && fm.currentPath != path {
+		fm.saveCursorPosition(fm.currentPath)
+	}
+
 	// Stop current directory watcher if running
 	if fm.dirWatcher != nil {
 		fm.dirWatcher.Stop()
 	}
+
+	// Store the previous directory for parent navigation logic
+	previousPath := fm.currentPath
 
 	fm.currentPath = path
 	fm.pathEntry.SetText(path)
@@ -632,9 +711,41 @@ func (fm *FileManager) loadDirectory(path string) {
 	// Clear selections when changing directory
 	fm.selectedFiles = make(map[string]bool)
 
-	// Set cursor to first item if directory is not empty and refresh cursor
+	// Restore cursor position or set default
 	if len(fm.files) > 0 {
-		fm.setCursorByIndex(0)
+		// Check if we're navigating to parent directory
+		parent := filepath.Dir(previousPath)
+		if parent == path && previousPath != "" {
+			// We're going to parent directory, try to position cursor on the directory we came from
+			dirName := filepath.Base(previousPath)
+			cursorSet := false
+			for i, file := range fm.files {
+				if file.Name == dirName {
+					fm.setCursorByIndex(i)
+					cursorSet = true
+					break
+				}
+			}
+			if !cursorSet {
+				fm.setCursorByIndex(0)
+			}
+		} else {
+			// Try to restore saved cursor position
+			savedFileName := fm.restoreCursorPosition(path)
+			cursorSet := false
+			if savedFileName != "" {
+				for i, file := range fm.files {
+					if file.Name == savedFileName {
+						fm.setCursorByIndex(i)
+						cursorSet = true
+						break
+					}
+				}
+			}
+			if !cursorSet {
+				fm.setCursorByIndex(0)
+			}
+		}
 		// Refresh cursor display immediately
 		fm.refreshCursor()
 	} else {
@@ -700,7 +811,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error loading configuration: %v", err)
 	}
-
 
 	app := app.New()
 

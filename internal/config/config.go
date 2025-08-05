@@ -3,11 +3,11 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"nmf/internal/fileinfo"
 )
@@ -39,6 +39,7 @@ type UIConfig struct {
 	ItemSpacing     int                      `json:"itemSpacing"`
 	CursorStyle     CursorStyleConfig        `json:"cursorStyle"`
 	FileColors      fileinfo.FileColorConfig `json:"fileColors"`
+	CursorMemory    CursorMemoryConfig       `json:"cursorMemory"`
 }
 
 // CursorStyleConfig represents cursor appearance settings
@@ -46,6 +47,13 @@ type CursorStyleConfig struct {
 	Type      string   `json:"type"`      // "underline", "border", "background", "icon", "font"
 	Color     [4]uint8 `json:"color"`     // RGBA color values
 	Thickness int      `json:"thickness"` // Line thickness for underline/border
+}
+
+// CursorMemoryConfig represents cursor position memory settings
+type CursorMemoryConfig struct {
+	MaxEntries int                  `json:"maxEntries"` // Maximum number of directories to remember
+	Entries    map[string]string    `json:"entries"`    // key: dirPath, value: fileName
+	LastUsed   map[string]time.Time `json:"lastUsed"`   // LRU management
 }
 
 // Manager provides configuration management functionality
@@ -65,7 +73,7 @@ func (m *Manager) Load() (*Config, error) {
 	// Start with default configuration
 	config := getDefaultConfig()
 
-	data, err := ioutil.ReadFile(m.configPath)
+	data, err := os.ReadFile(m.configPath)
 	if err != nil {
 		log.Printf("Config file not found, using defaults: %v", err)
 		return config, nil
@@ -95,7 +103,7 @@ func (m *Manager) Save(config *Config) error {
 		return fmt.Errorf("error marshaling config: %w", err)
 	}
 
-	if err := ioutil.WriteFile(m.configPath, data, 0644); err != nil {
+	if err := os.WriteFile(m.configPath, data, 0644); err != nil {
 		return fmt.Errorf("error writing config file: %w", err)
 	}
 
@@ -128,6 +136,11 @@ func getDefaultConfig() *Config {
 				Directory: [4]uint8{135, 206, 250, 255}, // Light sky blue - directories
 				Symlink:   [4]uint8{255, 165, 0, 255},   // Orange - symbolic links
 				Hidden:    [4]uint8{105, 105, 105, 255}, // Dim gray - hidden files
+			},
+			CursorMemory: CursorMemoryConfig{
+				MaxEntries: 100,
+				Entries:    make(map[string]string),
+				LastUsed:   make(map[string]time.Time),
 			},
 		},
 	}
@@ -226,5 +239,16 @@ func mergeConfigs(defaultConfig *Config, fileConfig *Config) {
 	}
 	if fileConfig.UI.FileColors.Hidden != [4]uint8{0, 0, 0, 0} {
 		defaultConfig.UI.FileColors.Hidden = fileConfig.UI.FileColors.Hidden
+	}
+
+	// Merge CursorMemory config
+	if fileConfig.UI.CursorMemory.MaxEntries != 0 {
+		defaultConfig.UI.CursorMemory.MaxEntries = fileConfig.UI.CursorMemory.MaxEntries
+	}
+	if fileConfig.UI.CursorMemory.Entries != nil {
+		defaultConfig.UI.CursorMemory.Entries = fileConfig.UI.CursorMemory.Entries
+	}
+	if fileConfig.UI.CursorMemory.LastUsed != nil {
+		defaultConfig.UI.CursorMemory.LastUsed = fileConfig.UI.CursorMemory.LastUsed
 	}
 }
