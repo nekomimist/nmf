@@ -130,23 +130,6 @@ func (dtd *DirectoryTreeDialog) getDisplayName(path string) string {
 	return base
 }
 
-// toggleRoot switches between filesystem root and parent directory
-func (dtd *DirectoryTreeDialog) toggleRoot() {
-	dtd.rootMode = !dtd.rootMode
-
-	if dtd.rootMode {
-		dtd.currentRoot = "/"
-	} else {
-		dtd.currentRoot = dtd.parentPath
-	}
-
-	// Refresh tree with new root
-	dtd.tree.Refresh()
-
-	// Expand the root level initially
-	dtd.expandInitialLevel()
-}
-
 // expandInitialLevel expands only the root level
 func (dtd *DirectoryTreeDialog) expandInitialLevel() {
 	// Set the root node first
@@ -158,48 +141,45 @@ func (dtd *DirectoryTreeDialog) expandInitialLevel() {
 
 // ShowDialog shows the directory tree dialog
 func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(string)) {
-	// Create root toggle buttons
-	rootButton := widget.NewButton("Root /", func() {
-		if !dtd.rootMode {
-			dtd.toggleRoot()
+	// Create radio group for root selection
+	rootOptions := []string{"Root /", "Parent Dir"}
+	var selectedOption string
+	if dtd.rootMode {
+		selectedOption = "Root /"
+	} else {
+		selectedOption = "Parent Dir"
+	}
+
+	radioGroup := widget.NewRadioGroup(rootOptions, func(selected string) {
+		var newRootMode bool
+		var newCurrentRoot string
+
+		switch selected {
+		case "Root /":
+			newRootMode = true
+			newCurrentRoot = "/"
+		case "Parent Dir":
+			newRootMode = false
+			newCurrentRoot = dtd.parentPath
+		}
+
+		// Only update if the mode is actually changing
+		if dtd.rootMode != newRootMode {
+			dtd.rootMode = newRootMode
+			dtd.currentRoot = newCurrentRoot
+
+			// Refresh tree with new root
+			dtd.tree.Refresh()
+
+			// Expand the root level initially
+			dtd.expandInitialLevel()
 		}
 	})
-
-	parentButton := widget.NewButton("Parent Dir", func() {
-		if dtd.rootMode {
-			dtd.toggleRoot()
-		}
-	})
-
-	// Update button styles based on current mode
-	updateButtonStyles := func() {
-		if dtd.rootMode {
-			rootButton.Importance = widget.HighImportance
-			parentButton.Importance = widget.MediumImportance
-		} else {
-			rootButton.Importance = widget.MediumImportance
-			parentButton.Importance = widget.HighImportance
-		}
-	}
-	updateButtonStyles()
-
-	// Button callbacks that update styles
-	rootButton.OnTapped = func() {
-		if !dtd.rootMode {
-			dtd.toggleRoot()
-			updateButtonStyles()
-		}
-	}
-
-	parentButton.OnTapped = func() {
-		if dtd.rootMode {
-			dtd.toggleRoot()
-			updateButtonStyles()
-		}
-	}
+	radioGroup.SetSelected(selectedOption)
+	radioGroup.Horizontal = true
 
 	// Create top control panel
-	buttonPanel := container.NewHBox(rootButton, parentButton)
+	buttonPanel := container.NewHBox(radioGroup)
 
 	// Set tree size and minimum size
 	dtd.tree.Resize(fyne.NewSize(500, 400))

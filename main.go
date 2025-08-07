@@ -521,6 +521,8 @@ func (fm *FileManager) setupUI() {
 					}
 				} else {
 					// Period key - Refresh current directory
+					// Save current cursor position before refresh
+					fm.saveCursorPosition(fm.currentPath)
 					fm.loadDirectory(fm.currentPath)
 				}
 
@@ -563,11 +565,14 @@ func (fm *FileManager) setCursorByIndex(index int) {
 
 // refreshCursor updates only the cursor display without affecting selection
 func (fm *FileManager) refreshCursor() {
+	// First refresh the list to ensure all items are updated
+	fm.fileList.Refresh()
+
+	// Then scroll to cursor position after refresh completes
 	cursorIdx := fm.getCurrentCursorIndex()
 	if cursorIdx >= 0 {
 		fm.fileList.ScrollTo(widget.ListItemID(cursorIdx))
 	}
-	fm.fileList.Refresh()
 }
 
 // navigateToPath handles path entry validation and navigation
@@ -626,6 +631,7 @@ func (fm *FileManager) navigateToPath(inputPath string) {
 
 func (fm *FileManager) loadDirectory(path string) {
 	// Save current cursor position before changing directory
+	// Skip saving if already saved manually (e.g., during refresh)
 	if fm.currentPath != "" && fm.currentPath != path {
 		fm.saveCursorPosition(fm.currentPath)
 	}
