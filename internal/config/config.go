@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"nmf/internal/fileinfo"
@@ -34,12 +35,13 @@ type ThemeConfig struct {
 
 // UIConfig represents UI-related settings
 type UIConfig struct {
-	ShowHiddenFiles bool                     `json:"showHiddenFiles"`
-	SortBy          string                   `json:"sortBy"`
-	ItemSpacing     int                      `json:"itemSpacing"`
-	CursorStyle     CursorStyleConfig        `json:"cursorStyle"`
-	FileColors      fileinfo.FileColorConfig `json:"fileColors"`
-	CursorMemory    CursorMemoryConfig       `json:"cursorMemory"`
+	ShowHiddenFiles   bool                     `json:"showHiddenFiles"`
+	SortBy            string                   `json:"sortBy"`
+	ItemSpacing       int                      `json:"itemSpacing"`
+	CursorStyle       CursorStyleConfig        `json:"cursorStyle"`
+	FileColors        fileinfo.FileColorConfig `json:"fileColors"`
+	CursorMemory      CursorMemoryConfig       `json:"cursorMemory"`
+	NavigationHistory NavigationHistoryConfig  `json:"navigationHistory"`
 }
 
 // CursorStyleConfig represents cursor appearance settings
@@ -53,6 +55,13 @@ type CursorStyleConfig struct {
 type CursorMemoryConfig struct {
 	MaxEntries int                  `json:"maxEntries"` // Maximum number of directories to remember
 	Entries    map[string]string    `json:"entries"`    // key: dirPath, value: fileName
+	LastUsed   map[string]time.Time `json:"lastUsed"`   // LRU management
+}
+
+// NavigationHistoryConfig represents navigation history settings
+type NavigationHistoryConfig struct {
+	MaxEntries int                  `json:"maxEntries"` // Maximum number of paths to remember
+	Entries    []string             `json:"entries"`    // Path history (newest first)
 	LastUsed   map[string]time.Time `json:"lastUsed"`   // LRU management
 }
 
@@ -140,6 +149,11 @@ func getDefaultConfig() *Config {
 			CursorMemory: CursorMemoryConfig{
 				MaxEntries: 100,
 				Entries:    make(map[string]string),
+				LastUsed:   make(map[string]time.Time),
+			},
+			NavigationHistory: NavigationHistoryConfig{
+				MaxEntries: 50,
+				Entries:    make([]string, 0),
 				LastUsed:   make(map[string]time.Time),
 			},
 		},
@@ -251,4 +265,90 @@ func mergeConfigs(defaultConfig *Config, fileConfig *Config) {
 	if fileConfig.UI.CursorMemory.LastUsed != nil {
 		defaultConfig.UI.CursorMemory.LastUsed = fileConfig.UI.CursorMemory.LastUsed
 	}
+
+	// Merge NavigationHistory config
+	if fileConfig.UI.NavigationHistory.MaxEntries != 0 {
+		defaultConfig.UI.NavigationHistory.MaxEntries = fileConfig.UI.NavigationHistory.MaxEntries
+	}
+	if fileConfig.UI.NavigationHistory.Entries != nil {
+		defaultConfig.UI.NavigationHistory.Entries = fileConfig.UI.NavigationHistory.Entries
+	}
+	if fileConfig.UI.NavigationHistory.LastUsed != nil {
+		defaultConfig.UI.NavigationHistory.LastUsed = fileConfig.UI.NavigationHistory.LastUsed
+	}
+}
+
+// AddToNavigationHistory adds a path to navigation history
+func (c *Config) AddToNavigationHistory(path string) {
+	now := time.Now()
+
+	// Remove existing entry if it exists
+	for i, entry := range c.UI.NavigationHistory.Entries {
+		if entry == path {
+			c.UI.NavigationHistory.Entries = append(
+				c.UI.NavigationHistory.Entries[:i],
+				c.UI.NavigationHistory.Entries[i+1:]...,
+			)
+			break
+		}
+	}
+
+	// Add to beginning of slice (newest first)
+	c.UI.NavigationHistory.Entries = append([]string{path}, c.UI.NavigationHistory.Entries...)
+
+	// Update last used time
+	c.UI.NavigationHistory.LastUsed[path] = now
+
+	// Enforce max entries limit
+	if len(c.UI.NavigationHistory.Entries) > c.UI.NavigationHistory.MaxEntries {
+		// Remove oldest entry
+		oldestPath := c.UI.NavigationHistory.Entries[c.UI.NavigationHistory.MaxEntries]
+		c.UI.NavigationHistory.Entries = c.UI.NavigationHistory.Entries[:c.UI.NavigationHistory.MaxEntries]
+		delete(c.UI.NavigationHistory.LastUsed, oldestPath)
+	}
+}
+
+// GetNavigationHistory returns the navigation history entries sorted by last used time (newest first)
+func (c *Config) GetNavigationHistory() []string {
+	entries := c.UI.NavigationHistory.Entries
+	if len(entries) <= 1 {
+		return entries
+	}
+
+	// Create a copy to avoid modifying the original
+	sorted := make([]string, len(entries))
+	copy(sorted, entries)
+
+	// Sort by last used time (newest first)
+	for i := 0; i < len(sorted)-1; i++ {
+		for j := i + 1; j < len(sorted); j++ {
+			timeI := c.UI.NavigationHistory.LastUsed[sorted[i]]
+			timeJ := c.UI.NavigationHistory.LastUsed[sorted[j]]
+
+			// If timeJ is newer than timeI, swap
+			if timeJ.After(timeI) {
+				sorted[i], sorted[j] = sorted[j], sorted[i]
+			}
+		}
+	}
+
+	return sorted
+}
+
+// FilterNavigationHistory filters history entries by query (case-insensitive partial match)
+func (c *Config) FilterNavigationHistory(query string) []string {
+	if query == "" {
+		return c.UI.NavigationHistory.Entries
+	}
+
+	query = strings.ToLower(query)
+	var filtered []string
+
+	for _, path := range c.UI.NavigationHistory.Entries {
+		if strings.Contains(strings.ToLower(path), query) {
+			filtered = append(filtered, path)
+		}
+	}
+
+	return filtered
 }

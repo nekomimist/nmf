@@ -418,6 +418,12 @@ func (fm *FileManager) setupUI() {
 				if fm.ctrlPressed {
 					fm.showDirectoryTreeDialog()
 				}
+
+			case fyne.KeyH:
+				// Ctrl+H - Show navigation history dialog
+				if fm.ctrlPressed {
+					fm.showNavigationHistoryDialog()
+				}
 			}
 		})
 
@@ -636,6 +642,15 @@ func (fm *FileManager) loadDirectory(path string) {
 		fm.saveCursorPosition(fm.currentPath)
 	}
 
+	// Add current path to navigation history before changing directory
+	if fm.currentPath != "" && fm.currentPath != path {
+		fm.config.AddToNavigationHistory(fm.currentPath)
+		// Save config to persist navigation history
+		if err := fm.configManager.Save(fm.config); err != nil {
+			debugPrint("Error saving navigation history: %v", err)
+		}
+	}
+
 	// Stop current directory watcher if running
 	if fm.dirWatcher != nil {
 		fm.dirWatcher.Stop()
@@ -774,6 +789,25 @@ func (fm *FileManager) showDirectoryTreeDialog() {
 	dialog := ui.NewDirectoryTreeDialog(fm.currentPath, debugPrint)
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
 		debugPrint("Directory selected from tree dialog: %s", selectedPath)
+		fm.loadDirectory(selectedPath)
+	})
+}
+
+// showNavigationHistoryDialog shows the navigation history dialog
+func (fm *FileManager) showNavigationHistoryDialog() {
+	historyPaths := fm.config.GetNavigationHistory()
+	if len(historyPaths) == 0 {
+		debugPrint("No navigation history available")
+		return
+	}
+
+	dialog := ui.NewNavigationHistoryDialog(
+		historyPaths,
+		fm.config.UI.NavigationHistory.LastUsed,
+		debugPrint,
+	)
+	dialog.ShowDialog(fm.window, func(selectedPath string) {
+		debugPrint("Directory selected from history dialog: %s", selectedPath)
 		fm.loadDirectory(selectedPath)
 	})
 }
