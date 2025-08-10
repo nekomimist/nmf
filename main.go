@@ -21,6 +21,7 @@ import (
 
 	"nmf/internal/config"
 	"nmf/internal/fileinfo"
+	"nmf/internal/keymanager"
 	customtheme "nmf/internal/theme"
 	"nmf/internal/ui"
 	"nmf/internal/watcher"
@@ -49,8 +50,7 @@ type FileManager struct {
 	config         *config.Config
 	configManager  *config.Manager
 	cursorRenderer ui.CursorRenderer         // Cursor display renderer
-	shiftPressed   bool                      // Track Shift key state
-	ctrlPressed    bool                      // Track Ctrl key state
+	keyManager     *keymanager.KeyManager    // Keyboard input manager
 	dirWatcher     *watcher.DirectoryWatcher // Directory change watcher
 }
 
@@ -81,9 +81,9 @@ func (fm *FileManager) RemoveFromSelections(path string) {
 	delete(fm.selectedFiles, path)
 }
 
-// saveCursorPosition saves the current cursor position for the given directory
-func (fm *FileManager) saveCursorPosition(dirPath string) {
-	currentIdx := fm.getCurrentCursorIndex()
+// SaveCursorPosition saves the current cursor position for the given directory
+func (fm *FileManager) SaveCursorPosition(dirPath string) {
+	currentIdx := fm.GetCurrentCursorIndex()
 	if currentIdx < 0 || currentIdx >= len(fm.files) {
 		return
 	}
@@ -162,14 +162,18 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 		config:         config,
 		configManager:  configManager,
 		cursorRenderer: ui.NewCursorRenderer(config.UI.CursorStyle),
-		shiftPressed:   false,
+		keyManager:     keymanager.NewKeyManager(debugPrint),
 	}
 
 	// Create directory watcher
 	fm.dirWatcher = watcher.NewDirectoryWatcher(fm, debugPrint)
 
+	// Setup KeyManager with main screen handler
+	mainHandler := keymanager.NewMainScreenKeyHandler(fm, debugPrint)
+	fm.keyManager.PushHandler(mainHandler)
+
 	fm.setupUI()
-	fm.loadDirectory(path)
+	fm.LoadDirectory(path)
 
 	// Start watching after initial load
 	fm.dirWatcher.Start()
@@ -262,7 +266,7 @@ func (fm *FileManager) setupUI() {
 						// Set onTapped handler for icon
 						icon.SetOnTapped(func() {
 							if fileInfo.IsDir {
-								fm.loadDirectory(fileInfo.Path)
+								fm.LoadDirectory(fileInfo.Path)
 							}
 						})
 
@@ -294,7 +298,7 @@ func (fm *FileManager) setupUI() {
 			}
 
 			// Handle 4 display states
-			currentCursorIdx := fm.getCurrentCursorIndex()
+			currentCursorIdx := fm.GetCurrentCursorIndex()
 			isCursor := index == currentCursorIdx
 			isSelected := fm.selectedFiles[fileInfo.Path]
 
@@ -340,11 +344,11 @@ func (fm *FileManager) setupUI() {
 
 	// Handle cursor movement (both mouse and keyboard)
 	fm.fileList.OnSelected = func(id widget.ListItemID) {
-		fm.setCursorByIndex(id)
+		fm.SetCursorByIndex(id)
 		// Clear list selection to avoid double cursor effect when switching back to keyboard
 		fm.fileList.UnselectAll()
 		fm.window.Canvas().Unfocus()
-		fm.refreshCursor()
+		fm.RefreshCursor()
 	}
 
 	// Create toolbar
@@ -352,21 +356,21 @@ func (fm *FileManager) setupUI() {
 		widget.NewToolbarAction(theme.NavigateBackIcon(), func() {
 			parent := filepath.Dir(fm.currentPath)
 			if parent != fm.currentPath {
-				fm.loadDirectory(parent)
+				fm.LoadDirectory(parent)
 			}
 		}),
 		widget.NewToolbarAction(theme.HomeIcon(), func() {
 			home, _ := os.UserHomeDir()
-			fm.loadDirectory(home)
+			fm.LoadDirectory(home)
 		}),
 		widget.NewToolbarAction(theme.ViewRefreshIcon(), func() {
-			fm.loadDirectory(fm.currentPath)
+			fm.LoadDirectory(fm.currentPath)
 		}),
 		widget.NewToolbarAction(theme.FolderIcon(), func() {
-			fm.showDirectoryTreeDialog()
+			fm.ShowDirectoryTreeDialog()
 		}),
 		widget.NewToolbarAction(theme.FolderNewIcon(), func() {
-			fm.openNewWindow()
+			fm.OpenNewWindow()
 		}),
 	)
 
@@ -394,161 +398,25 @@ func (fm *FileManager) setupUI() {
 		fm.window.Close()
 	})
 
-	// Setup keyboard handling via desktop.Canvas
+	// Setup keyboard handling via KeyManager
 	dc, ok := (fm.window.Canvas()).(desktop.Canvas)
 	if ok {
 		dc.SetOnKeyDown(func(ev *fyne.KeyEvent) {
-			switch ev.Name {
-			case desktop.KeyShiftLeft, desktop.KeyShiftRight:
-				fm.shiftPressed = true
-				debugPrint("Shift key pressed (state: %t)", fm.shiftPressed)
-
-			case desktop.KeyControlLeft, desktop.KeyControlRight:
-				fm.ctrlPressed = true
-				debugPrint("Ctrl key pressed (state: %t)", fm.ctrlPressed)
-
-			case fyne.KeyN:
-				// Ctrl+N - Open new window
-				if fm.ctrlPressed {
-					fm.openNewWindow()
-				}
-
-			case fyne.KeyT:
-				// Ctrl+T - Show directory tree dialog
-				if fm.ctrlPressed {
-					fm.showDirectoryTreeDialog()
-				}
-
-			case fyne.KeyH:
-				// Ctrl+H - Show navigation history dialog
-				if fm.ctrlPressed {
-					fm.showNavigationHistoryDialog()
-				}
-			}
+			fm.keyManager.HandleKeyDown(ev)
 		})
 
 		dc.SetOnKeyUp(func(ev *fyne.KeyEvent) {
-			switch ev.Name {
-			case desktop.KeyShiftLeft, desktop.KeyShiftRight:
-				fm.shiftPressed = false
-				debugPrint("Shift key released (state: %t)", fm.shiftPressed)
-
-			case desktop.KeyControlLeft, desktop.KeyControlRight:
-				fm.ctrlPressed = false
-				debugPrint("Ctrl key released (state: %t)", fm.ctrlPressed)
-			}
+			fm.keyManager.HandleKeyUp(ev)
 		})
 
-		// Handle normal keys with key repeat support
 		fm.window.Canvas().SetOnTypedKey(func(ev *fyne.KeyEvent) {
-			switch ev.Name {
-			case fyne.KeyUp:
-				currentIdx := fm.getCurrentCursorIndex()
-				if fm.shiftPressed {
-					// Move up 20 items or to the beginning
-					debugPrint("Shift+Up detected via SetOnTypedKey!")
-					newIdx := currentIdx - 20
-					if newIdx < 0 {
-						newIdx = 0
-					}
-					fm.setCursorByIndex(newIdx)
-					fm.refreshCursor()
-				} else {
-					if currentIdx > 0 {
-						fm.setCursorByIndex(currentIdx - 1)
-						fm.refreshCursor()
-					}
-				}
-
-			case fyne.KeyDown:
-				currentIdx := fm.getCurrentCursorIndex()
-				if fm.shiftPressed {
-					// Move down 20 items or to the end
-					debugPrint("Shift+Down detected via SetOnTypedKey!")
-					newIdx := currentIdx + 20
-					if newIdx >= len(fm.files) {
-						newIdx = len(fm.files) - 1
-					}
-					fm.setCursorByIndex(newIdx)
-					fm.refreshCursor()
-				} else {
-					if currentIdx < len(fm.files)-1 {
-						fm.setCursorByIndex(currentIdx + 1)
-						fm.refreshCursor()
-					}
-				}
-
-			case fyne.KeyReturn:
-				currentIdx := fm.getCurrentCursorIndex()
-				if currentIdx >= 0 && currentIdx < len(fm.files) {
-					file := fm.files[currentIdx]
-					if file.IsDir {
-						fm.loadDirectory(file.Path)
-					}
-				}
-
-			case fyne.KeySpace:
-				currentIdx := fm.getCurrentCursorIndex()
-				if currentIdx >= 0 && currentIdx < len(fm.files) {
-					file := fm.files[currentIdx]
-					// Don't allow selection of parent directory entry or deleted files
-					if file.Name != ".." && file.Status != fileinfo.StatusDeleted {
-						// Toggle selection state of current cursor item
-						fm.selectedFiles[file.Path] = !fm.selectedFiles[file.Path]
-						fm.fileList.Refresh()
-
-						// Move cursor to next file (same as Down key without Shift)
-						if currentIdx < len(fm.files)-1 {
-							fm.setCursorByIndex(currentIdx + 1)
-							fm.refreshCursor()
-						}
-					}
-				}
-
-			case fyne.KeyBackspace:
-				parent := filepath.Dir(fm.currentPath)
-				if parent != fm.currentPath {
-					fm.loadDirectory(parent)
-				}
-
-			case fyne.KeyComma:
-				// Shift+Comma = '<' - Move to first item
-				if fm.shiftPressed && len(fm.files) > 0 {
-					fm.setCursorByIndex(0)
-					fm.refreshCursor()
-				}
-
-			case fyne.KeyPeriod:
-				if fm.shiftPressed {
-					// Shift+Period = '>' - Move to last item
-					if len(fm.files) > 0 {
-						fm.setCursorByIndex(len(fm.files) - 1)
-						fm.refreshCursor()
-					}
-				} else {
-					// Period key - Refresh current directory
-					// Save current cursor position before refresh
-					fm.saveCursorPosition(fm.currentPath)
-					fm.loadDirectory(fm.currentPath)
-				}
-
-			case fyne.KeyBackTick:
-				// Shift+` - Navigate to home directory
-				if fm.shiftPressed {
-					homeDir, err := os.UserHomeDir()
-					if err != nil {
-						debugPrint("Failed to get home directory: %v", err)
-					} else {
-						fm.loadDirectory(homeDir)
-					}
-				}
-			}
+			fm.keyManager.HandleTypedKey(ev)
 		})
 	}
 }
 
-// getCurrentCursorIndex returns the current cursor index based on cursor path
-func (fm *FileManager) getCurrentCursorIndex() int {
+// GetCurrentCursorIndex returns the current cursor index based on cursor path
+func (fm *FileManager) GetCurrentCursorIndex() int {
 	if fm.cursorPath == "" {
 		return -1
 	}
@@ -560,8 +428,8 @@ func (fm *FileManager) getCurrentCursorIndex() int {
 	return -1
 }
 
-// setCursorByIndex sets the cursor to the specified index
-func (fm *FileManager) setCursorByIndex(index int) {
+// SetCursorByIndex sets the cursor to the specified index
+func (fm *FileManager) SetCursorByIndex(index int) {
 	if index >= 0 && index < len(fm.files) {
 		fm.cursorPath = fm.files[index].Path
 	} else {
@@ -569,13 +437,13 @@ func (fm *FileManager) setCursorByIndex(index int) {
 	}
 }
 
-// refreshCursor updates only the cursor display without affecting selection
-func (fm *FileManager) refreshCursor() {
+// RefreshCursor updates only the cursor display without affecting selection
+func (fm *FileManager) RefreshCursor() {
 	// First refresh the list to ensure all items are updated
 	fm.fileList.Refresh()
 
 	// Then scroll to cursor position after refresh completes
-	cursorIdx := fm.getCurrentCursorIndex()
+	cursorIdx := fm.GetCurrentCursorIndex()
 	if cursorIdx >= 0 {
 		fm.fileList.ScrollTo(widget.ListItemID(cursorIdx))
 	}
@@ -629,17 +497,17 @@ func (fm *FileManager) navigateToPath(inputPath string) {
 	}
 
 	// Path is valid, navigate to it
-	fm.loadDirectory(path)
+	fm.LoadDirectory(path)
 
 	// Remove focus from path entry after successful navigation
 	fm.window.Canvas().Unfocus()
 }
 
-func (fm *FileManager) loadDirectory(path string) {
+func (fm *FileManager) LoadDirectory(path string) {
 	// Save current cursor position before changing directory
 	// Skip saving if already saved manually (e.g., during refresh)
 	if fm.currentPath != "" && fm.currentPath != path {
-		fm.saveCursorPosition(fm.currentPath)
+		fm.SaveCursorPosition(fm.currentPath)
 	}
 
 	// Add current path to navigation history before changing directory
@@ -742,13 +610,13 @@ func (fm *FileManager) loadDirectory(path string) {
 			cursorSet := false
 			for i, file := range fm.files {
 				if file.Name == dirName {
-					fm.setCursorByIndex(i)
+					fm.SetCursorByIndex(i)
 					cursorSet = true
 					break
 				}
 			}
 			if !cursorSet {
-				fm.setCursorByIndex(0)
+				fm.SetCursorByIndex(0)
 			}
 		} else {
 			// Try to restore saved cursor position
@@ -757,18 +625,18 @@ func (fm *FileManager) loadDirectory(path string) {
 			if savedFileName != "" {
 				for i, file := range fm.files {
 					if file.Name == savedFileName {
-						fm.setCursorByIndex(i)
+						fm.SetCursorByIndex(i)
 						cursorSet = true
 						break
 					}
 				}
 			}
 			if !cursorSet {
-				fm.setCursorByIndex(0)
+				fm.SetCursorByIndex(0)
 			}
 		}
 		// Refresh cursor display immediately
-		fm.refreshCursor()
+		fm.RefreshCursor()
 	} else {
 		fm.cursorPath = ""
 	}
@@ -779,22 +647,22 @@ func (fm *FileManager) loadDirectory(path string) {
 	}
 }
 
-func (fm *FileManager) openNewWindow() {
+func (fm *FileManager) OpenNewWindow() {
 	newFM := NewFileManager(fyne.CurrentApp(), fm.currentPath, fm.config, fm.configManager)
 	newFM.window.Show()
 }
 
-// showDirectoryTreeDialog shows the directory tree navigation dialog
-func (fm *FileManager) showDirectoryTreeDialog() {
-	dialog := ui.NewDirectoryTreeDialog(fm.currentPath, debugPrint)
+// ShowDirectoryTreeDialog shows the directory tree navigation dialog
+func (fm *FileManager) ShowDirectoryTreeDialog() {
+	dialog := ui.NewDirectoryTreeDialog(fm.currentPath, fm.keyManager, debugPrint)
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
 		debugPrint("Directory selected from tree dialog: %s", selectedPath)
-		fm.loadDirectory(selectedPath)
+		fm.LoadDirectory(selectedPath)
 	})
 }
 
-// showNavigationHistoryDialog shows the navigation history dialog
-func (fm *FileManager) showNavigationHistoryDialog() {
+// ShowNavigationHistoryDialog shows the navigation history dialog
+func (fm *FileManager) ShowNavigationHistoryDialog() {
 	historyPaths := fm.config.GetNavigationHistory()
 	if len(historyPaths) == 0 {
 		debugPrint("No navigation history available")
@@ -804,12 +672,28 @@ func (fm *FileManager) showNavigationHistoryDialog() {
 	dialog := ui.NewNavigationHistoryDialog(
 		historyPaths,
 		fm.config.UI.NavigationHistory.LastUsed,
+		fm.keyManager,
 		debugPrint,
 	)
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
 		debugPrint("Directory selected from history dialog: %s", selectedPath)
-		fm.loadDirectory(selectedPath)
+		fm.LoadDirectory(selectedPath)
 	})
+}
+
+// GetSelectedFiles returns the map of selected files
+func (fm *FileManager) GetSelectedFiles() map[string]bool {
+	return fm.selectedFiles
+}
+
+// SetFileSelected sets the selection state of a file
+func (fm *FileManager) SetFileSelected(path string, selected bool) {
+	fm.selectedFiles[path] = selected
+}
+
+// RefreshFileList refreshes the file list display
+func (fm *FileManager) RefreshFileList() {
+	fm.fileList.Refresh()
 }
 
 func main() {

@@ -10,6 +10,8 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
+	"nmf/internal/keymanager"
 )
 
 // DirectoryTreeDialog represents a directory tree navigation dialog
@@ -20,10 +22,13 @@ type DirectoryTreeDialog struct {
 	parentPath   string                                   // Parent directory of current FileManager path
 	rootMode     bool                                     // true = filesystem root "/", false = parent directory
 	debugPrint   func(format string, args ...interface{}) // Debug function
+	keyManager   *keymanager.KeyManager                   // Keyboard input manager
+	dialog       dialog.Dialog                            // Reference to the actual dialog
+	callback     func(string)                             // Callback function for selection
 }
 
 // NewDirectoryTreeDialog creates a new directory tree dialog
-func NewDirectoryTreeDialog(currentPath string, debugPrint func(format string, args ...interface{})) *DirectoryTreeDialog {
+func NewDirectoryTreeDialog(currentPath string, keyManager *keymanager.KeyManager, debugPrint func(format string, args ...interface{})) *DirectoryTreeDialog {
 	parentPath := filepath.Dir(currentPath)
 
 	dialog := &DirectoryTreeDialog{
@@ -32,6 +37,7 @@ func NewDirectoryTreeDialog(currentPath string, debugPrint func(format string, a
 		rootMode:     true, // Start with filesystem root
 		currentRoot:  "/",
 		debugPrint:   debugPrint,
+		keyManager:   keyManager,
 	}
 
 	dialog.createTree()
@@ -203,13 +209,23 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 	// Expand initial level
 	dtd.expandInitialLevel()
 
-	// Show dialog with custom content
-	dialog.ShowCustomConfirm(
+	// Store callback for use by key handler
+	dtd.callback = callback
+
+	// Create and push tree dialog key handler
+	treeHandler := keymanager.NewTreeDialogKeyHandler(dtd, dtd.debugPrint)
+	dtd.keyManager.PushHandler(treeHandler)
+
+	// Create dialog with custom content
+	dtd.dialog = dialog.NewCustomConfirm(
 		"Select Directory",
 		"OK",
 		"Cancel",
 		content,
 		func(response bool) {
+			// Pop the tree handler when dialog closes
+			dtd.keyManager.PopHandler()
+
 			// ダイアログが閉じられたときにメインウィンドウのフォーカスを解除
 			parent.Canvas().Unfocus()
 
@@ -220,6 +236,77 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 		parent,
 	)
 
+	// Show the dialog
+	dtd.dialog.Show()
+
 	// ダイアログ表示後、ツリーにフォーカスを当てる
 	parent.Canvas().Focus(dtd.tree)
+}
+
+// TreeDialogInterface implementation methods
+
+// MoveUp moves the selection up in the tree
+func (dtd *DirectoryTreeDialog) MoveUp() {
+	// Implementation would depend on the tree widget's current selection
+	// For now, this is a placeholder
+	dtd.debugPrint("TreeDialog: Move up")
+}
+
+// MoveDown moves the selection down in the tree
+func (dtd *DirectoryTreeDialog) MoveDown() {
+	dtd.debugPrint("TreeDialog: Move down")
+}
+
+// ExpandNode expands the currently selected node
+func (dtd *DirectoryTreeDialog) ExpandNode() {
+	dtd.debugPrint("TreeDialog: Expand node")
+}
+
+// CollapseNode collapses the currently selected node
+func (dtd *DirectoryTreeDialog) CollapseNode() {
+	dtd.debugPrint("TreeDialog: Collapse node")
+}
+
+// SelectCurrentNode selects the current node
+func (dtd *DirectoryTreeDialog) SelectCurrentNode() {
+	dtd.debugPrint("TreeDialog: Select current node")
+}
+
+// AcceptSelection accepts the current selection and closes the dialog
+func (dtd *DirectoryTreeDialog) AcceptSelection() {
+	// Pop the handler first
+	dtd.keyManager.PopHandler()
+
+	if dtd.callback != nil && dtd.selectedPath != "" {
+		dtd.callback(dtd.selectedPath)
+	}
+	if dtd.dialog != nil {
+		dtd.dialog.Hide()
+	}
+}
+
+// CancelDialog cancels the dialog without selection
+func (dtd *DirectoryTreeDialog) CancelDialog() {
+	// Pop the handler first
+	dtd.keyManager.PopHandler()
+
+	if dtd.dialog != nil {
+		dtd.dialog.Hide()
+	}
+}
+
+// ToggleRootMode toggles between root filesystem and parent directory mode
+func (dtd *DirectoryTreeDialog) ToggleRootMode() {
+	dtd.rootMode = !dtd.rootMode
+	if dtd.rootMode {
+		dtd.currentRoot = "/"
+	} else {
+		dtd.currentRoot = dtd.parentPath
+	}
+
+	// Refresh tree with new root
+	dtd.tree.Refresh()
+	dtd.expandInitialLevel()
+
+	dtd.debugPrint("TreeDialog: Toggled root mode to %t (root: %s)", dtd.rootMode, dtd.currentRoot)
 }

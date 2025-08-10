@@ -9,6 +9,8 @@ import (
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
+
+	"nmf/internal/keymanager"
 )
 
 // NavigationHistoryDialog represents a navigation history dialog with search
@@ -21,18 +23,23 @@ type NavigationHistoryDialog struct {
 	lastUsed      map[string]time.Time
 	dataBinding   binding.StringList
 	debugPrint    func(format string, args ...interface{})
+	keyManager    *keymanager.KeyManager // Keyboard input manager
+	dialog        dialog.Dialog          // Reference to the actual dialog
+	callback      func(string)           // Callback function for selection
 }
 
 // NewNavigationHistoryDialog creates a new navigation history dialog
 func NewNavigationHistoryDialog(
 	paths []string,
 	lastUsed map[string]time.Time,
+	keyManager *keymanager.KeyManager,
 	debugPrint func(format string, args ...interface{}),
 ) *NavigationHistoryDialog {
 	dialog := &NavigationHistoryDialog{
 		allPaths:   paths,
 		lastUsed:   lastUsed,
 		debugPrint: debugPrint,
+		keyManager: keyManager,
 	}
 
 	dialog.createWidgets()
@@ -163,13 +170,23 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 	// Set minimum size
 	content.Resize(fyne.NewSize(650, 500))
 
+	// Store callback for use by key handler
+	nhd.callback = callback
+
+	// Create and push history dialog key handler
+	historyHandler := keymanager.NewHistoryDialogKeyHandler(nhd, nhd.debugPrint)
+	nhd.keyManager.PushHandler(historyHandler)
+
 	// Create custom dialog with proper focus handling
-	d := dialog.NewCustomConfirm(
+	nhd.dialog = dialog.NewCustomConfirm(
 		"Select Directory",
 		"OK",
 		"Cancel",
 		content,
 		func(response bool) {
+			// Pop the history handler when dialog closes
+			nhd.keyManager.PopHandler()
+
 			// Remove focus when dialog is closed
 			parent.Canvas().Unfocus()
 
@@ -181,10 +198,95 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 	)
 
 	// Show dialog
-	d.Show()
+	nhd.dialog.Show()
 
 	// Set focus to search entry (safe approach - check if it's focusable)
 	if nhd.searchEntry != nil {
 		parent.Canvas().Focus(nhd.searchEntry)
+	}
+}
+
+// HistoryDialogInterface implementation methods
+
+// MoveUp moves the selection up in the history list
+func (nhd *NavigationHistoryDialog) MoveUp() {
+	if nhd.historyList != nil {
+		// Get current selection and move up
+		// Note: This is a placeholder implementation
+		// Actual implementation would depend on the widget's selection handling
+		nhd.debugPrint("HistoryDialog: Move up")
+	}
+}
+
+// MoveDown moves the selection down in the history list
+func (nhd *NavigationHistoryDialog) MoveDown() {
+	if nhd.historyList != nil {
+		nhd.debugPrint("HistoryDialog: Move down")
+	}
+}
+
+// MoveToTop moves selection to the top of the list
+func (nhd *NavigationHistoryDialog) MoveToTop() {
+	if nhd.historyList != nil && len(nhd.filteredPaths) > 0 {
+		nhd.historyList.Select(0)
+		if len(nhd.filteredPaths) > 0 {
+			nhd.selectedPath = nhd.filteredPaths[0]
+		}
+		nhd.debugPrint("HistoryDialog: Move to top")
+	}
+}
+
+// MoveToBottom moves selection to the bottom of the list
+func (nhd *NavigationHistoryDialog) MoveToBottom() {
+	if nhd.historyList != nil && len(nhd.filteredPaths) > 0 {
+		lastIdx := len(nhd.filteredPaths) - 1
+		nhd.historyList.Select(lastIdx)
+		nhd.selectedPath = nhd.filteredPaths[lastIdx]
+		nhd.debugPrint("HistoryDialog: Move to bottom")
+	}
+}
+
+// FocusSearch focuses the search entry
+func (nhd *NavigationHistoryDialog) FocusSearch() {
+	if nhd.searchEntry != nil {
+		nhd.searchEntry.FocusGained()
+		nhd.debugPrint("HistoryDialog: Focus search")
+	}
+}
+
+// ClearSearch clears the search entry
+func (nhd *NavigationHistoryDialog) ClearSearch() {
+	if nhd.searchEntry != nil {
+		nhd.searchEntry.SetText("")
+		nhd.debugPrint("HistoryDialog: Clear search")
+	}
+}
+
+// SelectCurrentItem selects the current item in the list
+func (nhd *NavigationHistoryDialog) SelectCurrentItem() {
+	// The selection is already handled by the list widget
+	nhd.debugPrint("HistoryDialog: Select current item: %s", nhd.selectedPath)
+}
+
+// AcceptSelection accepts the current selection and closes the dialog
+func (nhd *NavigationHistoryDialog) AcceptSelection() {
+	// Pop the handler first
+	nhd.keyManager.PopHandler()
+
+	if nhd.callback != nil && nhd.selectedPath != "" {
+		nhd.callback(nhd.selectedPath)
+	}
+	if nhd.dialog != nil {
+		nhd.dialog.Hide()
+	}
+}
+
+// CancelDialog cancels the dialog without selection
+func (nhd *NavigationHistoryDialog) CancelDialog() {
+	// Pop the handler first
+	nhd.keyManager.PopHandler()
+
+	if nhd.dialog != nil {
+		nhd.dialog.Hide()
 	}
 }
