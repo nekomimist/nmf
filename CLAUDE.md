@@ -25,7 +25,13 @@ nmf/
     ├── ui/                         # UI components
     │   ├── cursor.go              # Cursor renderers
     │   ├── widgets.go             # TappableIcon custom widget
-    │   └── dialog.go              # Directory tree dialog
+    │   ├── tree_dialog.go         # Directory tree dialog with key handling
+    │   └── history.go             # Navigation history dialog with search
+    ├── keymanager/                 # Stack-based keyboard input management
+    │   ├── keymanager.go          # KeyManager core, handler stack management
+    │   ├── mainscreen_handler.go  # Main file list keyboard handling
+    │   ├── treedialog_handler.go  # Tree dialog keyboard navigation
+    │   └── historydialog_handler.go # History dialog keyboard navigation
     ├── watcher/                    # Real-time directory monitoring
     │   └── watcher.go             # FileManager interface, change detection
     ├── theme/                      # Custom theming
@@ -40,15 +46,18 @@ nmf/
 ### Core Components
 
 - **FileManager**: Main controller (main.go) - manages window, UI, navigation, file operations
+- **KeyManager**: Stack-based keyboard input system - handles context-aware key routing (handlers implemented, some dialog actions pending)
 - **DirectoryWatcher**: Real-time change detection via filesystem polling (2s interval)
 - **TappableIcon**: Custom widget for icon-based directory navigation
 - **DirectoryTreeDialog**: Lazy-loading tree navigation with root switching
+- **NavigationHistoryDialog**: Searchable directory history with filtering
 
 ### Key Features
 
 - **Real-time Monitoring**: Green=added, orange=modified, gray+⊠=deleted files
 - **Cursor Position Memory**: Remembers cursor position per directory (up to 100 dirs with LRU)
 - **Smart Navigation**: Parent directory navigation returns to originating folder
+- **Context-Aware Keys**: Stack-based keyboard handling prevents dialog/main conflicts
 - **Keyboard Navigation**: Arrow keys, Shift+Arrow (fast), Space (select), Enter (open)
 - **Mouse Navigation**: Icon clicks navigate, name clicks select
 - **Multi-window**: Independent file manager instances
@@ -68,6 +77,7 @@ nmf/
 
 ## Keyboard Shortcuts
 
+### Main File List
 - `↑/↓` - Navigate files
 - `Shift+↑/↓` - Fast navigation (20 items)
 - `Shift+,/Shift+.` - First/last item
@@ -75,7 +85,23 @@ nmf/
 - `Enter` - Open directory
 - `Backspace` - Parent directory
 - `Ctrl+T` - Tree navigation dialog
+- `Ctrl+H` - Navigation history dialog
 - `Ctrl+N` - New window
+
+### Tree Dialog
+- `↑/↓` - Navigate nodes (Shift for fast) *[TODO: implementation]*
+- `←/→` - Collapse/expand nodes *[TODO: implementation]*
+- `Tab` or `Ctrl+R` - Toggle root mode ✅
+- `Enter` - Accept selection ✅
+- `Esc` - Cancel dialog ✅
+
+### History Dialog  
+- `↑/↓` - Navigate list (Shift for top/bottom) *[TODO: implementation]*
+- `/` - Focus search (vim-like) ✅
+- `Ctrl+F` - Focus search ✅
+- `Del` - Clear search ✅
+- `Enter` - Accept selection ✅
+- `Esc` - Cancel dialog ✅
 
 ## Communication Style
 - Persona: helpful developer niece to her uncle (address as "おじさま"). Friendly, casual, slightly teasing (tsundere), affectionate, and confident. Emojis are welcome.
