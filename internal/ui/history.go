@@ -18,6 +18,7 @@ type NavigationHistoryDialog struct {
 	searchEntry   *widget.Entry
 	historyList   *widget.List
 	selectedPath  string
+	selectedIndex int // Currently selected list index
 	filteredPaths []string
 	allPaths      []string
 	lastUsed      map[string]time.Time
@@ -26,6 +27,7 @@ type NavigationHistoryDialog struct {
 	keyManager    *keymanager.KeyManager // Keyboard input manager
 	dialog        dialog.Dialog          // Reference to the actual dialog
 	callback      func(string)           // Callback function for selection
+	parent        fyne.Window            // Parent window for focus management
 }
 
 // NewNavigationHistoryDialog creates a new navigation history dialog
@@ -85,8 +87,9 @@ func (nhd *NavigationHistoryDialog) createWidgets() {
 	// Set selection handler
 	nhd.historyList.OnSelected = func(id widget.ListItemID) {
 		if id < len(nhd.filteredPaths) {
+			nhd.selectedIndex = int(id)
 			nhd.selectedPath = nhd.filteredPaths[id]
-			nhd.debugPrint("History selected: %s", nhd.selectedPath)
+			nhd.debugPrint("History selected: %s (index: %d)", nhd.selectedPath, nhd.selectedIndex)
 		}
 	}
 
@@ -112,6 +115,16 @@ func (nhd *NavigationHistoryDialog) updateFilteredPaths(query string) {
 	// Update data binding with the filtered paths directly
 	nhd.dataBinding.Set(nhd.filteredPaths)
 	nhd.historyList.Refresh()
+
+	// Set initial selection to first item if available
+	if len(nhd.filteredPaths) > 0 {
+		nhd.selectedIndex = 0
+		nhd.selectedPath = nhd.filteredPaths[0]
+		nhd.historyList.Select(0)
+	} else {
+		nhd.selectedIndex = -1
+		nhd.selectedPath = ""
+	}
 }
 
 // ShowDialog shows the navigation history dialog
@@ -170,8 +183,9 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 	// Set minimum size
 	content.Resize(fyne.NewSize(650, 500))
 
-	// Store callback for use by key handler
+	// Store callback and parent for use by key handler
 	nhd.callback = callback
+	nhd.parent = parent
 
 	// Create and push history dialog key handler
 	historyHandler := keymanager.NewHistoryDialogKeyHandler(nhd, nhd.debugPrint)
@@ -197,31 +211,42 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 		parent,
 	)
 
-	// Show dialog
+	// Show dialog without focusing any specific widget
+	// This allows KeyManager to handle all keyboard input
 	nhd.dialog.Show()
 
-	// Set focus to search entry (safe approach - check if it's focusable)
-	if nhd.searchEntry != nil {
-		parent.Canvas().Focus(nhd.searchEntry)
-	}
+	// Keep the dialog unfocused so KeyManager can intercept all keys
+	parent.Canvas().Unfocus()
 }
 
 // HistoryDialogInterface implementation methods
 
 // MoveUp moves the selection up in the history list
 func (nhd *NavigationHistoryDialog) MoveUp() {
-	if nhd.historyList != nil {
-		// Get current selection and move up
-		// Note: This is a placeholder implementation
-		// Actual implementation would depend on the widget's selection handling
-		nhd.debugPrint("HistoryDialog: Move up")
+	if nhd.historyList != nil && len(nhd.filteredPaths) > 0 {
+		newIndex := nhd.selectedIndex - 1
+		if newIndex < 0 {
+			newIndex = 0 // Stay at top
+		}
+		if newIndex != nhd.selectedIndex {
+			nhd.historyList.Select(widget.ListItemID(newIndex))
+			nhd.debugPrint("HistoryDialog: Move up to index %d", newIndex)
+		}
 	}
 }
 
 // MoveDown moves the selection down in the history list
 func (nhd *NavigationHistoryDialog) MoveDown() {
-	if nhd.historyList != nil {
-		nhd.debugPrint("HistoryDialog: Move down")
+	if nhd.historyList != nil && len(nhd.filteredPaths) > 0 {
+		newIndex := nhd.selectedIndex + 1
+		maxIndex := len(nhd.filteredPaths) - 1
+		if newIndex > maxIndex {
+			newIndex = maxIndex // Stay at bottom
+		}
+		if newIndex != nhd.selectedIndex {
+			nhd.historyList.Select(widget.ListItemID(newIndex))
+			nhd.debugPrint("HistoryDialog: Move down to index %d", newIndex)
+		}
 	}
 }
 
@@ -289,4 +314,50 @@ func (nhd *NavigationHistoryDialog) CancelDialog() {
 	if nhd.dialog != nil {
 		nhd.dialog.Hide()
 	}
+}
+
+// IsSearchFocused returns true if the search entry has focus
+func (nhd *NavigationHistoryDialog) IsSearchFocused() bool {
+	if nhd.searchEntry == nil || nhd.parent == nil {
+		return false
+	}
+
+	// Check if searchEntry is the focused object
+	focused := nhd.parent.Canvas().Focused()
+	return focused == nhd.searchEntry
+}
+
+// FocusList moves focus to the history list (deprecated in focusless design)
+func (nhd *NavigationHistoryDialog) FocusList() {
+	// In focusless design, this is a no-op but kept for interface compatibility
+	nhd.debugPrint("HistoryDialog: FocusList called (focusless mode)")
+}
+
+// AppendToSearch appends a character to the search entry
+func (nhd *NavigationHistoryDialog) AppendToSearch(char string) {
+	if nhd.searchEntry != nil {
+		current := nhd.searchEntry.Text
+		nhd.searchEntry.SetText(current + char)
+		nhd.debugPrint("HistoryDialog: Appended '%s' to search, now: '%s'", char, nhd.searchEntry.Text)
+	}
+}
+
+// BackspaceSearch removes the last character from search
+func (nhd *NavigationHistoryDialog) BackspaceSearch() {
+	if nhd.searchEntry != nil {
+		current := nhd.searchEntry.Text
+		if len(current) > 0 {
+			newText := current[:len(current)-1]
+			nhd.searchEntry.SetText(newText)
+			nhd.debugPrint("HistoryDialog: Backspaced search, now: '%s'", newText)
+		}
+	}
+}
+
+// GetSearchText returns current search text
+func (nhd *NavigationHistoryDialog) GetSearchText() string {
+	if nhd.searchEntry != nil {
+		return nhd.searchEntry.Text
+	}
+	return ""
 }
