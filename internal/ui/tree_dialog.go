@@ -84,6 +84,10 @@ func (dtd *DirectoryTreeDialog) createTree() {
 	dtd.tree.OnSelected = func(uid widget.TreeNodeID) {
 		dtd.selectedPath = string(uid)
 		dtd.debugPrint("Directory selected: %s", uid)
+		// Try to restore focus state for key handler (may need future debugging)
+		if dtd.parent != nil {
+			dtd.parent.Canvas().Unfocus()
+		}
 	}
 
 	// Set branch open handler for lazy loading
@@ -136,6 +140,27 @@ func (dtd *DirectoryTreeDialog) getDisplayName(path string) string {
 		return filepath.Dir(path)
 	}
 	return base
+}
+
+// getVisibleNodes returns all currently visible nodes in the tree
+func (dtd *DirectoryTreeDialog) getVisibleNodes() []widget.TreeNodeID {
+	var visibleNodes []widget.TreeNodeID
+	dtd.collectVisibleNodes(widget.TreeNodeID(dtd.currentRoot), &visibleNodes)
+	return visibleNodes
+}
+
+// collectVisibleNodes recursively collects all visible nodes from the tree
+func (dtd *DirectoryTreeDialog) collectVisibleNodes(nodeID widget.TreeNodeID, visibleNodes *[]widget.TreeNodeID) {
+	*visibleNodes = append(*visibleNodes, nodeID)
+
+	// If this branch is open, collect its children
+	if dtd.tree.IsBranchOpen(nodeID) {
+		children := dtd.getDirectoryChildren(string(nodeID))
+		for _, child := range children {
+			childID := widget.TreeNodeID(child)
+			dtd.collectVisibleNodes(childID, visibleNodes)
+		}
+	}
 }
 
 // expandInitialLevel expands only the root level
@@ -238,37 +263,116 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 	// Show the dialog
 	dtd.dialog.Show()
 
-	// ダイアログ表示後、ツリーにフォーカスを当てる
-	parent.Canvas().Focus(dtd.tree)
+	// Set initial selection to show cursor (don't focus the tree widget)
+	dtd.tree.Select(widget.TreeNodeID(dtd.currentRoot))
+	dtd.selectedPath = dtd.currentRoot
 }
 
 // TreeDialogInterface implementation methods
 
 // MoveUp moves the selection up in the tree
 func (dtd *DirectoryTreeDialog) MoveUp() {
-	// Implementation would depend on the tree widget's current selection
-	// For now, this is a placeholder
-	dtd.debugPrint("TreeDialog: Move up")
+	visibleNodes := dtd.getVisibleNodes()
+	if len(visibleNodes) == 0 {
+		return
+	}
+
+	currentIndex := -1
+	for i, node := range visibleNodes {
+		if string(node) == dtd.selectedPath {
+			currentIndex = i
+			break
+		}
+	}
+
+	if currentIndex > 0 {
+		newSelection := visibleNodes[currentIndex-1]
+		dtd.tree.Select(newSelection)
+		dtd.selectedPath = string(newSelection)
+		dtd.debugPrint("TreeDialog: Move up to %s", newSelection)
+	}
 }
 
 // MoveDown moves the selection down in the tree
 func (dtd *DirectoryTreeDialog) MoveDown() {
-	dtd.debugPrint("TreeDialog: Move down")
+	visibleNodes := dtd.getVisibleNodes()
+	if len(visibleNodes) == 0 {
+		return
+	}
+
+	currentIndex := -1
+	for i, node := range visibleNodes {
+		if string(node) == dtd.selectedPath {
+			currentIndex = i
+			break
+		}
+	}
+
+	if currentIndex >= 0 && currentIndex < len(visibleNodes)-1 {
+		newSelection := visibleNodes[currentIndex+1]
+		dtd.tree.Select(newSelection)
+		dtd.selectedPath = string(newSelection)
+		dtd.debugPrint("TreeDialog: Move down to %s", newSelection)
+	}
 }
 
 // ExpandNode expands the currently selected node
 func (dtd *DirectoryTreeDialog) ExpandNode() {
-	dtd.debugPrint("TreeDialog: Expand node")
+	if dtd.selectedPath == "" {
+		return
+	}
+
+	nodeID := widget.TreeNodeID(dtd.selectedPath)
+
+	// Check if it's a directory (branch)
+	if dtd.isDirectory(dtd.selectedPath) {
+		if !dtd.tree.IsBranchOpen(nodeID) {
+			dtd.tree.OpenBranch(nodeID)
+			dtd.debugPrint("TreeDialog: Expanded node %s", dtd.selectedPath)
+		} else {
+			// If already expanded, move to first child if available
+			children := dtd.getDirectoryChildren(dtd.selectedPath)
+			if len(children) > 0 {
+				firstChild := widget.TreeNodeID(children[0])
+				dtd.tree.Select(firstChild)
+				dtd.selectedPath = children[0]
+				dtd.debugPrint("TreeDialog: Moved to first child %s", children[0])
+			}
+		}
+	}
 }
 
 // CollapseNode collapses the currently selected node
 func (dtd *DirectoryTreeDialog) CollapseNode() {
-	dtd.debugPrint("TreeDialog: Collapse node")
+	if dtd.selectedPath == "" {
+		return
+	}
+
+	nodeID := widget.TreeNodeID(dtd.selectedPath)
+
+	// If current node is expanded, collapse it
+	if dtd.tree.IsBranchOpen(nodeID) {
+		dtd.tree.CloseBranch(nodeID)
+		dtd.debugPrint("TreeDialog: Collapsed node %s", dtd.selectedPath)
+	} else {
+		// If not expanded, move to parent
+		parentPath := filepath.Dir(dtd.selectedPath)
+		if parentPath != dtd.selectedPath && parentPath != "." {
+			parentID := widget.TreeNodeID(parentPath)
+			dtd.tree.Select(parentID)
+			dtd.selectedPath = parentPath
+			dtd.debugPrint("TreeDialog: Moved to parent %s", parentPath)
+		}
+	}
 }
 
-// SelectCurrentNode selects the current node
+// SelectCurrentNode selects the current node (mainly for Space key handling)
 func (dtd *DirectoryTreeDialog) SelectCurrentNode() {
-	dtd.debugPrint("TreeDialog: Select current node")
+	if dtd.selectedPath != "" {
+		nodeID := widget.TreeNodeID(dtd.selectedPath)
+		dtd.tree.Select(nodeID)
+		dtd.debugPrint("TreeDialog: Confirmed selection of %s", dtd.selectedPath)
+	}
 }
 
 // AcceptSelection accepts the current selection and closes the dialog
