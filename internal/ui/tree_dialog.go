@@ -25,6 +25,8 @@ type DirectoryTreeDialog struct {
 	keyManager   *keymanager.KeyManager                   // Keyboard input manager
 	dialog       dialog.Dialog                            // Reference to the actual dialog
 	callback     func(string)                             // Callback function for selection
+	parent       fyne.Window                              // Parent window for focus management
+	closed       bool                                     // Prevent double-close/pop
 }
 
 // NewDirectoryTreeDialog creates a new directory tree dialog
@@ -211,6 +213,7 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 
 	// Store callback for use by key handler
 	dtd.callback = callback
+	dtd.parent = parent
 
 	// Create and push tree dialog key handler
 	treeHandler := keymanager.NewTreeDialogKeyHandler(dtd, dtd.debugPrint)
@@ -223,14 +226,10 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 		"Cancel",
 		content,
 		func(response bool) {
-			// Pop the tree handler when dialog closes
-			dtd.keyManager.PopHandler()
-
-			// ダイアログが閉じられたときにメインウィンドウのフォーカスを解除
-			parent.Canvas().Unfocus()
-
-			if response && dtd.selectedPath != "" {
-				callback(dtd.selectedPath)
+			if response {
+				dtd.AcceptSelection()
+			} else {
+				dtd.CancelDialog()
 			}
 		},
 		parent,
@@ -274,6 +273,10 @@ func (dtd *DirectoryTreeDialog) SelectCurrentNode() {
 
 // AcceptSelection accepts the current selection and closes the dialog
 func (dtd *DirectoryTreeDialog) AcceptSelection() {
+	if dtd.closed {
+		return
+	}
+	dtd.closed = true
 	// Pop the handler first
 	dtd.keyManager.PopHandler()
 
@@ -283,15 +286,26 @@ func (dtd *DirectoryTreeDialog) AcceptSelection() {
 	if dtd.dialog != nil {
 		dtd.dialog.Hide()
 	}
+	// Unfocus parent window canvas if available
+	if dtd.parent != nil {
+		dtd.parent.Canvas().Unfocus()
+	}
 }
 
 // CancelDialog cancels the dialog without selection
 func (dtd *DirectoryTreeDialog) CancelDialog() {
+	if dtd.closed {
+		return
+	}
+	dtd.closed = true
 	// Pop the handler first
 	dtd.keyManager.PopHandler()
 
 	if dtd.dialog != nil {
 		dtd.dialog.Hide()
+	}
+	if dtd.parent != nil {
+		dtd.parent.Canvas().Unfocus()
 	}
 }
 

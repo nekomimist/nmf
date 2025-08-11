@@ -142,3 +142,8 @@ func (th *TreeDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent) bool {
 
 	return false
 }
+
+// OnTypedRune handles text input (not used in tree dialog)
+func (th *TreeDialogKeyHandler) OnTypedRune(r rune) bool {
+	return false
+}

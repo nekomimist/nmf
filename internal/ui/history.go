@@ -28,6 +28,7 @@ type NavigationHistoryDialog struct {
 	dialog        dialog.Dialog          // Reference to the actual dialog
 	callback      func(string)           // Callback function for selection
 	parent        fyne.Window            // Parent window for focus management
+	closed        bool                   // Prevent double-close/pop
 }
 
 // NewNavigationHistoryDialog creates a new navigation history dialog
@@ -198,14 +199,10 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 		"Cancel",
 		content,
 		func(response bool) {
-			// Pop the history handler when dialog closes
-			nhd.keyManager.PopHandler()
-
-			// Remove focus when dialog is closed
-			parent.Canvas().Unfocus()
-
-			if response && nhd.selectedPath != "" {
-				callback(nhd.selectedPath)
+			if response {
+				nhd.AcceptSelection()
+			} else {
+				nhd.CancelDialog()
 			}
 		},
 		parent,
@@ -295,6 +292,10 @@ func (nhd *NavigationHistoryDialog) SelectCurrentItem() {
 
 // AcceptSelection accepts the current selection and closes the dialog
 func (nhd *NavigationHistoryDialog) AcceptSelection() {
+	if nhd.closed {
+		return
+	}
+	nhd.closed = true
 	// Pop the handler first
 	nhd.keyManager.PopHandler()
 
@@ -304,15 +305,25 @@ func (nhd *NavigationHistoryDialog) AcceptSelection() {
 	if nhd.dialog != nil {
 		nhd.dialog.Hide()
 	}
+	if nhd.parent != nil {
+		nhd.parent.Canvas().Unfocus()
+	}
 }
 
 // CancelDialog cancels the dialog without selection
 func (nhd *NavigationHistoryDialog) CancelDialog() {
+	if nhd.closed {
+		return
+	}
+	nhd.closed = true
 	// Pop the handler first
 	nhd.keyManager.PopHandler()
 
 	if nhd.dialog != nil {
 		nhd.dialog.Hide()
+	}
+	if nhd.parent != nil {
+		nhd.parent.Canvas().Unfocus()
 	}
 }
 

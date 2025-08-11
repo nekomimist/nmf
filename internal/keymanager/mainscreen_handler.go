@@ -235,3 +235,9 @@ func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent) bool {
 
 	return false
 }
+
+// OnTypedRune handles text input (not used on main screen)
+func (mh *MainScreenKeyHandler) OnTypedRune(r rune) bool {
+	// Main screen doesn't consume text input directly
+	return false
+}

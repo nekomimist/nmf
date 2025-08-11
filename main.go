@@ -412,6 +412,10 @@ func (fm *FileManager) setupUI() {
 		fm.window.Canvas().SetOnTypedKey(func(ev *fyne.KeyEvent) {
 			fm.keyManager.HandleTypedKey(ev)
 		})
+
+		fm.window.Canvas().SetOnTypedRune(func(r rune) {
+			fm.keyManager.HandleTypedRune(r)
+		})
 	}
 }
 

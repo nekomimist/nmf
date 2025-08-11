@@ -17,6 +17,9 @@ type KeyHandler interface {
 	// OnTypedKey handles typed key events
 	OnTypedKey(ev *fyne.KeyEvent) bool // returns true if handled
 
+	// OnTypedRune handles text input runes
+	OnTypedRune(r rune) bool // returns true if handled
+
 	// GetName returns a descriptive name for this handler (for debugging)
 	GetName() string
 }
@@ -116,6 +119,20 @@ func (km *KeyManager) HandleTypedKey(ev *fyne.KeyEvent) {
 		km.debugPrint("KeyManager: TypedKey event handled by '%s': %t", currentHandler.GetName(), handled)
 	} else {
 		km.debugPrint("KeyManager: No handler available for TypedKey event")
+	}
+}
+
+// HandleTypedRune routes typed rune events to the current top handler
+func (km *KeyManager) HandleTypedRune(r rune) {
+	km.mutex.RLock()
+	currentHandler := km.GetCurrentHandler()
+	km.mutex.RUnlock()
+
+	if currentHandler != nil {
+		handled := currentHandler.OnTypedRune(r)
+		km.debugPrint("KeyManager: TypedRune event handled by '%s': %t", currentHandler.GetName(), handled)
+	} else {
+		km.debugPrint("KeyManager: No handler available for TypedRune event")
 	}
 }
 
