@@ -4,6 +4,7 @@
 - Root: `main.go` (Fyne GUI entrypoint) and `go.mod`.
 - Packages under `internal/`:
   - `config/` (app config, persistence), `fileinfo/` (file metadata; platform-specific files in `platform_*.go`), `ui/` (widgets, dialogs including history), `watcher/` (directory change polling), `theme/`, `errors/`, `constants/`, `keymanager/` (keyboard event stack + handlers).
+  - `ui/` includes input wrappers: `key_sink.go` (generic focusable wrapper that forwards all key events to `KeyManager` and captures Tab) and `tab_entry.go` (an `Entry` that accepts Tab to suppress default focus traversal).
 - Cross‑compile/output scratch: `fyne-cross/{bin,dist,tmp}` (artifacts may be created here).
 
 ## Build, Test, and Development Commands
@@ -43,7 +44,12 @@
      - `fileColors`: `{ regular, directory, symlink, hidden }` RGBA arrays used by `internal/fileinfo`.
      - `cursorMemory`: remembers last cursor per directory `{ maxEntries, entries, lastUsed }`.
      - `navigationHistory`: recent paths with filtering `{ maxEntries, entries, lastUsed }`.
- - Keyboard handling: use `internal/keymanager` (stacked handlers like main screen, tree dialog, history dialog). Main window wires `desktop.Canvas` events to `KeyManager`.
+ - Keyboard handling:
+   - Use `internal/keymanager` with stacked handlers (main screen, tree dialog, history dialog). Main window wires `desktop.Canvas` events to `KeyManager`.
+   - Wrap keyboard-driven content in `ui.KeySink` and keep focus on it (`window.Canvas().Focus(sink)` and in dialogs `parent.Canvas().Focus(sink)`) so all events flow to `KeyManager` and Tab does not move focus.
+   - For entries that must not lose focus on Tab, use `ui.TabEntry` (implements `AcceptsTab`). For display-only fields (e.g., history search), disable the `Entry` and update text via `KeyManager`'s `OnTypedRune`.
+   - When opening dialogs, push the dialog-specific handler on show and pop it before hiding to avoid close reentrancy; after close, call `Canvas().Unfocus()` on the parent if needed.
+   - For the main file list, prefer wrapping `widget.List` with `ui.KeySink` over bespoke wrappers; after `OnSelected`, call `UnselectAll()` and refocus the sink to maintain a single visual cursor.
  - Directory watching: `internal/watcher.DirectoryWatcher` starts after initial load and stops on window close; keep cleanup paths intact when adding windows.
 
 ## Communication Style

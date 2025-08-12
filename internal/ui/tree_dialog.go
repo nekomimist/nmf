@@ -27,6 +27,7 @@ type DirectoryTreeDialog struct {
 	callback     func(string)                             // Callback function for selection
 	parent       fyne.Window                              // Parent window for focus management
 	closed       bool                                     // Prevent double-close/pop
+	sink         *KeySink                                 // Key capturing wrapper
 }
 
 // NewDirectoryTreeDialog creates a new directory tree dialog
@@ -84,9 +85,9 @@ func (dtd *DirectoryTreeDialog) createTree() {
 	dtd.tree.OnSelected = func(uid widget.TreeNodeID) {
 		dtd.selectedPath = string(uid)
 		dtd.debugPrint("Directory selected: %s", uid)
-		// Try to restore focus state for key handler (may need future debugging)
-		if dtd.parent != nil {
-			dtd.parent.Canvas().Unfocus()
+		// Keep focus on sink so KeyManager continues to receive keys
+		if dtd.parent != nil && dtd.sink != nil {
+			dtd.parent.Canvas().Focus(dtd.sink)
 		}
 	}
 
@@ -244,12 +245,15 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 	treeHandler := keymanager.NewTreeDialogKeyHandler(dtd, dtd.debugPrint)
 	dtd.keyManager.PushHandler(treeHandler)
 
-	// Create dialog with custom content
+	// Wrap content with KeySink to capture Tab and forward keys
+	dtd.sink = NewKeySink(content, dtd.keyManager, WithTabCapture(true))
+
+	// Create dialog with custom content (wrapped by sink)
 	dtd.dialog = dialog.NewCustomConfirm(
 		"Select Directory",
 		"OK",
 		"Cancel",
-		content,
+		dtd.sink,
 		func(response bool) {
 			if response {
 				dtd.AcceptSelection()
@@ -266,6 +270,11 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 	// Set initial selection to show cursor (don't focus the tree widget)
 	dtd.tree.Select(widget.TreeNodeID(dtd.currentRoot))
 	dtd.selectedPath = dtd.currentRoot
+
+	// Ensure focus stays on sink so keys route to KeyManager
+	if dtd.parent != nil && dtd.sink != nil {
+		dtd.parent.Canvas().Focus(dtd.sink)
+	}
 }
 
 // TreeDialogInterface implementation methods

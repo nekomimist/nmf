@@ -43,7 +43,8 @@ type FileManager struct {
 	currentPath    string
 	files          []fileinfo.FileInfo
 	fileList       *widget.List
-	pathEntry      *widget.Entry
+	fileListView   *ui.KeySink
+	pathEntry      *ui.TabEntry
 	cursorPath     string          // Current cursor file path
 	selectedFiles  map[string]bool // Set of selected file paths
 	fileBinding    binding.UntypedList
@@ -183,7 +184,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 
 func (fm *FileManager) setupUI() {
 	// Path entry for direct path input
-	fm.pathEntry = widget.NewEntry()
+	fm.pathEntry = ui.NewTabEntry()
 	fm.pathEntry.SetText(fm.currentPath)
 	fm.pathEntry.OnSubmitted = func(path string) {
 		fm.navigateToPath(path)
@@ -342,12 +343,18 @@ func (fm *FileManager) setupUI() {
 		fm.fileList.HideSeparators = true
 	}
 
+	// Wrap list with a generic focusable KeySink to suppress Tab traversal
+	fm.fileListView = ui.NewKeySink(fm.fileList, fm.keyManager, ui.WithTabCapture(true))
+
 	// Handle cursor movement (both mouse and keyboard)
 	fm.fileList.OnSelected = func(id widget.ListItemID) {
 		fm.SetCursorByIndex(id)
 		// Clear list selection to avoid double cursor effect when switching back to keyboard
 		fm.fileList.UnselectAll()
-		fm.window.Canvas().Unfocus()
+		// Keep focus on the KeySink so Tab does not move focus
+		if fm.fileListView != nil {
+			fm.window.Canvas().Focus(fm.fileListView)
+		}
 		fm.RefreshCursor()
 	}
 
@@ -358,19 +365,32 @@ func (fm *FileManager) setupUI() {
 			if parent != fm.currentPath {
 				fm.LoadDirectory(parent)
 			}
+			if fm.fileListView != nil {
+				fm.window.Canvas().Focus(fm.fileListView)
+			}
 		}),
 		widget.NewToolbarAction(theme.HomeIcon(), func() {
 			home, _ := os.UserHomeDir()
 			fm.LoadDirectory(home)
+			if fm.fileListView != nil {
+				fm.window.Canvas().Focus(fm.fileListView)
+			}
 		}),
 		widget.NewToolbarAction(theme.ViewRefreshIcon(), func() {
 			fm.LoadDirectory(fm.currentPath)
+			if fm.fileListView != nil {
+				fm.window.Canvas().Focus(fm.fileListView)
+			}
 		}),
 		widget.NewToolbarAction(theme.FolderIcon(), func() {
 			fm.ShowDirectoryTreeDialog()
+			// focus returns after dialog closes in callback
 		}),
 		widget.NewToolbarAction(theme.FolderNewIcon(), func() {
 			fm.OpenNewWindow()
+			if fm.fileListView != nil {
+				fm.window.Canvas().Focus(fm.fileListView)
+			}
 		}),
 	)
 
@@ -378,11 +398,16 @@ func (fm *FileManager) setupUI() {
 	content := container.NewBorder(
 		container.NewVBox(toolbar, fm.pathEntry),
 		nil, nil, nil,
-		fm.fileList,
+		fm.fileListView,
 	)
 
 	fm.window.SetContent(content)
 	fm.window.Resize(fyne.NewSize(float32(fm.config.Window.Width), float32(fm.config.Window.Height)))
+
+	// Ensure initial focus sits on the tabbable list view
+	if fm.fileListView != nil {
+		fm.window.Canvas().Focus(fm.fileListView)
+	}
 
 	// Setup window close handler to properly stop DirectoryWatcher
 	fm.window.SetCloseIntercept(func() {
@@ -402,10 +427,12 @@ func (fm *FileManager) setupUI() {
 	dc, ok := (fm.window.Canvas()).(desktop.Canvas)
 	if ok {
 		dc.SetOnKeyDown(func(ev *fyne.KeyEvent) {
+			debugPrint("KeyDown")
 			fm.keyManager.HandleKeyDown(ev)
 		})
 
 		dc.SetOnKeyUp(func(ev *fyne.KeyEvent) {
+			debugPrint("KeyUp")
 			fm.keyManager.HandleKeyUp(ev)
 		})
 
@@ -662,6 +689,9 @@ func (fm *FileManager) ShowDirectoryTreeDialog() {
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
 		debugPrint("Directory selected from tree dialog: %s", selectedPath)
 		fm.LoadDirectory(selectedPath)
+		if fm.fileListView != nil {
+			fm.window.Canvas().Focus(fm.fileListView)
+		}
 	})
 }
 
@@ -682,6 +712,9 @@ func (fm *FileManager) ShowNavigationHistoryDialog() {
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
 		debugPrint("Directory selected from history dialog: %s", selectedPath)
 		fm.LoadDirectory(selectedPath)
+		if fm.fileListView != nil {
+			fm.window.Canvas().Focus(fm.fileListView)
+		}
 	})
 }
 

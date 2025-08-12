@@ -29,6 +29,7 @@ type NavigationHistoryDialog struct {
 	callback      func(string)           // Callback function for selection
 	parent        fyne.Window            // Parent window for focus management
 	closed        bool                   // Prevent double-close/pop
+	sink          *KeySink               // Key capturing wrapper
 }
 
 // NewNavigationHistoryDialog creates a new navigation history dialog
@@ -55,6 +56,8 @@ func (nhd *NavigationHistoryDialog) createWidgets() {
 	// Create search entry
 	nhd.searchEntry = widget.NewEntry()
 	nhd.searchEntry.SetPlaceHolder("Type to filter paths...")
+	// Display-only: disable focus/input; KeyManager drives updates
+	nhd.searchEntry.Disable()
 
 	// Set up real-time search
 	nhd.searchEntry.OnChanged = func(query string) {
@@ -91,6 +94,10 @@ func (nhd *NavigationHistoryDialog) createWidgets() {
 			nhd.selectedIndex = int(id)
 			nhd.selectedPath = nhd.filteredPaths[id]
 			nhd.debugPrint("History selected: %s (index: %d)", nhd.selectedPath, nhd.selectedIndex)
+			// Keep focus on sink so KeyManager continues to receive keys
+			if nhd.parent != nil && nhd.sink != nil {
+				nhd.parent.Canvas().Focus(nhd.sink)
+			}
 		}
 	}
 
@@ -192,12 +199,15 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 	historyHandler := keymanager.NewHistoryDialogKeyHandler(nhd, nhd.debugPrint)
 	nhd.keyManager.PushHandler(historyHandler)
 
-	// Create custom dialog with proper focus handling
+	// Wrap content with KeySink to capture Tab and forward keys
+	nhd.sink = NewKeySink(content, nhd.keyManager, WithTabCapture(true))
+
+	// Create custom dialog with proper focus handling (wrapped by sink)
 	nhd.dialog = dialog.NewCustomConfirm(
 		"Select Directory",
 		"OK",
 		"Cancel",
-		content,
+		nhd.sink,
 		func(response bool) {
 			if response {
 				nhd.AcceptSelection()
@@ -208,12 +218,11 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 		parent,
 	)
 
-	// Show dialog without focusing any specific widget
-	// This allows KeyManager to handle all keyboard input
+	// Show dialog and ensure focus stays on sink so KeyManager gets keys
 	nhd.dialog.Show()
-
-	// Keep the dialog unfocused so KeyManager can intercept all keys
-	parent.Canvas().Unfocus()
+	if nhd.parent != nil && nhd.sink != nil {
+		nhd.parent.Canvas().Focus(nhd.sink)
+	}
 }
 
 // HistoryDialogInterface implementation methods
