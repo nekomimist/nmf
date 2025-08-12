@@ -87,3 +87,9 @@ const (
 	DefaultShowHiddenFiles = false
 	DefaultCursorType      = "underline"
 )
+
+// Tree dialog constants
+const (
+	RootModeOptionText   = "Root /"
+	ParentModeOptionText = "Parent Dir"
+)

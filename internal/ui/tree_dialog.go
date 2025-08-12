@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"nmf/internal/constants"
 	"nmf/internal/keymanager"
 )
 
@@ -28,6 +29,7 @@ type DirectoryTreeDialog struct {
 	parent       fyne.Window                              // Parent window for focus management
 	closed       bool                                     // Prevent double-close/pop
 	sink         *KeySink                                 // Key capturing wrapper
+	radioGroup   *widget.RadioGroup                       // Root mode selection radio group
 }
 
 // NewDirectoryTreeDialog creates a new directory tree dialog
@@ -176,23 +178,34 @@ func (dtd *DirectoryTreeDialog) expandInitialLevel() {
 // ShowDialog shows the directory tree dialog
 func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(string)) {
 	// Create radio group for root selection
-	rootOptions := []string{"Root /", "Parent Dir"}
+	rootOptions := []string{constants.RootModeOptionText, constants.ParentModeOptionText}
 	var selectedOption string
 	if dtd.rootMode {
-		selectedOption = "Root /"
+		selectedOption = constants.RootModeOptionText
 	} else {
-		selectedOption = "Parent Dir"
+		selectedOption = constants.ParentModeOptionText
 	}
 
-	radioGroup := widget.NewRadioGroup(rootOptions, func(selected string) {
+	dtd.radioGroup = widget.NewRadioGroup(rootOptions, func(selected string) {
+		// Prevent deselection by re-clicking - ignore empty selection
+		if selected == "" {
+			// Restore the previous selection
+			if dtd.rootMode {
+				dtd.radioGroup.SetSelected(constants.RootModeOptionText)
+			} else {
+				dtd.radioGroup.SetSelected(constants.ParentModeOptionText)
+			}
+			return
+		}
+
 		var newRootMode bool
 		var newCurrentRoot string
 
 		switch selected {
-		case "Root /":
+		case constants.RootModeOptionText:
 			newRootMode = true
 			newCurrentRoot = "/"
-		case "Parent Dir":
+		case constants.ParentModeOptionText:
 			newRootMode = false
 			newCurrentRoot = dtd.parentPath
 		}
@@ -209,11 +222,11 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 			dtd.expandInitialLevel()
 		}
 	})
-	radioGroup.SetSelected(selectedOption)
-	radioGroup.Horizontal = true
+	dtd.radioGroup.SetSelected(selectedOption)
+	dtd.radioGroup.Horizontal = true
 
 	// Create top control panel
-	buttonPanel := container.NewHBox(radioGroup)
+	buttonPanel := container.NewHBox(dtd.radioGroup)
 
 	// Set tree size and minimum size
 	dtd.tree.Resize(fyne.NewSize(500, 400))
@@ -431,9 +444,21 @@ func (dtd *DirectoryTreeDialog) ToggleRootMode() {
 		dtd.currentRoot = dtd.parentPath
 	}
 
+	// Update RadioGroup selection to match new mode
+	if dtd.radioGroup != nil {
+		if dtd.rootMode {
+			dtd.radioGroup.SetSelected(constants.RootModeOptionText)
+		} else {
+			dtd.radioGroup.SetSelected(constants.ParentModeOptionText)
+		}
+	}
+
 	// Refresh tree with new root
 	dtd.tree.Refresh()
 	dtd.expandInitialLevel()
+	if dtd.parent != nil && dtd.sink != nil {
+		dtd.parent.Canvas().Focus(dtd.sink)
+	}
 
 	dtd.debugPrint("TreeDialog: Toggled root mode to %t (root: %s)", dtd.rootMode, dtd.currentRoot)
 }

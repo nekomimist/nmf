@@ -26,7 +26,9 @@ nmf/
     │   ├── cursor.go              # Cursor renderers
     │   ├── widgets.go             # TappableIcon custom widget
     │   ├── tree_dialog.go         # Directory tree dialog with key handling
-    │   └── history.go             # Navigation history dialog with search
+    │   ├── history.go             # Navigation history dialog with search
+    │   ├── key_sink.go            # Generic KeySink wrapper for focus & key forwarding
+    │   └── tab_entry.go           # TabEntry widget with Tab capture capability
     ├── keymanager/                 # Stack-based keyboard input management
     │   ├── keymanager.go          # KeyManager core, handler stack management
     │   ├── mainscreen_handler.go  # Main file list keyboard handling
