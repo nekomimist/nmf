@@ -90,11 +90,6 @@ func (fm *FileManager) SaveCursorPosition(dirPath string) {
 	}
 
 	fileName := fm.files[currentIdx].Name
-	// Don't save position for parent directory entry
-	if fileName == ".." {
-		return
-	}
-
 	cursorMemory := &fm.config.UI.CursorMemory
 
 	// Clean up old entries if we exceed max entries
