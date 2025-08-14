@@ -51,10 +51,12 @@ type FileManager struct {
 	fileBinding    binding.UntypedList
 	config         *config.Config
 	configManager  *config.Manager
-	cursorRenderer ui.CursorRenderer         // Cursor display renderer
-	keyManager     *keymanager.KeyManager    // Keyboard input manager
-	dirWatcher     *watcher.DirectoryWatcher // Directory change watcher
-	currentFilter  *config.FilterEntry       // Currently applied filter
+	cursorRenderer ui.CursorRenderer                       // Cursor display renderer
+	keyManager     *keymanager.KeyManager                  // Keyboard input manager
+	dirWatcher     *watcher.DirectoryWatcher               // Directory change watcher
+	currentFilter  *config.FilterEntry                     // Currently applied filter
+	searchOverlay  *ui.IncrementalSearchOverlay            // Incremental search overlay
+	searchHandler  *keymanager.IncrementalSearchKeyHandler // Search key handler
 }
 
 // Interface implementation for watcher.FileManager
@@ -178,6 +180,10 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 
 	// Create directory watcher
 	fm.dirWatcher = watcher.NewDirectoryWatcher(fm, debugPrint)
+
+	// Create incremental search overlay
+	fm.searchOverlay = ui.NewIncrementalSearchOverlay([]fileinfo.FileInfo{}, fm.keyManager, debugPrint)
+	fm.searchHandler = keymanager.NewIncrementalSearchKeyHandler(fm, debugPrint)
 
 	// Setup KeyManager with main screen handler
 	mainHandler := keymanager.NewMainScreenKeyHandler(fm, debugPrint)
@@ -404,11 +410,21 @@ func (fm *FileManager) setupUI() {
 		}),
 	)
 
-	// Layout without overlay
-	content := container.NewBorder(
+	// Layout with search overlay
+	mainContent := container.NewBorder(
 		container.NewVBox(toolbar, fm.pathEntry),
 		nil, nil, nil,
 		fm.fileListView,
+	)
+
+	// Stack main content with search overlay on top
+	content := container.NewMax(
+		mainContent,
+		container.NewBorder(
+			fm.searchOverlay.GetContainer(), // Top overlay
+			nil, nil, nil,
+			nil, // Center is empty, overlay is at top
+		),
 	)
 
 	fm.window.SetContent(content)
@@ -903,6 +919,149 @@ func (fm *FileManager) saveFilterToHistory(entry *config.FilterEntry) {
 	// Save config to disk
 	if err := fm.configManager.Save(fm.config); err != nil {
 		debugPrint("Error saving filter history: %v", err)
+	}
+}
+
+// ShowIncrementalSearchDialog shows the incremental search overlay
+func (fm *FileManager) ShowIncrementalSearchDialog() {
+	debugPrint("Starting incremental search mode")
+
+	// Update overlay with current files
+	fm.searchOverlay.UpdateFiles(fm.files)
+
+	// Set up callbacks
+	fm.searchOverlay.SetCallback(func(selectedFile *fileinfo.FileInfo) {
+		// Navigate to selected file/directory
+		if selectedFile.IsDir {
+			// For directories, navigate into them
+			targetPath := filepath.Join(fm.currentPath, selectedFile.Name)
+			debugPrint("Incremental search: navigating to directory %s", targetPath)
+			fm.LoadDirectory(targetPath)
+		} else {
+			// For files, set cursor to them
+			fm.SetCursorToFile(selectedFile)
+		}
+
+		// Pop the search handler and refocus main view
+		fm.keyManager.PopHandler()
+		if fm.fileListView != nil {
+			fm.window.Canvas().Focus(fm.fileListView)
+		}
+	})
+
+	fm.searchOverlay.SetCancelCallback(func() {
+		debugPrint("Incremental search cancelled")
+		// Pop the search handler and refocus main view
+		fm.keyManager.PopHandler()
+		if fm.fileListView != nil {
+			fm.window.Canvas().Focus(fm.fileListView)
+		}
+	})
+
+	// Push the search handler and show overlay
+	fm.keyManager.PushHandler(fm.searchHandler)
+	fm.searchOverlay.Show(fm.window)
+}
+
+// IncrementalSearchInterface implementation methods
+
+// ShowIncrementalSearchOverlay shows the search overlay
+func (fm *FileManager) ShowIncrementalSearchOverlay() {
+	fm.ShowIncrementalSearchDialog()
+}
+
+// HideIncrementalSearchOverlay hides the search overlay
+func (fm *FileManager) HideIncrementalSearchOverlay() {
+	if fm.searchOverlay != nil {
+		fm.searchOverlay.Hide()
+	}
+}
+
+// IsIncrementalSearchVisible returns whether the search overlay is visible
+func (fm *FileManager) IsIncrementalSearchVisible() bool {
+	return fm.searchOverlay != nil && fm.searchOverlay.IsVisible()
+}
+
+// AddSearchCharacter adds a character to the search term
+func (fm *FileManager) AddSearchCharacter(char rune) {
+	if fm.searchOverlay != nil {
+		fm.searchOverlay.AddCharacter(char)
+		// Update cursor to current match
+		currentMatch := fm.searchOverlay.GetCurrentMatch()
+		if currentMatch != nil {
+			fm.SetCursorToFile(currentMatch)
+		}
+	}
+}
+
+// RemoveLastSearchCharacter removes the last character from search term
+func (fm *FileManager) RemoveLastSearchCharacter() {
+	if fm.searchOverlay != nil {
+		fm.searchOverlay.RemoveLastCharacter()
+		// Update cursor to current match
+		currentMatch := fm.searchOverlay.GetCurrentMatch()
+		if currentMatch != nil {
+			fm.SetCursorToFile(currentMatch)
+		}
+	}
+}
+
+// NextSearchMatch moves to the next matching file
+func (fm *FileManager) NextSearchMatch() {
+	if fm.searchOverlay != nil {
+		fm.searchOverlay.NextMatch()
+		// Update cursor to current match
+		currentMatch := fm.searchOverlay.GetCurrentMatch()
+		if currentMatch != nil {
+			fm.SetCursorToFile(currentMatch)
+		}
+	}
+}
+
+// PreviousSearchMatch moves to the previous matching file
+func (fm *FileManager) PreviousSearchMatch() {
+	if fm.searchOverlay != nil {
+		fm.searchOverlay.PreviousMatch()
+		// Update cursor to current match
+		currentMatch := fm.searchOverlay.GetCurrentMatch()
+		if currentMatch != nil {
+			fm.SetCursorToFile(currentMatch)
+		}
+	}
+}
+
+// SelectCurrentSearchMatch selects the current search match
+func (fm *FileManager) SelectCurrentSearchMatch() {
+	if fm.searchOverlay != nil {
+		fm.searchOverlay.SelectCurrentMatch()
+	}
+}
+
+// GetCurrentSearchMatch returns the current search match
+func (fm *FileManager) GetCurrentSearchMatch() *fileinfo.FileInfo {
+	if fm.searchOverlay != nil {
+		return fm.searchOverlay.GetCurrentMatch()
+	}
+	return nil
+}
+
+// OpenFile opens a file or navigates to directory
+func (fm *FileManager) OpenFile(file *fileinfo.FileInfo) {
+	if file.IsDir {
+		targetPath := filepath.Join(fm.currentPath, file.Name)
+		fm.LoadDirectory(targetPath)
+	}
+	// For regular files, we don't open them, just set cursor
+}
+
+// SetCursorToFile sets the cursor to the specified file
+func (fm *FileManager) SetCursorToFile(file *fileinfo.FileInfo) {
+	for i, f := range fm.files {
+		if f.Name == file.Name {
+			fm.SetCursorByIndex(i)
+			fm.RefreshCursor()
+			break
+		}
 	}
 }
 

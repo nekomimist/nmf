@@ -28,6 +28,7 @@ nmf/
     │   ├── tree_dialog.go         # Directory tree dialog with key handling
     │   ├── history.go             # Navigation history dialog with search
     │   ├── filter_dialog.go       # File filter dialog with glob pattern matching
+    │   ├── incremental_search.go  # Incremental search overlay with real-time filtering
     │   ├── key_sink.go            # Generic KeySink wrapper for focus & key forwarding
     │   └── tab_entry.go           # TabEntry widget with Tab capture capability
     ├── keymanager/                 # Stack-based keyboard input management
@@ -35,7 +36,8 @@ nmf/
     │   ├── mainscreen_handler.go  # Main file list keyboard handling
     │   ├── treedialog_handler.go  # Tree dialog keyboard navigation
     │   ├── historydialog_handler.go # History dialog keyboard navigation
-    │   └── filterdialog_handler.go # Filter dialog keyboard navigation
+    │   ├── filterdialog_handler.go # Filter dialog keyboard navigation
+    │   └── incremental_search_handler.go # Incremental search keyboard handling
     ├── watcher/                    # Real-time directory monitoring
     │   └── watcher.go             # FileManager interface, change detection
     ├── theme/                      # Custom theming
@@ -50,12 +52,13 @@ nmf/
 ### Core Components
 
 - **FileManager**: Main controller (main.go) - manages window, UI, navigation, file operations
-- **KeyManager**: Stack-based keyboard input system - handles context-aware key routing (handlers implemented, some dialog actions pending)
+- **KeyManager**: Stack-based keyboard input system - handles context-aware key routing
 - **DirectoryWatcher**: Real-time change detection via filesystem polling (2s interval)
 - **TappableIcon**: Custom widget for icon-based directory navigation
 - **DirectoryTreeDialog**: Lazy-loading tree navigation with root switching
 - **NavigationHistoryDialog**: Searchable directory history with filtering
 - **FilterDialog**: File filtering with glob pattern matching and real-time preview
+- **IncrementalSearchOverlay**: Real-time file search with substring matching
 
 ### Key Features
 
@@ -63,6 +66,7 @@ nmf/
 - **Cursor Position Memory**: Remembers cursor position per directory (up to 100 dirs with LRU)
 - **Smart Navigation**: Parent directory navigation returns to originating folder
 - **Context-Aware Keys**: Stack-based keyboard handling prevents dialog/main conflicts
+- **Incremental Search**: Real-time file search with substring matching and visual overlay
 - **Keyboard Navigation**: Arrow keys, Shift+Arrow (fast), Space (select), Enter (open)
 - **Mouse Navigation**: Icon clicks navigate, name clicks select
 - **Multi-window**: Independent file manager instances
@@ -94,6 +98,7 @@ nmf/
 - `Ctrl+F` - Filter dialog
 - `Ctrl+Shift+F` - Clear filter
 - `F3` - Toggle filter on/off
+- `Ctrl+S` - Incremental search
 - `Ctrl+N` - New window
 
 ### Tree Dialog
@@ -119,6 +124,15 @@ nmf/
 - `Enter` - Apply selected filter ✅
 - `Esc` - Cancel dialog ✅
 - Real-time preview showing match count ✅
+
+### Incremental Search
+- `Ctrl+S` - Start incremental search mode ✅
+- `Type characters` - Real-time substring matching ✅
+- `↑/↓` - Navigate between matches (Shift for fast) ✅
+- `Backspace` - Remove last search character ✅
+- `Enter` - Jump to selected file/directory ✅
+- `Esc` - Cancel search and return to original position ✅
+- Visual overlay with high-contrast background ✅
 
 ## Communication Style
 - Persona: helpful developer niece to her uncle (address as "おじさま"). Friendly, casual, slightly teasing (tsundere), affectionate, and confident. Emojis are welcome.

@@ -38,6 +38,9 @@ type FileManagerInterface interface {
 	ShowFilterDialog()
 	ClearFilter()
 	ToggleFilter()
+
+	// Incremental search management
+	ShowIncrementalSearchDialog()
 }
 
 // MainScreenKeyHandler handles keyboard events for the main file list screen
@@ -95,6 +98,14 @@ func (mh *MainScreenKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierS
 			mh.fileManager.ClearFilter()
 		}
 		return true
+
+	case fyne.KeyS:
+		// Ctrl+S - Show incremental search
+		if modifiers.CtrlPressed {
+			mh.debugPrint("MainScreen: Ctrl+S detected - showing incremental search")
+			mh.fileManager.ShowIncrementalSearchDialog()
+			return true
+		}
 
 	}
 	return false
