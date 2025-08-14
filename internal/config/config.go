@@ -42,6 +42,7 @@ type UIConfig struct {
 	FileColors        fileinfo.FileColorConfig `json:"fileColors"`
 	CursorMemory      CursorMemoryConfig       `json:"cursorMemory"`
 	NavigationHistory NavigationHistoryConfig  `json:"navigationHistory"`
+	FileFilter        FileFilterConfig         `json:"fileFilter"`
 }
 
 // CursorStyleConfig represents cursor appearance settings
@@ -63,6 +64,21 @@ type NavigationHistoryConfig struct {
 	MaxEntries int                  `json:"maxEntries"` // Maximum number of paths to remember
 	Entries    []string             `json:"entries"`    // Path history (newest first)
 	LastUsed   map[string]time.Time `json:"lastUsed"`   // LRU management
+}
+
+// FilterEntry represents a single filter pattern with metadata
+type FilterEntry struct {
+	Pattern  string    `json:"pattern"`  // Doublestar glob pattern
+	LastUsed time.Time `json:"lastUsed"` // Last usage timestamp
+	UseCount int       `json:"useCount"` // Usage frequency counter
+}
+
+// FileFilterConfig represents file filter settings
+type FileFilterConfig struct {
+	MaxEntries int           `json:"maxEntries"` // Maximum number of filter patterns to remember
+	Entries    []FilterEntry `json:"entries"`    // Filter history (most recent first)
+	Enabled    bool          `json:"enabled"`    // Current filter enabled state
+	Current    *FilterEntry  `json:"current"`    // Currently applied filter pattern
 }
 
 // Manager provides configuration management functionality
@@ -155,6 +171,12 @@ func getDefaultConfig() *Config {
 				MaxEntries: 50,
 				Entries:    make([]string, 0),
 				LastUsed:   make(map[string]time.Time),
+			},
+			FileFilter: FileFilterConfig{
+				MaxEntries: 30,
+				Entries:    make([]FilterEntry, 0),
+				Enabled:    false,
+				Current:    nil,
 			},
 		},
 	}
@@ -275,6 +297,19 @@ func mergeConfigs(defaultConfig *Config, fileConfig *Config) {
 	}
 	if fileConfig.UI.NavigationHistory.LastUsed != nil {
 		defaultConfig.UI.NavigationHistory.LastUsed = fileConfig.UI.NavigationHistory.LastUsed
+	}
+
+	// Merge FileFilter config
+	if fileConfig.UI.FileFilter.MaxEntries != 0 {
+		defaultConfig.UI.FileFilter.MaxEntries = fileConfig.UI.FileFilter.MaxEntries
+	}
+	if fileConfig.UI.FileFilter.Entries != nil {
+		defaultConfig.UI.FileFilter.Entries = fileConfig.UI.FileFilter.Entries
+	}
+	// Always merge Enabled and Current states
+	defaultConfig.UI.FileFilter.Enabled = fileConfig.UI.FileFilter.Enabled
+	if fileConfig.UI.FileFilter.Current != nil {
+		defaultConfig.UI.FileFilter.Current = fileConfig.UI.FileFilter.Current
 	}
 }
 

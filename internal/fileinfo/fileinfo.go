@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/theme"
+	"github.com/bmatcuk/doublestar/v4"
 )
 
 // FileType represents the type of file
@@ -179,4 +180,51 @@ func (s *ColoredTextSegment) SelectedText() string {
 
 func (s *ColoredTextSegment) Unselect() {
 	// Unselection handling - could be implemented if needed
+}
+
+// FilterFiles filters a slice of FileInfo based on a doublestar glob pattern
+// Directories are always included to maintain navigation capability
+func FilterFiles(files []FileInfo, pattern string) ([]FileInfo, error) {
+	if pattern == "" {
+		return files, nil
+	}
+
+	var filtered []FileInfo
+	for _, file := range files {
+		// Always include directories (including ".." parent directory)
+		if file.IsDir {
+			filtered = append(filtered, file)
+			continue
+		}
+
+		// Apply pattern matching only to regular files
+		matched, err := doublestar.Match(pattern, file.Name)
+		if err != nil {
+			// Invalid pattern - return error
+			return nil, fmt.Errorf("invalid filter pattern '%s': %w", pattern, err)
+		}
+		if matched {
+			filtered = append(filtered, file)
+		}
+	}
+
+	return filtered, nil
+}
+
+// MatchesPattern checks if a single filename matches a doublestar glob pattern
+func MatchesPattern(filename, pattern string) (bool, error) {
+	if pattern == "" {
+		return true, nil
+	}
+	return doublestar.Match(pattern, filename)
+}
+
+// ValidatePattern validates that a pattern is a valid doublestar glob pattern
+func ValidatePattern(pattern string) error {
+	if pattern == "" {
+		return nil
+	}
+	// Test the pattern with a dummy filename to check for syntax errors
+	_, err := doublestar.Match(pattern, "test")
+	return err
 }

@@ -34,6 +34,11 @@ type FileManagerInterface interface {
 	OpenNewWindow()
 	ShowDirectoryTreeDialog()
 	ShowNavigationHistoryDialog()
+
+	// Filter management
+	ShowFilterDialog()
+	ClearFilter()
+	ToggleFilter()
 }
 
 // MainScreenKeyHandler handles keyboard events for the main file list screen
@@ -91,8 +96,20 @@ func (mh *MainScreenKeyHandler) OnKeyDown(ev *fyne.KeyEvent) bool {
 			mh.fileManager.ShowNavigationHistoryDialog()
 			return true
 		}
-	}
 
+	case fyne.KeyF:
+		if mh.ctrlPressed && !mh.shiftPressed {
+			// Ctrl+F - Show filter dialog
+			mh.debugPrint("MainScreen: Ctrl+F detected - showing filter dialog")
+			mh.fileManager.ShowFilterDialog()
+		} else if mh.ctrlPressed && mh.shiftPressed {
+			// Ctrl+Shift+F - Clear filter
+			mh.debugPrint("MainScreen: Ctrl+Shift+F detected - clearing filter")
+			mh.fileManager.ClearFilter()
+		}
+		return true
+
+	}
 	return false
 }
 
@@ -233,6 +250,16 @@ func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent) bool {
 			}
 		}
 		return true
+
+	case fyne.KeyF3:
+		// F3 - Toggle filter
+		mh.debugPrint("MainScreen: F3 detected")
+		if !mh.ctrlPressed && !mh.shiftPressed {
+			mh.debugPrint("MainScreen: F3 detected - toggling filter")
+			mh.fileManager.ToggleFilter()
+		}
+		return true
+
 	}
 
 	return false

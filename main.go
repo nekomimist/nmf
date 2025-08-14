@@ -42,6 +42,7 @@ type FileManager struct {
 	window         fyne.Window
 	currentPath    string
 	files          []fileinfo.FileInfo
+	originalFiles  []fileinfo.FileInfo // Original files before filtering
 	fileList       *widget.List
 	fileListView   *ui.KeySink
 	pathEntry      *ui.TabEntry
@@ -53,6 +54,7 @@ type FileManager struct {
 	cursorRenderer ui.CursorRenderer         // Cursor display renderer
 	keyManager     *keymanager.KeyManager    // Keyboard input manager
 	dirWatcher     *watcher.DirectoryWatcher // Directory change watcher
+	currentFilter  *config.FilterEntry       // Currently applied filter
 }
 
 // Interface implementation for watcher.FileManager
@@ -65,7 +67,20 @@ func (fm *FileManager) GetFiles() []fileinfo.FileInfo {
 }
 
 func (fm *FileManager) UpdateFiles(files []fileinfo.FileInfo) {
-	fm.files = files
+	fm.originalFiles = files
+
+	// Apply filter if one is active
+	if fm.currentFilter != nil && fm.currentFilter.Pattern != "" {
+		filtered, err := fileinfo.FilterFiles(files, fm.currentFilter.Pattern)
+		if err != nil {
+			debugPrint("Filter error: %v", err)
+			fm.files = files // Fall back to showing all files
+		} else {
+			fm.files = filtered
+		}
+	} else {
+		fm.files = files
+	}
 
 	// Update binding to reflect all changes (this auto-refreshes UI)
 	items := make([]interface{}, len(fm.files))
@@ -726,6 +741,169 @@ func (fm *FileManager) SetFileSelected(path string, selected bool) {
 // RefreshFileList refreshes the file list display
 func (fm *FileManager) RefreshFileList() {
 	fm.fileList.Refresh()
+}
+
+// ShowFilterDialog displays the file filter dialog
+func (fm *FileManager) ShowFilterDialog() {
+	// Get current filter entries from config
+	entries := fm.config.UI.FileFilter.Entries
+
+	// Use originalFiles if available, otherwise use current files
+	currentFiles := fm.originalFiles
+	if len(currentFiles) == 0 {
+		currentFiles = fm.files
+	}
+
+	filterDialog := ui.NewFilterDialog(entries, currentFiles, fm.keyManager, debugPrint)
+	filterDialog.ShowDialog(fm.window, func(selectedEntry *config.FilterEntry) {
+		if selectedEntry != nil {
+			fm.ApplyFilter(selectedEntry)
+			fm.saveFilterToHistory(selectedEntry)
+		}
+	})
+}
+
+// ApplyFilter applies a filter to the current file list
+func (fm *FileManager) ApplyFilter(entry *config.FilterEntry) {
+	if entry == nil || entry.Pattern == "" {
+		fm.ClearFilter()
+		return
+	}
+
+	// Validate pattern first
+	if err := fileinfo.ValidatePattern(entry.Pattern); err != nil {
+		debugPrint("Invalid filter pattern '%s': %v", entry.Pattern, err)
+		return
+	}
+
+	fm.currentFilter = entry
+	fm.config.UI.FileFilter.Current = entry
+	fm.config.UI.FileFilter.Enabled = true
+
+	// Use originalFiles if available, otherwise use current files as base
+	baseFiles := fm.originalFiles
+	if len(baseFiles) == 0 {
+		baseFiles = fm.files
+		fm.originalFiles = make([]fileinfo.FileInfo, len(fm.files))
+		copy(fm.originalFiles, fm.files)
+	}
+
+	// Apply filter
+	filtered, err := fileinfo.FilterFiles(baseFiles, entry.Pattern)
+	if err != nil {
+		debugPrint("Filter error: %v", err)
+		return
+	}
+
+	fm.files = filtered
+
+	// Update UI
+	items := make([]interface{}, len(fm.files))
+	for i, file := range fm.files {
+		items[i] = fileinfo.ListItem{
+			Index:    i,
+			FileInfo: file,
+		}
+	}
+	fm.fileBinding.Set(items)
+
+	// Reset cursor to first item if available
+	if len(fm.files) > 0 {
+		fm.SetCursorByIndex(0)
+		fm.RefreshCursor()
+	}
+
+	debugPrint("Applied filter: %s (matched %d/%d files)", entry.Pattern, len(fm.files), len(baseFiles))
+}
+
+// ClearFilter completely removes the current filter (for Ctrl+Shift+F)
+func (fm *FileManager) ClearFilter() {
+	fm.currentFilter = nil
+	fm.config.UI.FileFilter.Current = nil // Complete clear
+	fm.config.UI.FileFilter.Enabled = false
+
+	if len(fm.originalFiles) > 0 {
+		fm.files = fm.originalFiles
+
+		// Update UI
+		items := make([]interface{}, len(fm.files))
+		for i, file := range fm.files {
+			items[i] = fileinfo.ListItem{
+				Index:    i,
+				FileInfo: file,
+			}
+		}
+		fm.fileBinding.Set(items)
+	}
+
+	debugPrint("Filter completely cleared, showing all %d files", len(fm.files))
+}
+
+// ToggleFilter toggles the current filter on/off
+func (fm *FileManager) ToggleFilter() {
+	if fm.config.UI.FileFilter.Enabled && fm.currentFilter != nil {
+		fm.DisableFilter()
+	} else if fm.config.UI.FileFilter.Current != nil {
+		fm.ApplyFilter(fm.config.UI.FileFilter.Current)
+	}
+}
+
+// DisableFilter temporarily disables the current filter (for toggle functionality)
+func (fm *FileManager) DisableFilter() {
+	fm.currentFilter = nil
+	// Keep fm.config.UI.FileFilter.Current for toggle functionality
+	fm.config.UI.FileFilter.Enabled = false
+
+	if len(fm.originalFiles) > 0 {
+		fm.files = fm.originalFiles
+
+		// Update UI
+		items := make([]interface{}, len(fm.files))
+		for i, file := range fm.files {
+			items[i] = fileinfo.ListItem{
+				Index:    i,
+				FileInfo: file,
+			}
+		}
+		fm.fileBinding.Set(items)
+	}
+
+	debugPrint("Filter disabled, showing all %d files", len(fm.files))
+}
+
+// saveFilterToHistory saves a filter entry to the history
+func (fm *FileManager) saveFilterToHistory(entry *config.FilterEntry) {
+	if entry == nil || entry.Pattern == "" {
+		return
+	}
+
+	filterConfig := &fm.config.UI.FileFilter
+
+	// Update existing entry or add new one
+	found := false
+	for i := range filterConfig.Entries {
+		if filterConfig.Entries[i].Pattern == entry.Pattern {
+			filterConfig.Entries[i].LastUsed = entry.LastUsed
+			filterConfig.Entries[i].UseCount = entry.UseCount
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		// Add new entry at the beginning
+		filterConfig.Entries = append([]config.FilterEntry{*entry}, filterConfig.Entries...)
+
+		// Trim to max entries
+		if len(filterConfig.Entries) > filterConfig.MaxEntries {
+			filterConfig.Entries = filterConfig.Entries[:filterConfig.MaxEntries]
+		}
+	}
+
+	// Save config to disk
+	if err := fm.configManager.Save(fm.config); err != nil {
+		debugPrint("Error saving filter history: %v", err)
+	}
 }
 
 func main() {
