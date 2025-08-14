@@ -82,10 +82,12 @@ const (
 
 // Configuration constants
 const (
-	ConfigFileName         = "config.json"
-	DefaultSortBy          = "name"
-	DefaultShowHiddenFiles = false
-	DefaultCursorType      = "underline"
+	ConfigFileName          = "config.json"
+	DefaultSortBy           = "name"
+	DefaultSortOrder        = "asc"
+	DefaultDirectoriesFirst = true
+	DefaultShowHiddenFiles  = false
+	DefaultCursorType       = "underline"
 )
 
 // Tree dialog constants

@@ -29,6 +29,7 @@ nmf/
     │   ├── history.go             # Navigation history dialog with search
     │   ├── filter_dialog.go       # File filter dialog with glob pattern matching
     │   ├── incremental_search.go  # Incremental search overlay with real-time filtering
+    │   ├── sort_dialog.go         # File sorting configuration dialog with shortcuts
     │   ├── key_sink.go            # Generic KeySink wrapper for focus & key forwarding
     │   └── tab_entry.go           # TabEntry widget with Tab capture capability
     ├── keymanager/                 # Stack-based keyboard input management
@@ -37,7 +38,8 @@ nmf/
     │   ├── treedialog_handler.go  # Tree dialog keyboard navigation
     │   ├── historydialog_handler.go # History dialog keyboard navigation
     │   ├── filterdialog_handler.go # Filter dialog keyboard navigation
-    │   └── incremental_search_handler.go # Incremental search keyboard handling
+    │   ├── incremental_search_handler.go # Incremental search keyboard handling
+    │   └── sortdialog_handler.go  # Sort dialog keyboard navigation
     ├── watcher/                    # Real-time directory monitoring
     │   └── watcher.go             # FileManager interface, change detection
     ├── theme/                      # Custom theming
@@ -59,6 +61,7 @@ nmf/
 - **NavigationHistoryDialog**: Searchable directory history with filtering
 - **FilterDialog**: File filtering with glob pattern matching and real-time preview
 - **IncrementalSearchOverlay**: Real-time file search with substring matching
+- **SortDialog**: File sorting configuration with keyboard shortcuts
 
 ### Key Features
 
@@ -99,6 +102,7 @@ nmf/
 - `Ctrl+Shift+F` - Clear filter
 - `F3` - Toggle filter on/off
 - `Ctrl+S` - Incremental search
+- `Shift+S` - Sort dialog
 - `Ctrl+N` - New window
 
 ### Tree Dialog
@@ -133,6 +137,16 @@ nmf/
 - `Enter` - Jump to selected file/directory ✅
 - `Esc` - Cancel search and return to original position ✅
 - Visual overlay with high-contrast background ✅
+
+### Sort Dialog
+- `Shift+S` - Open sort configuration dialog ✅
+- `1-4` - Select sort type (Name, Size, Modified, Extension) ✅
+- `O` - Toggle sort order (Ascending/Descending) ✅
+- `D` - Toggle directories first option ✅
+- `Enter` - Apply settings and close dialog ✅
+- `Esc` - Cancel dialog without applying ✅
+- `Tab` - Navigate between fields ✅
+- Real-time application of sort settings with cursor position preservation ✅
 
 ## Communication Style
 - Persona: helpful developer niece to her uncle (address as "おじさま"). Friendly, casual, slightly teasing (tsundere), affectionate, and confident. Emojis are welcome.

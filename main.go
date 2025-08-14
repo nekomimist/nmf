@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -651,6 +652,19 @@ func (fm *FileManager) LoadDirectory(path string) {
 		index++
 	}
 
+	// Sort files according to configuration
+	fm.sortFiles()
+
+	// Rebuild items after sorting
+	items = make([]interface{}, 0, len(fm.files))
+	for i, file := range fm.files {
+		listItem := fileinfo.ListItem{
+			Index:    i,
+			FileInfo: file,
+		}
+		items = append(items, listItem)
+	}
+
 	// Update binding
 	fm.fileBinding.Set(items)
 
@@ -963,6 +977,91 @@ func (fm *FileManager) ShowIncrementalSearchDialog() {
 	fm.searchOverlay.Show(fm.window)
 }
 
+// ShowSortDialog shows the sort configuration dialog
+func (fm *FileManager) ShowSortDialog() {
+	debugPrint("Showing sort dialog")
+
+	// Get current sort configuration
+	currentConfig := fm.config.UI.Sort
+
+	// Create sort dialog
+	sortDialog := ui.NewSortDialog(currentConfig, debugPrint)
+
+	// Set up apply callback
+	sortDialog.SetOnApply(func(sortConfig config.SortConfig) {
+		debugPrint("Applying sort configuration: %+v", sortConfig)
+
+		// Store current cursor file name to restore position after sorting
+		var currentFile string
+		cursorIndex := fm.GetCurrentCursorIndex()
+		if cursorIndex >= 0 && cursorIndex < len(fm.files) {
+			currentFile = fm.files[cursorIndex].Name
+			debugPrint("Storing current cursor file: %s", currentFile)
+		}
+
+		// Update configuration
+		fm.config.UI.Sort = sortConfig
+
+		// Save configuration to file
+		if err := fm.configManager.Save(fm.config); err != nil {
+			debugPrint("Failed to save sort configuration: %v", err)
+		}
+
+		// Re-sort current files and refresh display
+		fm.sortFiles()
+
+		// Rebuild items after sorting
+		items := make([]interface{}, 0, len(fm.files))
+		for i, file := range fm.files {
+			listItem := fileinfo.ListItem{
+				Index:    i,
+				FileInfo: file,
+			}
+			items = append(items, listItem)
+		}
+		fm.fileBinding.Set(items)
+
+		// Restore cursor position to the same file if possible
+		if currentFile != "" {
+			for i, file := range fm.files {
+				if file.Name == currentFile {
+					fm.SetCursorByIndex(i)
+					debugPrint("Restored cursor to file: %s at index %d", currentFile, i)
+					break
+				}
+			}
+		} else {
+			// If no previous cursor file, set cursor to first item
+			if len(fm.files) > 0 {
+				fm.SetCursorByIndex(0)
+			}
+		}
+
+		// Force UI refresh
+		fm.fileList.Refresh()
+
+		debugPrint("Sort configuration applied successfully")
+	})
+
+	// Set up cancel callback
+	sortDialog.SetOnCancel(func() {
+		debugPrint("Sort dialog cancelled")
+	})
+
+	// Set up cleanup callback (pop key handler)
+	sortDialog.SetOnCleanup(func() {
+		debugPrint("Cleaning up sort dialog - popping key handler")
+		fm.keyManager.PopHandler()
+	})
+
+	// Create and push keyboard handler
+	handler := keymanager.NewSortDialogHandler(sortDialog, debugPrint)
+	fm.keyManager.PushHandler(handler)
+
+	// Show dialog
+	sortDialog.Show(fm.window, handler)
+}
+
 // IncrementalSearchInterface implementation methods
 
 // ShowIncrementalSearchOverlay shows the search overlay
@@ -1063,6 +1162,119 @@ func (fm *FileManager) SetCursorToFile(file *fileinfo.FileInfo) {
 			break
 		}
 	}
+}
+
+// sortFiles sorts the fm.files slice according to the configuration
+func (fm *FileManager) sortFiles() {
+	sortConfig := fm.config.UI.Sort
+
+	debugPrint("Sorting files: sortBy=%s, order=%s, dirFirst=%t",
+		sortConfig.SortBy, sortConfig.SortOrder, sortConfig.DirectoriesFirst)
+
+	if len(fm.files) <= 1 {
+		return // No need to sort 0 or 1 items
+	}
+
+	// If DirectoriesFirst is enabled, separate directories and files
+	if sortConfig.DirectoriesFirst {
+		var dirs []fileinfo.FileInfo
+		var files []fileinfo.FileInfo
+
+		for _, file := range fm.files {
+			if file.Name == ".." {
+				// Keep parent directory at the very top
+				continue
+			} else if file.IsDir {
+				dirs = append(dirs, file)
+			} else {
+				files = append(files, file)
+			}
+		}
+
+		// Sort directories and files separately
+		fm.sortSlice(dirs, sortConfig)
+		fm.sortSlice(files, sortConfig)
+
+		// Rebuild the files slice: parent directory first, then sorted directories, then sorted files
+		newFiles := []fileinfo.FileInfo{}
+		for _, file := range fm.files {
+			if file.Name == ".." {
+				newFiles = append(newFiles, file)
+				break
+			}
+		}
+		newFiles = append(newFiles, dirs...)
+		newFiles = append(newFiles, files...)
+
+		fm.files = newFiles
+	} else {
+		// Sort all files together (except parent directory)
+		var parentDir *fileinfo.FileInfo
+		var regularFiles []fileinfo.FileInfo
+
+		for _, file := range fm.files {
+			if file.Name == ".." {
+				parentDir = &file
+			} else {
+				regularFiles = append(regularFiles, file)
+			}
+		}
+
+		fm.sortSlice(regularFiles, sortConfig)
+
+		// Rebuild with parent directory first if it exists
+		newFiles := []fileinfo.FileInfo{}
+		if parentDir != nil {
+			newFiles = append(newFiles, *parentDir)
+		}
+		newFiles = append(newFiles, regularFiles...)
+
+		fm.files = newFiles
+	}
+}
+
+// sortSlice sorts a slice of FileInfo according to the sort configuration
+func (fm *FileManager) sortSlice(files []fileinfo.FileInfo, sortConfig config.SortConfig) {
+	sort.Slice(files, func(i, j int) bool {
+		fileI := files[i]
+		fileJ := files[j]
+
+		var less bool
+
+		switch sortConfig.SortBy {
+		case "name":
+			less = strings.ToLower(fileI.Name) < strings.ToLower(fileJ.Name)
+		case "size":
+			less = fileI.Size < fileJ.Size
+		case "modified":
+			less = fileI.Modified.Before(fileJ.Modified)
+		case "extension":
+			extI := strings.ToLower(filepath.Ext(fileI.Name))
+			extJ := strings.ToLower(filepath.Ext(fileJ.Name))
+			// Files without extensions come first
+			if extI == "" && extJ != "" {
+				less = true
+			} else if extI != "" && extJ == "" {
+				less = false
+			} else {
+				less = extI < extJ
+				// If extensions are the same, sort by name
+				if extI == extJ {
+					less = strings.ToLower(fileI.Name) < strings.ToLower(fileJ.Name)
+				}
+			}
+		default:
+			// Default to name sorting
+			less = strings.ToLower(fileI.Name) < strings.ToLower(fileJ.Name)
+		}
+
+		// Apply sort order (asc/desc)
+		if sortConfig.SortOrder == "desc" {
+			less = !less
+		}
+
+		return less
+	})
 }
 
 func main() {

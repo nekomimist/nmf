@@ -41,6 +41,9 @@ type FileManagerInterface interface {
 
 	// Incremental search management
 	ShowIncrementalSearchDialog()
+
+	// Sort management
+	ShowSortDialog()
 }
 
 // MainScreenKeyHandler handles keyboard events for the main file list screen
@@ -104,6 +107,12 @@ func (mh *MainScreenKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierS
 		if modifiers.CtrlPressed {
 			mh.debugPrint("MainScreen: Ctrl+S detected - showing incremental search")
 			mh.fileManager.ShowIncrementalSearchDialog()
+			return true
+		}
+		// Shift+S - Show sort dialog
+		if modifiers.ShiftPressed {
+			mh.debugPrint("MainScreen: Shift+S detected - showing sort dialog")
+			mh.fileManager.ShowSortDialog()
 			return true
 		}
 

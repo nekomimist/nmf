@@ -36,13 +36,20 @@ type ThemeConfig struct {
 // UIConfig represents UI-related settings
 type UIConfig struct {
 	ShowHiddenFiles   bool                     `json:"showHiddenFiles"`
-	SortBy            string                   `json:"sortBy"`
+	Sort              SortConfig               `json:"sort"`
 	ItemSpacing       int                      `json:"itemSpacing"`
 	CursorStyle       CursorStyleConfig        `json:"cursorStyle"`
 	FileColors        fileinfo.FileColorConfig `json:"fileColors"`
 	CursorMemory      CursorMemoryConfig       `json:"cursorMemory"`
 	NavigationHistory NavigationHistoryConfig  `json:"navigationHistory"`
 	FileFilter        FileFilterConfig         `json:"fileFilter"`
+}
+
+// SortConfig represents file sorting settings
+type SortConfig struct {
+	SortBy           string `json:"sortBy"`           // "name", "size", "modified", "extension"
+	SortOrder        string `json:"sortOrder"`        // "asc", "desc"
+	DirectoriesFirst bool   `json:"directoriesFirst"` // Whether to show directories before files
 }
 
 // CursorStyleConfig represents cursor appearance settings
@@ -149,8 +156,12 @@ func getDefaultConfig() *Config {
 		},
 		UI: UIConfig{
 			ShowHiddenFiles: false,
-			SortBy:          "name",
-			ItemSpacing:     4,
+			Sort: SortConfig{
+				SortBy:           "name",
+				SortOrder:        "asc",
+				DirectoriesFirst: true,
+			},
+			ItemSpacing: 4,
 			CursorStyle: CursorStyleConfig{
 				Type:      "underline",
 				Color:     [4]uint8{255, 255, 255, 255}, // White
@@ -245,9 +256,14 @@ func mergeConfigs(defaultConfig *Config, fileConfig *Config) {
 
 	// Merge UI config
 	defaultConfig.UI.ShowHiddenFiles = fileConfig.UI.ShowHiddenFiles
-	if fileConfig.UI.SortBy != "" {
-		defaultConfig.UI.SortBy = fileConfig.UI.SortBy
+	if fileConfig.UI.Sort.SortBy != "" {
+		defaultConfig.UI.Sort.SortBy = fileConfig.UI.Sort.SortBy
 	}
+	if fileConfig.UI.Sort.SortOrder != "" {
+		defaultConfig.UI.Sort.SortOrder = fileConfig.UI.Sort.SortOrder
+	}
+	// DirectoriesFirst is a boolean, so we merge it directly
+	defaultConfig.UI.Sort.DirectoriesFirst = fileConfig.UI.Sort.DirectoriesFirst
 	if fileConfig.UI.ItemSpacing != 0 {
 		defaultConfig.UI.ItemSpacing = fileConfig.UI.ItemSpacing
 	}

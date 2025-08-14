@@ -36,8 +36,14 @@ func TestGetDefaultConfig(t *testing.T) {
 	if config.UI.ShowHiddenFiles {
 		t.Error("Expected ShowHiddenFiles to be false by default")
 	}
-	if config.UI.SortBy != "name" {
-		t.Errorf("Expected default sort by 'name', got '%s'", config.UI.SortBy)
+	if config.UI.Sort.SortBy != "name" {
+		t.Errorf("Expected default sort by 'name', got '%s'", config.UI.Sort.SortBy)
+	}
+	if config.UI.Sort.SortOrder != "asc" {
+		t.Errorf("Expected default sort order 'asc', got '%s'", config.UI.Sort.SortOrder)
+	}
+	if !config.UI.Sort.DirectoriesFirst {
+		t.Error("Expected default DirectoriesFirst to be true")
 	}
 	if config.UI.ItemSpacing != 4 {
 		t.Errorf("Expected default item spacing 4, got %d", config.UI.ItemSpacing)
@@ -72,8 +78,12 @@ func TestMergeConfigs(t *testing.T) {
 		},
 		UI: UIConfig{
 			ShowHiddenFiles: true,
-			SortBy:          "size",
-			ItemSpacing:     8,
+			Sort: SortConfig{
+				SortBy:           "size",
+				SortOrder:        "desc",
+				DirectoriesFirst: false,
+			},
+			ItemSpacing: 8,
 			CursorStyle: CursorStyleConfig{
 				Type:      "border",
 				Color:     [4]uint8{255, 0, 0, 255},
@@ -103,8 +113,14 @@ func TestMergeConfigs(t *testing.T) {
 	if defaultConfig.UI.ShowHiddenFiles != true {
 		t.Error("Expected merged ShowHiddenFiles to be true")
 	}
-	if defaultConfig.UI.SortBy != "size" {
-		t.Errorf("Expected merged sort by 'size', got '%s'", defaultConfig.UI.SortBy)
+	if defaultConfig.UI.Sort.SortBy != "size" {
+		t.Errorf("Expected merged sort by 'size', got '%s'", defaultConfig.UI.Sort.SortBy)
+	}
+	if defaultConfig.UI.Sort.SortOrder != "desc" {
+		t.Errorf("Expected merged sort order 'desc', got '%s'", defaultConfig.UI.Sort.SortOrder)
+	}
+	if defaultConfig.UI.Sort.DirectoriesFirst != false {
+		t.Error("Expected merged DirectoriesFirst to be false")
 	}
 	if defaultConfig.UI.CursorStyle.Type != "border" {
 		t.Errorf("Expected merged cursor type 'border', got '%s'", defaultConfig.UI.CursorStyle.Type)
@@ -196,7 +212,11 @@ func TestManagerSaveAndLoad(t *testing.T) {
 		Theme:  ThemeConfig{Dark: false, FontSize: 18},
 		UI: UIConfig{
 			ShowHiddenFiles: true,
-			SortBy:          "modified",
+			Sort: SortConfig{
+				SortBy:           "modified",
+				SortOrder:        "desc",
+				DirectoriesFirst: true,
+			},
 			CursorStyle: CursorStyleConfig{
 				Type:      "background",
 				Thickness: 5,
