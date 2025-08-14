@@ -4,21 +4,28 @@ import (
 	"sync"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/driver/desktop"
 )
+
+// ModifierState holds the current state of modifier keys
+type ModifierState struct {
+	ShiftPressed bool
+	CtrlPressed  bool
+}
 
 // KeyHandler defines the interface for handling keyboard events
 type KeyHandler interface {
 	// OnKeyDown handles key press events
-	OnKeyDown(ev *fyne.KeyEvent) bool // returns true if handled
+	OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool // returns true if handled
 
 	// OnKeyUp handles key release events
-	OnKeyUp(ev *fyne.KeyEvent) bool // returns true if handled
+	OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool // returns true if handled
 
 	// OnTypedKey handles typed key events
-	OnTypedKey(ev *fyne.KeyEvent) bool // returns true if handled
+	OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool // returns true if handled
 
 	// OnTypedRune handles text input runes
-	OnTypedRune(r rune) bool // returns true if handled
+	OnTypedRune(r rune, modifiers ModifierState) bool // returns true if handled
 
 	// GetName returns a descriptive name for this handler (for debugging)
 	GetName() string
@@ -26,9 +33,10 @@ type KeyHandler interface {
 
 // KeyManager manages a stack of key handlers
 type KeyManager struct {
-	handlers   []KeyHandler
-	mutex      sync.RWMutex
-	debugPrint func(format string, args ...interface{})
+	handlers      []KeyHandler
+	modifierState ModifierState
+	mutex         sync.RWMutex
+	debugPrint    func(format string, args ...interface{})
 }
 
 // NewKeyManager creates a new KeyManager instance
@@ -80,15 +88,44 @@ func (km *KeyManager) GetCurrentHandler() KeyHandler {
 	return km.handlers[len(km.handlers)-1]
 }
 
+// updateModifierState updates the modifier key state based on key events
+func (km *KeyManager) updateModifierState(ev *fyne.KeyEvent, pressed bool) bool {
+	switch ev.Name {
+	case desktop.KeyShiftLeft, desktop.KeyShiftRight:
+		km.modifierState.ShiftPressed = pressed
+		km.debugPrint("KeyManager: Shift key %s (state: %t)", map[bool]string{true: "pressed", false: "released"}[pressed], km.modifierState.ShiftPressed)
+		return true
+	case desktop.KeyControlLeft, desktop.KeyControlRight:
+		km.modifierState.CtrlPressed = pressed
+		km.debugPrint("KeyManager: Ctrl key %s (state: %t)", map[bool]string{true: "pressed", false: "released"}[pressed], km.modifierState.CtrlPressed)
+		return true
+	}
+	return false
+}
+
+// GetModifierState returns a copy of the current modifier state
+func (km *KeyManager) GetModifierState() ModifierState {
+	km.mutex.RLock()
+	defer km.mutex.RUnlock()
+	return km.modifierState
+}
+
 // HandleKeyDown routes key down events to the current top handler
 func (km *KeyManager) HandleKeyDown(ev *fyne.KeyEvent) {
+	km.mutex.Lock()
+	// Update modifier state first
+	modifierHandled := km.updateModifierState(ev, true)
+	modifiers := km.modifierState
+	km.mutex.Unlock()
+
+	// Get current handler
 	km.mutex.RLock()
 	currentHandler := km.GetCurrentHandler()
 	km.mutex.RUnlock()
 
 	if currentHandler != nil {
-		handled := currentHandler.OnKeyDown(ev)
-		km.debugPrint("KeyManager: KeyDown event handled by '%s': %t", currentHandler.GetName(), handled)
+		handled := currentHandler.OnKeyDown(ev, modifiers)
+		km.debugPrint("KeyManager: KeyDown event handled by '%s': %t (modifier: %t)", currentHandler.GetName(), handled, modifierHandled)
 	} else {
 		km.debugPrint("KeyManager: No handler available for KeyDown event")
 	}
@@ -96,13 +133,20 @@ func (km *KeyManager) HandleKeyDown(ev *fyne.KeyEvent) {
 
 // HandleKeyUp routes key up events to the current top handler
 func (km *KeyManager) HandleKeyUp(ev *fyne.KeyEvent) {
+	km.mutex.Lock()
+	// Update modifier state first
+	modifierHandled := km.updateModifierState(ev, false)
+	modifiers := km.modifierState
+	km.mutex.Unlock()
+
+	// Get current handler
 	km.mutex.RLock()
 	currentHandler := km.GetCurrentHandler()
 	km.mutex.RUnlock()
 
 	if currentHandler != nil {
-		handled := currentHandler.OnKeyUp(ev)
-		km.debugPrint("KeyManager: KeyUp event handled by '%s': %t", currentHandler.GetName(), handled)
+		handled := currentHandler.OnKeyUp(ev, modifiers)
+		km.debugPrint("KeyManager: KeyUp event handled by '%s': %t (modifier: %t)", currentHandler.GetName(), handled, modifierHandled)
 	} else {
 		km.debugPrint("KeyManager: No handler available for KeyUp event")
 	}
@@ -111,11 +155,12 @@ func (km *KeyManager) HandleKeyUp(ev *fyne.KeyEvent) {
 // HandleTypedKey routes typed key events to the current top handler
 func (km *KeyManager) HandleTypedKey(ev *fyne.KeyEvent) {
 	km.mutex.RLock()
+	modifiers := km.modifierState
 	currentHandler := km.GetCurrentHandler()
 	km.mutex.RUnlock()
 
 	if currentHandler != nil {
-		handled := currentHandler.OnTypedKey(ev)
+		handled := currentHandler.OnTypedKey(ev, modifiers)
 		km.debugPrint("KeyManager: TypedKey event handled by '%s': %t", currentHandler.GetName(), handled)
 	} else {
 		km.debugPrint("KeyManager: No handler available for TypedKey event")
@@ -125,11 +170,12 @@ func (km *KeyManager) HandleTypedKey(ev *fyne.KeyEvent) {
 // HandleTypedRune routes typed rune events to the current top handler
 func (km *KeyManager) HandleTypedRune(r rune) {
 	km.mutex.RLock()
+	modifiers := km.modifierState
 	currentHandler := km.GetCurrentHandler()
 	km.mutex.RUnlock()
 
 	if currentHandler != nil {
-		handled := currentHandler.OnTypedRune(r)
+		handled := currentHandler.OnTypedRune(r, modifiers)
 		km.debugPrint("KeyManager: TypedRune event handled by '%s': %t", currentHandler.GetName(), handled)
 	} else {
 		km.debugPrint("KeyManager: No handler available for TypedRune event")

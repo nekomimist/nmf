@@ -4,7 +4,6 @@ import (
 	"unicode"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/driver/desktop"
 )
 
 // HistoryDialogInterface defines the interface needed by HistoryDialogKeyHandler
@@ -37,8 +36,6 @@ type HistoryDialogInterface interface {
 // HistoryDialogKeyHandler handles keyboard events for the navigation history dialog
 type HistoryDialogKeyHandler struct {
 	historyDialog HistoryDialogInterface
-	shiftPressed  bool
-	ctrlPressed   bool
 	debugPrint    func(format string, args ...interface{})
 }
 
@@ -56,21 +53,11 @@ func (hh *HistoryDialogKeyHandler) GetName() string {
 }
 
 // OnKeyDown handles key press events
-func (hh *HistoryDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent) bool {
+func (hh *HistoryDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	switch ev.Name {
-	case desktop.KeyShiftLeft, desktop.KeyShiftRight:
-		hh.shiftPressed = true
-		hh.debugPrint("HistoryDialog: Shift key pressed (state: %t)", hh.shiftPressed)
-		return true
-
-	case desktop.KeyControlLeft, desktop.KeyControlRight:
-		hh.ctrlPressed = true
-		hh.debugPrint("HistoryDialog: Ctrl key pressed (state: %t)", hh.ctrlPressed)
-		return true
-
 	case fyne.KeyF:
 		// Ctrl+F - Focus search
-		if hh.ctrlPressed {
+		if modifiers.CtrlPressed {
 			hh.historyDialog.FocusSearch()
 			return true
 		}
@@ -80,29 +67,18 @@ func (hh *HistoryDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent) bool {
 }
 
 // OnKeyUp handles key release events
-func (hh *HistoryDialogKeyHandler) OnKeyUp(ev *fyne.KeyEvent) bool {
-	switch ev.Name {
-	case desktop.KeyShiftLeft, desktop.KeyShiftRight:
-		hh.shiftPressed = false
-		hh.debugPrint("HistoryDialog: Shift key released (state: %t)", hh.shiftPressed)
-		return true
-
-	case desktop.KeyControlLeft, desktop.KeyControlRight:
-		hh.ctrlPressed = false
-		hh.debugPrint("HistoryDialog: Ctrl key released (state: %t)", hh.ctrlPressed)
-		return true
-	}
-
+func (hh *HistoryDialogKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+	// Modifier key state is managed by KeyManager
 	return false
 }
 
 // OnTypedKey handles typed key events in focusless mode
-func (hh *HistoryDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent) bool {
+func (hh *HistoryDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	hh.debugPrint("HistoryDialog: OnTypedKey %s", ev.Name)
 
 	switch ev.Name {
 	case fyne.KeyUp:
-		if hh.shiftPressed {
+		if modifiers.ShiftPressed {
 			hh.historyDialog.MoveToTop()
 		} else {
 			hh.historyDialog.MoveUp()
@@ -110,7 +86,7 @@ func (hh *HistoryDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent) bool {
 		return true
 
 	case fyne.KeyDown:
-		if hh.shiftPressed {
+		if modifiers.ShiftPressed {
 			hh.historyDialog.MoveToBottom()
 		} else {
 			hh.historyDialog.MoveDown()
@@ -150,7 +126,7 @@ func (hh *HistoryDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent) bool {
 }
 
 // OnTypedRune handles text input to update the search field
-func (hh *HistoryDialogKeyHandler) OnTypedRune(r rune) bool {
+func (hh *HistoryDialogKeyHandler) OnTypedRune(r rune, modifiers ModifierState) bool {
 	// Accept printable, non-control runes
 	if unicode.IsPrint(r) && !unicode.IsControl(r) {
 		hh.historyDialog.AppendToSearch(string(r))

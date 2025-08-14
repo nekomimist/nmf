@@ -2,7 +2,6 @@ package keymanager
 
 import (
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/driver/desktop"
 )
 
 // TreeDialogInterface defines the interface needed by TreeDialogKeyHandler
@@ -24,10 +23,8 @@ type TreeDialogInterface interface {
 
 // TreeDialogKeyHandler handles keyboard events for the directory tree dialog
 type TreeDialogKeyHandler struct {
-	treeDialog   TreeDialogInterface
-	shiftPressed bool
-	ctrlPressed  bool
-	debugPrint   func(format string, args ...interface{})
+	treeDialog TreeDialogInterface
+	debugPrint func(format string, args ...interface{})
 }
 
 // NewTreeDialogKeyHandler creates a new tree dialog key handler
@@ -44,21 +41,11 @@ func (th *TreeDialogKeyHandler) GetName() string {
 }
 
 // OnKeyDown handles key press events
-func (th *TreeDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent) bool {
+func (th *TreeDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	switch ev.Name {
-	case desktop.KeyShiftLeft, desktop.KeyShiftRight:
-		th.shiftPressed = true
-		th.debugPrint("TreeDialog: Shift key pressed (state: %t)", th.shiftPressed)
-		return true
-
-	case desktop.KeyControlLeft, desktop.KeyControlRight:
-		th.ctrlPressed = true
-		th.debugPrint("TreeDialog: Ctrl key pressed (state: %t)", th.ctrlPressed)
-		return true
-
 	case fyne.KeyR:
 		// Ctrl+R - Toggle root mode
-		if th.ctrlPressed {
+		if modifiers.CtrlPressed {
 			th.treeDialog.ToggleRootMode()
 			return true
 		}
@@ -68,27 +55,16 @@ func (th *TreeDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent) bool {
 }
 
 // OnKeyUp handles key release events
-func (th *TreeDialogKeyHandler) OnKeyUp(ev *fyne.KeyEvent) bool {
-	switch ev.Name {
-	case desktop.KeyShiftLeft, desktop.KeyShiftRight:
-		th.shiftPressed = false
-		th.debugPrint("TreeDialog: Shift key released (state: %t)", th.shiftPressed)
-		return true
-
-	case desktop.KeyControlLeft, desktop.KeyControlRight:
-		th.ctrlPressed = false
-		th.debugPrint("TreeDialog: Ctrl key released (state: %t)", th.ctrlPressed)
-		return true
-	}
-
+func (th *TreeDialogKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+	// Modifier key state is managed by KeyManager
 	return false
 }
 
 // OnTypedKey handles typed key events
-func (th *TreeDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent) bool {
+func (th *TreeDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	switch ev.Name {
 	case fyne.KeyUp:
-		if th.shiftPressed {
+		if modifiers.ShiftPressed {
 			// Fast move up (multiple nodes)
 			for i := 0; i < 5; i++ {
 				th.treeDialog.MoveUp()
@@ -99,7 +75,7 @@ func (th *TreeDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent) bool {
 		return true
 
 	case fyne.KeyDown:
-		if th.shiftPressed {
+		if modifiers.ShiftPressed {
 			// Fast move down (multiple nodes)
 			for i := 0; i < 5; i++ {
 				th.treeDialog.MoveDown()
@@ -144,6 +120,6 @@ func (th *TreeDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent) bool {
 }
 
 // OnTypedRune handles text input (not used in tree dialog)
-func (th *TreeDialogKeyHandler) OnTypedRune(r rune) bool {
+func (th *TreeDialogKeyHandler) OnTypedRune(r rune, modifiers ModifierState) bool {
 	return false
 }

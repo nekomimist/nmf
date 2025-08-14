@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/driver/desktop"
 
 	"nmf/internal/fileinfo"
 )
@@ -43,10 +42,8 @@ type FileManagerInterface interface {
 
 // MainScreenKeyHandler handles keyboard events for the main file list screen
 type MainScreenKeyHandler struct {
-	fileManager  FileManagerInterface
-	shiftPressed bool
-	ctrlPressed  bool
-	debugPrint   func(format string, args ...interface{})
+	fileManager FileManagerInterface
+	debugPrint  func(format string, args ...interface{})
 }
 
 // NewMainScreenKeyHandler creates a new main screen key handler
@@ -63,46 +60,36 @@ func (mh *MainScreenKeyHandler) GetName() string {
 }
 
 // OnKeyDown handles key press events
-func (mh *MainScreenKeyHandler) OnKeyDown(ev *fyne.KeyEvent) bool {
+func (mh *MainScreenKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	mh.debugPrint("OnKeyDown %v\n", ev.Name)
 	switch ev.Name {
-	case desktop.KeyShiftLeft, desktop.KeyShiftRight:
-		mh.shiftPressed = true
-		mh.debugPrint("MainScreen: Shift key pressed (state: %t)", mh.shiftPressed)
-		return true
-
-	case desktop.KeyControlLeft, desktop.KeyControlRight:
-		mh.ctrlPressed = true
-		mh.debugPrint("MainScreen: Ctrl key pressed (state: %t)", mh.ctrlPressed)
-		return true
-
 	case fyne.KeyN:
 		// Ctrl+N - Open new window
-		if mh.ctrlPressed {
+		if modifiers.CtrlPressed {
 			mh.fileManager.OpenNewWindow()
 			return true
 		}
 
 	case fyne.KeyT:
 		// Ctrl+T - Show directory tree dialog
-		if mh.ctrlPressed {
+		if modifiers.CtrlPressed {
 			mh.fileManager.ShowDirectoryTreeDialog()
 			return true
 		}
 
 	case fyne.KeyH:
 		// Ctrl+H - Show navigation history dialog
-		if mh.ctrlPressed {
+		if modifiers.CtrlPressed {
 			mh.fileManager.ShowNavigationHistoryDialog()
 			return true
 		}
 
 	case fyne.KeyF:
-		if mh.ctrlPressed && !mh.shiftPressed {
+		if modifiers.CtrlPressed && !modifiers.ShiftPressed {
 			// Ctrl+F - Show filter dialog
 			mh.debugPrint("MainScreen: Ctrl+F detected - showing filter dialog")
 			mh.fileManager.ShowFilterDialog()
-		} else if mh.ctrlPressed && mh.shiftPressed {
+		} else if modifiers.CtrlPressed && modifiers.ShiftPressed {
 			// Ctrl+Shift+F - Clear filter
 			mh.debugPrint("MainScreen: Ctrl+Shift+F detected - clearing filter")
 			mh.fileManager.ClearFilter()
@@ -114,29 +101,18 @@ func (mh *MainScreenKeyHandler) OnKeyDown(ev *fyne.KeyEvent) bool {
 }
 
 // OnKeyUp handles key release events
-func (mh *MainScreenKeyHandler) OnKeyUp(ev *fyne.KeyEvent) bool {
-	switch ev.Name {
-	case desktop.KeyShiftLeft, desktop.KeyShiftRight:
-		mh.shiftPressed = false
-		mh.debugPrint("MainScreen: Shift key released (state: %t)", mh.shiftPressed)
-		return true
-
-	case desktop.KeyControlLeft, desktop.KeyControlRight:
-		mh.ctrlPressed = false
-		mh.debugPrint("MainScreen: Ctrl key released (state: %t)", mh.ctrlPressed)
-		return true
-	}
-
+func (mh *MainScreenKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+	// Modifier key state is managed by KeyManager
 	return false
 }
 
 // OnTypedKey handles typed key events
-func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent) bool {
+func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	mh.debugPrint("OnTypedKey: %v\n", ev.Name)
 	switch ev.Name {
 	case fyne.KeyUp:
 		currentIdx := mh.fileManager.GetCurrentCursorIndex()
-		if mh.shiftPressed {
+		if modifiers.ShiftPressed {
 			// Move up 20 items or to the beginning
 			mh.debugPrint("MainScreen: Shift+Up detected!")
 			newIdx := currentIdx - 20
@@ -156,7 +132,7 @@ func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent) bool {
 	case fyne.KeyDown:
 		currentIdx := mh.fileManager.GetCurrentCursorIndex()
 		files := mh.fileManager.GetFiles()
-		if mh.shiftPressed {
+		if modifiers.ShiftPressed {
 			// Move down 20 items or to the end
 			mh.debugPrint("MainScreen: Shift+Down detected!")
 			newIdx := currentIdx + 20
@@ -214,7 +190,7 @@ func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent) bool {
 
 	case fyne.KeyComma:
 		// Shift+Comma = '<' - Move to first item
-		if mh.shiftPressed {
+		if modifiers.ShiftPressed {
 			files := mh.fileManager.GetFiles()
 			if len(files) > 0 {
 				mh.fileManager.SetCursorByIndex(0)
@@ -224,7 +200,7 @@ func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent) bool {
 		return true
 
 	case fyne.KeyPeriod:
-		if mh.shiftPressed {
+		if modifiers.ShiftPressed {
 			// Shift+Period = '>' - Move to last item
 			files := mh.fileManager.GetFiles()
 			if len(files) > 0 {
@@ -241,7 +217,7 @@ func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent) bool {
 
 	case fyne.KeyBackTick:
 		// Shift+` - Navigate to home directory
-		if mh.shiftPressed {
+		if modifiers.ShiftPressed {
 			homeDir, err := os.UserHomeDir()
 			if err != nil {
 				mh.debugPrint("MainScreen: Failed to get home directory: %v", err)
@@ -254,7 +230,7 @@ func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent) bool {
 	case fyne.KeyF3:
 		// F3 - Toggle filter
 		mh.debugPrint("MainScreen: F3 detected")
-		if !mh.ctrlPressed && !mh.shiftPressed {
+		if !modifiers.CtrlPressed && !modifiers.ShiftPressed {
 			mh.debugPrint("MainScreen: F3 detected - toggling filter")
 			mh.fileManager.ToggleFilter()
 		}
@@ -266,7 +242,7 @@ func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent) bool {
 }
 
 // OnTypedRune handles text input (not used on main screen)
-func (mh *MainScreenKeyHandler) OnTypedRune(r rune) bool {
+func (mh *MainScreenKeyHandler) OnTypedRune(r rune, modifiers ModifierState) bool {
 	// Main screen doesn't consume text input directly
 	return false
 }

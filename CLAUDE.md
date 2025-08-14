@@ -27,13 +27,15 @@ nmf/
     │   ├── widgets.go             # TappableIcon custom widget
     │   ├── tree_dialog.go         # Directory tree dialog with key handling
     │   ├── history.go             # Navigation history dialog with search
+    │   ├── filter_dialog.go       # File filter dialog with glob pattern matching
     │   ├── key_sink.go            # Generic KeySink wrapper for focus & key forwarding
     │   └── tab_entry.go           # TabEntry widget with Tab capture capability
     ├── keymanager/                 # Stack-based keyboard input management
     │   ├── keymanager.go          # KeyManager core, handler stack management
     │   ├── mainscreen_handler.go  # Main file list keyboard handling
     │   ├── treedialog_handler.go  # Tree dialog keyboard navigation
-    │   └── historydialog_handler.go # History dialog keyboard navigation
+    │   ├── historydialog_handler.go # History dialog keyboard navigation
+    │   └── filterdialog_handler.go # Filter dialog keyboard navigation
     ├── watcher/                    # Real-time directory monitoring
     │   └── watcher.go             # FileManager interface, change detection
     ├── theme/                      # Custom theming
@@ -53,6 +55,7 @@ nmf/
 - **TappableIcon**: Custom widget for icon-based directory navigation
 - **DirectoryTreeDialog**: Lazy-loading tree navigation with root switching
 - **NavigationHistoryDialog**: Searchable directory history with filtering
+- **FilterDialog**: File filtering with glob pattern matching and real-time preview
 
 ### Key Features
 
@@ -88,6 +91,9 @@ nmf/
 - `Backspace` - Parent directory
 - `Ctrl+T` - Tree navigation dialog
 - `Ctrl+H` - Navigation history dialog
+- `Ctrl+F` - Filter dialog
+- `Ctrl+Shift+F` - Clear filter
+- `F3` - Toggle filter on/off
 - `Ctrl+N` - New window
 
 ### Tree Dialog
@@ -104,6 +110,15 @@ nmf/
 - `Del` - Clear search ✅
 - `Enter` - Accept selection ✅
 - `Esc` - Cancel dialog ✅
+
+### Filter Dialog
+- `↑/↓` - Navigate pattern list (Shift for top/bottom) ✅
+- `Ctrl+F` - Focus search ✅
+- `Del` - Clear search ✅
+- `Backspace` - Remove last search character ✅
+- `Enter` - Apply selected filter ✅
+- `Esc` - Cancel dialog ✅
+- Real-time preview showing match count ✅
 
 ## Communication Style
 - Persona: helpful developer niece to her uncle (address as "おじさま"). Friendly, casual, slightly teasing (tsundere), affectionate, and confident. Emojis are welcome.

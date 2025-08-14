@@ -4,7 +4,6 @@ import (
 	"unicode"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/driver/desktop"
 )
 
 // FilterDialogInterface defines the interface needed by FilterDialogKeyHandler
@@ -37,8 +36,6 @@ type FilterDialogInterface interface {
 // FilterDialogKeyHandler handles keyboard events for the file filter dialog
 type FilterDialogKeyHandler struct {
 	filterDialog FilterDialogInterface
-	shiftPressed bool
-	ctrlPressed  bool
 	debugPrint   func(format string, args ...interface{})
 }
 
@@ -56,21 +53,11 @@ func (fh *FilterDialogKeyHandler) GetName() string {
 }
 
 // OnKeyDown handles key press events
-func (fh *FilterDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent) bool {
+func (fh *FilterDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	switch ev.Name {
-	case desktop.KeyShiftLeft, desktop.KeyShiftRight:
-		fh.shiftPressed = true
-		fh.debugPrint("FilterDialog: Shift key pressed (state: %t)", fh.shiftPressed)
-		return true
-
-	case desktop.KeyControlLeft, desktop.KeyControlRight:
-		fh.ctrlPressed = true
-		fh.debugPrint("FilterDialog: Ctrl key pressed (state: %t)", fh.ctrlPressed)
-		return true
-
 	case fyne.KeyF:
 		// Ctrl+F - Focus search
-		if fh.ctrlPressed {
+		if modifiers.CtrlPressed {
 			fh.filterDialog.FocusSearch()
 			return true
 		}
@@ -80,29 +67,18 @@ func (fh *FilterDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent) bool {
 }
 
 // OnKeyUp handles key release events
-func (fh *FilterDialogKeyHandler) OnKeyUp(ev *fyne.KeyEvent) bool {
-	switch ev.Name {
-	case desktop.KeyShiftLeft, desktop.KeyShiftRight:
-		fh.shiftPressed = false
-		fh.debugPrint("FilterDialog: Shift key released (state: %t)", fh.shiftPressed)
-		return true
-
-	case desktop.KeyControlLeft, desktop.KeyControlRight:
-		fh.ctrlPressed = false
-		fh.debugPrint("FilterDialog: Ctrl key released (state: %t)", fh.ctrlPressed)
-		return true
-	}
-
+func (fh *FilterDialogKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+	// Modifier key state is managed by KeyManager
 	return false
 }
 
 // OnTypedKey handles typed key events in focusless mode
-func (fh *FilterDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent) bool {
+func (fh *FilterDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	fh.debugPrint("FilterDialog: OnTypedKey %s", ev.Name)
 
 	switch ev.Name {
 	case fyne.KeyUp:
-		if fh.shiftPressed {
+		if modifiers.ShiftPressed {
 			fh.filterDialog.MoveToTop()
 		} else {
 			fh.filterDialog.MoveUp()
@@ -110,7 +86,7 @@ func (fh *FilterDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent) bool {
 		return true
 
 	case fyne.KeyDown:
-		if fh.shiftPressed {
+		if modifiers.ShiftPressed {
 			fh.filterDialog.MoveToBottom()
 		} else {
 			fh.filterDialog.MoveDown()
@@ -150,7 +126,7 @@ func (fh *FilterDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent) bool {
 }
 
 // OnTypedRune handles text input to update the search field
-func (fh *FilterDialogKeyHandler) OnTypedRune(r rune) bool {
+func (fh *FilterDialogKeyHandler) OnTypedRune(r rune, modifiers ModifierState) bool {
 	// Accept printable, non-control runes
 	if unicode.IsPrint(r) && !unicode.IsControl(r) {
 		fh.filterDialog.AppendToSearch(string(r))
