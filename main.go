@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -40,6 +41,7 @@ func debugPrint(format string, args ...interface{}) {
 
 // FileManager is the main file manager struct
 type FileManager struct {
+	mu             sync.RWMutex // Protects files and selectedFiles from concurrent access
 	window         fyne.Window
 	currentPath    string
 	files          []fileinfo.FileInfo
@@ -66,10 +68,18 @@ func (fm *FileManager) GetCurrentPath() string {
 }
 
 func (fm *FileManager) GetFiles() []fileinfo.FileInfo {
-	return fm.files
+	fm.mu.RLock()
+	defer fm.mu.RUnlock()
+	// Return a copy to prevent external modifications
+	result := make([]fileinfo.FileInfo, len(fm.files))
+	copy(result, fm.files)
+	return result
 }
 
 func (fm *FileManager) UpdateFiles(files []fileinfo.FileInfo) {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+
 	fm.originalFiles = files
 
 	// Apply filter if one is active
@@ -85,7 +95,7 @@ func (fm *FileManager) UpdateFiles(files []fileinfo.FileInfo) {
 		fm.files = files
 	}
 
-	// Update binding to reflect all changes (this auto-refreshes UI)
+	// Update binding to reflect all changes
 	items := make([]interface{}, len(fm.files))
 	for i, file := range fm.files {
 		items[i] = fileinfo.ListItem{
@@ -94,9 +104,14 @@ func (fm *FileManager) UpdateFiles(files []fileinfo.FileInfo) {
 		}
 	}
 	fm.fileBinding.Set(items)
+
+	// Explicitly refresh on file deletions or modifications, since Fyne only auto-updates on additions.
+	fm.fileList.Refresh()
 }
 
 func (fm *FileManager) RemoveFromSelections(path string) {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
 	delete(fm.selectedFiles, path)
 }
 

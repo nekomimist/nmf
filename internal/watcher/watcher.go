@@ -3,8 +3,10 @@ package watcher
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
+	"fyne.io/fyne/v2"
 	"nmf/internal/fileinfo"
 )
 
@@ -19,6 +21,7 @@ type FileManager interface {
 // DirectoryWatcher handles incremental directory change detection
 type DirectoryWatcher struct {
 	fm            FileManager
+	mu            sync.RWMutex                 // Protects previousFiles from concurrent access
 	previousFiles map[string]fileinfo.FileInfo // Previous state for comparison
 	ticker        *time.Ticker
 	stopChan      chan bool
@@ -115,6 +118,9 @@ func (dw *DirectoryWatcher) Stop() {
 
 // updateSnapshot updates the current file snapshot
 func (dw *DirectoryWatcher) updateSnapshot() {
+	dw.mu.Lock()
+	defer dw.mu.Unlock()
+
 	dw.previousFiles = make(map[string]fileinfo.FileInfo)
 
 	// Take snapshot of current files (excluding ".." entry and deleted files)
@@ -180,6 +186,9 @@ func (dw *DirectoryWatcher) checkForChanges() {
 
 // detectChanges compares current and previous states to find differences
 func (dw *DirectoryWatcher) detectChanges(currentFiles map[string]fileinfo.FileInfo) (added, deleted, modified []fileinfo.FileInfo) {
+	dw.mu.RLock()
+	defer dw.mu.RUnlock()
+
 	// Find added files
 	for path, file := range currentFiles {
 		if _, exists := dw.previousFiles[path]; !exists {
@@ -210,6 +219,7 @@ func (dw *DirectoryWatcher) detectChanges(currentFiles map[string]fileinfo.FileI
 func (dw *DirectoryWatcher) applyDataChanges(added, deleted, modified []fileinfo.FileInfo) {
 	dw.debugPrint("Applying changes: %d added, %d deleted, %d modified", len(added), len(deleted), len(modified))
 
+	// Get current files (this is now thread-safe as GetFiles() returns a copy)
 	files := dw.fm.GetFiles()
 	needsUpdate := len(added) > 0 || len(deleted) > 0 || len(modified) > 0
 
@@ -218,7 +228,7 @@ func (dw *DirectoryWatcher) applyDataChanges(added, deleted, modified []fileinfo
 		for i, file := range files {
 			if file.Path == deletedFile.Path {
 				files[i].Status = fileinfo.StatusDeleted
-				// Remove from selections if selected
+				// Remove from selections if selected (already thread-safe)
 				dw.fm.RemoveFromSelections(deletedFile.Path)
 				break
 			}
@@ -240,11 +250,12 @@ func (dw *DirectoryWatcher) applyDataChanges(added, deleted, modified []fileinfo
 		files = append(files, addedFile)
 	}
 
-	// Update file manager with new file list
+	// UI update must happen on the main thread
 	if needsUpdate {
-		dw.fm.UpdateFiles(files)
+		fyne.Do(func() {
+			dw.fm.UpdateFiles(files)
+			// Update snapshot after UI update to ensure consistency
+			dw.updateSnapshot()
+		})
 	}
-
-	// Update snapshot for next comparison
-	dw.updateSnapshot()
 }
