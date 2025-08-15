@@ -44,6 +44,9 @@ type FileManagerInterface interface {
 
 	// Sort management
 	ShowSortDialog()
+
+	// Path entry focus
+	FocusPathEntry()
 }
 
 // MainScreenKeyHandler handles keyboard events for the main file list screen
@@ -112,6 +115,14 @@ func (mh *MainScreenKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierS
 		if modifiers.ShiftPressed {
 			mh.debugPrint("MainScreen: Shift+S detected - showing sort dialog")
 			mh.fileManager.ShowSortDialog()
+			return true
+		}
+
+	case fyne.KeyL:
+		// Ctrl+L - Focus path entry
+		if modifiers.CtrlPressed {
+			mh.debugPrint("MainScreen: Ctrl+L detected - focusing path entry")
+			mh.fileManager.FocusPathEntry()
 			return true
 		}
 

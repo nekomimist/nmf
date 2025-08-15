@@ -1068,6 +1068,15 @@ func (fm *FileManager) ShowSortDialog() {
 	sortDialog.Show(fm.window, handler)
 }
 
+// FocusPathEntry focuses the path entry widget
+func (fm *FileManager) FocusPathEntry() {
+	debugPrint("Focusing path entry")
+	if fm.pathEntry != nil {
+		fm.window.Canvas().Focus(fm.pathEntry)
+		fm.pathEntry.FocusGained()
+	}
+}
+
 // IncrementalSearchInterface implementation methods
 
 // ShowIncrementalSearchOverlay shows the search overlay
