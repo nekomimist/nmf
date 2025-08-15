@@ -82,7 +82,10 @@ func (dw *DirectoryWatcher) Start() {
 	go func() {
 		for {
 			select {
-			case changes := <-dw.changeChan:
+			case changes, ok := <-dw.changeChan:
+				if !ok {
+					return // チャネルがクローズされた
+				}
 				// Apply data changes (binding auto-updates UI)
 				dw.applyDataChanges(changes.Added, changes.Deleted, changes.Modified)
 			case <-dw.stopChan:

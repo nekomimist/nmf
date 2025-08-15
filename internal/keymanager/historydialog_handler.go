@@ -15,7 +15,6 @@ type HistoryDialogInterface interface {
 	MoveToBottom()
 
 	// Search functionality
-	FocusSearch()
 	ClearSearch()
 	AppendToSearch(char string)
 	BackspaceSearch()
@@ -56,9 +55,8 @@ func (hh *HistoryDialogKeyHandler) GetName() string {
 func (hh *HistoryDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	switch ev.Name {
 	case fyne.KeyF:
-		// Ctrl+F - Focus search
+		// Ctrl+F - Search functionality handled by focusless design
 		if modifiers.CtrlPressed {
-			hh.historyDialog.FocusSearch()
 			return true
 		}
 	}

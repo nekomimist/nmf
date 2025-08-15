@@ -15,7 +15,6 @@ type FilterDialogInterface interface {
 	MoveToBottom()
 
 	// Search functionality
-	FocusSearch()
 	ClearSearch()
 	AppendToSearch(char string)
 	BackspaceSearch()
@@ -56,9 +55,8 @@ func (fh *FilterDialogKeyHandler) GetName() string {
 func (fh *FilterDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	switch ev.Name {
 	case fyne.KeyF:
-		// Ctrl+F - Focus search
+		// Ctrl+F - Search functionality handled by focusless design
 		if modifiers.CtrlPressed {
-			fh.filterDialog.FocusSearch()
 			return true
 		}
 	}

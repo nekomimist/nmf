@@ -369,9 +369,7 @@ func (fm *FileManager) setupUI() {
 		// Clear list selection to avoid double cursor effect when switching back to keyboard
 		fm.fileList.UnselectAll()
 		// Keep focus on the KeySink so Tab does not move focus
-		if fm.fileListView != nil {
-			fm.window.Canvas().Focus(fm.fileListView)
-		}
+		fm.FocusFileList()
 		fm.RefreshCursor()
 	}
 
@@ -382,22 +380,16 @@ func (fm *FileManager) setupUI() {
 			if parent != fm.currentPath {
 				fm.LoadDirectory(parent)
 			}
-			if fm.fileListView != nil {
-				fm.window.Canvas().Focus(fm.fileListView)
-			}
+			fm.FocusFileList()
 		}),
 		widget.NewToolbarAction(theme.HomeIcon(), func() {
 			home, _ := os.UserHomeDir()
 			fm.LoadDirectory(home)
-			if fm.fileListView != nil {
-				fm.window.Canvas().Focus(fm.fileListView)
-			}
+			fm.FocusFileList()
 		}),
 		widget.NewToolbarAction(theme.ViewRefreshIcon(), func() {
 			fm.LoadDirectory(fm.currentPath)
-			if fm.fileListView != nil {
-				fm.window.Canvas().Focus(fm.fileListView)
-			}
+			fm.FocusFileList()
 		}),
 		widget.NewToolbarAction(theme.FolderIcon(), func() {
 			fm.ShowDirectoryTreeDialog()
@@ -405,9 +397,7 @@ func (fm *FileManager) setupUI() {
 		}),
 		widget.NewToolbarAction(theme.FolderNewIcon(), func() {
 			fm.OpenNewWindow()
-			if fm.fileListView != nil {
-				fm.window.Canvas().Focus(fm.fileListView)
-			}
+			fm.FocusFileList()
 		}),
 	)
 
@@ -432,9 +422,7 @@ func (fm *FileManager) setupUI() {
 	fm.window.Resize(fyne.NewSize(float32(fm.config.Window.Width), float32(fm.config.Window.Height)))
 
 	// Ensure initial focus sits on the tabbable list view
-	if fm.fileListView != nil {
-		fm.window.Canvas().Focus(fm.fileListView)
-	}
+	fm.FocusFileList()
 
 	// Setup window close handler to properly stop DirectoryWatcher
 	fm.window.SetCloseIntercept(func() {
@@ -454,12 +442,16 @@ func (fm *FileManager) setupUI() {
 	dc, ok := (fm.window.Canvas()).(desktop.Canvas)
 	if ok {
 		dc.SetOnKeyDown(func(ev *fyne.KeyEvent) {
-			debugPrint("KeyDown")
+			if fm.window.Canvas().Focused() == fm.fileListView {
+				return // KeySink経由で処理済み
+			}
 			fm.keyManager.HandleKeyDown(ev)
 		})
 
 		dc.SetOnKeyUp(func(ev *fyne.KeyEvent) {
-			debugPrint("KeyUp")
+			if fm.window.Canvas().Focused() == fm.fileListView {
+				return // KeySink経由で処理済み
+			}
 			fm.keyManager.HandleKeyUp(ev)
 		})
 
@@ -557,8 +549,15 @@ func (fm *FileManager) navigateToPath(inputPath string) {
 	// Path is valid, navigate to it
 	fm.LoadDirectory(path)
 
-	// Remove focus from path entry after successful navigation
-	fm.window.Canvas().Unfocus()
+	// Return focus to file list after successful navigation
+	fm.FocusFileList()
+}
+
+// FocusFileList sets focus to the file list view
+func (fm *FileManager) FocusFileList() {
+	if fm.fileListView != nil {
+		fm.window.Canvas().Focus(fm.fileListView)
+	}
 }
 
 func (fm *FileManager) LoadDirectory(path string) {
@@ -729,9 +728,7 @@ func (fm *FileManager) ShowDirectoryTreeDialog() {
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
 		debugPrint("Directory selected from tree dialog: %s", selectedPath)
 		fm.LoadDirectory(selectedPath)
-		if fm.fileListView != nil {
-			fm.window.Canvas().Focus(fm.fileListView)
-		}
+		fm.FocusFileList()
 	})
 }
 
@@ -752,9 +749,7 @@ func (fm *FileManager) ShowNavigationHistoryDialog() {
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
 		debugPrint("Directory selected from history dialog: %s", selectedPath)
 		fm.LoadDirectory(selectedPath)
-		if fm.fileListView != nil {
-			fm.window.Canvas().Focus(fm.fileListView)
-		}
+		fm.FocusFileList()
 	})
 }
 
@@ -958,18 +953,14 @@ func (fm *FileManager) ShowIncrementalSearchDialog() {
 
 		// Pop the search handler and refocus main view
 		fm.keyManager.PopHandler()
-		if fm.fileListView != nil {
-			fm.window.Canvas().Focus(fm.fileListView)
-		}
+		fm.FocusFileList()
 	})
 
 	fm.searchOverlay.SetCancelCallback(func() {
 		debugPrint("Incremental search cancelled")
 		// Pop the search handler and refocus main view
 		fm.keyManager.PopHandler()
-		if fm.fileListView != nil {
-			fm.window.Canvas().Focus(fm.fileListView)
-		}
+		fm.FocusFileList()
 	})
 
 	// Push the search handler and show overlay

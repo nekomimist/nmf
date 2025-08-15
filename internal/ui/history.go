@@ -277,14 +277,6 @@ func (nhd *NavigationHistoryDialog) MoveToBottom() {
 	}
 }
 
-// FocusSearch focuses the search entry
-func (nhd *NavigationHistoryDialog) FocusSearch() {
-	if nhd.searchEntry != nil {
-		nhd.searchEntry.FocusGained()
-		nhd.debugPrint("HistoryDialog: Focus search")
-	}
-}
-
 // ClearSearch clears the search entry
 func (nhd *NavigationHistoryDialog) ClearSearch() {
 	if nhd.searchEntry != nil {

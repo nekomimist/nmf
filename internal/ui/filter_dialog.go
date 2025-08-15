@@ -344,14 +344,6 @@ func (fd *FilterDialog) MoveToBottom() {
 	}
 }
 
-// FocusSearch focuses the search entry
-func (fd *FilterDialog) FocusSearch() {
-	if fd.searchEntry != nil {
-		fd.searchEntry.FocusGained()
-		fd.debugPrint("FilterDialog: Focus search")
-	}
-}
-
 // ClearSearch clears the search entry
 func (fd *FilterDialog) ClearSearch() {
 	if fd.searchEntry != nil {

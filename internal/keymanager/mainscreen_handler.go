@@ -67,7 +67,6 @@ func (mh *MainScreenKeyHandler) GetName() string {
 
 // OnKeyDown handles key press events
 func (mh *MainScreenKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	mh.debugPrint("OnKeyDown %v\n", ev.Name)
 	switch ev.Name {
 	case fyne.KeyN:
 		// Ctrl+N - Open new window
@@ -128,7 +127,6 @@ func (mh *MainScreenKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierSta
 
 // OnTypedKey handles typed key events
 func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	mh.debugPrint("OnTypedKey: %v\n", ev.Name)
 	switch ev.Name {
 	case fyne.KeyUp:
 		currentIdx := mh.fileManager.GetCurrentCursorIndex()
