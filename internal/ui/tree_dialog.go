@@ -40,7 +40,7 @@ func NewDirectoryTreeDialog(currentPath string, keyManager *keymanager.KeyManage
 		selectedPath: currentPath,
 		parentPath:   parentPath,
 		rootMode:     true, // Start with filesystem root
-		currentRoot:  "/",
+		currentRoot:  GetSystemRoot(),
 		debugPrint:   debugPrint,
 		keyManager:   keyManager,
 	}
@@ -104,6 +104,11 @@ func (dtd *DirectoryTreeDialog) createTree() {
 
 // getDirectoryChildren returns child directories for lazy loading
 func (dtd *DirectoryTreeDialog) getDirectoryChildren(path string) []string {
+	// Check for platform-specific children first (e.g., Windows drives)
+	if platformChildren, handled := GetPlatformSpecificChildren(path); handled {
+		return platformChildren
+	}
+
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		dtd.debugPrint("Error reading directory %s: %v", path, err)
@@ -126,6 +131,11 @@ func (dtd *DirectoryTreeDialog) getDirectoryChildren(path string) []string {
 
 // isDirectory checks if a path is a directory
 func (dtd *DirectoryTreeDialog) isDirectory(path string) bool {
+	// Check platform-specific directory logic first
+	if isDir, handled := IsPlatformDirectory(path); handled {
+		return isDir
+	}
+
 	info, err := os.Stat(path)
 	if err != nil {
 		return false
@@ -135,8 +145,13 @@ func (dtd *DirectoryTreeDialog) isDirectory(path string) bool {
 
 // getDisplayName returns the display name for a directory path
 func (dtd *DirectoryTreeDialog) getDisplayName(path string) string {
-	if path == "/" {
-		return "/"
+	// Check for platform-specific display names first
+	if displayName, handled := GetPlatformDisplayName(path); handled {
+		return displayName
+	}
+
+	if path == GetSystemRoot() {
+		return GetSystemRoot()
 	}
 	base := filepath.Base(path)
 	if base == "." {
@@ -204,7 +219,7 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 		switch selected {
 		case constants.RootModeOptionText:
 			newRootMode = true
-			newCurrentRoot = "/"
+			newCurrentRoot = GetSystemRoot()
 		case constants.ParentModeOptionText:
 			newRootMode = false
 			newCurrentRoot = dtd.parentPath
@@ -439,7 +454,7 @@ func (dtd *DirectoryTreeDialog) CancelDialog() {
 func (dtd *DirectoryTreeDialog) ToggleRootMode() {
 	dtd.rootMode = !dtd.rootMode
 	if dtd.rootMode {
-		dtd.currentRoot = "/"
+		dtd.currentRoot = GetSystemRoot()
 	} else {
 		dtd.currentRoot = dtd.parentPath
 	}

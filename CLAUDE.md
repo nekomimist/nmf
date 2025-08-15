@@ -26,6 +26,8 @@ nmf/
     │   ├── cursor.go              # Cursor renderers
     │   ├── widgets.go             # TappableIcon custom widget
     │   ├── tree_dialog.go         # Directory tree dialog with key handling
+    │   ├── tree_platform_windows.go # Windows drive enumeration and virtual root handling
+    │   ├── tree_platform_unix.go  # Unix filesystem root handling
     │   ├── history.go             # Navigation history dialog with search
     │   ├── filter_dialog.go       # File filter dialog with glob pattern matching
     │   ├── incremental_search.go  # Incremental search overlay with real-time filtering
@@ -57,7 +59,7 @@ nmf/
 - **KeyManager**: Stack-based keyboard input system - handles context-aware key routing
 - **DirectoryWatcher**: Real-time change detection via filesystem polling (2s interval)
 - **TappableIcon**: Custom widget for icon-based directory navigation
-- **DirectoryTreeDialog**: Lazy-loading tree navigation with root switching
+- **DirectoryTreeDialog**: Lazy-loading tree navigation with platform-specific root handling (Windows drives, Unix filesystem)
 - **NavigationHistoryDialog**: Searchable directory history with filtering
 - **FilterDialog**: File filtering with glob pattern matching and real-time preview
 - **IncrementalSearchOverlay**: Real-time file search with substring matching
@@ -85,7 +87,7 @@ nmf/
 
 - **Debug Mode**: `./nmf -d` enables debug output via `debugPrint()`
 - **Testing**: Unit tests for config, fileinfo, errors packages
-- **Platform Support**: Windows hidden file detection, Unix compatibility
+- **Platform Support**: Windows hidden file detection & drive enumeration, Unix filesystem compatibility
 
 ## Keyboard Shortcuts
 
