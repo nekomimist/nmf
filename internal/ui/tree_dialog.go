@@ -34,7 +34,7 @@ type DirectoryTreeDialog struct {
 
 // NewDirectoryTreeDialog creates a new directory tree dialog
 func NewDirectoryTreeDialog(currentPath string, keyManager *keymanager.KeyManager, debugPrint func(format string, args ...interface{})) *DirectoryTreeDialog {
-	parentPath := filepath.Dir(currentPath)
+	parentPath := GetPlatformParent(currentPath)
 
 	dialog := &DirectoryTreeDialog{
 		selectedPath: currentPath,
@@ -235,6 +235,9 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 
 			// Expand the root level initially
 			dtd.expandInitialLevel()
+		}
+		if dtd.parent != nil && dtd.sink != nil {
+			dtd.parent.Canvas().Focus(dtd.sink)
 		}
 	})
 	dtd.radioGroup.SetSelected(selectedOption)

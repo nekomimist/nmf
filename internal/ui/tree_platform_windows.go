@@ -127,8 +127,8 @@ func normalizeWindowsPath(path string) string {
 	return normalized
 }
 
-// getWindowsParent returns the parent path for Windows paths
-func getWindowsParent(path string) string {
+// GetPlatformParent returns the parent path for Windows paths with proper drive handling
+func GetPlatformParent(path string) string {
 	if IsVirtualRoot(path) {
 		return path // Virtual root has no parent
 	}

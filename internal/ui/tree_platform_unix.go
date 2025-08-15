@@ -3,6 +3,10 @@
 
 package ui
 
+import (
+	"path/filepath"
+)
+
 // GetSystemRoot returns the platform-specific root for tree navigation
 func GetSystemRoot() string {
 	return "/"
@@ -29,4 +33,9 @@ func GetPlatformDisplayName(path string) (string, bool) {
 // On Unix, there's no special handling needed, so this always returns false
 func IsPlatformDirectory(path string) (bool, bool) {
 	return false, false
+}
+
+// GetPlatformParent returns the parent path using standard filepath.Dir on Unix
+func GetPlatformParent(path string) string {
+	return filepath.Dir(path)
 }
