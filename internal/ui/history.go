@@ -13,9 +13,37 @@ import (
 	"nmf/internal/keymanager"
 )
 
+// CustomSearchEntry is a custom entry that redirects focus to KeySink
+type CustomSearchEntry struct {
+	widget.Entry
+	parent fyne.Window
+	sink   *KeySink
+}
+
+// NewCustomSearchEntry creates a new custom search entry
+func NewCustomSearchEntry() *CustomSearchEntry {
+	entry := &CustomSearchEntry{}
+	entry.ExtendBaseWidget(entry)
+	return entry
+}
+
+// FocusGained is called when the entry gains focus - immediately redirect to sink
+func (c *CustomSearchEntry) FocusGained() {
+	// Redirect focus immediately to sink to prevent entry from handling input
+	if c.parent != nil && c.sink != nil {
+		c.parent.Canvas().Focus(c.sink)
+	}
+}
+
+// SetFocusRedirect sets the parent window and sink for focus redirection
+func (c *CustomSearchEntry) SetFocusRedirect(parent fyne.Window, sink *KeySink) {
+	c.parent = parent
+	c.sink = sink
+}
+
 // NavigationHistoryDialog represents a navigation history dialog with search
 type NavigationHistoryDialog struct {
-	searchEntry   *widget.Entry
+	searchEntry   *CustomSearchEntry
 	historyList   *widget.List
 	selectedPath  string
 	selectedIndex int // Currently selected list index
@@ -53,11 +81,9 @@ func NewNavigationHistoryDialog(
 
 // createWidgets creates the UI widgets
 func (nhd *NavigationHistoryDialog) createWidgets() {
-	// Create search entry
-	nhd.searchEntry = widget.NewEntry()
+	// Create search entry - custom entry that redirects focus to KeySink
+	nhd.searchEntry = NewCustomSearchEntry()
 	nhd.searchEntry.SetPlaceHolder("Type to filter paths...")
-	// Display-only: disable focus/input; KeyManager drives updates
-	nhd.searchEntry.Disable()
 
 	// Set up real-time search
 	nhd.searchEntry.OnChanged = func(query string) {
@@ -201,6 +227,9 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 
 	// Wrap content with KeySink to capture Tab and forward keys
 	nhd.sink = NewKeySink(content, nhd.keyManager, WithTabCapture(true))
+
+	// Configure search entry to redirect focus to sink
+	nhd.searchEntry.SetFocusRedirect(parent, nhd.sink)
 
 	// Create custom dialog with proper focus handling (wrapped by sink)
 	nhd.dialog = dialog.NewCustomConfirm(

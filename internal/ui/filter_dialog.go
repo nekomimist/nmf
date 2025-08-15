@@ -19,7 +19,7 @@ import (
 
 // FilterDialog represents a file filter dialog with pattern search
 type FilterDialog struct {
-	searchEntry     *widget.Entry
+	searchEntry     *CustomSearchEntry
 	filterList      *widget.List
 	selectedPattern string
 	selectedIndex   int // Currently selected list index
@@ -58,11 +58,9 @@ func NewFilterDialog(
 
 // createWidgets creates the UI widgets
 func (fd *FilterDialog) createWidgets() {
-	// Create search entry
-	fd.searchEntry = widget.NewEntry()
+	// Create search entry - custom entry that redirects focus to KeySink
+	fd.searchEntry = NewCustomSearchEntry()
 	fd.searchEntry.SetPlaceHolder("Enter filter pattern (e.g., *.go, *.{js,ts}, test*)...")
-	// Display-only: disable focus/input; KeyManager drives updates
-	fd.searchEntry.Disable()
 
 	// Set up real-time search
 	fd.searchEntry.OnChanged = func(query string) {
@@ -268,6 +266,9 @@ func (fd *FilterDialog) ShowDialog(parent fyne.Window, callback func(*config.Fil
 
 	// Wrap content with KeySink to capture Tab and forward keys
 	fd.sink = NewKeySink(content, fd.keyManager, WithTabCapture(true))
+
+	// Configure search entry to redirect focus to sink
+	fd.searchEntry.SetFocusRedirect(parent, fd.sink)
 
 	// Create custom dialog with proper focus handling (wrapped by sink)
 	fd.dialog = dialog.NewCustomConfirm(
