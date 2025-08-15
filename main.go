@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"image/color"
 	"log"
 	"os"
 	"path/filepath"
@@ -54,6 +53,7 @@ type FileManager struct {
 	fileBinding    binding.UntypedList
 	config         *config.Config
 	configManager  *config.Manager
+	customTheme    *customtheme.CustomTheme                // Custom theme for colors
 	cursorRenderer ui.CursorRenderer                       // Cursor display renderer
 	keyManager     *keymanager.KeyManager                  // Keyboard input manager
 	dirWatcher     *watcher.DirectoryWatcher               // Directory change watcher
@@ -181,7 +181,7 @@ func (fm *FileManager) cleanupOldCursorEntries() {
 	}
 }
 
-func NewFileManager(app fyne.App, path string, config *config.Config, configManager *config.Manager) *FileManager {
+func NewFileManager(app fyne.App, path string, config *config.Config, configManager *config.Manager, customTheme *customtheme.CustomTheme) *FileManager {
 	fm := &FileManager{
 		window:         app.NewWindow("File Manager"),
 		currentPath:    path,
@@ -190,6 +190,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 		fileBinding:    binding.NewUntypedList(),
 		config:         config,
 		configManager:  configManager,
+		customTheme:    customTheme,
 		cursorRenderer: ui.NewCursorRenderer(config.UI.CursorStyle),
 		keyManager:     keymanager.NewKeyManager(debugPrint),
 	}
@@ -304,7 +305,7 @@ func (fm *FileManager) setupUI() {
 						})
 
 						// Get text color based on file type
-						textColor := fileinfo.GetTextColor(fileInfo.FileType, fm.config.UI.FileColors)
+						textColor := fileinfo.GetTextColor(fileInfo.FileType, fm.customTheme)
 
 						// Create a custom text segment with text color only
 						coloredSegment := &fileinfo.ColoredTextSegment{
@@ -339,7 +340,7 @@ func (fm *FileManager) setupUI() {
 			outerContainer.Objects = []fyne.CanvasObject{border}
 
 			// Add status background if file has a status (covers entire item like selection)
-			statusBGColor := fileinfo.GetStatusBackgroundColor(fileInfo.Status)
+			statusBGColor := fileinfo.GetStatusBackgroundColor(fileInfo.Status, fm.customTheme)
 			if statusBGColor != nil {
 				statusBG := canvas.NewRectangle(*statusBGColor)
 				statusBG.Resize(obj.Size())
@@ -351,7 +352,8 @@ func (fm *FileManager) setupUI() {
 
 			// Add selection background if selected (covers entire item)
 			if isSelected {
-				selectionBG := canvas.NewRectangle(color.RGBA{R: 100, G: 150, B: 200, A: 100})
+				selectionColor := fm.customTheme.GetCustomColor("selectionBackground")
+				selectionBG := canvas.NewRectangle(selectionColor)
 				selectionBG.Resize(obj.Size())
 				selectionBG.Move(fyne.NewPos(0, 0))
 				// Wrap selection background in WithoutLayout container
@@ -361,7 +363,7 @@ func (fm *FileManager) setupUI() {
 
 			// Add cursor if at cursor position (covers entire item like status/selection)
 			if isCursor {
-				cursor := fm.cursorRenderer.RenderCursor(obj.Size(), fyne.NewPos(0, 0), fm.config.UI.CursorStyle)
+				cursor := fm.cursorRenderer.RenderCursor(obj.Size(), fyne.NewPos(0, 0), fm.config.UI.CursorStyle, fm.customTheme)
 
 				// Wrap cursor in a container that won't be affected by NewMax
 				cursorContainer := container.NewWithoutLayout(cursor)
@@ -733,7 +735,7 @@ func (fm *FileManager) LoadDirectory(path string) {
 }
 
 func (fm *FileManager) OpenNewWindow() {
-	newFM := NewFileManager(fyne.CurrentApp(), fm.currentPath, fm.config, fm.configManager)
+	newFM := NewFileManager(fyne.CurrentApp(), fm.currentPath, fm.config, fm.configManager, fm.customTheme)
 	newFM.window.Show()
 }
 
@@ -1338,6 +1340,6 @@ func main() {
 	customTheme := customtheme.NewCustomTheme(config)
 	app.Settings().SetTheme(customTheme)
 
-	fm := NewFileManager(app, startPath, config, configManager)
+	fm := NewFileManager(app, startPath, config, configManager, customTheme)
 	fm.window.ShowAndRun()
 }

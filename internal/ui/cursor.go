@@ -10,21 +10,22 @@ import (
 	"nmf/internal/config"
 )
 
+// ThemeColorProvider provides custom theme colors
+type ThemeColorProvider interface {
+	GetCustomColor(colorType string) color.RGBA
+}
+
 // CursorRenderer interface for different cursor display styles
 type CursorRenderer interface {
-	RenderCursor(bounds fyne.Size, textBounds fyne.Position, config config.CursorStyleConfig) fyne.CanvasObject
+	RenderCursor(bounds fyne.Size, textBounds fyne.Position, config config.CursorStyleConfig, themeProvider ThemeColorProvider) fyne.CanvasObject
 }
 
 // UnderlineCursorRenderer renders cursor as an underline
 type UnderlineCursorRenderer struct{}
 
-func (r *UnderlineCursorRenderer) RenderCursor(bounds fyne.Size, textBounds fyne.Position, config config.CursorStyleConfig) fyne.CanvasObject {
-	underline := canvas.NewRectangle(color.RGBA{
-		R: config.Color[0],
-		G: config.Color[1],
-		B: config.Color[2],
-		A: config.Color[3],
-	})
+func (r *UnderlineCursorRenderer) RenderCursor(bounds fyne.Size, textBounds fyne.Position, config config.CursorStyleConfig, themeProvider ThemeColorProvider) fyne.CanvasObject {
+	cursorColor := themeProvider.GetCustomColor("cursor")
+	underline := canvas.NewRectangle(cursorColor)
 
 	thickness := float32(config.Thickness)
 	if thickness <= 0 {
@@ -41,13 +42,8 @@ func (r *UnderlineCursorRenderer) RenderCursor(bounds fyne.Size, textBounds fyne
 // BorderCursorRenderer renders cursor as a border
 type BorderCursorRenderer struct{}
 
-func (r *BorderCursorRenderer) RenderCursor(bounds fyne.Size, textBounds fyne.Position, config config.CursorStyleConfig) fyne.CanvasObject {
-	borderColor := color.RGBA{
-		R: config.Color[0],
-		G: config.Color[1],
-		B: config.Color[2],
-		A: config.Color[3],
-	}
+func (r *BorderCursorRenderer) RenderCursor(bounds fyne.Size, textBounds fyne.Position, config config.CursorStyleConfig, themeProvider ThemeColorProvider) fyne.CanvasObject {
+	borderColor := themeProvider.GetCustomColor("cursor")
 
 	thickness := float32(config.Thickness)
 	if thickness <= 0 {
@@ -77,13 +73,9 @@ func (r *BorderCursorRenderer) RenderCursor(bounds fyne.Size, textBounds fyne.Po
 // BackgroundCursorRenderer renders cursor as background highlight
 type BackgroundCursorRenderer struct{}
 
-func (r *BackgroundCursorRenderer) RenderCursor(bounds fyne.Size, textBounds fyne.Position, config config.CursorStyleConfig) fyne.CanvasObject {
-	background := canvas.NewRectangle(color.RGBA{
-		R: config.Color[0],
-		G: config.Color[1],
-		B: config.Color[2],
-		A: config.Color[3],
-	})
+func (r *BackgroundCursorRenderer) RenderCursor(bounds fyne.Size, textBounds fyne.Position, config config.CursorStyleConfig, themeProvider ThemeColorProvider) fyne.CanvasObject {
+	cursorColor := themeProvider.GetCustomColor("cursor")
+	background := canvas.NewRectangle(cursorColor)
 
 	background.Resize(bounds)
 	background.Move(fyne.NewPos(0, 0))

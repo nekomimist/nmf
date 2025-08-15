@@ -9,8 +9,6 @@ import (
 	"runtime"
 	"strings"
 	"time"
-
-	"nmf/internal/fileinfo"
 )
 
 // Config represents the application configuration
@@ -35,14 +33,13 @@ type ThemeConfig struct {
 
 // UIConfig represents UI-related settings
 type UIConfig struct {
-	ShowHiddenFiles   bool                     `json:"showHiddenFiles"`
-	Sort              SortConfig               `json:"sort"`
-	ItemSpacing       int                      `json:"itemSpacing"`
-	CursorStyle       CursorStyleConfig        `json:"cursorStyle"`
-	FileColors        fileinfo.FileColorConfig `json:"fileColors"`
-	CursorMemory      CursorMemoryConfig       `json:"cursorMemory"`
-	NavigationHistory NavigationHistoryConfig  `json:"navigationHistory"`
-	FileFilter        FileFilterConfig         `json:"fileFilter"`
+	ShowHiddenFiles   bool                    `json:"showHiddenFiles"`
+	Sort              SortConfig              `json:"sort"`
+	ItemSpacing       int                     `json:"itemSpacing"`
+	CursorStyle       CursorStyleConfig       `json:"cursorStyle"`
+	CursorMemory      CursorMemoryConfig      `json:"cursorMemory"`
+	NavigationHistory NavigationHistoryConfig `json:"navigationHistory"`
+	FileFilter        FileFilterConfig        `json:"fileFilter"`
 }
 
 // SortConfig represents file sorting settings
@@ -54,9 +51,8 @@ type SortConfig struct {
 
 // CursorStyleConfig represents cursor appearance settings
 type CursorStyleConfig struct {
-	Type      string   `json:"type"`      // "underline", "border", "background", "icon", "font"
-	Color     [4]uint8 `json:"color"`     // RGBA color values
-	Thickness int      `json:"thickness"` // Line thickness for underline/border
+	Type      string `json:"type"`      // "underline", "border", "background", "icon", "font"
+	Thickness int    `json:"thickness"` // Line thickness for underline/border
 }
 
 // CursorMemoryConfig represents cursor position memory settings
@@ -164,14 +160,7 @@ func getDefaultConfig() *Config {
 			ItemSpacing: 4,
 			CursorStyle: CursorStyleConfig{
 				Type:      "underline",
-				Color:     [4]uint8{255, 255, 255, 255}, // White
 				Thickness: 2,
-			},
-			FileColors: fileinfo.FileColorConfig{
-				Regular:   [4]uint8{220, 220, 220, 255}, // Light gray - regular files
-				Directory: [4]uint8{135, 206, 250, 255}, // Light sky blue - directories
-				Symlink:   [4]uint8{255, 165, 0, 255},   // Orange - symbolic links
-				Hidden:    [4]uint8{105, 105, 105, 255}, // Dim gray - hidden files
 			},
 			CursorMemory: CursorMemoryConfig{
 				MaxEntries: 100,
@@ -272,25 +261,8 @@ func mergeConfigs(defaultConfig *Config, fileConfig *Config) {
 	if fileConfig.UI.CursorStyle.Type != "" {
 		defaultConfig.UI.CursorStyle.Type = fileConfig.UI.CursorStyle.Type
 	}
-	if fileConfig.UI.CursorStyle.Color != [4]uint8{0, 0, 0, 0} {
-		defaultConfig.UI.CursorStyle.Color = fileConfig.UI.CursorStyle.Color
-	}
 	if fileConfig.UI.CursorStyle.Thickness != 0 {
 		defaultConfig.UI.CursorStyle.Thickness = fileConfig.UI.CursorStyle.Thickness
-	}
-
-	// Merge FileColors config
-	if fileConfig.UI.FileColors.Regular != [4]uint8{0, 0, 0, 0} {
-		defaultConfig.UI.FileColors.Regular = fileConfig.UI.FileColors.Regular
-	}
-	if fileConfig.UI.FileColors.Directory != [4]uint8{0, 0, 0, 0} {
-		defaultConfig.UI.FileColors.Directory = fileConfig.UI.FileColors.Directory
-	}
-	if fileConfig.UI.FileColors.Symlink != [4]uint8{0, 0, 0, 0} {
-		defaultConfig.UI.FileColors.Symlink = fileConfig.UI.FileColors.Symlink
-	}
-	if fileConfig.UI.FileColors.Hidden != [4]uint8{0, 0, 0, 0} {
-		defaultConfig.UI.FileColors.Hidden = fileConfig.UI.FileColors.Hidden
 	}
 
 	// Merge CursorMemory config

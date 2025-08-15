@@ -87,29 +87,37 @@ func DetermineFileType(path string, name string, isDir bool) FileType {
 }
 
 // GetTextColor returns the text color based on file type
-func GetTextColor(fileType FileType, colors FileColorConfig) color.RGBA {
+func GetTextColor(fileType FileType, themeProvider ThemeColorProvider) color.RGBA {
 	switch fileType {
 	case FileTypeDirectory:
-		return color.RGBA{R: colors.Directory[0], G: colors.Directory[1], B: colors.Directory[2], A: colors.Directory[3]}
+		return themeProvider.GetCustomColor("fileDirectory")
 	case FileTypeSymlink:
-		return color.RGBA{R: colors.Symlink[0], G: colors.Symlink[1], B: colors.Symlink[2], A: colors.Symlink[3]}
+		return themeProvider.GetCustomColor("fileSymlink")
 	case FileTypeHidden:
-		return color.RGBA{R: colors.Hidden[0], G: colors.Hidden[1], B: colors.Hidden[2], A: colors.Hidden[3]}
+		return themeProvider.GetCustomColor("fileHidden")
 	default: // FileTypeRegular
-		return color.RGBA{R: colors.Regular[0], G: colors.Regular[1], B: colors.Regular[2], A: colors.Regular[3]}
+		return themeProvider.GetCustomColor("fileRegular")
 	}
+}
+
+// ThemeColorProvider provides custom theme colors
+type ThemeColorProvider interface {
+	GetCustomColor(colorType string) color.RGBA
 }
 
 // GetStatusBackgroundColor returns the background color based on file status
 // Returns nil for normal status (no background)
-func GetStatusBackgroundColor(status FileStatus) *color.RGBA {
+func GetStatusBackgroundColor(status FileStatus, themeProvider ThemeColorProvider) *color.RGBA {
 	switch status {
 	case StatusAdded:
-		return &color.RGBA{R: 0, G: 200, B: 0, A: 80} // Semi-transparent green background
+		color := themeProvider.GetCustomColor("statusAdded")
+		return &color
 	case StatusDeleted:
-		return &color.RGBA{R: 128, G: 128, B: 128, A: 60} // Semi-transparent gray background
+		color := themeProvider.GetCustomColor("statusDeleted")
+		return &color
 	case StatusModified:
-		return &color.RGBA{R: 255, G: 200, B: 0, A: 80} // Semi-transparent orange background
+		color := themeProvider.GetCustomColor("statusModified")
+		return &color
 	default: // StatusNormal
 		return nil // No background
 	}

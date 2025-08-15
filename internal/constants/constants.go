@@ -47,23 +47,8 @@ const (
 	FileSizeUnits = "KMGTPE"
 )
 
-// Status colors (RGBA values)
+// Default cursor color (still used in config defaults)
 var (
-	// Status background colors
-	StatusAddedColor    = [4]uint8{0, 200, 0, 80}     // Semi-transparent green
-	StatusDeletedColor  = [4]uint8{128, 128, 128, 60} // Semi-transparent gray
-	StatusModifiedColor = [4]uint8{255, 200, 0, 80}   // Semi-transparent orange
-
-	// Selection background color
-	SelectionBackgroundColor = [4]uint8{100, 150, 200, 100}
-
-	// Default file type colors
-	DefaultRegularFileColor = [4]uint8{220, 220, 220, 255} // Light gray
-	DefaultDirectoryColor   = [4]uint8{135, 206, 250, 255} // Light sky blue
-	DefaultSymlinkColor     = [4]uint8{255, 165, 0, 255}   // Orange
-	DefaultHiddenFileColor  = [4]uint8{105, 105, 105, 255} // Dim gray
-
-	// Default cursor color
 	DefaultCursorColor = [4]uint8{255, 255, 255, 255} // White
 )
 
