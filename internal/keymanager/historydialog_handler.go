@@ -29,6 +29,7 @@ type HistoryDialogInterface interface {
 
 	// Dialog control
 	AcceptSelection()
+	AcceptDirectPathNavigation() // Accept direct path navigation (Ctrl+Enter)
 	CancelDialog()
 }
 
@@ -59,6 +60,13 @@ func (hh *HistoryDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers Modifi
 		if modifiers.CtrlPressed {
 			return true
 		}
+
+	case fyne.KeyReturn:
+		if modifiers.CtrlPressed {
+			// Ctrl+Enter - Accept direct path navigation
+			hh.historyDialog.AcceptDirectPathNavigation()
+		}
+		return true
 	}
 
 	return false
@@ -97,7 +105,7 @@ func (hh *HistoryDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modif
 		return true
 
 	case fyne.KeyReturn:
-		// Accept current selection and close dialog
+		// Enter - Accept current selection and close dialog
 		hh.historyDialog.AcceptSelection()
 		return true
 

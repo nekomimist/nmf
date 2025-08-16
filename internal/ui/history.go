@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -329,9 +331,51 @@ func (nhd *NavigationHistoryDialog) AcceptSelection() {
 	// Pop the handler first
 	nhd.keyManager.PopHandler()
 
-	if nhd.callback != nil && nhd.selectedPath != "" {
+	// Check if search text is a valid path and no history match exists
+	searchText := nhd.GetSearchText()
+	if searchText != "" && nhd.isValidPath(searchText) && len(nhd.filteredPaths) == 0 {
+		// Use search text as direct path navigation
+		absPath := nhd.getAbsolutePath(searchText)
+		nhd.debugPrint("HistoryDialog: No history match, using search text as path: %s", absPath)
+		if nhd.callback != nil {
+			nhd.callback(absPath)
+		}
+	} else if nhd.callback != nil && nhd.selectedPath != "" {
+		// Use selected history path
 		nhd.callback(nhd.selectedPath)
 	}
+
+	if nhd.dialog != nil {
+		nhd.dialog.Hide()
+	}
+	if nhd.parent != nil {
+		nhd.parent.Canvas().Unfocus()
+	}
+}
+
+// AcceptDirectPathNavigation accepts direct path navigation (Ctrl+Enter)
+func (nhd *NavigationHistoryDialog) AcceptDirectPathNavigation() {
+	if nhd.closed {
+		return
+	}
+	nhd.closed = true
+	// Pop the handler first
+	nhd.keyManager.PopHandler()
+
+	searchText := nhd.GetSearchText()
+	if searchText != "" && nhd.isValidPath(searchText) {
+		// Use search text as direct path navigation, ignoring history
+		absPath := nhd.getAbsolutePath(searchText)
+		nhd.debugPrint("HistoryDialog: Direct path navigation (Ctrl+Enter): %s", absPath)
+		if nhd.callback != nil {
+			nhd.callback(absPath)
+		}
+	} else if nhd.callback != nil && nhd.selectedPath != "" {
+		// Fallback to selected history path if search text is not valid
+		nhd.debugPrint("HistoryDialog: Invalid search path, falling back to selected history: %s", nhd.selectedPath)
+		nhd.callback(nhd.selectedPath)
+	}
+
 	if nhd.dialog != nil {
 		nhd.dialog.Hide()
 	}
@@ -401,4 +445,41 @@ func (nhd *NavigationHistoryDialog) GetSearchText() string {
 		return nhd.searchEntry.Text
 	}
 	return ""
+}
+
+// isValidPath checks if the given path is a valid directory path
+func (nhd *NavigationHistoryDialog) isValidPath(path string) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
+
+	// Convert to absolute path
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		nhd.debugPrint("HistoryDialog: Failed to get absolute path for '%s': %v", path, err)
+		return false
+	}
+
+	// Check if path exists and is a directory
+	info, err := os.Stat(absPath)
+	if err != nil {
+		nhd.debugPrint("HistoryDialog: Path does not exist: '%s'", absPath)
+		return false
+	}
+
+	if !info.IsDir() {
+		nhd.debugPrint("HistoryDialog: Path is not a directory: '%s'", absPath)
+		return false
+	}
+
+	return true
+}
+
+// getAbsolutePath returns the absolute path for the given path
+func (nhd *NavigationHistoryDialog) getAbsolutePath(path string) string {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	return absPath
 }
