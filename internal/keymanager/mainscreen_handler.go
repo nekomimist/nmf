@@ -47,6 +47,9 @@ type FileManagerInterface interface {
 
 	// Path entry focus
 	FocusPathEntry()
+
+	// Application quit
+	QuitApplication()
 }
 
 // MainScreenKeyHandler handles keyboard events for the main file list screen
@@ -262,6 +265,14 @@ func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modifier
 		if !modifiers.CtrlPressed && !modifiers.ShiftPressed {
 			mh.debugPrint("MainScreen: F3 detected - toggling filter")
 			mh.fileManager.ToggleFilter()
+		}
+		return true
+
+	case fyne.KeyQ:
+		// Q - Quit application (main screen only)
+		if !modifiers.CtrlPressed && !modifiers.ShiftPressed {
+			mh.debugPrint("MainScreen: Q detected - quit application")
+			mh.fileManager.QuitApplication()
 		}
 		return true
 

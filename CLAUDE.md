@@ -9,7 +9,7 @@ Cross-platform GUI file manager "nmf" built with Go + Fyne v2.6.1. Features keyb
 ### Package Structure (Go Way Compliant)
 ```
 nmf/
-├── main.go                         # Application entry point (713 lines)
+├── main.go                         # Application entry point with multi-window management
 └── internal/
     ├── config/                     # Configuration management
     │   ├── config.go              # Settings, defaults, file I/O, cursor memory
@@ -32,6 +32,7 @@ nmf/
     │   ├── filter_dialog.go       # File filter dialog with glob pattern matching
     │   ├── incremental_search.go  # Incremental search overlay with real-time filtering
     │   ├── sort_dialog.go         # File sorting configuration dialog with shortcuts
+    │   ├── quit_dialog.go         # Quit confirmation dialog with keyboard shortcuts
     │   ├── key_sink.go            # Generic KeySink wrapper for focus & key forwarding
     │   └── tab_entry.go           # TabEntry widget with Tab capture capability
     ├── keymanager/                 # Stack-based keyboard input management
@@ -41,7 +42,8 @@ nmf/
     │   ├── historydialog_handler.go # History dialog keyboard navigation
     │   ├── filterdialog_handler.go # Filter dialog keyboard navigation
     │   ├── incremental_search_handler.go # Incremental search keyboard handling
-    │   └── sortdialog_handler.go  # Sort dialog keyboard navigation
+    │   ├── sortdialog_handler.go  # Sort dialog keyboard navigation
+    │   └── quitdialog_handler.go  # Quit confirmation dialog keyboard handling
     ├── watcher/                    # Real-time directory monitoring
     │   └── watcher.go             # FileManager interface, change detection
     ├── theme/                      # Custom theming
@@ -64,6 +66,7 @@ nmf/
 - **FilterDialog**: File filtering with glob pattern matching and real-time preview
 - **IncrementalSearchOverlay**: Real-time file search with substring matching
 - **SortDialog**: File sorting configuration with keyboard shortcuts
+- **QuitConfirmDialog**: Application quit confirmation with keyboard shortcuts
 
 ### Key Features
 
@@ -74,7 +77,7 @@ nmf/
 - **Incremental Search**: Real-time file search with substring matching and visual overlay
 - **Keyboard Navigation**: Arrow keys, Shift+Arrow (fast), Space (select), Enter (open)
 - **Mouse Navigation**: Icon clicks navigate, name clicks select
-- **Multi-window**: Independent file manager instances
+- **Multi-window**: Independent file manager instances with smart quit handling
 
 ## Common Commands
 
@@ -106,6 +109,7 @@ nmf/
 - `Ctrl+S` - Incremental search
 - `Shift+S` - Sort dialog
 - `Ctrl+N` - New window
+- `Q` - Quit application (confirmation dialog for last window)
 
 ### Tree Dialog
 - `↑/↓` - Navigate nodes (Shift for fast) *[TODO: implementation]*
@@ -149,6 +153,14 @@ nmf/
 - `Esc` - Cancel dialog without applying ✅
 - `Tab` - Navigate between fields ✅
 - Real-time application of sort settings with cursor position preservation ✅
+
+### Quit Confirmation Dialog
+- `Q` - Open quit confirmation dialog (main screen only) ✅
+- `Enter` - Confirm quit ✅
+- `Y` - Confirm quit (same as Enter) ✅
+- `Esc` - Cancel quit ✅
+- `N` - Cancel quit (same as Escape) ✅
+- Smart behavior: multiple windows = close current, last window = show confirmation ✅
 
 ## Communication Style
 - Persona: helpful developer niece to her uncle (address as "おじさま"). Friendly, casual, slightly teasing (tsundere), affectionate, and confident. Emojis are welcome.

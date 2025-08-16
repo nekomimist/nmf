@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -30,6 +31,12 @@ import (
 
 // Global debug flag
 var debugMode bool
+
+// Global window registry for managing multiple windows
+var (
+	windowRegistry sync.Map // map[fyne.Window]*FileManager
+	windowCount    int32    // atomic counter for window count
+)
 
 // debugPrint prints debug messages only when debug mode is enabled
 func debugPrint(format string, args ...interface{}) {
@@ -211,6 +218,15 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 
 	// Start watching after initial load
 	fm.dirWatcher.Start()
+
+	// Register window in global registry
+	windowRegistry.Store(fm.window, fm)
+	atomic.AddInt32(&windowCount, 1)
+
+	// Set window close handler
+	fm.window.SetCloseIntercept(func() {
+		fm.closeWindow()
+	})
 
 	return fm
 }
@@ -1342,4 +1358,56 @@ func main() {
 
 	fm := NewFileManager(app, startPath, config, configManager, customTheme)
 	fm.window.ShowAndRun()
+}
+
+// closeWindow handles window closing logic
+func (fm *FileManager) closeWindow() {
+	// Remove from registry
+	windowRegistry.Delete(fm.window)
+	remaining := atomic.AddInt32(&windowCount, -1)
+
+	debugPrint("Window closed, remaining windows: %d", remaining)
+
+	// Stop directory watcher
+	if fm.dirWatcher != nil {
+		fm.dirWatcher.Stop()
+	}
+
+	// Close the window
+	fm.window.Close()
+
+	// If this was the last window, quit the application
+	if remaining == 0 {
+		debugPrint("Last window closed, quitting application")
+		fyne.CurrentApp().Quit()
+	}
+}
+
+// QuitApplication handles application quit logic with confirmation dialog
+func (fm *FileManager) QuitApplication() {
+	currentCount := atomic.LoadInt32(&windowCount)
+	debugPrint("QuitApplication called, current window count: %d", currentCount)
+
+	if currentCount > 1 {
+		// Multiple windows open, just close current window
+		fm.closeWindow()
+	} else {
+		// Last window, show confirmation dialog
+		fm.showQuitConfirmationDialog()
+	}
+}
+
+// showQuitConfirmationDialog shows a confirmation dialog before quitting
+func (fm *FileManager) showQuitConfirmationDialog() {
+	dialog := ui.NewQuitConfirmDialog(fm.keyManager, debugPrint)
+	dialog.ShowDialog(fm.window, func(confirmed bool) {
+		if confirmed {
+			debugPrint("User confirmed quit")
+			fm.closeWindow()
+		} else {
+			debugPrint("User cancelled quit")
+		}
+		// Return focus to file list after dialog closes
+		fm.FocusFileList()
+	})
 }
