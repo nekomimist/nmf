@@ -3,7 +3,6 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -87,12 +86,14 @@ type FileFilterConfig struct {
 // Manager provides configuration management functionality
 type Manager struct {
 	configPath string
+	debugPrint func(format string, args ...interface{})
 }
 
 // NewManager creates a new configuration manager
-func NewManager() *Manager {
+func NewManager(debugPrint func(format string, args ...interface{})) *Manager {
 	return &Manager{
 		configPath: getConfigPath(),
+		debugPrint: debugPrint,
 	}
 }
 
@@ -103,7 +104,7 @@ func (m *Manager) Load() (*Config, error) {
 
 	data, err := os.ReadFile(m.configPath)
 	if err != nil {
-		log.Printf("Config file not found, using defaults: %v", err)
+		m.debugPrint("Config file not found, using defaults: %v", err)
 		return config, nil
 	}
 

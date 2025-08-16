@@ -3,7 +3,6 @@ package theme
 import (
 	"image/color"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 
@@ -70,11 +69,15 @@ var (
 type CustomTheme struct {
 	config     *config.Config
 	customFont fyne.Resource
+	debugPrint func(format string, args ...interface{})
 }
 
 // NewCustomTheme creates a new custom theme with the given configuration
-func NewCustomTheme(config *config.Config) *CustomTheme {
-	customTheme := &CustomTheme{config: config}
+func NewCustomTheme(config *config.Config, debugPrint func(format string, args ...interface{})) *CustomTheme {
+	customTheme := &CustomTheme{
+		config:     config,
+		debugPrint: debugPrint,
+	}
 
 	// Load custom font if specified
 	if config.Theme.FontPath != "" {
@@ -90,20 +93,20 @@ func (t *CustomTheme) loadCustomFont() {
 
 	// Check if font file exists
 	if _, err := os.Stat(fontPath); os.IsNotExist(err) {
-		log.Printf("Custom font file not found: %s", fontPath)
+		t.debugPrint("Custom font file not found: %s", fontPath)
 		return
 	}
 
 	// Read font file
 	fontData, err := ioutil.ReadFile(fontPath)
 	if err != nil {
-		log.Printf("Error reading font file %s: %v", fontPath, err)
+		t.debugPrint("Error reading font file %s: %v", fontPath, err)
 		return
 	}
 
 	// Create font resource
 	t.customFont = fyne.NewStaticResource(filepath.Base(fontPath), fontData)
-	log.Printf("Loaded custom font: %s", fontPath)
+	t.debugPrint("Loaded custom font: %s", fontPath)
 }
 
 // Color methods from default theme

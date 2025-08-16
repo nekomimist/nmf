@@ -1358,7 +1358,7 @@ func main() {
 	}
 
 	// Load configuration
-	configManager := config.NewManager()
+	configManager := config.NewManager(debugPrint)
 	config, err := configManager.Load()
 	if err != nil {
 		log.Fatalf("Error loading configuration: %v", err)
@@ -1367,7 +1367,7 @@ func main() {
 	app := app.New()
 
 	// Apply custom theme
-	customTheme := customtheme.NewCustomTheme(config)
+	customTheme := customtheme.NewCustomTheme(config, debugPrint)
 	app.Settings().SetTheme(customTheme)
 
 	fm := NewFileManager(app, startPath, config, configManager, customTheme)

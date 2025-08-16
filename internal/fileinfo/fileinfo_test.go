@@ -54,13 +54,32 @@ func TestDetermineFileType(t *testing.T) {
 	}
 }
 
-func TestGetTextColor(t *testing.T) {
-	colors := FileColorConfig{
-		Regular:   [4]uint8{220, 220, 220, 255},
-		Directory: [4]uint8{135, 206, 250, 255},
-		Symlink:   [4]uint8{255, 165, 0, 255},
-		Hidden:    [4]uint8{105, 105, 105, 255},
+// mockThemeColorProvider implements ThemeColorProvider for testing
+type mockThemeColorProvider struct{}
+
+func (m *mockThemeColorProvider) GetCustomColor(colorType string) color.RGBA {
+	switch colorType {
+	case "fileRegular":
+		return color.RGBA{R: 220, G: 220, B: 220, A: 255}
+	case "fileDirectory":
+		return color.RGBA{R: 135, G: 206, B: 250, A: 255}
+	case "fileSymlink":
+		return color.RGBA{R: 255, G: 165, B: 0, A: 255}
+	case "fileHidden":
+		return color.RGBA{R: 105, G: 105, B: 105, A: 255}
+	case "statusAdded":
+		return color.RGBA{R: 0, G: 200, B: 0, A: 80}
+	case "statusDeleted":
+		return color.RGBA{R: 128, G: 128, B: 128, A: 60}
+	case "statusModified":
+		return color.RGBA{R: 255, G: 200, B: 0, A: 80}
+	default:
+		return color.RGBA{R: 0, G: 0, B: 0, A: 0}
 	}
+}
+
+func TestGetTextColor(t *testing.T) {
+	themeProvider := &mockThemeColorProvider{}
 
 	testCases := []struct {
 		fileType FileType
@@ -73,7 +92,7 @@ func TestGetTextColor(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		result := GetTextColor(tc.fileType, colors)
+		result := GetTextColor(tc.fileType, themeProvider)
 		if result != tc.expected {
 			t.Errorf("For file type %v, expected %v, got %v", tc.fileType, tc.expected, result)
 		}
@@ -81,6 +100,8 @@ func TestGetTextColor(t *testing.T) {
 }
 
 func TestGetStatusBackgroundColor(t *testing.T) {
+	themeProvider := &mockThemeColorProvider{}
+
 	testCases := []struct {
 		status   FileStatus
 		expected *color.RGBA
@@ -92,7 +113,7 @@ func TestGetStatusBackgroundColor(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		result := GetStatusBackgroundColor(tc.status)
+		result := GetStatusBackgroundColor(tc.status, themeProvider)
 		if tc.expected == nil {
 			if result != nil {
 				t.Errorf("For status %v, expected nil, got %v", tc.status, result)

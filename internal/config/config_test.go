@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"nmf/internal/fileinfo"
 )
 
 func TestGetDefaultConfig(t *testing.T) {
@@ -57,10 +55,31 @@ func TestGetDefaultConfig(t *testing.T) {
 		t.Errorf("Expected default cursor thickness 2, got %d", config.UI.CursorStyle.Thickness)
 	}
 
-	// Test FileColors defaults
-	expectedRegular := [4]uint8{220, 220, 220, 255}
-	if config.UI.FileColors.Regular != expectedRegular {
-		t.Errorf("Expected default regular color %v, got %v", expectedRegular, config.UI.FileColors.Regular)
+	// Test CursorMemory defaults
+	if config.UI.CursorMemory.MaxEntries != 100 {
+		t.Errorf("Expected default cursor memory max entries 100, got %d", config.UI.CursorMemory.MaxEntries)
+	}
+	if config.UI.CursorMemory.Entries == nil {
+		t.Error("Expected cursor memory entries to be initialized")
+	}
+
+	// Test NavigationHistory defaults
+	if config.UI.NavigationHistory.MaxEntries != 50 {
+		t.Errorf("Expected default navigation history max entries 50, got %d", config.UI.NavigationHistory.MaxEntries)
+	}
+	if config.UI.NavigationHistory.Entries == nil {
+		t.Error("Expected navigation history entries to be initialized")
+	}
+
+	// Test FileFilter defaults
+	if config.UI.FileFilter.MaxEntries != 30 {
+		t.Errorf("Expected default file filter max entries 30, got %d", config.UI.FileFilter.MaxEntries)
+	}
+	if config.UI.FileFilter.Enabled {
+		t.Error("Expected file filter to be disabled by default")
+	}
+	if config.UI.FileFilter.Current != nil {
+		t.Error("Expected file filter current to be nil by default")
 	}
 }
 
@@ -86,11 +105,7 @@ func TestMergeConfigs(t *testing.T) {
 			ItemSpacing: 8,
 			CursorStyle: CursorStyleConfig{
 				Type:      "border",
-				Color:     [4]uint8{255, 0, 0, 255},
 				Thickness: 3,
-			},
-			FileColors: fileinfo.FileColorConfig{
-				Regular: [4]uint8{100, 100, 100, 255},
 			},
 		},
 	}
@@ -129,7 +144,12 @@ func TestMergeConfigs(t *testing.T) {
 
 func TestManagerInterface(t *testing.T) {
 	// Test that Manager implements ManagerInterface
-	var manager ManagerInterface = &Manager{configPath: "/tmp/test_config.json"}
+	// Note: Manager now requires debugPrint function
+	dummyDebugPrint := func(format string, args ...interface{}) {}
+	var manager ManagerInterface = &Manager{
+		configPath: "/tmp/test_config.json",
+		debugPrint: dummyDebugPrint,
+	}
 
 	if manager == nil {
 		t.Error("Manager should implement ManagerInterface")
@@ -180,7 +200,11 @@ func TestGetConfigPath(t *testing.T) {
 
 func TestManagerLoadNonExistentFile(t *testing.T) {
 	// Create a manager with a non-existent file path
-	manager := &Manager{configPath: "/non/existent/path/config.json"}
+	dummyDebugPrint := func(format string, args ...interface{}) {}
+	manager := &Manager{
+		configPath: "/non/existent/path/config.json",
+		debugPrint: dummyDebugPrint,
+	}
 
 	config, err := manager.Load()
 
@@ -204,7 +228,11 @@ func TestManagerSaveAndLoad(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "test_config.json")
 
-	manager := &Manager{configPath: configPath}
+	dummyDebugPrint := func(format string, args ...interface{}) {}
+	manager := &Manager{
+		configPath: configPath,
+		debugPrint: dummyDebugPrint,
+	}
 
 	// Create a test config
 	testConfig := &Config{
