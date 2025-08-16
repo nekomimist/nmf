@@ -768,13 +768,27 @@ func (fm *FileManager) ShowDirectoryTreeDialog() {
 // ShowNavigationHistoryDialog shows the navigation history dialog
 func (fm *FileManager) ShowNavigationHistoryDialog() {
 	historyPaths := fm.config.GetNavigationHistory()
-	if len(historyPaths) == 0 {
+
+	// Add current path to the beginning of history list
+	enhancedPaths := []string{}
+	if fm.currentPath != "" {
+		enhancedPaths = append(enhancedPaths, fm.currentPath)
+	}
+
+	// Add existing history paths, but skip duplicates of current path
+	for _, path := range historyPaths {
+		if path != fm.currentPath {
+			enhancedPaths = append(enhancedPaths, path)
+		}
+	}
+
+	if len(enhancedPaths) == 0 {
 		debugPrint("No navigation history available")
 		return
 	}
 
 	dialog := ui.NewNavigationHistoryDialog(
-		historyPaths,
+		enhancedPaths,
 		fm.config.UI.NavigationHistory.LastUsed,
 		fm.keyManager,
 		debugPrint,

@@ -19,6 +19,7 @@ type HistoryDialogInterface interface {
 	AppendToSearch(char string)
 	BackspaceSearch()
 	GetSearchText() string
+	CopySelectedPathToSearch() // Copy selected path to search entry
 
 	// Focus management (deprecated in focusless design)
 	IsSearchFocused() bool
@@ -122,6 +123,11 @@ func (hh *HistoryDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modif
 	case fyne.KeyDelete:
 		// Clear entire search
 		hh.historyDialog.ClearSearch()
+		return true
+
+	case fyne.KeyTab:
+		// Copy selected path to search entry
+		hh.historyDialog.CopySelectedPathToSearch()
 		return true
 
 	default:

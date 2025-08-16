@@ -447,6 +447,14 @@ func (nhd *NavigationHistoryDialog) GetSearchText() string {
 	return ""
 }
 
+// CopySelectedPathToSearch copies the currently selected path to search entry
+func (nhd *NavigationHistoryDialog) CopySelectedPathToSearch() {
+	if nhd.searchEntry != nil && nhd.selectedPath != "" {
+		nhd.searchEntry.SetText(nhd.selectedPath)
+		nhd.debugPrint("HistoryDialog: Copied selected path to search: %s", nhd.selectedPath)
+	}
+}
+
 // isValidPath checks if the given path is a valid directory path
 func (nhd *NavigationHistoryDialog) isValidPath(path string) bool {
 	if strings.TrimSpace(path) == "" {
