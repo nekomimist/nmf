@@ -578,6 +578,9 @@ func (fm *FileManager) navigateToPath(inputPath string) {
 		path = strings.Replace(path, "~", home, 1)
 	}
 
+	// Normalize input (Windows: convert smb:// to UNC for OS calls)
+	path = fileinfo.NormalizeInputPath(path)
+
 	// Convert to absolute path if it's relative
 	if !filepath.IsAbs(path) {
 		absPath, err := filepath.Abs(path)
@@ -645,8 +648,8 @@ func (fm *FileManager) LoadDirectory(path string) {
 	fm.pathEntry.SetText(path)
 	fm.files = []fileinfo.FileInfo{}
 
-	// Read directory
-	entries, err := os.ReadDir(path)
+	// Read directory (portable, supports UNC on Windows)
+	entries, err := fileinfo.ReadDirPortable(path)
 	if err != nil {
 		log.Printf("Error reading directory: %v", err)
 		return

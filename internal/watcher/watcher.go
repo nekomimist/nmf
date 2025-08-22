@@ -1,7 +1,6 @@
 package watcher
 
 import (
-	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -134,7 +133,7 @@ func (dw *DirectoryWatcher) updateSnapshot() {
 // checkForChanges detects and handles file system changes
 func (dw *DirectoryWatcher) checkForChanges() {
 	// Read current directory state
-	entries, err := os.ReadDir(dw.fm.GetCurrentPath())
+	entries, err := fileinfo.ReadDirPortable(dw.fm.GetCurrentPath())
 	if err != nil {
 		return // Skip this check if directory read fails
 	}
