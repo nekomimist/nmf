@@ -51,8 +51,33 @@
    - For entries that must not lose focus on Tab, use `ui.TabEntry` (implements `AcceptsTab`). For display-only fields (e.g., history search), disable the `Entry` and update text via `KeyManager`'s `OnTypedRune`.
    - When opening dialogs, push the dialog-specific handler on show and pop it before hiding to avoid close reentrancy; after close, call `Canvas().Unfocus()` on the parent if needed.
    - For the main file list, prefer wrapping `widget.List` with `ui.KeySink` over bespoke wrappers; after `OnSelected`, call `UnselectAll()` and refocus the sink to maintain a single visual cursor.
- - Directory watching: `internal/watcher.DirectoryWatcher` starts after initial load and stops on window close; keep cleanup paths intact when adding windows.
- - Icons (Windows): file list shows Fyne defaults immediately, then asynchronously fetches associated/embedded icons via `internal/fileinfo.IconService`; caches by extension and for `.exe/.lnk/.ico` by path; UI updates are applied via `canvas.Refresh(list)` batching.
+- Directory watching: `internal/watcher.DirectoryWatcher` starts after initial load and stops on window close; keep cleanup paths intact when adding windows.
+- Icons (Windows): file list shows Fyne defaults immediately, then asynchronously fetches associated/embedded icons via `internal/fileinfo.IconService`; caches by extension and for `.exe/.lnk/.ico` by path; UI updates are applied via `canvas.Refresh(list)` batching.
+
+## UNC/SMB & VFS
+- Virtual FS: All directory listing and metadata must go through `internal/fileinfo` VFS.
+  - Use `fileinfo.ReadDirPortable(path)` instead of calling `os.ReadDir` directly.
+  - Path resolution goes via `resolver` (`internal/fileinfo/resolver.go`) which normalizes inputs and selects a provider.
+- Windows behavior:
+  - Accepts UNC paths directly (e.g., `\\server\share\path`). `smb://server/share` inputs are converted to UNC internally.
+  - If an initial read fails with access errors, nmf attempts a temporary connection using stored credentials or a login prompt, then retries.
+- Linux behavior:
+  - If `smb://server/share/...` (or `//server/share/...`) matches an existing CIFS mount (from `/proc/self/mountinfo`), nmf uses the local mount via `LocalFS`.
+  - Otherwise, nmf uses direct SMB access via `go-smb2` (`internal/fileinfo/smbfs_*.go`).
+  - Display and history use canonical `smb://` form; internal providers handle native paths.
+- Credentials:
+  - Resolution order: in‑memory cache → OS keyring (if available) → UI prompt.
+  - Keyring uses `99designs/keyring` via `internal/secret` (service `nmf.smb`). Never store secrets in `config.json`.
+  - UI login dialog includes Domain/Username/Password and an opt‑in “save on this device” checkbox.
+- Watcher integration:
+  - Watcher lists via VFS; avoid `filepath.Join` for `smb://` paths (use `/` concatenation).
+  - Poll interval is configurable; prefer a longer interval for remote SMB.
+
+## Package Notes (VFS & Secrets)
+- `internal/fileinfo` now contains:
+  - `vfs.go` (minimal VFS), `resolver.go` (path normalization/provider selection), platform helpers, and SMB providers.
+  - Windows connection helper (build‑tagged) to establish UNC sessions when needed.
+- `internal/secret` provides a `Store` abstraction and a `keyring` implementation using `99designs/keyring`.
 
 ## Communication Style
 - Important: Do not remove or rename this section. Keep the header exactly as "## Communication Style". This section is mandatory.

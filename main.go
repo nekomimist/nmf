@@ -24,6 +24,7 @@ import (
 	"nmf/internal/config"
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
+	"nmf/internal/secret"
 	customtheme "nmf/internal/theme"
 	"nmf/internal/ui"
 	"nmf/internal/watcher"
@@ -214,6 +215,15 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 
 	// Create directory watcher
 	fm.dirWatcher = watcher.NewDirectoryWatcher(fm, debugPrint)
+
+	// Install SMB credentials provider (cached + interactive prompt fallback)
+	cached := fileinfo.NewCachedCredentialsProvider(ui.NewSMBCredentialsProvider(fm.window))
+	fileinfo.SetCredentialsProvider(cached)
+
+	// Initialize OS keyring (99designs). If unavailable, continue without persistent store.
+	if store, err := secret.NewKeyringStore(); err == nil {
+		fileinfo.SetSecretStore(store)
+	}
 
 	// Create incremental search overlay
 	fm.searchOverlay = ui.NewIncrementalSearchOverlay([]fileinfo.FileInfo{}, fm.keyManager, debugPrint)
@@ -578,8 +588,30 @@ func (fm *FileManager) navigateToPath(inputPath string) {
 		path = strings.Replace(path, "~", home, 1)
 	}
 
-	// Normalize input (Windows: convert smb:// to UNC for OS calls)
+	// Normalize input
+	// - Windows: convert smb:// to UNC for OS calls
+	// - Linux: if smb:// or //host/share is a mounted CIFS, map to mountpoint
 	path = fileinfo.NormalizeInputPath(path)
+	if vfs, parsed, err := fileinfo.ResolveRead(path); err == nil {
+		if parsed.Scheme == fileinfo.SchemeSMB {
+			// Seed credential cache if URL contained creds
+			if parsed.User != "" || parsed.Password != "" || parsed.Domain != "" {
+				fileinfo.PutCachedCredentials(parsed.Host, parsed.Share, fileinfo.Credentials{Domain: parsed.Domain, Username: parsed.User, Password: parsed.Password})
+			}
+			// For SMB remote, skip local os.Stat check and navigate using display path
+			fm.LoadDirectory(parsed.Display)
+			fm.FocusFileList()
+			return
+		}
+		if parsed.Native != "" {
+			path = parsed.Native
+		}
+		_ = vfs // reserved for future use
+	} else if parsed.Scheme == fileinfo.SchemeSMB {
+		debugPrint("SMB path not supported or not mounted: %s", inputPath)
+		fm.pathEntry.SetText(fm.currentPath)
+		return
+	}
 
 	// Convert to absolute path if it's relative
 	if !filepath.IsAbs(path) {
@@ -648,10 +680,17 @@ func (fm *FileManager) LoadDirectory(path string) {
 	fm.pathEntry.SetText(path)
 	fm.files = []fileinfo.FileInfo{}
 
+	// For remote SMB paths, perform listing in background to avoid UI deadlock on auth prompt
+	if strings.HasPrefix(strings.ToLower(path), "smb://") {
+		go fm.loadSMBDirectory(path, previousPath)
+		return
+	}
+
 	// Read directory (portable, supports UNC on Windows)
 	entries, err := fileinfo.ReadDirPortable(path)
 	if err != nil {
 		log.Printf("Error reading directory: %v", err)
+		ui.ShowMessageDialog(fm.window, "フォルダを開けませんでした", err.Error())
 		return
 	}
 
@@ -775,6 +814,148 @@ func (fm *FileManager) LoadDirectory(path string) {
 	if fm.dirWatcher != nil {
 		fm.dirWatcher.Start()
 	}
+}
+
+// loadSMBDirectory lists SMB path on a background goroutine and applies UI updates on main thread.
+func (fm *FileManager) loadSMBDirectory(path string, previousPath string) {
+	entries, err := fileinfo.ReadDirPortable(path)
+	if err != nil {
+		log.Printf("Error reading SMB directory: %v", err)
+		fyne.Do(func() {
+			ui.ShowMessageDialog(fm.window, "フォルダを開けませんでした", err.Error())
+			// Revert to previous path on error and restart watcher
+			if previousPath != "" {
+				fm.currentPath = previousPath
+				fm.pathEntry.SetText(previousPath)
+				if fm.dirWatcher != nil {
+					fm.dirWatcher.SetPollInterval(2 * time.Second)
+					fm.dirWatcher.Start()
+				}
+			}
+		})
+		return
+	}
+
+	// Build file list off the UI thread
+	files := make([]fileinfo.FileInfo, 0, len(entries)+1)
+
+	// Add parent directory entry for SMB if not at share root
+	parent := smbParent(path)
+	if parent != path {
+		parentInfo := fileinfo.FileInfo{
+			Name:     "..",
+			Path:     parent,
+			IsDir:    true,
+			Size:     0,
+			Modified: time.Time{},
+			FileType: fileinfo.FileTypeDirectory,
+			Status:   fileinfo.StatusNormal,
+		}
+		files = append(files, parentInfo)
+	}
+
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		fullPath := smbJoin(path, entry.Name())
+		fileType := fileinfo.DetermineFileType(fullPath, entry.Name(), entry.IsDir())
+		fi := fileinfo.FileInfo{
+			Name:     entry.Name(),
+			Path:     fullPath,
+			IsDir:    entry.IsDir(),
+			Size:     info.Size(),
+			Modified: info.ModTime(),
+			FileType: fileType,
+			Status:   fileinfo.StatusNormal,
+		}
+		files = append(files, fi)
+	}
+
+	// Apply UI updates on main thread
+	fyne.Do(func() {
+		// Stop existing watcher (if any) before applying
+		if fm.dirWatcher != nil {
+			fm.dirWatcher.Stop()
+		}
+
+		fm.currentPath = path
+		fm.pathEntry.SetText(path)
+		fm.files = files
+
+		// Sort and build items
+		fm.sortFiles()
+		items := make([]interface{}, 0, len(fm.files))
+		for i, f := range fm.files {
+			items = append(items, fileinfo.ListItem{Index: i, FileInfo: f})
+		}
+		fm.fileBinding.Set(items)
+
+		// Clear selections and restore cursor
+		fm.selectedFiles = make(map[string]bool)
+		if len(fm.files) > 0 {
+			parentPrev := filepath.Dir(previousPath)
+			if parentPrev == path && previousPath != "" {
+				dirName := filepath.Base(previousPath)
+				cursorSet := false
+				for i, f := range fm.files {
+					if f.Name == dirName {
+						fm.SetCursorByIndex(i)
+						cursorSet = true
+						break
+					}
+				}
+				if !cursorSet {
+					fm.SetCursorByIndex(0)
+				}
+			} else {
+				saved := fm.restoreCursorPosition(path)
+				cursorSet := false
+				if saved != "" {
+					for i, f := range fm.files {
+						if f.Name == saved {
+							fm.SetCursorByIndex(i)
+							cursorSet = true
+							break
+						}
+					}
+				}
+				if !cursorSet {
+					fm.SetCursorByIndex(0)
+				}
+			}
+			fm.RefreshCursor()
+		} else {
+			fm.cursorPath = ""
+		}
+
+		// Restart watcher for SMB with slower interval (credentials cached)
+		if fm.dirWatcher != nil {
+			fm.dirWatcher.SetPollInterval(4 * time.Second)
+			fm.dirWatcher.Start()
+		}
+	})
+}
+
+func smbJoin(base, name string) string {
+	b := strings.TrimRight(base, "/")
+	return b + "/" + name
+}
+
+func smbParent(p string) string {
+	// p like smb://host/share[/a/b]
+	if !strings.HasPrefix(strings.ToLower(p), "smb://") {
+		return p
+	}
+	rest := strings.TrimPrefix(p, "smb://")
+	parts := strings.Split(rest, "/")
+	if len(parts) <= 2 { // smb://host/share -> treat as root
+		return p
+	}
+	// drop last segment
+	parent := "smb://" + strings.Join(parts[:len(parts)-1], "/")
+	return parent
 }
 
 func (fm *FileManager) OpenNewWindow() {

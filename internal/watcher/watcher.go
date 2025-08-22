@@ -2,6 +2,7 @@ package watcher
 
 import (
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +24,7 @@ type DirectoryWatcher struct {
 	mu            sync.RWMutex                 // Protects previousFiles from concurrent access
 	previousFiles map[string]fileinfo.FileInfo // Previous state for comparison
 	ticker        *time.Ticker
+	pollInterval  time.Duration
 	stopChan      chan bool
 	changeChan    chan *PendingChanges                     // Channel for thread-safe change communication
 	stopped       bool                                     // Track if watcher is already stopped
@@ -41,6 +43,7 @@ func NewDirectoryWatcher(fm FileManager, debugPrint func(format string, args ...
 	return &DirectoryWatcher{
 		fm:            fm,
 		previousFiles: make(map[string]fileinfo.FileInfo),
+		pollInterval:  2 * time.Second,
 		stopChan:      make(chan bool),
 		changeChan:    make(chan *PendingChanges, 10), // Buffered channel
 		debugPrint:    debugPrint,
@@ -63,7 +66,11 @@ func (dw *DirectoryWatcher) Start() {
 		dw.changeChan = make(chan *PendingChanges, 10)
 	}
 
-	dw.ticker = time.NewTicker(2 * time.Second)
+	interval := dw.pollInterval
+	if interval <= 0 {
+		interval = 2 * time.Second
+	}
+	dw.ticker = time.NewTicker(interval)
 	dw.updateSnapshot() // Take initial snapshot
 
 	// Start directory monitoring goroutine
@@ -95,6 +102,13 @@ func (dw *DirectoryWatcher) Start() {
 			}
 		}
 	}()
+}
+
+// SetPollInterval sets the polling interval used when Start() is called next.
+func (dw *DirectoryWatcher) SetPollInterval(d time.Duration) {
+	dw.mu.Lock()
+	defer dw.mu.Unlock()
+	dw.pollInterval = d
 }
 
 // Stop stops the directory watcher
@@ -141,8 +155,18 @@ func (dw *DirectoryWatcher) checkForChanges() {
 	currentFiles := make(map[string]fileinfo.FileInfo)
 
 	// Build current file map
+	cur := dw.fm.GetCurrentPath()
 	for _, entry := range entries {
-		fullPath := filepath.Join(dw.fm.GetCurrentPath(), entry.Name())
+		fullPath := ""
+		if strings.HasPrefix(strings.ToLower(cur), "smb://") {
+			if strings.HasSuffix(cur, "/") {
+				fullPath = cur + entry.Name()
+			} else {
+				fullPath = cur + "/" + entry.Name()
+			}
+		} else {
+			fullPath = filepath.Join(cur, entry.Name())
+		}
 		info, err := entry.Info()
 		if err != nil {
 			continue
