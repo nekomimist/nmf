@@ -55,3 +55,4 @@ config.local.json
 # garbage
 fyne-cross/
 Icon.png
+.gocache

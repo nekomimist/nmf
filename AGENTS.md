@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 - Root: `main.go` (Fyne GUI entrypoint) and `go.mod`.
 - Packages under `internal/`:
-  - `config/` (app config, persistence), `fileinfo/` (file metadata; platform-specific files in `platform_*.go`), `ui/` (widgets, dialogs including history), `watcher/` (directory change polling), `theme/`, `errors/`, `constants/`, `keymanager/` (keyboard event stack + handlers).
+  - `config/` (app config, persistence), `fileinfo/` (file metadata; platform-specific files in `platform_*.go`. Icons: `icon_service.go` (async fetch + caches), `icon_windows.go` / `icon_unix.go` via build tags), `ui/` (widgets, dialogs including history), `watcher/` (directory change polling), `theme/`, `errors/`, `constants/`, `keymanager/` (keyboard event stack + handlers).
   - `ui/` includes input wrappers: `key_sink.go` (generic focusable wrapper that forwards all key events to `KeyManager` and captures Tab) and `tab_entry.go` (an `Entry` that accepts Tab to suppress default focus traversal).
 - Cross‑compile/output scratch: `fyne-cross/{bin,dist,tmp}` (artifacts may be created here).
 
@@ -21,6 +21,7 @@
 - Names: exported `CamelCase`, unexported `camelCase`; constants `MixedCase` in Go style.
 - Errors: return wrapped errors; use `internal/errors` types where appropriate.
 - Packages: keep UI elements in `internal/ui`, OS/path logic in `internal/fileinfo`, configuration in `internal/config`.
+ - Platform-specific files may use either `platform_*.go` or `*_windows.go` / `*_unix.go` with build tags, as appropriate.
 
 ## Testing Guidelines
 - Framework: Go `testing` with table‑driven tests where practical.
@@ -51,6 +52,7 @@
    - When opening dialogs, push the dialog-specific handler on show and pop it before hiding to avoid close reentrancy; after close, call `Canvas().Unfocus()` on the parent if needed.
    - For the main file list, prefer wrapping `widget.List` with `ui.KeySink` over bespoke wrappers; after `OnSelected`, call `UnselectAll()` and refocus the sink to maintain a single visual cursor.
  - Directory watching: `internal/watcher.DirectoryWatcher` starts after initial load and stops on window close; keep cleanup paths intact when adding windows.
+ - Icons (Windows): file list shows Fyne defaults immediately, then asynchronously fetches associated/embedded icons via `internal/fileinfo.IconService`; caches by extension and for `.exe/.lnk/.ico` by path; UI updates are applied via `canvas.Refresh(list)` batching.
 
 ## Communication Style
 - Important: Do not remove or rename this section. Keep the header exactly as "## Communication Style". This section is mandatory.

@@ -67,6 +67,7 @@ type FileManager struct {
 	currentFilter  *config.FilterEntry                     // Currently applied filter
 	searchOverlay  *ui.IncrementalSearchOverlay            // Incremental search overlay
 	searchHandler  *keymanager.IncrementalSearchKeyHandler // Search key handler
+	iconSvc        *fileinfo.IconService                   // Async icon service
 }
 
 // Interface implementation for watcher.FileManager
@@ -202,6 +203,15 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 		keyManager:     keymanager.NewKeyManager(debugPrint),
 	}
 
+	// Initialize async icon service and subscribe for updates
+	fm.iconSvc = fileinfo.NewIconService(debugPrint)
+	// Refresh the list when icons arrive (thread-safe via canvas.Refresh)
+	fm.iconSvc.OnUpdated(func() {
+		if fm.fileList != nil {
+			canvas.Refresh(fm.fileList)
+		}
+	})
+
 	// Create directory watcher
 	fm.dirWatcher = watcher.NewDirectoryWatcher(fm, debugPrint)
 
@@ -306,11 +316,25 @@ func (fm *FileManager) setupUI() {
 					if icon, ok := leftSide.Objects[0].(*ui.TappableIcon); ok {
 						nameRichText := leftSide.Objects[1].(*widget.RichText)
 
-						// Set icon resource
+						// Set icon resource with async service (Windows uses real icons if available)
+						// Default placeholders
+						folderRes := theme.FolderIcon()
+						fileRes := theme.FileIcon()
 						if fileInfo.IsDir {
-							icon.SetResource(theme.FolderIcon())
+							icon.SetResource(folderRes)
 						} else {
-							icon.SetResource(theme.FileIcon())
+							// Desired icon size roughly equals text size
+							textSize := int(fyne.CurrentApp().Settings().Theme().Size(theme.SizeNameText))
+							ext := strings.ToLower(filepath.Ext(fileInfo.Name))
+							if fm.iconSvc != nil {
+								if res, ok := fm.iconSvc.GetCachedOrRequest(fileInfo.Path, fileInfo.IsDir, ext, textSize); ok && res != nil {
+									icon.SetResource(res)
+								} else {
+									icon.SetResource(fileRes)
+								}
+							} else {
+								icon.SetResource(fileRes)
+							}
 						}
 
 						// Set onTapped handler for icon
