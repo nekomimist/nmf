@@ -659,15 +659,6 @@ func (fm *FileManager) LoadDirectory(path string) {
 		fm.SaveCursorPosition(fm.currentPath)
 	}
 
-	// Add current path to navigation history before changing directory
-	if fm.currentPath != "" && fm.currentPath != path {
-		fm.config.AddToNavigationHistory(fm.currentPath)
-		// Save config to persist navigation history
-		if err := fm.configManager.Save(fm.config); err != nil {
-			debugPrint("Error saving navigation history: %v", err)
-		}
-	}
-
 	// Stop current directory watcher if running
 	if fm.dirWatcher != nil {
 		fm.dirWatcher.Stop()
@@ -676,151 +667,16 @@ func (fm *FileManager) LoadDirectory(path string) {
 	// Store the previous directory for parent navigation logic
 	previousPath := fm.currentPath
 
-	fm.currentPath = path
-	fm.pathEntry.SetText(path)
-	fm.files = []fileinfo.FileInfo{}
-
-	// For remote SMB paths, perform listing in background to avoid UI deadlock on auth prompt
-	if strings.HasPrefix(strings.ToLower(path), "smb://") {
-		go fm.loadSMBDirectory(path, previousPath)
-		return
-	}
-
-	// Read directory (portable, supports UNC on Windows)
-	entries, err := fileinfo.ReadDirPortable(path)
-	if err != nil {
-		log.Printf("Error reading directory: %v", err)
-		ui.ShowMessageDialog(fm.window, "フォルダを開けませんでした", err.Error())
-		return
-	}
-
-	// Convert to ListItem (FileInfo with index)
-	items := make([]interface{}, 0, len(entries)+1)
-	index := 0
-
-	// Add parent directory entry if not at root
-	parent := filepath.Dir(path)
-	if parent != path {
-		parentInfo := fileinfo.FileInfo{
-			Name:     "..",
-			Path:     parent,
-			IsDir:    true,
-			Size:     0,
-			Modified: time.Time{},
-			FileType: fileinfo.FileTypeDirectory, // Parent directory is always a directory
-			Status:   fileinfo.StatusNormal,
-		}
-
-		listItem := fileinfo.ListItem{
-			Index:    index,
-			FileInfo: parentInfo,
-		}
-
-		fm.files = append(fm.files, parentInfo)
-		items = append(items, listItem)
-		index++
-	}
-
-	for _, entry := range entries {
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-
-		fullPath := filepath.Join(path, entry.Name())
-		fileType := fileinfo.DetermineFileType(fullPath, entry.Name(), entry.IsDir())
-
-		fileInfo := fileinfo.FileInfo{
-			Name:     entry.Name(),
-			Path:     fullPath,
-			IsDir:    entry.IsDir(),
-			Size:     info.Size(),
-			Modified: info.ModTime(),
-			FileType: fileType,
-			Status:   fileinfo.StatusNormal,
-		}
-
-		listItem := fileinfo.ListItem{
-			Index:    index,
-			FileInfo: fileInfo,
-		}
-
-		fm.files = append(fm.files, fileInfo)
-		items = append(items, listItem)
-		index++
-	}
-
-	// Sort files according to configuration
-	fm.sortFiles()
-
-	// Rebuild items after sorting
-	items = make([]interface{}, 0, len(fm.files))
-	for i, file := range fm.files {
-		listItem := fileinfo.ListItem{
-			Index:    i,
-			FileInfo: file,
-		}
-		items = append(items, listItem)
-	}
-
-	// Update binding
-	fm.fileBinding.Set(items)
-
-	// Clear selections when changing directory
-	fm.selectedFiles = make(map[string]bool)
-
-	// Restore cursor position or set default
-	if len(fm.files) > 0 {
-		// Check if we're navigating to parent directory
-		parent := filepath.Dir(previousPath)
-		if parent == path && previousPath != "" {
-			// We're going to parent directory, try to position cursor on the directory we came from
-			dirName := filepath.Base(previousPath)
-			cursorSet := false
-			for i, file := range fm.files {
-				if file.Name == dirName {
-					fm.SetCursorByIndex(i)
-					cursorSet = true
-					break
-				}
-			}
-			if !cursorSet {
-				fm.SetCursorByIndex(0)
-			}
-		} else {
-			// Try to restore saved cursor position
-			savedFileName := fm.restoreCursorPosition(path)
-			cursorSet := false
-			if savedFileName != "" {
-				for i, file := range fm.files {
-					if file.Name == savedFileName {
-						fm.SetCursorByIndex(i)
-						cursorSet = true
-						break
-					}
-				}
-			}
-			if !cursorSet {
-				fm.SetCursorByIndex(0)
-			}
-		}
-		// Refresh cursor display immediately
-		fm.RefreshCursor()
-	} else {
-		fm.cursorPath = ""
-	}
-
-	// Restart directory watcher for new path
-	if fm.dirWatcher != nil {
-		fm.dirWatcher.Start()
-	}
+	// Load directory asynchronously to avoid blocking UI (applies to both local and remote paths)
+	go fm.loadDirectoryAsync(path, previousPath)
 }
 
 // loadSMBDirectory lists SMB path on a background goroutine and applies UI updates on main thread.
-func (fm *FileManager) loadSMBDirectory(path string, previousPath string) {
+// loadDirectoryAsync lists a path in a background goroutine and applies UI updates on the main thread.
+func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 	entries, err := fileinfo.ReadDirPortable(path)
 	if err != nil {
-		log.Printf("Error reading SMB directory: %v", err)
+		log.Printf("Error reading directory: %v", err)
 		fyne.Do(func() {
 			ui.ShowMessageDialog(fm.window, "フォルダを開けませんでした", err.Error())
 			// Revert to previous path on error and restart watcher
@@ -828,7 +684,7 @@ func (fm *FileManager) loadSMBDirectory(path string, previousPath string) {
 				fm.currentPath = previousPath
 				fm.pathEntry.SetText(previousPath)
 				if fm.dirWatcher != nil {
-					fm.dirWatcher.SetPollInterval(2 * time.Second)
+					fm.dirWatcher.SetPollInterval(fm.pollIntervalForPath(previousPath))
 					fm.dirWatcher.Start()
 				}
 			}
@@ -839,8 +695,15 @@ func (fm *FileManager) loadSMBDirectory(path string, previousPath string) {
 	// Build file list off the UI thread
 	files := make([]fileinfo.FileInfo, 0, len(entries)+1)
 
-	// Add parent directory entry for SMB if not at share root
-	parent := smbParent(path)
+	isSMB := strings.HasPrefix(strings.ToLower(path), "smb://")
+
+	// Add parent directory entry if not at root
+	var parent string
+	if isSMB {
+		parent = smbParent(path)
+	} else {
+		parent = filepath.Dir(path)
+	}
 	if parent != path {
 		parentInfo := fileinfo.FileInfo{
 			Name:     "..",
@@ -859,7 +722,12 @@ func (fm *FileManager) loadSMBDirectory(path string, previousPath string) {
 		if err != nil {
 			continue
 		}
-		fullPath := smbJoin(path, entry.Name())
+		var fullPath string
+		if isSMB {
+			fullPath = smbJoin(path, entry.Name())
+		} else {
+			fullPath = filepath.Join(path, entry.Name())
+		}
 		fileType := fileinfo.DetermineFileType(fullPath, entry.Name(), entry.IsDir())
 		fi := fileinfo.FileInfo{
 			Name:     entry.Name(),
@@ -878,6 +746,14 @@ func (fm *FileManager) loadSMBDirectory(path string, previousPath string) {
 		// Stop existing watcher (if any) before applying
 		if fm.dirWatcher != nil {
 			fm.dirWatcher.Stop()
+		}
+
+		// Add previous path to navigation history before changing directory
+		if previousPath != "" && previousPath != path {
+			fm.config.AddToNavigationHistory(previousPath)
+			if err := fm.configManager.Save(fm.config); err != nil {
+				debugPrint("Error saving navigation history: %v", err)
+			}
 		}
 
 		fm.currentPath = path
@@ -930,9 +806,9 @@ func (fm *FileManager) loadSMBDirectory(path string, previousPath string) {
 			fm.cursorPath = ""
 		}
 
-		// Restart watcher for SMB with slower interval (credentials cached)
+		// Restart watcher with appropriate interval
 		if fm.dirWatcher != nil {
-			fm.dirWatcher.SetPollInterval(4 * time.Second)
+			fm.dirWatcher.SetPollInterval(fm.pollIntervalForPath(path))
 			fm.dirWatcher.Start()
 		}
 	})
@@ -956,6 +832,15 @@ func smbParent(p string) string {
 	// drop last segment
 	parent := "smb://" + strings.Join(parts[:len(parts)-1], "/")
 	return parent
+}
+
+// pollIntervalForPath returns the recommended watcher polling interval for a path.
+// Remote (SMB) paths get a longer interval to reduce load/latency impact.
+func (fm *FileManager) pollIntervalForPath(p string) time.Duration {
+	if strings.HasPrefix(strings.ToLower(p), "smb://") {
+		return 4 * time.Second
+	}
+	return 2 * time.Second
 }
 
 func (fm *FileManager) OpenNewWindow() {
