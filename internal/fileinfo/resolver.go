@@ -315,7 +315,8 @@ func parseMountInfo(line string) (fsType, source, mountPoint, superOpts, opts st
 	}
 	left := strings.Fields(parts[0])
 	right := strings.Fields(parts[1])
-	if len(left) < 7 || len(right) < 3 {
+	// mountinfo may have zero optional fields; accept 6+ tokens on the left side.
+	if len(left) < 6 || len(right) < 3 {
 		return
 	}
 	// left fields: ... root mountPoint opts
@@ -361,7 +362,8 @@ func findUNCOption(opts string) string {
 
 func parseBackslashUNC(unc string) (host, share string) {
 	s := strings.TrimPrefix(unc, `\\`)
-	parts := strings.Split(s, `\\`)
+	// Split on single backslash character between host and share
+	parts := strings.Split(s, "\\")
 	if len(parts) >= 2 {
 		return parts[0], parts[1]
 	}

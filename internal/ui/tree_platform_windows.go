@@ -4,13 +4,13 @@
 package ui
 
 import (
-    "os"
-    "path/filepath"
-    "sort"
-    "strings"
-    "syscall"
-    
-    "nmf/internal/fileinfo"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"syscall"
+
+	"nmf/internal/fileinfo"
 )
 
 const (
@@ -131,29 +131,29 @@ func normalizeWindowsPath(path string) string {
 
 // GetPlatformParent returns the parent path for Windows paths with proper drive handling
 func GetPlatformParent(path string) string {
-    if IsVirtualRoot(path) {
-        return path // Virtual root has no parent
-    }
+	if IsVirtualRoot(path) {
+		return path // Virtual root has no parent
+	}
 
-    // For drive roots like "C:\", parent is virtual root
-    if len(path) == 3 && path[1] == ':' && path[2] == '\\' {
-        return WindowsVirtualRoot
-    }
+	// For drive roots like "C:\", parent is virtual root
+	if len(path) == 3 && path[1] == ':' && path[2] == '\\' {
+		return WindowsVirtualRoot
+	}
 
-    // For SMB display paths, use fileinfo's logic
-    if fileinfo.IsSMBDisplay(path) {
-        return fileinfo.ParentPath(path)
-    }
+	// For SMB display paths, use fileinfo's logic
+	if fileinfo.IsSMBDisplay(path) {
+		return fileinfo.ParentPath(path)
+	}
 
-    // For other paths, use standard parent logic
-    parent := filepath.Dir(path)
-    if parent == "." || parent == path {
-        // If we can't go up further, try going to drive root
-        if len(path) >= 2 && path[1] == ':' {
-            return path[:3] // Return drive root (e.g., "C:\")
-        }
-        return WindowsVirtualRoot
-    }
+	// For other paths, use standard parent logic
+	parent := filepath.Dir(path)
+	if parent == "." || parent == path {
+		// If we can't go up further, try going to drive root
+		if len(path) >= 2 && path[1] == ':' {
+			return path[:3] // Return drive root (e.g., "C:\")
+		}
+		return WindowsVirtualRoot
+	}
 
-    return parent
+	return parent
 }
