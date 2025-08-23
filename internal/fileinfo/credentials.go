@@ -28,12 +28,20 @@ func SetCredentialsProvider(p CredentialsProvider) { credProvider = p }
 func SetSecretStore(s secret.Store) { secretStore = s }
 
 func getCredentials(host, share, rel string) Credentials {
-	// 1) Try keyring first (if available)
+	// 1) Prefer in-memory cached credentials (e.g., seeded from URL)
+	if c, ok := GetCachedCredentials(host, share); ok {
+		return c
+	}
+	// 2) Then try keyring (if available)
 	if secretStore != nil {
 		if d, u, p, found, _ := secretStore.Get(host, share); found {
-			return Credentials{Domain: d, Username: u, Password: p}
+			c := Credentials{Domain: d, Username: u, Password: p}
+			// Seed memory cache for this session
+			PutCachedCredentials(host, share, c)
+			return c
 		}
 	}
+	// 3) Finally, ask provider (may prompt UI). The provider itself caches.
 	if credProvider == nil {
 		return Credentials{}
 	}
@@ -95,6 +103,19 @@ func PutCachedCredentials(host, share string, c Credentials) {
 	if cp, ok := credProvider.(*CachedCredentialsProvider); ok {
 		cp.Put(host, share, c)
 	}
+}
+
+// GetCachedCredentials returns cached credentials if present in memory.
+// It does not consult keyring or UI providers.
+func GetCachedCredentials(host, share string) (Credentials, bool) {
+	if cp, ok := credProvider.(*CachedCredentialsProvider); ok {
+		cp.mu.RLock()
+		defer cp.mu.RUnlock()
+		if c, ok := cp.cache[host+"\x00"+share]; ok && (c.Username != "" || c.Password != "" || c.Domain != "") {
+			return c, true
+		}
+	}
+	return Credentials{}, false
 }
 
 // ClearCachedCredentials removes cached credentials for host/share.
