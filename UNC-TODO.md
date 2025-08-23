@@ -15,9 +15,9 @@ This document tracks UNC/SMB support across Windows and Linux. It now reflects w
 
 - Remaining (high level):
   - Expand VFS to include `Stat/Open/Join/Base` and remove remaining `filepath.*` for SMB paths in UI.
-  - Tree dialog to use portable VFS (`ReadDirPortable`) instead of direct `os.ReadDir`/`os.Stat`.
+- Tree dialog uses portable VFS (`ReadDirPortable`/`StatPortable`) [done].
   - Network/auth error typing + friendly UI messages; add conservative retry/backoff for transient SMB errors.
-- Credentials precedence: URL → memory → keyring → UI [done].
+  - Credentials precedence: URL → memory → keyring → UI [done].
   - Watcher list source injection and capability-based tuning instead of string heuristics.
   - Unit tests for resolver normalization, mount detection (Linux), and Windows UNC⇔`smb://` round-trip.
   - Windows long-path (`\\?\UNC\`) policy for edge cases.
