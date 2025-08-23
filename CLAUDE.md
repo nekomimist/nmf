@@ -10,18 +10,42 @@ Cross-platform GUI file manager "nmf" built with Go + Fyne v2.6.1. Features keyb
 ```
 nmf/
 ├── main.go                         # Application entry point with multi-window management
+├── UNC-TODO.md                     # SMB/UNC implementation roadmap and status
 └── internal/
     ├── config/                     # Configuration management
     │   ├── config.go              # Settings, defaults, file I/O, cursor memory
     │   ├── interfaces.go          # ManagerInterface for testability
     │   └── config_test.go         # Unit tests
-    ├── fileinfo/                   # File operations and metadata
+    ├── fileinfo/                   # File operations, metadata, and network file systems
     │   ├── fileinfo.go            # FileInfo, colors, formatting
     │   ├── interfaces.go          # FileSystem interface
+    │   ├── vfs.go                 # Virtual filesystem abstraction (VFS interface)
+    │   ├── credentials.go         # SMB credential management and caching
+    │   ├── credentials_test.go    # Credential management tests
+    │   ├── resolver.go            # Path resolution for SMB/UNC normalization
+    │   ├── resolver_test.go       # Path resolver tests
+    │   ├── resolver_unix_test.go  # Unix-specific resolver tests
+    │   ├── resolver_windows_test.go # Windows-specific resolver tests
+    │   ├── pathutil.go            # Path utilities for SMB/UNC handling
+    │   ├── pathutil_test.go       # Path utility tests
+    │   ├── portable_read.go       # Portable file reading across VFS providers
+    │   ├── portable_stat.go       # Portable file stat operations
+    │   ├── icon_service.go        # Icon service with async fetch and batching
+    │   ├── icon_unix.go           # Unix icon implementation
+    │   ├── icon_windows.go        # Windows icon implementation with async service
+    │   ├── smb_direntry.go        # SMB directory entry handling
+    │   ├── smb_provider_linux.go  # Linux SMB provider using go-smb2
+    │   ├── smb_provider_stub.go   # Stub SMB provider for non-Linux platforms
+    │   ├── smbfs_linux.go         # Linux SMB filesystem implementation
+    │   ├── win_connect_stub.go    # Stub Windows UNC connection for non-Windows
+    │   ├── win_connect_windows.go # Windows UNC connection helper
     │   ├── platform_windows.go    # Windows hidden file detection
     │   ├── platform_unix.go       # Unix/Linux compatibility
     │   ├── platform_test.go       # Platform tests
-    │   └── fileinfo_test.go       # Core tests
+    │   └── fileinfo_test.go       # Core file info tests
+    ├── secret/                     # Secure credential storage
+    │   ├── store.go               # Store interface for credential storage
+    │   └── keyring_store.go       # OS keyring implementation
     ├── ui/                         # UI components
     │   ├── cursor.go              # Cursor renderers
     │   ├── widgets.go             # TappableIcon custom widget
@@ -33,6 +57,8 @@ nmf/
     │   ├── incremental_search.go  # Incremental search overlay with real-time filtering
     │   ├── sort_dialog.go         # File sorting configuration dialog with shortcuts
     │   ├── quit_dialog.go         # Quit confirmation dialog with keyboard shortcuts
+    │   ├── message_dialog.go      # Generic message dialog component
+    │   ├── smb_login_dialog.go    # SMB credential input dialog with keyring option
     │   ├── key_sink.go            # Generic KeySink wrapper for focus & key forwarding
     │   └── tab_entry.go           # TabEntry widget with Tab capture capability
     ├── keymanager/                 # Stack-based keyboard input management
@@ -45,7 +71,8 @@ nmf/
     │   ├── sortdialog_handler.go  # Sort dialog keyboard navigation
     │   └── quitdialog_handler.go  # Quit confirmation dialog keyboard handling
     ├── watcher/                    # Real-time directory monitoring
-    │   └── watcher.go             # FileManager interface, change detection
+    │   ├── watcher.go             # FileManager interface, change detection
+    │   └── watcher_test.go        # Watcher unit tests
     ├── theme/                      # Custom theming
     │   └── theme.go               # Font, colors, sizing
     ├── errors/                     # Structured error handling
@@ -59,18 +86,27 @@ nmf/
 
 - **FileManager**: Main controller (main.go) - manages window, UI, navigation, file operations
 - **KeyManager**: Stack-based keyboard input system - handles context-aware key routing
-- **DirectoryWatcher**: Real-time change detection via filesystem polling (2s interval)
+- **DirectoryWatcher**: Real-time change detection via filesystem polling (2s interval, extended for SMB paths)
+- **VFS (Virtual File System)**: Abstraction layer supporting local and SMB/UNC file systems
+- **Resolver**: Path normalization and conversion (Windows UNC ⇔ `smb://`, Linux mount detection)
+- **CredentialsProvider**: SMB authentication with memory cache, OS keyring, and UI fallback
 - **TappableIcon**: Custom widget for icon-based directory navigation
 - **DirectoryTreeDialog**: Lazy-loading tree navigation with platform-specific root handling (Windows drives, Unix filesystem)
 - **NavigationHistoryDialog**: Searchable directory history with filtering
 - **FilterDialog**: File filtering with glob pattern matching and real-time preview
 - **IncrementalSearchOverlay**: Real-time file search with substring matching
 - **SortDialog**: File sorting configuration with keyboard shortcuts
+- **SMBLoginDialog**: SMB credential input with optional keyring persistence
 - **QuitConfirmDialog**: Application quit confirmation with keyboard shortcuts
 
 ### Key Features
 
-- **Real-time Monitoring**: Green=added, orange=modified, gray+⊠=deleted files
+- **Network File Systems**: SMB/CIFS support for Windows UNC (`\\server\share`) and Linux `smb://` paths
+- **Cross-Platform SMB**: Windows uses native UNC with connection helper; Linux uses go-smb2 library or existing mounts
+- **Credential Management**: Multi-tier auth (URL → memory → OS keyring → UI prompt) with optional persistence
+- **VFS Abstraction**: Unified interface for local and network filesystems with capability detection
+- **Path Normalization**: Automatic conversion between platform-native paths and canonical `smb://` display format
+- **Real-time Monitoring**: Green=added, orange=modified, gray+⊠=deleted files (extended polling for SMB)
 - **Cursor Position Memory**: Remembers cursor position per directory (up to 100 dirs with LRU)
 - **Smart Navigation**: Parent directory navigation returns to originating folder
 - **Context-Aware Keys**: Stack-based keyboard handling prevents dialog/main conflicts
