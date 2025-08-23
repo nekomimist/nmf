@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -12,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/constants"
+	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 )
 
@@ -109,7 +108,7 @@ func (dtd *DirectoryTreeDialog) getDirectoryChildren(path string) []string {
 		return platformChildren
 	}
 
-	entries, err := os.ReadDir(path)
+	entries, err := fileinfo.ReadDirPortable(path)
 	if err != nil {
 		dtd.debugPrint("Error reading directory %s: %v", path, err)
 		return []string{}
@@ -118,7 +117,7 @@ func (dtd *DirectoryTreeDialog) getDirectoryChildren(path string) []string {
 	var children []string
 	for _, entry := range entries {
 		if entry.IsDir() {
-			childPath := filepath.Join(path, entry.Name())
+			childPath := fileinfo.JoinPath(path, entry.Name())
 			// Skip hidden directories unless they're important system ones
 			if !strings.HasPrefix(entry.Name(), ".") || entry.Name() == ".." {
 				children = append(children, childPath)
@@ -136,7 +135,7 @@ func (dtd *DirectoryTreeDialog) isDirectory(path string) bool {
 		return isDir
 	}
 
-	info, err := os.Stat(path)
+	info, err := fileinfo.StatPortable(path)
 	if err != nil {
 		return false
 	}
@@ -153,9 +152,9 @@ func (dtd *DirectoryTreeDialog) getDisplayName(path string) string {
 	if path == GetSystemRoot() {
 		return GetSystemRoot()
 	}
-	base := filepath.Base(path)
+	base := fileinfo.BaseName(path)
 	if base == "." {
-		return filepath.Dir(path)
+		return fileinfo.ParentPath(path)
 	}
 	return base
 }
@@ -396,7 +395,7 @@ func (dtd *DirectoryTreeDialog) CollapseNode() {
 		dtd.debugPrint("TreeDialog: Collapsed node %s", dtd.selectedPath)
 	} else {
 		// If not expanded, move to parent
-		parentPath := filepath.Dir(dtd.selectedPath)
+		parentPath := fileinfo.ParentPath(dtd.selectedPath)
 		if parentPath != dtd.selectedPath && parentPath != "." {
 			parentID := widget.TreeNodeID(parentPath)
 			dtd.tree.Select(parentID)

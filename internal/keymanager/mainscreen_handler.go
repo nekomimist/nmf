@@ -2,7 +2,6 @@ package keymanager
 
 import (
 	"os"
-	"path/filepath"
 
 	"fyne.io/fyne/v2"
 
@@ -214,7 +213,7 @@ func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modifier
 		return true
 
 	case fyne.KeyBackspace:
-		parent := filepath.Dir(mh.fileManager.GetCurrentPath())
+		parent := fileinfo.ParentPath(mh.fileManager.GetCurrentPath())
 		if parent != mh.fileManager.GetCurrentPath() {
 			mh.fileManager.LoadDirectory(parent)
 		}

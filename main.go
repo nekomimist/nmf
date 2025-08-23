@@ -443,7 +443,7 @@ func (fm *FileManager) setupUI() {
 	// Create toolbar
 	toolbar := widget.NewToolbar(
 		widget.NewToolbarAction(theme.NavigateBackIcon(), func() {
-			parent := filepath.Dir(fm.currentPath)
+			parent := fileinfo.ParentPath(fm.currentPath)
 			if parent != fm.currentPath {
 				fm.LoadDirectory(parent)
 			}
@@ -695,15 +695,9 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 	// Build file list off the UI thread
 	files := make([]fileinfo.FileInfo, 0, len(entries)+1)
 
-	isSMB := strings.HasPrefix(strings.ToLower(path), "smb://")
-
 	// Add parent directory entry if not at root
 	var parent string
-	if isSMB {
-		parent = smbParent(path)
-	} else {
-		parent = filepath.Dir(path)
-	}
+	parent = fileinfo.ParentPath(path)
 	if parent != path {
 		parentInfo := fileinfo.FileInfo{
 			Name:     "..",
@@ -723,11 +717,7 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 			continue
 		}
 		var fullPath string
-		if isSMB {
-			fullPath = smbJoin(path, entry.Name())
-		} else {
-			fullPath = filepath.Join(path, entry.Name())
-		}
+		fullPath = fileinfo.JoinPath(path, entry.Name())
 		fileType := fileinfo.DetermineFileType(fullPath, entry.Name(), entry.IsDir())
 		fi := fileinfo.FileInfo{
 			Name:     entry.Name(),
@@ -771,9 +761,9 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 		// Clear selections and restore cursor
 		fm.selectedFiles = make(map[string]bool)
 		if len(fm.files) > 0 {
-			parentPrev := filepath.Dir(previousPath)
+			parentPrev := fileinfo.ParentPath(previousPath)
 			if parentPrev == path && previousPath != "" {
-				dirName := filepath.Base(previousPath)
+				dirName := fileinfo.BaseName(previousPath)
 				cursorSet := false
 				for i, f := range fm.files {
 					if f.Name == dirName {
@@ -814,25 +804,7 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 	})
 }
 
-func smbJoin(base, name string) string {
-	b := strings.TrimRight(base, "/")
-	return b + "/" + name
-}
-
-func smbParent(p string) string {
-	// p like smb://host/share[/a/b]
-	if !strings.HasPrefix(strings.ToLower(p), "smb://") {
-		return p
-	}
-	rest := strings.TrimPrefix(p, "smb://")
-	parts := strings.Split(rest, "/")
-	if len(parts) <= 2 { // smb://host/share -> treat as root
-		return p
-	}
-	// drop last segment
-	parent := "smb://" + strings.Join(parts[:len(parts)-1], "/")
-	return parent
-}
+// Path helpers moved to internal/fileinfo (JoinPath/ParentPath/BaseName)
 
 // pollIntervalForPath returns the recommended watcher polling interval for a path.
 // Remote (SMB) paths get a longer interval to reduce load/latency impact.
@@ -1083,7 +1055,7 @@ func (fm *FileManager) ShowIncrementalSearchDialog() {
 		// Navigate to selected file/directory
 		if selectedFile.IsDir {
 			// For directories, navigate into them
-			targetPath := filepath.Join(fm.currentPath, selectedFile.Name)
+			targetPath := fileinfo.JoinPath(fm.currentPath, selectedFile.Name)
 			debugPrint("Incremental search: navigating to directory %s", targetPath)
 			fm.LoadDirectory(targetPath)
 		} else {
@@ -1287,7 +1259,7 @@ func (fm *FileManager) GetCurrentSearchMatch() *fileinfo.FileInfo {
 // OpenFile opens a file or navigates to directory
 func (fm *FileManager) OpenFile(file *fileinfo.FileInfo) {
 	if file.IsDir {
-		targetPath := filepath.Join(fm.currentPath, file.Name)
+		targetPath := fileinfo.JoinPath(fm.currentPath, file.Name)
 		fm.LoadDirectory(targetPath)
 	}
 	// For regular files, we don't open them, just set cursor
