@@ -69,6 +69,13 @@ type FileManager struct {
 	searchOverlay  *ui.IncrementalSearchOverlay            // Incremental search overlay
 	searchHandler  *keymanager.IncrementalSearchKeyHandler // Search key handler
 	iconSvc        *fileinfo.IconService                   // Async icon service
+	// Busy state while loading directories
+	busyOverlay *ui.BusyOverlay
+	busyActive  bool
+	busyTimer   *time.Timer
+	busyDelay   time.Duration
+	busyText    string
+	busyMu      sync.Mutex
 }
 
 // Interface implementation for watcher.FileManager
@@ -203,6 +210,10 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 		cursorRenderer: ui.NewCursorRenderer(config.UI.CursorStyle),
 		keyManager:     keymanager.NewKeyManager(debugPrint),
 	}
+
+	// Busy overlay (hidden by default)
+	fm.busyOverlay = ui.NewBusyOverlay()
+	fm.busyDelay = 150 * time.Millisecond
 
 	// Initialize async icon service and subscribe for updates
 	fm.iconSvc = fileinfo.NewIconService(debugPrint)
@@ -475,7 +486,7 @@ func (fm *FileManager) setupUI() {
 		fm.fileListView,
 	)
 
-	// Stack main content with search overlay on top
+	// Stack main content with overlays on top (search, busy)
 	content := container.NewMax(
 		mainContent,
 		container.NewBorder(
@@ -483,6 +494,7 @@ func (fm *FileManager) setupUI() {
 			nil, nil, nil,
 			nil, // Center is empty, overlay is at top
 		),
+		fm.busyOverlay.GetContainer(), // Highest overlay to block interactions
 	)
 
 	fm.window.SetContent(content)
@@ -667,6 +679,9 @@ func (fm *FileManager) LoadDirectory(path string) {
 	// Store the previous directory for parent navigation logic
 	previousPath := fm.currentPath
 
+	// Indicate busy and block input while loading
+	fm.beginBusy(fmt.Sprintf("Loading %s...", path))
+
 	// Load directory asynchronously to avoid blocking UI (applies to both local and remote paths)
 	go fm.loadDirectoryAsync(path, previousPath)
 }
@@ -678,6 +693,8 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 	if err != nil {
 		log.Printf("Error reading directory: %v", err)
 		fyne.Do(func() {
+			// Clear busy state on error
+			fm.endBusy()
 			ui.ShowMessageDialog(fm.window, "フォルダを開けませんでした", err.Error())
 			// Revert to previous path on error and restart watcher
 			if previousPath != "" {
@@ -733,6 +750,8 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 
 	// Apply UI updates on main thread
 	fyne.Do(func() {
+		// Clear busy state on success just before applying changes
+		fm.endBusy()
 		// Stop existing watcher (if any) before applying
 		if fm.dirWatcher != nil {
 			fm.dirWatcher.Stop()
@@ -802,6 +821,61 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 			fm.dirWatcher.Start()
 		}
 	})
+}
+
+// beginBusy shows the busy overlay and pushes a swallowing key handler
+func (fm *FileManager) beginBusy(text string) {
+	fm.busyMu.Lock()
+	defer fm.busyMu.Unlock()
+
+	if fm.busyActive {
+		// Already busy: update label if visible, and store latest text
+		fm.busyText = text
+		fm.busyOverlay.Show(fm.window, text)
+		return
+	}
+
+	fm.busyActive = true
+	fm.busyText = text
+
+	// Block keys immediately to avoid reentrancy
+	fm.keyManager.PushHandler(keymanager.NewBusyKeyHandler())
+
+	// Delay overlay to prevent flicker on very fast operations
+	if fm.busyTimer != nil {
+		fm.busyTimer.Stop()
+	}
+	d := fm.busyDelay
+	fm.busyTimer = time.AfterFunc(d, func() {
+		fyne.Do(func() {
+			fm.busyMu.Lock()
+			active := fm.busyActive
+			text := fm.busyText
+			fm.busyMu.Unlock()
+			if active {
+				fm.busyOverlay.Show(fm.window, text)
+			}
+		})
+	})
+}
+
+// endBusy hides the busy overlay and pops the swallowing key handler
+func (fm *FileManager) endBusy() {
+	fm.busyMu.Lock()
+	if !fm.busyActive {
+		fm.busyMu.Unlock()
+		return
+	}
+	fm.busyActive = false
+	if fm.busyTimer != nil {
+		fm.busyTimer.Stop()
+		fm.busyTimer = nil
+	}
+	fm.busyMu.Unlock()
+
+	// Hide overlay (if visible) and pop guard
+	fm.busyOverlay.Hide()
+	fm.keyManager.PopHandler()
 }
 
 // Path helpers moved to internal/fileinfo (JoinPath/ParentPath/BaseName)
