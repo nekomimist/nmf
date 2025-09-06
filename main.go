@@ -1330,13 +1330,23 @@ func (fm *FileManager) GetCurrentSearchMatch() *fileinfo.FileInfo {
 	return nil
 }
 
-// OpenFile opens a file or navigates to directory
+// OpenFile opens a file with the system default app or navigates into a directory.
 func (fm *FileManager) OpenFile(file *fileinfo.FileInfo) {
-	if file.IsDir {
-		targetPath := fileinfo.JoinPath(fm.currentPath, file.Name)
-		fm.LoadDirectory(targetPath)
+	if file == nil {
+		return
 	}
-	// For regular files, we don't open them, just set cursor
+	if file.IsDir {
+		// Use the path provided in listing to handle parent (..) and SMB display paths correctly
+		fm.LoadDirectory(file.Path)
+		return
+	}
+
+	// Regular file: try to open with associated application
+	if err := fileinfo.OpenWithDefaultApp(file.Path); err != nil {
+		debugPrint("Failed to open file '%s': %v", file.Path, err)
+		ui.ShowMessageDialog(fm.window, "ファイルを開けませんでした", err.Error())
+		return
+	}
 }
 
 // SetCursorToFile sets the cursor to the specified file

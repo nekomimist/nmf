@@ -49,6 +49,9 @@ type FileManagerInterface interface {
 
 	// Application quit
 	QuitApplication()
+
+	// File operations
+	OpenFile(file *fileinfo.FileInfo)
 }
 
 // MainScreenKeyHandler handles keyboard events for the main file list screen
@@ -185,9 +188,7 @@ func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modifier
 		files := mh.fileManager.GetFiles()
 		if currentIdx >= 0 && currentIdx < len(files) {
 			fileInfo := files[currentIdx]
-			if fileInfo.IsDir {
-				mh.fileManager.LoadDirectory(fileInfo.Path)
-			}
+			mh.fileManager.OpenFile(&fileInfo)
 		}
 		return true
 

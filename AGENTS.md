@@ -45,12 +45,13 @@
      - `fileColors`: `{ regular, directory, symlink, hidden }` RGBA arrays used by `internal/fileinfo`.
      - `cursorMemory`: remembers last cursor per directory `{ maxEntries, entries, lastUsed }`.
      - `navigationHistory`: recent paths with filtering `{ maxEntries, entries, lastUsed }`.
- - Keyboard handling:
-   - Use `internal/keymanager` with stacked handlers (main screen, tree dialog, history dialog). Main window wires `desktop.Canvas` events to `KeyManager`.
-   - Wrap keyboard-driven content in `ui.KeySink` and keep focus on it (`window.Canvas().Focus(sink)` and in dialogs `parent.Canvas().Focus(sink)`) so all events flow to `KeyManager` and Tab does not move focus.
-   - For entries that must not lose focus on Tab, use `ui.TabEntry` (implements `AcceptsTab`). For display-only fields (e.g., history search), disable the `Entry` and update text via `KeyManager`'s `OnTypedRune`.
-   - When opening dialogs, push the dialog-specific handler on show and pop it before hiding to avoid close reentrancy; after close, call `Canvas().Unfocus()` on the parent if needed.
-   - For the main file list, prefer wrapping `widget.List` with `ui.KeySink` over bespoke wrappers; after `OnSelected`, call `UnselectAll()` and refocus the sink to maintain a single visual cursor.
+- Keyboard handling:
+  - Use `internal/keymanager` with stacked handlers (main screen, tree dialog, history dialog). Main window wires `desktop.Canvas` events to `KeyManager`.
+  - Wrap keyboard-driven content in `ui.KeySink` and keep focus on it (`window.Canvas().Focus(sink)` and in dialogs `parent.Canvas().Focus(sink)`) so all events flow to `KeyManager` and Tab does not move focus.
+  - For entries that must not lose focus on Tab, use `ui.TabEntry` (implements `AcceptsTab`). For display-only fields (e.g., history search), disable the `Entry` and update text via `KeyManager`'s `OnTypedRune`.
+  - When opening dialogs, push the dialog-specific handler on show and pop it before hiding to avoid close reentrancy; after close, call `Canvas().Unfocus()` on the parent if needed.
+  - For the main file list, prefer wrapping `widget.List` with `ui.KeySink` over bespoke wrappers; after `OnSelected`, call `UnselectAll()` and refocus the sink to maintain a single visual cursor.
+  - Enter key on main list: directories navigate; regular files open with the OS default app via `FileManager.OpenFile`.
 - Directory watching: `internal/watcher.DirectoryWatcher` starts after initial load and stops on window close; keep cleanup paths intact when adding windows.
 - Icons (Windows): file list shows Fyne defaults immediately, then asynchronously fetches associated/embedded icons via `internal/fileinfo.IconService`; caches by extension and for `.exe/.lnk/.ico` by path; UI updates are applied via `canvas.Refresh(list)` batching.
 
@@ -72,6 +73,18 @@
 - Watcher integration:
   - Watcher lists via VFS; avoid `filepath.Join` for `smb://` paths (use `/` concatenation).
   - Poll interval is configurable; prefer a longer interval for remote SMB.
+
+## File Opening Behavior
+- Main list Enter action delegates to `FileManager.OpenFile`.
+- Windows:
+  - Uses ShellExecuteW (`open`) to launch associated apps.
+  - `smb://` inputs are converted to UNC before launching.
+- Linux/Unix:
+  - If `smb://host/share/...` matches a CIFS mount, open the native mount path (from `/proc/self/mountinfo`).
+  - Otherwise try `xdg-open`, then fall back to `gio open`/`gvfs-open`/`gnome-open`/`kde-open` with the `smb://` URL.
+  - UI/history retain canonical `smb://` display paths regardless of provider.
+- Error handling: failures surface a non-blocking message dialog; no retries are attempted on open.
+- Incremental search Enter currently preserves behavior: navigate into directories; for files, only move cursor (no launch).
 
 ## Package Notes (VFS & Secrets)
 - `internal/fileinfo` now contains:
