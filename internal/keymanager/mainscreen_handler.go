@@ -52,6 +52,10 @@ type FileManagerInterface interface {
 
 	// File operations
 	OpenFile(file *fileinfo.FileInfo)
+
+	// Copy/Move UI
+	ShowCopyDialog()
+	ShowMoveDialog()
 }
 
 // MainScreenKeyHandler handles keyboard events for the main file list screen
@@ -273,6 +277,22 @@ func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modifier
 		if !modifiers.CtrlPressed && !modifiers.ShiftPressed {
 			mh.debugPrint("MainScreen: Q detected - quit application")
 			mh.fileManager.QuitApplication()
+		}
+		return true
+
+	case fyne.KeyC:
+		// C - Open copy dialog (no modifiers)
+		if !modifiers.CtrlPressed && !modifiers.ShiftPressed {
+			mh.debugPrint("MainScreen: C detected - show copy dialog")
+			mh.fileManager.ShowCopyDialog()
+		}
+		return true
+
+	case fyne.KeyM:
+		// M - Open move dialog (no modifiers)
+		if !modifiers.CtrlPressed && !modifiers.ShiftPressed {
+			mh.debugPrint("MainScreen: M detected - show move dialog")
+			mh.fileManager.ShowMoveDialog()
 		}
 		return true
 

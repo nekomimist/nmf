@@ -894,6 +894,111 @@ func (fm *FileManager) OpenNewWindow() {
 	newFM.window.Show()
 }
 
+// ShowCopyDialog shows the copy UI (simulation only)
+func (fm *FileManager) ShowCopyDialog() { fm.showCopyMoveDialog(ui.OpCopy) }
+
+// ShowMoveDialog shows the move UI (simulation only)
+func (fm *FileManager) ShowMoveDialog() { fm.showCopyMoveDialog(ui.OpMove) }
+
+// showCopyMoveDialog builds targets and destination candidates then shows dialog
+func (fm *FileManager) showCopyMoveDialog(op ui.Operation) {
+	// Determine targets: marked files if any; otherwise cursor item
+	targets := fm.collectTargets()
+	if len(targets) == 0 {
+		debugPrint("No valid target for %s", string(op))
+		return
+	}
+
+	// Build destination candidates: other windows' directories first, then history without duplicates
+	dest := fm.buildDestinationCandidates()
+	if len(dest) == 0 {
+		debugPrint("No destination candidates available")
+	}
+
+	dlg := ui.NewCopyMoveDialog(op, targets, dest, fm.config.UI.NavigationHistory.LastUsed, fm.keyManager, debugPrint)
+	dlg.ShowDialog(fm.window, func(selectedDest string) {
+		// Simulation only: show message dialog and debug log
+		debugPrint("Simulate %s: %d item(s) -> %s", string(op), len(targets), selectedDest)
+		ui.ShowMessageDialog(fm.window,
+			fmt.Sprintf("%s (Preview)", strings.Title(string(op))),
+			fmt.Sprintf("Would %s %d item(s) to:\n%s\n\n(Preview: no actual operation)", strings.ToLower(string(op)), len(targets), selectedDest),
+		)
+		fm.FocusFileList()
+	})
+}
+
+// collectTargets returns display names of targets based on selection or cursor
+func (fm *FileManager) collectTargets() []string {
+	// Gather selected files
+	var selected []string
+	for p, sel := range fm.selectedFiles {
+		if !sel {
+			continue
+		}
+		// Find matching file to ensure it still exists in list and to skip parent/invalid
+		for _, fi := range fm.files {
+			if fi.Path == p {
+				if fi.Name == ".." || fi.Status == fileinfo.StatusDeleted {
+					continue
+				}
+				selected = append(selected, fi.Name)
+				break
+			}
+		}
+	}
+	if len(selected) > 0 {
+		return selected
+	}
+	// Fall back to cursor
+	idx := fm.GetCurrentCursorIndex()
+	if idx >= 0 && idx < len(fm.files) {
+		fi := fm.files[idx]
+		if fi.Name != ".." && fi.Status != fileinfo.StatusDeleted {
+			return []string{fi.Name}
+		}
+	}
+	return nil
+}
+
+// buildDestinationCandidates composes other windows' dirs then history without dups
+func (fm *FileManager) buildDestinationCandidates() []string {
+	// Collect from other windows
+	seen := map[string]struct{}{}
+	var candidates []string
+	windowRegistry.Range(func(k, v any) bool {
+		if other, ok := v.(*FileManager); ok {
+			if other == fm {
+				return true
+			}
+			if other.currentPath != "" {
+				if _, ok := seen[other.currentPath]; !ok {
+					candidates = append(candidates, other.currentPath)
+					seen[other.currentPath] = struct{}{}
+				}
+			}
+		}
+		return true
+	})
+
+	// Optionally include current path after other windows
+	if fm.currentPath != "" {
+		if _, ok := seen[fm.currentPath]; !ok {
+			candidates = append(candidates, fm.currentPath)
+			seen[fm.currentPath] = struct{}{}
+		}
+	}
+
+	// Append navigation history skipping dups
+	for _, p := range fm.config.GetNavigationHistory() {
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		candidates = append(candidates, p)
+		seen[p] = struct{}{}
+	}
+	return candidates
+}
+
 // ShowDirectoryTreeDialog shows the directory tree navigation dialog
 func (fm *FileManager) ShowDirectoryTreeDialog() {
 	dialog := ui.NewDirectoryTreeDialog(fm.currentPath, fm.keyManager, debugPrint)
