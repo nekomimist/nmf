@@ -44,6 +44,9 @@ type FileManagerInterface interface {
 	// Sort management
 	ShowSortDialog()
 
+	// Jobs dialog
+	ShowJobsDialog()
+
 	// Path entry focus
 	FocusPathEntry()
 
@@ -132,6 +135,13 @@ func (mh *MainScreenKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierS
 		if modifiers.CtrlPressed {
 			mh.debugPrint("MainScreen: Ctrl+L detected - focusing path entry")
 			mh.fileManager.FocusPathEntry()
+			return true
+		}
+	case fyne.KeyJ:
+		// Ctrl+J - Show jobs dialog
+		if modifiers.CtrlPressed {
+			mh.debugPrint("MainScreen: Ctrl+J detected - showing jobs dialog")
+			mh.fileManager.ShowJobsDialog()
 			return true
 		}
 

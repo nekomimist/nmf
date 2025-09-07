@@ -28,6 +28,7 @@ type JobsDialog struct {
 	parent      fyne.Window
 	km          *keymanager.KeyManager
 	debugPrint  func(format string, args ...interface{})
+	closed      bool
 }
 
 func NewJobsDialog(km *keymanager.KeyManager, debugPrint func(format string, args ...interface{})) *JobsDialog {
@@ -62,18 +63,9 @@ func (jd *JobsDialog) ShowDialog(parent fyne.Window) {
 	jd.parent = parent
 
 	// Buttons
-	cancelBtn := widget.NewButton("Cancel Selected", func() {
-		if jd.selectedID != 0 {
-			m := jobs.GetManager()
-			_ = m.Cancel(jd.selectedID)
-			// refresh soon
-			jd.refresh()
-		}
-	})
+	cancelBtn := widget.NewButton("Cancel Selected", func() { jd.cancelSelected() })
 	closeBtn := widget.NewButton("Close", func() {
-		if jd.dialog != nil {
-			jd.dialog.Hide()
-		}
+		jd.CloseDialog()
 	})
 
 	// header and layout
@@ -89,10 +81,12 @@ func (jd *JobsDialog) ShowDialog(parent fyne.Window) {
 	bottom := container.NewHBox(layout.NewSpacer(), cancelBtn, closeBtn)
 	content := container.NewBorder(container.NewVBox(header), bottom, nil, nil, fixed)
 
-	// wrap with KeySink and show dialog
+	// push dialog key handler, wrap with KeySink and show dialog
 	m := jobs.GetManager()
 	// subscribe for updates and refresh on UI thread
 	m.Subscribe(func() { fyne.Do(jd.refresh) })
+	handler := keymanager.NewJobsDialogKeyHandler(jd, jd.debugPrint)
+	jd.km.PushHandler(handler)
 	jd.sink = NewKeySink(content, jd.km, WithTabCapture(true))
 	jd.dialog = dialog.NewCustomWithoutButtons("Jobs", jd.sink, parent)
 	jd.dialog.Resize(fyne.NewSize(720, 480))
@@ -158,4 +152,59 @@ func (jd *JobsDialog) updateDetails() {
 		}
 	}
 	jd.details.SetText(b.String())
+}
+
+// Interface methods for key handler
+func (jd *JobsDialog) MoveUp() {
+	if jd.list != nil && jd.list.Length() > 0 {
+		newIdx := jd.selectedIdx - 1
+		if newIdx < 0 {
+			newIdx = 0
+		}
+		jd.list.Select(widget.ListItemID(newIdx))
+	}
+}
+func (jd *JobsDialog) MoveDown() {
+	if jd.list != nil && jd.list.Length() > 0 {
+		max := jd.list.Length() - 1
+		newIdx := jd.selectedIdx + 1
+		if newIdx > max {
+			newIdx = max
+		}
+		jd.list.Select(widget.ListItemID(newIdx))
+	}
+}
+func (jd *JobsDialog) MoveToTop() {
+	if jd.list != nil && jd.list.Length() > 0 {
+		jd.list.Select(0)
+	}
+}
+func (jd *JobsDialog) MoveToBottom() {
+	if jd.list != nil && jd.list.Length() > 0 {
+		jd.list.Select(jd.list.Length() - 1)
+	}
+}
+
+func (jd *JobsDialog) cancelSelected() {
+	if jd.selectedID != 0 {
+		m := jobs.GetManager()
+		_ = m.Cancel(jd.selectedID)
+		fyne.Do(jd.refresh)
+	}
+}
+func (jd *JobsDialog) CancelSelected() { jd.cancelSelected() }
+
+func (jd *JobsDialog) CloseDialog() {
+	if jd.closed {
+		return
+	}
+	jd.closed = true
+	// pop the handler
+	jd.km.PopHandler()
+	if jd.dialog != nil {
+		jd.dialog.Hide()
+	}
+	if jd.parent != nil {
+		jd.parent.Canvas().Unfocus()
+	}
 }

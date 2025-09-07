@@ -77,6 +77,12 @@ type FileManager struct {
 	busyDelay   time.Duration
 	busyText    string
 	busyMu      sync.Mutex
+
+	// Jobs indicator
+	jobsButton    *widget.Button
+	jobsBlinking  bool
+	jobsBlinkOn   bool
+	jobsBlinkStop chan struct{}
 }
 
 // Interface implementation for watcher.FileManager
@@ -452,7 +458,7 @@ func (fm *FileManager) setupUI() {
 		fm.RefreshCursor()
 	}
 
-	// Create toolbar
+	// Create toolbar (left side)
 	toolbar := widget.NewToolbar(
 		widget.NewToolbarAction(theme.NavigateBackIcon(), func() {
 			parent := fileinfo.ParentPath(fm.currentPath)
@@ -478,15 +484,21 @@ func (fm *FileManager) setupUI() {
 			fm.OpenNewWindow()
 			fm.FocusFileList()
 		}),
-		widget.NewToolbarAction(theme.HistoryIcon(), func() {
-			fm.ShowJobsDialog()
-			// focus returns after dialog closes
-		}),
 	)
 
+	// Jobs button on the right
+	fm.jobsButton = widget.NewButton("Jobs", func() {
+		fm.ShowJobsDialog()
+	})
+	fm.jobsButton.Importance = widget.MediumImportance
+
 	// Layout with search overlay
+	// Top row: toolbar on left, Jobs button on right
+	toolbarRow := container.NewBorder(nil, nil, nil, fm.jobsButton, toolbar)
+	// Subscribe to job updates to update indicator
+	jobs.GetManager().Subscribe(func() { fyne.Do(fm.onJobsUpdated) })
 	mainContent := container.NewBorder(
-		container.NewVBox(toolbar, fm.pathEntry),
+		container.NewVBox(toolbarRow, fm.pathEntry),
 		nil, nil, nil,
 		fm.fileListView,
 	)
@@ -504,6 +516,9 @@ func (fm *FileManager) setupUI() {
 
 	fm.window.SetContent(content)
 	fm.window.Resize(fyne.NewSize(float32(fm.config.Window.Width), float32(fm.config.Window.Height)))
+
+	// Initialize jobs indicator state
+	fm.onJobsUpdated()
 
 	// Ensure initial focus sits on the tabbable list view
 	fm.FocusFileList()
@@ -897,6 +912,88 @@ func (fm *FileManager) pollIntervalForPath(p string) time.Duration {
 func (fm *FileManager) OpenNewWindow() {
 	newFM := NewFileManager(fyne.CurrentApp(), fm.currentPath, fm.config, fm.configManager, fm.customTheme)
 	newFM.window.Show()
+}
+
+// onJobsUpdated updates the Jobs indicator based on queue state
+func (fm *FileManager) onJobsUpdated() {
+	mgr := jobs.GetManager()
+	snaps := mgr.List()
+	var hasError, hasPending, hasRunning bool
+	for _, s := range snaps {
+		switch s.Status {
+		case jobs.StatusFailed:
+			hasError = true
+		case jobs.StatusPending:
+			hasPending = true
+		case jobs.StatusRunning:
+			hasRunning = true
+		}
+	}
+
+	if fm.jobsButton == nil {
+		return
+	}
+
+	// Visual policy:
+	// - Error or Pending: blink
+	// - Running only: highlight but no blink
+	if hasError || hasPending {
+		fm.jobsButton.Importance = widget.HighImportance
+		if !fm.jobsBlinking {
+			fm.startJobsBlink()
+		}
+	} else {
+		if fm.jobsBlinking {
+			fm.stopJobsBlink()
+		}
+		if hasRunning {
+			fm.jobsButton.Importance = widget.HighImportance
+		} else {
+			fm.jobsButton.Importance = widget.MediumImportance
+		}
+	}
+	fm.jobsButton.Refresh()
+}
+
+func (fm *FileManager) startJobsBlink() {
+	if fm.jobsBlinking {
+		return
+	}
+	fm.jobsBlinking = true
+	fm.jobsBlinkOn = true
+	fm.jobsBlinkStop = make(chan struct{})
+	go func(stop <-chan struct{}) {
+		ticker := time.NewTicker(600 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				fm.jobsBlinkOn = !fm.jobsBlinkOn
+				// Toggle importance to create a blink effect
+				fyne.Do(func() {
+					if fm.jobsButton != nil {
+						if fm.jobsBlinkOn {
+							fm.jobsButton.Importance = widget.HighImportance
+						} else {
+							fm.jobsButton.Importance = widget.MediumImportance
+						}
+						fm.jobsButton.Refresh()
+					}
+				})
+			case <-stop:
+				return
+			}
+		}
+	}(fm.jobsBlinkStop)
+}
+
+func (fm *FileManager) stopJobsBlink() {
+	if !fm.jobsBlinking {
+		return
+	}
+	close(fm.jobsBlinkStop)
+	fm.jobsBlinking = false
+	fm.jobsBlinkOn = false
 }
 
 // ShowCopyDialog shows the copy UI (simulation only)
@@ -1688,6 +1785,9 @@ func (fm *FileManager) closeWindow() {
 	if fm.dirWatcher != nil {
 		fm.dirWatcher.Stop()
 	}
+
+	// Stop blinking indicator if active
+	fm.stopJobsBlink()
 
 	// Close the window
 	fm.window.Close()
