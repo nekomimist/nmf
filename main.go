@@ -23,6 +23,7 @@ import (
 
 	"nmf/internal/config"
 	"nmf/internal/fileinfo"
+	"nmf/internal/jobs"
 	"nmf/internal/keymanager"
 	"nmf/internal/secret"
 	customtheme "nmf/internal/theme"
@@ -477,6 +478,10 @@ func (fm *FileManager) setupUI() {
 			fm.OpenNewWindow()
 			fm.FocusFileList()
 		}),
+		widget.NewToolbarAction(theme.HistoryIcon(), func() {
+			fm.ShowJobsDialog()
+			// focus returns after dialog closes
+		}),
 	)
 
 	// Layout with search overlay
@@ -915,14 +920,18 @@ func (fm *FileManager) showCopyMoveDialog(op ui.Operation) {
 		debugPrint("No destination candidates available")
 	}
 
+	// We need full source paths for jobs, not only names — compute now
+	srcPaths := fm.collectTargetPaths()
 	dlg := ui.NewCopyMoveDialog(op, targets, dest, fm.config.UI.NavigationHistory.LastUsed, fm.keyManager, debugPrint)
 	dlg.ShowDialog(fm.window, func(selectedDest string) {
-		// Simulation only: show message dialog and debug log
-		debugPrint("Simulate %s: %d item(s) -> %s", string(op), len(targets), selectedDest)
-		ui.ShowMessageDialog(fm.window,
-			fmt.Sprintf("%s (Preview)", strings.Title(string(op))),
-			fmt.Sprintf("Would %s %d item(s) to:\n%s\n\n(Preview: no actual operation)", strings.ToLower(string(op)), len(targets), selectedDest),
-		)
+		mgr := jobs.GetManager()
+		if op == ui.OpCopy {
+			mgr.EnqueueCopy(srcPaths, selectedDest)
+		} else {
+			mgr.EnqueueMove(srcPaths, selectedDest)
+		}
+		// Feedback
+		ui.ShowMessageDialog(fm.window, strings.Title(string(op)), fmt.Sprintf("Queued %d item(s) to:\n%s", len(srcPaths), selectedDest))
 		fm.FocusFileList()
 	})
 }
@@ -958,6 +967,42 @@ func (fm *FileManager) collectTargets() []string {
 		}
 	}
 	return nil
+}
+
+// collectTargetPaths returns absolute/native source file paths
+func (fm *FileManager) collectTargetPaths() []string {
+	var selected []string
+	for p, sel := range fm.selectedFiles {
+		if !sel {
+			continue
+		}
+		for _, fi := range fm.files {
+			if fi.Path == p {
+				if fi.Name == ".." || fi.Status == fileinfo.StatusDeleted {
+					continue
+				}
+				selected = append(selected, fi.Path)
+				break
+			}
+		}
+	}
+	if len(selected) > 0 {
+		return selected
+	}
+	idx := fm.GetCurrentCursorIndex()
+	if idx >= 0 && idx < len(fm.files) {
+		fi := fm.files[idx]
+		if fi.Name != ".." && fi.Status != fileinfo.StatusDeleted {
+			return []string{fi.Path}
+		}
+	}
+	return nil
+}
+
+// ShowJobsDialog opens the job queue view
+func (fm *FileManager) ShowJobsDialog() {
+	dlg := ui.NewJobsDialog(fm.keyManager, debugPrint)
+	dlg.ShowDialog(fm.window)
 }
 
 // buildDestinationCandidates composes other windows' dirs then history without dups
@@ -1623,6 +1668,9 @@ func main() {
 	// Apply custom theme
 	customTheme := customtheme.NewCustomTheme(config, debugPrint)
 	app.Settings().SetTheme(customTheme)
+
+	// Install debug logger for jobs package (prints only in -d mode)
+	jobs.SetDebug(debugPrint)
 
 	fm := NewFileManager(app, startPath, config, configManager, customTheme)
 	fm.window.ShowAndRun()
