@@ -158,7 +158,7 @@ func (fm *FileManager) SaveCursorPosition(dirPath string) {
 	cursorMemory.LastUsed[dirPath] = time.Now()
 
 	// Save config to disk
-	if err := fm.configManager.Save(fm.config); err != nil {
+	if err := fm.configManager.SaveAsync(fm.config); err != nil {
 		debugPrint("Error saving cursor position config: %v", err)
 	}
 }
@@ -780,7 +780,7 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 		// Add previous path to navigation history before changing directory
 		if previousPath != "" && previousPath != path {
 			fm.config.AddToNavigationHistory(previousPath)
-			if err := fm.configManager.Save(fm.config); err != nil {
+			if err := fm.configManager.SaveAsync(fm.config); err != nil {
 				debugPrint("Error saving navigation history: %v", err)
 			}
 		}
@@ -1359,7 +1359,7 @@ func (fm *FileManager) saveFilterToHistory(entry *config.FilterEntry) {
 	}
 
 	// Save config to disk
-	if err := fm.configManager.Save(fm.config); err != nil {
+	if err := fm.configManager.SaveAsync(fm.config); err != nil {
 		debugPrint("Error saving filter history: %v", err)
 	}
 }
@@ -1427,7 +1427,7 @@ func (fm *FileManager) ShowSortDialog() {
 		fm.config.UI.Sort = sortConfig
 
 		// Save configuration to file
-		if err := fm.configManager.Save(fm.config); err != nil {
+		if err := fm.configManager.SaveAsync(fm.config); err != nil {
 			debugPrint("Failed to save sort configuration: %v", err)
 		}
 
@@ -1755,6 +1755,11 @@ func main() {
 
 	// Load configuration
 	configManager := config.NewManager(debugPrint)
+	defer func() {
+		if err := configManager.Close(); err != nil {
+			log.Printf("Error closing config manager: %v", err)
+		}
+	}()
 	config, err := configManager.Load()
 	if err != nil {
 		log.Fatalf("Error loading configuration: %v", err)

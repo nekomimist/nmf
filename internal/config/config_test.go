@@ -85,27 +85,39 @@ func TestGetDefaultConfig(t *testing.T) {
 
 func TestMergeConfigs(t *testing.T) {
 	defaultConfig := getDefaultConfig()
-	fileConfig := &Config{
-		Window: WindowConfig{
-			Width:  1024,
-			Height: 768,
+	trueVal := true
+	falseVal := false
+	sortBy := "size"
+	sortOrder := "desc"
+	border := "border"
+	path := "/path/to/font.ttf"
+	itemSpacing := 8
+	fontSize := 16
+	width := 1024
+	height := 768
+	thickness := 3
+
+	fileConfig := &rawConfig{
+		Window: rawWindowConfig{
+			Width:  &width,
+			Height: &height,
 		},
-		Theme: ThemeConfig{
-			Dark:     false,
-			FontSize: 16,
-			FontPath: "/path/to/font.ttf",
+		Theme: rawThemeConfig{
+			Dark:     &falseVal,
+			FontSize: &fontSize,
+			FontPath: &path,
 		},
-		UI: UIConfig{
-			ShowHiddenFiles: true,
-			Sort: SortConfig{
-				SortBy:           "size",
-				SortOrder:        "desc",
-				DirectoriesFirst: false,
+		UI: rawUIConfig{
+			ShowHiddenFiles: &trueVal,
+			Sort: rawSortConfig{
+				SortBy:           &sortBy,
+				SortOrder:        &sortOrder,
+				DirectoriesFirst: &falseVal,
 			},
-			ItemSpacing: 8,
-			CursorStyle: CursorStyleConfig{
-				Type:      "border",
-				Thickness: 3,
+			ItemSpacing: &itemSpacing,
+			CursorStyle: rawCursorStyleConfig{
+				Type:      &border,
+				Thickness: &thickness,
 			},
 		},
 	}
@@ -146,12 +158,17 @@ func TestManagerInterface(t *testing.T) {
 	// Test that Manager implements ManagerInterface
 	// Note: Manager now requires debugPrint function
 	dummyDebugPrint := func(format string, args ...interface{}) {}
-	var manager ManagerInterface = &Manager{
-		configPath: "/tmp/test_config.json",
-		debugPrint: dummyDebugPrint,
-	}
+	manager := NewManager(dummyDebugPrint)
+	manager.configPath = filepath.Join(os.TempDir(), "test_config.json")
+	defer func() {
+		if err := manager.Close(); err != nil {
+			t.Fatalf("manager.Close failed: %v", err)
+		}
+	}()
 
-	if manager == nil {
+	var managerInterface ManagerInterface = manager
+
+	if managerInterface == nil {
 		t.Error("Manager should implement ManagerInterface")
 	}
 }
@@ -201,10 +218,13 @@ func TestGetConfigPath(t *testing.T) {
 func TestManagerLoadNonExistentFile(t *testing.T) {
 	// Create a manager with a non-existent file path
 	dummyDebugPrint := func(format string, args ...interface{}) {}
-	manager := &Manager{
-		configPath: "/non/existent/path/config.json",
-		debugPrint: dummyDebugPrint,
-	}
+	manager := NewManager(dummyDebugPrint)
+	manager.configPath = filepath.Join(os.TempDir(), "nonexistent", "config.json")
+	defer func() {
+		if err := manager.Close(); err != nil {
+			t.Fatalf("manager.Close failed: %v", err)
+		}
+	}()
 
 	config, err := manager.Load()
 
@@ -229,10 +249,13 @@ func TestManagerSaveAndLoad(t *testing.T) {
 	configPath := filepath.Join(tempDir, "test_config.json")
 
 	dummyDebugPrint := func(format string, args ...interface{}) {}
-	manager := &Manager{
-		configPath: configPath,
-		debugPrint: dummyDebugPrint,
-	}
+	manager := NewManager(dummyDebugPrint)
+	manager.configPath = configPath
+	defer func() {
+		if err := manager.Close(); err != nil {
+			t.Fatalf("manager.Close failed: %v", err)
+		}
+	}()
 
 	// Create a test config
 	testConfig := &Config{
@@ -252,10 +275,13 @@ func TestManagerSaveAndLoad(t *testing.T) {
 		},
 	}
 
-	// Save the config
-	err := manager.Save(testConfig)
-	if err != nil {
+	// Save the config synchronously
+	if err := manager.Save(testConfig); err != nil {
 		t.Fatalf("Save failed: %v", err)
+	}
+
+	if err := manager.Flush(); err != nil {
+		t.Fatalf("Flush failed: %v", err)
 	}
 
 	// Check that file was created
