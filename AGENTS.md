@@ -36,61 +36,21 @@
 ## Configuration Tips
 - Config file: OS‑specific path ending in `config.json` (XDG/AppData conventions). Use `internal/config.Manager` to load/save.
 - Debugging: run `./nmf -d` to enable verbose logs via `debugPrint`.
- - Config structure highlights:
-   - `window`: `width`, `height`.
-   - `theme`: `dark` (bool), `fontSize` (int), `fontPath` (string).
-   - `ui`:
-     - `showHiddenFiles` (bool), `sortBy` (e.g., `name`), `itemSpacing` (int).
-     - `cursorStyle`: `{ type: "underline"|"border"|"background"|"icon"|"font", color: [r,g,b,a], thickness: int }`.
-     - `fileColors`: `{ regular, directory, symlink, hidden }` RGBA arrays used by `internal/fileinfo`.
-     - `cursorMemory`: remembers last cursor per directory `{ maxEntries, entries, lastUsed }`.
-     - `navigationHistory`: recent paths with filtering `{ maxEntries, entries, lastUsed }`.
-- Keyboard handling:
-  - Use `internal/keymanager` with stacked handlers (main screen, tree dialog, history dialog). Main window wires `desktop.Canvas` events to `KeyManager`.
-  - Wrap keyboard-driven content in `ui.KeySink` and keep focus on it (`window.Canvas().Focus(sink)` and in dialogs `parent.Canvas().Focus(sink)`) so all events flow to `KeyManager` and Tab does not move focus.
-  - For entries that must not lose focus on Tab, use `ui.TabEntry` (implements `AcceptsTab`). For display-only fields (e.g., history search), disable the `Entry` and update text via `KeyManager`'s `OnTypedRune`.
-  - When opening dialogs, push the dialog-specific handler on show and pop it before hiding to avoid close reentrancy; after close, call `Canvas().Unfocus()` on the parent if needed.
-  - For the main file list, prefer wrapping `widget.List` with `ui.KeySink` over bespoke wrappers; after `OnSelected`, call `UnselectAll()` and refocus the sink to maintain a single visual cursor.
-  - Enter key on main list: directories navigate; regular files open with the OS default app via `FileManager.OpenFile`.
-- Directory watching: `internal/watcher.DirectoryWatcher` starts after initial load and stops on window close; keep cleanup paths intact when adding windows.
-- Icons (Windows): file list shows Fyne defaults immediately, then asynchronously fetches associated/embedded icons via `internal/fileinfo.IconService`; caches by extension and for `.exe/.lnk/.ico` by path; UI updates are applied via `canvas.Refresh(list)` batching.
+- Config schema source of truth: `internal/config/config.go`.
+- Durable architecture details live under `docs/architecture/`.
 
-## UNC/SMB & VFS
-- Virtual FS: All directory listing and metadata must go through `internal/fileinfo` VFS.
-  - Use `fileinfo.ReadDirPortable(path)` instead of calling `os.ReadDir` directly.
-  - Path resolution goes via `resolver` (`internal/fileinfo/resolver.go`) which normalizes inputs and selects a provider.
-- Windows behavior:
-  - Accepts UNC paths directly (e.g., `\\server\share\path`). `smb://server/share` inputs are converted to UNC internally.
-  - If an initial read fails with access errors, nmf attempts a temporary connection using stored credentials or a login prompt, then retries.
-- Linux behavior:
-  - If `smb://server/share/...` (or `//server/share/...`) matches an existing CIFS mount (from `/proc/self/mountinfo`), nmf uses the local mount via `LocalFS`.
-  - Otherwise, nmf uses direct SMB access via `go-smb2` (`internal/fileinfo/smbfs_*.go`).
-  - Display and history use canonical `smb://` form; internal providers handle native paths.
-- Credentials:
-  - Resolution order: in‑memory cache → OS keyring (if available) → UI prompt.
-  - Keyring uses `99designs/keyring` via `internal/secret` (service `nmf.smb`). Never store secrets in `config.json`.
-  - UI login dialog includes Domain/Username/Password and an opt‑in “save on this device” checkbox.
-- Watcher integration:
-  - Watcher lists via VFS; avoid `filepath.Join` for `smb://` paths (use `/` concatenation).
-  - Poll interval is configurable; prefer a longer interval for remote SMB.
+## Architecture References
+- Runtime/module overview: `docs/architecture/overview.md`.
+- VFS/SMB and file opening behavior: `docs/architecture/vfs-smb.md`.
+- Watcher and jobs lifecycle contracts: `docs/architecture/watcher-jobs.md`.
+- Keyboard/focus interaction model: `docs/architecture/ui-input.md`.
+- Active unresolved architecture risks: `docs/architecture-review.md`.
 
-## File Opening Behavior
-- Main list Enter action delegates to `FileManager.OpenFile`.
-- Windows:
-  - Uses ShellExecuteW (`open`) to launch associated apps.
-  - `smb://` inputs are converted to UNC before launching.
-- Linux/Unix:
-  - If `smb://host/share/...` matches a CIFS mount, open the native mount path (from `/proc/self/mountinfo`).
-  - Otherwise try `xdg-open`, then fall back to `gio open`/`gvfs-open`/`gnome-open`/`kde-open` with the `smb://` URL.
-  - UI/history retain canonical `smb://` display paths regardless of provider.
-- Error handling: failures surface a non-blocking message dialog; no retries are attempted on open.
-- Incremental search Enter currently preserves behavior: navigate into directories; for files, only move cursor (no launch).
-
-## Package Notes (VFS & Secrets)
-- `internal/fileinfo` now contains:
-  - `vfs.go` (minimal VFS), `resolver.go` (path normalization/provider selection), platform helpers, and SMB providers.
-  - Windows connection helper (build‑tagged) to establish UNC sessions when needed.
-- `internal/secret` provides a `Store` abstraction and a `keyring` implementation using `99designs/keyring`.
+## Quick Guardrails
+- Route directory listing/stat calls through `internal/fileinfo` portable APIs instead of raw `os` calls.
+- Normalize path input using resolver helpers in `internal/fileinfo/path_resolve.go`.
+- For keyboard-driven dialogs, keep key handler push/pop balanced and retain focus on `ui.KeySink`.
+- Always release lifecycle hooks on close (jobs unsubscribe, watcher stop, dialog handler pop).
 
 ## Communication Style
 - Important: Do not remove or rename this section. Keep the header exactly as "## Communication Style". This section is mandatory.
