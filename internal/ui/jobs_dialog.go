@@ -28,6 +28,7 @@ type JobsDialog struct {
 	parent      fyne.Window
 	km          *keymanager.KeyManager
 	debugPrint  func(format string, args ...interface{})
+	jobsUnsub   func()
 	closed      bool
 }
 
@@ -84,7 +85,7 @@ func (jd *JobsDialog) ShowDialog(parent fyne.Window) {
 	// push dialog key handler, wrap with KeySink and show dialog
 	m := jobs.GetManager()
 	// subscribe for updates and refresh on UI thread
-	m.Subscribe(func() { fyne.Do(jd.refresh) })
+	jd.jobsUnsub = m.Subscribe(func() { fyne.Do(jd.refresh) })
 	handler := keymanager.NewJobsDialogKeyHandler(jd, jd.debugPrint)
 	jd.km.PushHandler(handler)
 	jd.sink = NewKeySink(content, jd.km, WithTabCapture(true))
@@ -199,6 +200,10 @@ func (jd *JobsDialog) CloseDialog() {
 		return
 	}
 	jd.closed = true
+	if jd.jobsUnsub != nil {
+		jd.jobsUnsub()
+		jd.jobsUnsub = nil
+	}
 	// pop the handler
 	jd.km.PopHandler()
 	if jd.dialog != nil {

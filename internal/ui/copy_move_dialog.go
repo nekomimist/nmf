@@ -2,8 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -13,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
+	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 )
 
@@ -291,11 +290,12 @@ func (d *CopyMoveDialog) AcceptSelection() {
 
 	// Allow direct path via search text when no list match
 	search := d.GetSearchText()
-	if search != "" && d.isValidDir(search) && len(d.filteredDest) == 0 {
-		abs := d.absPath(search)
-		d.debugPrint("CopyMoveDialog: direct path accept: %s", abs)
-		if d.onAccept != nil {
-			d.onAccept(abs)
+	if search != "" && len(d.filteredDest) == 0 {
+		if resolvedPath, ok := d.resolveDirectoryPath(search); ok {
+			d.debugPrint("CopyMoveDialog: direct path accept: %s", resolvedPath)
+			if d.onAccept != nil {
+				d.onAccept(resolvedPath)
+			}
 		}
 	} else if d.onAccept != nil && d.selectedPath != "" {
 		d.onAccept(d.selectedPath)
@@ -315,14 +315,18 @@ func (d *CopyMoveDialog) AcceptDirectPath() {
 	d.closed = true
 	d.keyManager.PopHandler()
 	search := d.GetSearchText()
-	if search != "" && d.isValidDir(search) {
-		abs := d.absPath(search)
-		d.debugPrint("CopyMoveDialog: Ctrl+Enter direct: %s", abs)
-		if d.onAccept != nil {
-			d.onAccept(abs)
+	if search != "" {
+		if resolvedPath, ok := d.resolveDirectoryPath(search); ok {
+			d.debugPrint("CopyMoveDialog: Ctrl+Enter direct: %s", resolvedPath)
+			if d.onAccept != nil {
+				d.onAccept(resolvedPath)
+			}
+		} else if d.onAccept != nil && d.selectedPath != "" {
+			d.debugPrint("CopyMoveDialog: invalid direct path; fallback to selection: %s", d.selectedPath)
+			d.onAccept(d.selectedPath)
 		}
 	} else if d.onAccept != nil && d.selectedPath != "" {
-		d.debugPrint("CopyMoveDialog: invalid direct path; fallback to selection: %s", d.selectedPath)
+		d.debugPrint("CopyMoveDialog: empty direct path; fallback to selection: %s", d.selectedPath)
 		d.onAccept(d.selectedPath)
 	}
 	if d.dialog != nil {
@@ -348,23 +352,11 @@ func (d *CopyMoveDialog) CancelDialog() {
 }
 
 // Helpers
-func (d *CopyMoveDialog) isValidDir(p string) bool {
-	if strings.TrimSpace(p) == "" {
-		return false
-	}
-	abs, err := filepath.Abs(p)
+func (d *CopyMoveDialog) resolveDirectoryPath(p string) (string, bool) {
+	resolved, _, err := fileinfo.ResolveAccessibleDirectoryPath(p)
 	if err != nil {
-		return false
+		d.debugPrint("CopyMoveDialog: Path is not accessible: '%s' (%v)", p, err)
+		return "", false
 	}
-	inf, err := os.Stat(abs)
-	if err != nil {
-		return false
-	}
-	return inf.IsDir()
-}
-func (d *CopyMoveDialog) absPath(p string) string {
-	if a, e := filepath.Abs(p); e == nil {
-		return a
-	}
-	return p
+	return resolved, true
 }

@@ -21,13 +21,14 @@ type FileManager interface {
 // DirectoryWatcher handles incremental directory change detection
 type DirectoryWatcher struct {
 	fm            FileManager
-	mu            sync.RWMutex                 // Protects previousFiles from concurrent access
+	mu            sync.RWMutex                 // Protects watcher lifecycle state and previousFiles
 	previousFiles map[string]fileinfo.FileInfo // Previous state for comparison
 	ticker        *time.Ticker
 	pollInterval  time.Duration
-	stopChan      chan bool
+	stopChan      chan struct{}
 	changeChan    chan *PendingChanges                     // Channel for thread-safe change communication
-	stopped       bool                                     // Track if watcher is already stopped
+	running       bool                                     // True while current watcher run is active
+	runID         uint64                                   // Monotonically increasing watcher run generation
 	debugPrint    func(format string, args ...interface{}) // Debug function
 }
 
@@ -44,64 +45,39 @@ func NewDirectoryWatcher(fm FileManager, debugPrint func(format string, args ...
 		fm:            fm,
 		previousFiles: make(map[string]fileinfo.FileInfo),
 		pollInterval:  2 * time.Second,
-		stopChan:      make(chan bool),
-		changeChan:    make(chan *PendingChanges, 10), // Buffered channel
 		debugPrint:    debugPrint,
 	}
 }
 
 // Start begins watching the current directory for changes
 func (dw *DirectoryWatcher) Start() {
-	if dw.ticker != nil && !dw.stopped {
+	dw.mu.Lock()
+	if dw.running {
+		dw.mu.Unlock()
 		return // Already running
 	}
-
-	dw.stopped = false
-
-	// Recreate channels if they were closed
-	if dw.stopChan == nil {
-		dw.stopChan = make(chan bool)
-	}
-	if dw.changeChan == nil {
-		dw.changeChan = make(chan *PendingChanges, 10)
-	}
-
+	dw.runID++
+	runID := dw.runID
 	interval := dw.pollInterval
 	if interval <= 0 {
 		interval = 2 * time.Second
 	}
-	dw.ticker = time.NewTicker(interval)
+	ticker := time.NewTicker(interval)
+	stopChan := make(chan struct{})
+	changeChan := make(chan *PendingChanges, 10) // Buffered channel
+	dw.ticker = ticker
+	dw.stopChan = stopChan
+	dw.changeChan = changeChan
+	dw.running = true
+	dw.mu.Unlock()
+
 	dw.updateSnapshot() // Take initial snapshot
 
 	// Start directory monitoring goroutine
-	ticker := dw.ticker // Capture ticker reference for this goroutine
-	go func() {
-		defer ticker.Stop() // Clean up ticker when goroutine exits
-		for {
-			select {
-			case <-ticker.C:
-				dw.checkForChanges()
-			case <-dw.stopChan:
-				return
-			}
-		}
-	}()
+	go dw.watchLoop(runID, ticker, stopChan, changeChan)
 
 	// Start change processing goroutine
-	go func() {
-		for {
-			select {
-			case changes, ok := <-dw.changeChan:
-				if !ok {
-					return // チャネルがクローズされた
-				}
-				// Apply data changes (binding auto-updates UI)
-				dw.applyDataChanges(changes.Added, changes.Deleted, changes.Modified)
-			case <-dw.stopChan:
-				return
-			}
-		}
-	}()
+	go dw.applyLoop(runID, stopChan, changeChan)
 }
 
 // SetPollInterval sets the polling interval used when Start() is called next.
@@ -113,20 +89,26 @@ func (dw *DirectoryWatcher) SetPollInterval(d time.Duration) {
 
 // Stop stops the directory watcher
 func (dw *DirectoryWatcher) Stop() {
-	if dw.stopped {
+	dw.mu.Lock()
+	if !dw.running {
+		dw.mu.Unlock()
 		return // Already stopped, do nothing
 	}
-
-	dw.stopped = true
-	dw.ticker = nil // Just clear reference, goroutine will handle cleanup
-
-	// Close channels safely
-	close(dw.stopChan)
+	stopChan := dw.stopChan
+	ticker := dw.ticker
+	dw.running = false
+	dw.ticker = nil
 	dw.stopChan = nil
-
-	// Close change channel too
-	close(dw.changeChan)
 	dw.changeChan = nil
+	dw.mu.Unlock()
+
+	// Stop ticker before signaling goroutines to exit.
+	if ticker != nil {
+		ticker.Stop()
+	}
+	if stopChan != nil {
+		close(stopChan)
+	}
 }
 
 // updateSnapshot updates the current file snapshot
@@ -144,10 +126,44 @@ func (dw *DirectoryWatcher) updateSnapshot() {
 	}
 }
 
-// checkForChanges detects and handles file system changes
-func (dw *DirectoryWatcher) checkForChanges() {
+func (dw *DirectoryWatcher) watchLoop(runID uint64, ticker *time.Ticker, stopChan <-chan struct{}, changeChan chan<- *PendingChanges) {
+	for {
+		select {
+		case <-ticker.C:
+			dw.checkForChanges(runID, changeChan)
+		case <-stopChan:
+			return
+		}
+	}
+}
+
+func (dw *DirectoryWatcher) applyLoop(runID uint64, stopChan <-chan struct{}, changeChan <-chan *PendingChanges) {
+	for {
+		select {
+		case changes := <-changeChan:
+			dw.applyPendingChanges(runID, changes)
+		case <-stopChan:
+			return
+		}
+	}
+}
+
+// isCurrentRun reports whether runID still matches the currently active watcher run.
+func (dw *DirectoryWatcher) isCurrentRun(runID uint64) bool {
+	dw.mu.RLock()
+	defer dw.mu.RUnlock()
+	return dw.running && dw.runID == runID
+}
+
+// checkForChanges detects and handles file system changes.
+func (dw *DirectoryWatcher) checkForChanges(runID uint64, changeChan chan<- *PendingChanges) {
+	if !dw.isCurrentRun(runID) {
+		return
+	}
+
 	// Read current directory state
-	entries, err := fileinfo.ReadDirPortable(dw.fm.GetCurrentPath())
+	cur := dw.fm.GetCurrentPath()
+	entries, err := fileinfo.ReadDirPortable(cur)
 	if err != nil {
 		return // Skip this check if directory read fails
 	}
@@ -155,7 +171,6 @@ func (dw *DirectoryWatcher) checkForChanges() {
 	currentFiles := make(map[string]fileinfo.FileInfo)
 
 	// Build current file map
-	cur := dw.fm.GetCurrentPath()
 	for _, entry := range entries {
 		fullPath := ""
 		if strings.HasPrefix(strings.ToLower(cur), "smb://") {
@@ -190,19 +205,20 @@ func (dw *DirectoryWatcher) checkForChanges() {
 
 	// Apply changes if any detected
 	if len(added) > 0 || len(deleted) > 0 || len(modified) > 0 {
-		// Send changes to processing channel (if not stopped)
-		if !dw.stopped && dw.changeChan != nil {
-			select {
-			case dw.changeChan <- &PendingChanges{
-				Added:    added,
-				Deleted:  deleted,
-				Modified: modified,
-			}:
-				// Changes sent successfully
-			default:
-				// Channel full, skip this update
-				dw.debugPrint("Change channel full, skipping update")
-			}
+		if !dw.isCurrentRun(runID) {
+			return
+		}
+
+		select {
+		case changeChan <- &PendingChanges{
+			Added:    added,
+			Deleted:  deleted,
+			Modified: modified,
+		}:
+			// Changes sent successfully
+		default:
+			// Channel full, skip this update
+			dw.debugPrint("Change channel full, skipping update")
 		}
 	}
 }
@@ -281,4 +297,13 @@ func (dw *DirectoryWatcher) applyDataChanges(added, deleted, modified []fileinfo
 			dw.updateSnapshot()
 		})
 	}
+}
+
+// applyPendingChanges applies a queued change set only when it belongs to the active watcher run.
+func (dw *DirectoryWatcher) applyPendingChanges(runID uint64, changes *PendingChanges) {
+	if changes == nil || !dw.isCurrentRun(runID) {
+		return
+	}
+	// Apply data changes (binding auto-updates UI)
+	dw.applyDataChanges(changes.Added, changes.Deleted, changes.Modified)
 }

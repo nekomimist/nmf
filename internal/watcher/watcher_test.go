@@ -91,3 +91,53 @@ func TestUpdateSnapshot_ExcludesParentAndDeleted(t *testing.T) {
 		t.Fatalf("snapshot should include keep.txt")
 	}
 }
+
+func TestStartStop_IdempotentAndRapidCycles(t *testing.T) {
+	m := &mockFM{path: "."}
+	dw := NewDirectoryWatcher(m, dummyDebug)
+
+	for i := 0; i < 20; i++ {
+		dw.Start()
+		time.Sleep(2 * time.Millisecond)
+		dw.Stop()
+		// Stop must remain safe when called repeatedly.
+		dw.Stop()
+	}
+
+	dw.mu.RLock()
+	defer dw.mu.RUnlock()
+	if dw.running {
+		t.Fatalf("watcher should not be running after Stop")
+	}
+	if dw.stopChan != nil {
+		t.Fatalf("stopChan should be nil after Stop")
+	}
+	if dw.changeChan != nil {
+		t.Fatalf("changeChan should be nil after Stop")
+	}
+	if dw.ticker != nil {
+		t.Fatalf("ticker should be nil after Stop")
+	}
+}
+
+func TestApplyPendingChanges_IgnoresStaleRun(t *testing.T) {
+	m := &mockFM{path: "."}
+	dw := NewDirectoryWatcher(m, dummyDebug)
+
+	dw.Start()
+	dw.mu.RLock()
+	runID := dw.runID
+	dw.mu.RUnlock()
+
+	dw.Stop()
+
+	dw.applyPendingChanges(runID, &PendingChanges{
+		Added: []fileinfo.FileInfo{
+			fi("./new.txt", "new.txt", 1, time.Now()),
+		},
+	})
+
+	if len(m.files) != 0 {
+		t.Fatalf("stale run changes should be ignored, got %d files", len(m.files))
+	}
+}
