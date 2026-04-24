@@ -9,8 +9,9 @@
 
 ## Build, Test, and Development Commands
 - Run app: `go run .` (flags: `-d` for debug, `-path /some/dir`).
-- Build binary: `go build -o nmf` (outputs `./nmf`).
-- Unit tests: `go test ./internal/...` (package tests live in `*_test.go`).
+- Build Linux binary: `make build` or `make build-linux` (outputs `dist/nmf`).
+- Build Windows binary from Linux: `make build-windows` (uses Zig cc with CGO; outputs `dist/nmf.exe`).
+- Unit tests: `make test` (runs `go test ./internal/...`; package tests live in `*_test.go`).
 - Lint/vet (recommended): `go vet ./...`; format: `gofmt -s -w .`.
 - Modules: `go mod tidy` after dependency changes.
 - Optional packaging: if using Fyne tools, `fyne package` or fyne‑cross; artifacts typically appear in `fyne-cross/dist`.
@@ -26,7 +27,7 @@
 ## Testing Guidelines
 - Framework: Go `testing` with table‑driven tests where practical.
 - Location: `*_test.go` alongside sources (e.g., `internal/config/config_test.go`).
-- Run: `go test ./internal/...`; include edge cases (platform specifics in `platform_*.go`).
+- Run: `make test`; include edge cases (platform specifics in `platform_*.go`).
 - Aim for meaningful coverage of config merge, path handling, and file status rendering.
 
 ## Commit & Pull Request Guidelines

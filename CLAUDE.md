@@ -118,8 +118,9 @@ nmf/
 ## Common Commands
 
 - `go run .` - Run application
-- `go build` - Build executable
-- `go test ./internal/...` - Run tests
+- `make build` - Build Linux executable to `dist/nmf`
+- `make build-windows` - Cross-build Windows executable to `dist/nmf.exe` using Zig cc
+- `make test` - Run tests
 - `go mod tidy` - Clean dependencies
 
 ## Development
