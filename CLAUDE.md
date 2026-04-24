@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Cross-platform GUI file manager "nmf" built with Go + Fyne v2.6.1. Features keyboard navigation, real-time directory watching, and multi-window support.
+Cross-platform GUI file manager "nmf" built with Go + Fyne v2.7.3. Features keyboard navigation, real-time directory watching, and multi-window support.
 
 ## Architecture
 

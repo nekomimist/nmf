@@ -17,7 +17,7 @@
 - Optional packaging: if using Fyne tools, `fyne package` or fyne‑cross; artifacts typically appear in `fyne-cross/dist`.
 
 ## Coding Style & Naming Conventions
-- Language: Go 1.23; follow standard Go style (tabs; 1TBS braces via `gofmt`).
+- Language: Go 1.25; follow standard Go style (tabs; 1TBS braces via `gofmt`).
 - Files: lower_snake_case (e.g., `tree_dialog.go`).
 - Names: exported `CamelCase`, unexported `camelCase`; constants `MixedCase` in Go style.
 - Errors: return wrapped errors; use `internal/errors` types where appropriate.
