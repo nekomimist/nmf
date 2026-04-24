@@ -37,11 +37,14 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 
 	// Initialize async icon service and subscribe for updates
 	fm.iconSvc = fileinfo.NewIconService(debugPrint)
-	// Refresh the list when icons arrive (thread-safe via canvas.Refresh)
+	// Refresh the list when icons arrive. Icon notifications are emitted from
+	// background workers, so widget refreshes must run on the Fyne call thread.
 	fm.iconSvc.OnUpdated(func() {
-		if fm.fileList != nil {
-			canvas.Refresh(fm.fileList)
-		}
+		fyne.Do(func() {
+			if fm.fileList != nil {
+				canvas.Refresh(fm.fileList)
+			}
+		})
 	})
 
 	// Create directory watcher
