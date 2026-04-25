@@ -1,109 +1,92 @@
-# UNC Support Plan (Windows & Linux)
+# UNC/SMB Support Status (Windows & Linux)
 
-This document tracks UNC/SMB support across Windows and Linux. It now reflects what is implemented vs what remains, with the goal of keeping UI code stable via a small VFS and resolver.
+This document tracks UNC/SMB support across Windows and Linux. UI callers should continue to use canonical display paths and portable file APIs instead of provider-specific path handling.
 
 ## Status Snapshot
-- Completed:
-  - Resolver & normalization: Windows UNC ⇔ `smb://` conversion; Linux `smb://`/`//` mount detection via `/proc/self/mountinfo` and fallback to SMB client.
-  - Minimal VFS (`ReadDir`) and portable read path (`ReadDirPortable`).
-  - Windows: UNC access retry by establishing a temporary session via `WNetAddConnection2W` on access errors (using keyring/UI creds).
-  - Linux: Direct SMB provider using `github.com/hirochachacha/go-smb2` (read-only listing) and async credential prompting.
-  - Credentials UI dialog, in-memory cache, and OS keyring integration (99designs/keyring).
-  - Path input normalization; SMB navigation uses canonical `smb://` for display/history.
-  - Directory watcher uses portable listing and lengthens poll interval for `smb://` paths.
-  - Windows icon service with async fetch and batching.
 
-- Remaining (high level):
-  - Expand VFS to include `Stat/Open/Join/Base` and remove remaining `filepath.*` for SMB paths in UI.
-- Tree dialog uses portable VFS (`ReadDirPortable`/`StatPortable`) [done].
-  - Network/auth error typing + friendly UI messages; add conservative retry/backoff for transient SMB errors.
-  - Credentials precedence: URL → memory → keyring → UI [done].
-  - Watcher list source injection and capability-based tuning instead of string heuristics.
-  - Unit tests for resolver normalization, mount detection (Linux), and Windows UNC⇔`smb://` round-trip.
-  - Windows long-path (`\\?\UNC\`) policy for edge cases.
+- Completed:
+  - Resolver and normalization: Windows UNC <-> `smb://` conversion; Linux `smb://` and `//host/share` mount detection via `/proc/self/mountinfo`; fallback to direct SMB on Linux.
+  - VFS surface includes `ReadDir`, `Stat`, `Open`, `Join`, `Base`, and provider `Capabilities`.
+  - Portable APIs: `ReadDirPortable`, `StatPortable`, and display path helpers (`JoinPath`, `ParentPath`, `BaseName`).
+  - Windows UNC listing retry through a temporary `WNetAddConnection2W` session on access errors.
+  - Linux direct SMB provider using `github.com/hirochachacha/go-smb2`, including listing, metadata, open, write, mkdir, remove, rename, and symlink operations.
+  - SMB credentials UI, in-memory cache, OS keyring integration, and lookup order of memory -> keyring -> UI.
+  - URL credentials are parsed and can seed the in-memory cache during path-entry navigation.
+  - Path input normalization; SMB navigation/history uses canonical `smb://` display paths.
+  - Directory tree dialog uses portable VFS (`ReadDirPortable`/`StatPortable`).
+  - Directory watcher uses portable listing and a longer poll interval for `smb://` paths.
+  - Copy/move jobs support Linux direct SMB paths through `SMBPathOps`, with per-job session reuse per share root.
+  - Unit tests cover resolver helpers, UNC conversion helpers, mountinfo parsing helpers, path utilities, credentials precedence, watcher lifecycle/change detection, and SMB job backend/session behavior.
+
+- Remaining:
+  - Network/auth error typing, friendly UI messages, and conservative retry/backoff for transient SMB failures.
+  - Watcher list source injection and capability-based tuning instead of `smb://` string heuristics.
+  - Non-Linux direct SMB provider/copy-move behavior policy and tests.
+  - SMB integration tests are manual only; CI fixture coverage is not wired.
+  - Windows long-path (`\\?\UNC\...`) policy and edge-case audit.
+  - Credential cache lifecycle details for multiple windows and startup URL credentials.
 
 ## Goals
-- Windows: Handle `\\server\share\path` and optionally `\\?\UNC\server\share\path` via native calls.
-- Linux: Treat `smb://server/share/path` (and `//server/share/path`) as SMB; prefer existing mounts, else direct SMB.
-- Keep UI, history, watcher, and icon pipelines unchanged from the caller’s perspective via a small VFS.
 
-## Non-Goals (Initial Phase)
+- Windows: Handle `\\server\share\path` and `smb://server/share/path` through native UNC access, with credential retry on access failures.
+- Linux: Treat `smb://server/share/path` and `//server/share/path` as SMB; prefer existing CIFS/SMB mounts, otherwise use the direct SMB provider.
+- Keep UI, history, watcher, tree dialog, file opening, and jobs code stable through the resolver/VFS boundary.
+
+## Non-Goals
+
 - Network browsing and share enumeration.
-- Copy/move over SMB; focus on listing/metadata.
-- Kernel notifications on SMB; continue polling for remote.
+- Kernel filesystem notifications for SMB; remote paths continue to use polling.
+- Full direct-SMB provider parity on non-Linux until the platform support policy is decided.
 
-## Architecture: VFS Abstraction
-Minimal VFS is in place for directory listing; future work extends it.
+## Architecture: VFS and Resolver
 
-- Implemented now:
-  - `type VFS interface { ReadDir(path string) ([]os.DirEntry, error); Capabilities() Capabilities }`
-  - `type Capabilities struct { FastList bool; Watch bool }`
-  - Providers implement `ReadDir`; higher-level code calls `ReadDirPortable`.
+- Implemented VFS:
+  - `ReadDir(path string) ([]os.DirEntry, error)`
+  - `Stat(path string) (os.FileInfo, error)`
+  - `Open(path string) (io.ReadCloser, error)`
+  - `Join(elem ...string) string`
+  - `Base(path string) string`
+  - `Capabilities() Capabilities`
+- Portable callers should use `ReadDirPortable`, `StatPortable`, and path helpers in `internal/fileinfo/pathutil.go`.
+- Windows provider selection:
+  - UNC and `smb://` resolve to `LocalFS` over UNC.
+  - `ReadDirPortable` retries access errors after attempting a temporary Windows network connection.
+- Non-Windows provider selection:
+  - Matching CIFS/SMB mount: use `LocalFS` with the mount path.
+  - No mount on Linux: use `SMBFS`.
+  - No mount on `!linux`: direct SMB provider is unavailable; this remains an active architecture item.
 
-- Remaining:
-  - Add `Stat`, `Open`, `Join`, `Base` to VFS and migrate UI helpers (`smbJoin/smbParent`) and `filepath.*` usage to provider-aware APIs.
+## Current Active Work Items
 
-## Resolver
-- Implemented:
-  - Windows: Accept UNC; convert `smb://` to UNC internally; expose display as `smb://`.
-  - Linux: For `smb://`/`//`, detect CIFS/SMB mounts from `/proc/self/mountinfo`; otherwise fall back to SMB provider. Display uses `smb://`.
-
-## Providers
-- LocalFS (all OS): Standard library; on Linux also used for existing CIFS mounts.
-- SMBFS (Linux): `go-smb2` backed; directory listing implemented; capabilities mark remote (no watch).
-
-## Path Model & Normalization
-- Display string is canonical `smb://server/share/path` (used for history/UI).
-- Provider-native strings:
-  - Windows LocalFS: UNC (`\\host\share\...`, `\\?\UNC\...` for long paths in future).
-  - Linux LocalFS: local absolute mount path.
-  - Linux SMBFS: host/share + relative segments handled by provider.
-- Remaining: Replace residual `filepath.*` in UI when path is `smb://` with VFS `Join/Base` once added.
-
-## Credentials & Auth Flow
-- Implemented:
-  - CredentialsProvider (UI dialog) wrapped with in-memory cache; OS keyring integration via `internal/secret`.
-  - Windows UNC connect helper uses cached/keyring creds and persists to keyring on success when requested.
-- Remaining:
-  - Enforce precedence clearly: seed from URL into memory cache, then prefer memory → keyring → UI provider.
-
-## Directory Watching
-- Implemented:
-  - Uses portable listing; longer poll interval for `smb://` paths.
-- Remaining:
-  - Accept injectable list source and use `Capabilities` to tune rather than string prefix checks.
-
-## UI/UX Notes
-- Implemented: Path entry accepts local, UNC (Windows), and `smb://`; display/history normalized to `smb://`.
-- Remaining: Error messages with specific categories (auth required/failed, unreachable, share not found, timeout).
-
-## Error Types & Retry
-- Remaining:
-  - Add network-aware error wrappers under `internal/errors` (auth required/failed, host unreachable, share not found, timeout).
-  - Add conservative retries/backoff for transient network errors; prompt on auth failures.
-
-## Testing Strategy
-- Remaining:
-  - Table-driven tests for resolver & normalization (Windows UNC ⇔ `smb://`, edge cases).
-  - Mount detection parsing (`/proc/self/mountinfo`) tests on Linux.
-  - FS mocking for watcher flows; skip live SMB in CI.
-
-## Rollout Roadmap (Status)
-- [x] 1) Introduce VFS (minimal)/Capabilities/Resolver/Parsed; call sites use portable read.
-- [x] 2) Validate Windows via LocalFS (UNC end-to-end) with connection helper on access errors.
-- [x] 3) Linux mount detection and LocalFS mapping.
-- [x] 4) Add SMBFS provider and CredentialsProvider + login dialog (Linux first).
-- [~] 5) Make watcher VFS-aware; currently uses portable read + interval tweak. Inject list source and use Capabilities next.
-- [~] 6) Normalize history/config to `smb://` (done); add unit tests (pending).
+- Error handling:
+  - Add network-aware error wrappers under `internal/errors` for auth required/failed, host unreachable, share not found, timeout, and credential conflict.
+  - Map those errors to friendly UI dialog messages instead of showing raw provider errors.
+  - Add bounded retry/backoff only for transient network failures; auth failures should clear stale cached credentials and prompt again.
+- Watcher:
+  - Add injectable list source or provider handle so watcher tests do not depend on live filesystem/SMB state.
+  - Use `Capabilities()` to choose polling behavior instead of `strings.HasPrefix(path, "smb://")`.
+- Platform parity:
+  - Decide whether non-Linux direct `smb://` copy/move should be unsupported-by-design, Windows-native-UNC backed, or implemented through a provider.
+  - Document and test the selected behavior.
+- Test infrastructure:
+  - Add repeatable SMB integration coverage, preferably with a dockerized Samba fixture or a gated CI job.
+  - Keep the existing `NMF_SMB_TEST_DIR=smb://host/share/path go test ./internal/jobs -run TestSMBCopyRoundtrip` path for manual validation.
+- Credentials:
+  - Preserve memory cache across multiple windows or make the reset behavior explicit.
+  - Ensure startup paths such as `-path smb://user:pass@host/share` seed URL credentials before first SMB access.
+- Windows path policy:
+  - Audit `\\?\UNC\...` long-path behavior for resolver, display normalization, file opening, and Windows connection retry.
 
 ## Touch Points
-- `internal/fileinfo`: VFS (`vfs.go`), resolver (`resolver.go`), SMB providers (`smbfs_*.go`), Windows UNC connect helper.
-- `internal/ui`: SMB login dialog; path entry normalization is wired in `main.go`.
-- `internal/watcher`: Uses portable listing; interval tuning by path kind.
-- `internal/config`: History uses canonical `smb://`.
-- `internal/errors`: Network/auth error types to be added.
+
+- `internal/fileinfo`: VFS, resolver, portable APIs, path helpers, SMB providers, credentials, Windows UNC connection helper.
+- `internal/jobs`: copy/move execution backends, `SMBPathOps`, SMB session reuse.
+- `internal/watcher`: portable listing, polling lifecycle, pending capability-based tuning.
+- `internal/ui`: SMB login dialog, tree dialog, path/history dialogs, user-facing error presentation.
+- `docs/architecture-review.md`: active unresolved architecture and reliability risks.
 
 ## Future Work
+
 - Share enumeration and network discovery UI.
-- Copy/move over SMB with progress and cancellation.
-- Windows long-path handling policy audit (`\\?\UNC\...`).
+- Full cross-platform direct SMB provider parity if product scope requires it.
+- Richer copy/move conflict handling over SMB, including overwrite policy and partial artifact cleanup.
