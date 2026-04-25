@@ -218,7 +218,7 @@ func (dw *DirectoryWatcher) checkForChanges(runID uint64, changeChan chan<- *Pen
 			// Changes sent successfully
 		default:
 			// Channel full, skip this update
-			dw.debugPrint("Change channel full, skipping update")
+			dw.debugPrint("DirectoryWatcher: Change channel full, skipping update")
 		}
 	}
 }
@@ -256,7 +256,7 @@ func (dw *DirectoryWatcher) detectChanges(currentFiles map[string]fileinfo.FileI
 
 // applyDataChanges applies detected changes to the file manager data (thread-safe)
 func (dw *DirectoryWatcher) applyDataChanges(added, deleted, modified []fileinfo.FileInfo) {
-	dw.debugPrint("Applying changes: %d added, %d deleted, %d modified", len(added), len(deleted), len(modified))
+	dw.debugPrint("DirectoryWatcher: Applying changes: %d added, %d deleted, %d modified", len(added), len(deleted), len(modified))
 
 	// Get current files (this is now thread-safe as GetFiles() returns a copy)
 	files := dw.fm.GetFiles()

@@ -180,7 +180,7 @@ func (m *Manager) Load() (*Config, error) {
 
 	data, err := os.ReadFile(m.configPath)
 	if err != nil {
-		m.debugPrint("Config file not found, using defaults: %v", err)
+		m.debugPrint("Config: Config file not found, using defaults: %v", err)
 		return config, nil
 	}
 
@@ -285,7 +285,7 @@ func (m *Manager) saveWorker() {
 		case <-timerChan:
 			if pending != nil {
 				if err := m.saveConfig(pending); err != nil {
-					m.debugPrint("Error saving config: %v", err)
+					m.debugPrint("Config: Error saving config: %v", err)
 				}
 				pending = nil
 			}

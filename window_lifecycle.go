@@ -14,7 +14,7 @@ func (fm *FileManager) closeWindow() {
 	windowRegistry.Delete(fm.window)
 	remaining := atomic.AddInt32(&windowCount, -1)
 
-	debugPrint("Window closed, remaining windows: %d", remaining)
+	debugPrint("WindowLifecycle: Window closed, remaining windows: %d", remaining)
 
 	// Stop directory watcher
 	if fm.dirWatcher != nil {
@@ -35,7 +35,7 @@ func (fm *FileManager) closeWindow() {
 
 	// If this was the last window, quit the application
 	if remaining == 0 {
-		debugPrint("Last window closed, quitting application")
+		debugPrint("WindowLifecycle: Last window closed, quitting application")
 		fyne.CurrentApp().Quit()
 	}
 }
@@ -43,7 +43,7 @@ func (fm *FileManager) closeWindow() {
 // QuitApplication handles application quit logic with confirmation dialog.
 func (fm *FileManager) QuitApplication() {
 	currentCount := atomic.LoadInt32(&windowCount)
-	debugPrint("QuitApplication called, current window count: %d", currentCount)
+	debugPrint("WindowLifecycle: QuitApplication called, current window count: %d", currentCount)
 
 	if currentCount > 1 {
 		// Multiple windows open, just close current window
@@ -59,10 +59,10 @@ func (fm *FileManager) showQuitConfirmationDialog() {
 	dialog := ui.NewQuitConfirmDialog(fm.keyManager, debugPrint)
 	dialog.ShowDialog(fm.window, func(confirmed bool) {
 		if confirmed {
-			debugPrint("User confirmed quit")
+			debugPrint("WindowLifecycle: User confirmed quit")
 			fm.closeWindow()
 		} else {
-			debugPrint("User cancelled quit")
+			debugPrint("WindowLifecycle: User cancelled quit")
 		}
 		// Return focus to file list after dialog closes
 		fm.FocusFileList()

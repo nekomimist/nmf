@@ -275,15 +275,15 @@ func (fm *FileManager) setupUI() {
 
 	// Setup window close handler to properly stop DirectoryWatcher
 	fm.window.SetCloseIntercept(func() {
-		debugPrint("Window close intercepted - initiating cleanup for path: %s", fm.currentPath)
+		debugPrint("FileManager: Window close intercepted - initiating cleanup for path: %s", fm.currentPath)
 		if fm.dirWatcher != nil {
-			debugPrint("Stopping DirectoryWatcher...")
+			debugPrint("FileManager: Stopping DirectoryWatcher...")
 			fm.dirWatcher.Stop()
-			debugPrint("DirectoryWatcher.Stop() completed successfully")
+			debugPrint("FileManager: DirectoryWatcher.Stop() completed successfully")
 		} else {
-			debugPrint("DirectoryWatcher was nil, skipping stop")
+			debugPrint("FileManager: DirectoryWatcher was nil, skipping stop")
 		}
-		debugPrint("Proceeding with window close")
+		debugPrint("FileManager: Proceeding with window close")
 		fm.window.Close()
 	})
 

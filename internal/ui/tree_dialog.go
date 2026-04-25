@@ -85,7 +85,7 @@ func (dtd *DirectoryTreeDialog) createTree() {
 	// Set selection handler
 	dtd.tree.OnSelected = func(uid widget.TreeNodeID) {
 		dtd.selectedPath = string(uid)
-		dtd.debugPrint("Directory selected: %s", uid)
+		dtd.debugPrint("TreeDialog: Directory selected: %s", uid)
 		// Keep focus on sink so KeyManager continues to receive keys
 		if dtd.parent != nil && dtd.sink != nil {
 			dtd.parent.Canvas().Focus(dtd.sink)
@@ -94,7 +94,7 @@ func (dtd *DirectoryTreeDialog) createTree() {
 
 	// Set branch open handler for lazy loading
 	dtd.tree.OnBranchOpened = func(uid widget.TreeNodeID) {
-		dtd.debugPrint("Branch opened: %s", uid)
+		dtd.debugPrint("TreeDialog: Branch opened: %s", uid)
 	}
 
 	// Set initial root node
@@ -110,7 +110,7 @@ func (dtd *DirectoryTreeDialog) getDirectoryChildren(path string) []string {
 
 	entries, err := fileinfo.ReadDirPortable(path)
 	if err != nil {
-		dtd.debugPrint("Error reading directory %s: %v", path, err)
+		dtd.debugPrint("TreeDialog: Error reading directory %s: %v", path, err)
 		return []string{}
 	}
 

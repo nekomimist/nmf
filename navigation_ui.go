@@ -15,7 +15,7 @@ func (fm *FileManager) OpenNewWindow() {
 func (fm *FileManager) ShowDirectoryTreeDialog() {
 	dialog := ui.NewDirectoryTreeDialog(fm.currentPath, fm.keyManager, debugPrint)
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
-		debugPrint("Directory selected from tree dialog: %s", selectedPath)
+		debugPrint("FileManager: Directory selected from tree dialog: %s", selectedPath)
 		fm.LoadDirectory(selectedPath)
 		fm.FocusFileList()
 	})
@@ -39,7 +39,7 @@ func (fm *FileManager) ShowNavigationHistoryDialog() {
 	}
 
 	if len(enhancedPaths) == 0 {
-		debugPrint("No navigation history available")
+		debugPrint("FileManager: No navigation history available")
 		return
 	}
 
@@ -50,7 +50,7 @@ func (fm *FileManager) ShowNavigationHistoryDialog() {
 		debugPrint,
 	)
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
-		debugPrint("Directory selected from history dialog: %s", selectedPath)
+		debugPrint("FileManager: Directory selected from history dialog: %s", selectedPath)
 		fm.LoadDirectory(selectedPath)
 		fm.FocusFileList()
 	})

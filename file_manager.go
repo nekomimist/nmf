@@ -79,7 +79,7 @@ func (fm *FileManager) UpdateFiles(files []fileinfo.FileInfo) {
 	if fm.currentFilter != nil && fm.currentFilter.Pattern != "" {
 		filtered, err := fileinfo.FilterFiles(files, fm.currentFilter.Pattern)
 		if err != nil {
-			debugPrint("Filter error: %v", err)
+			debugPrint("FileManager: Filter error: %v", err)
 			fm.files = files // Fall back to showing all files
 		} else {
 			fm.files = filtered

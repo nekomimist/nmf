@@ -102,7 +102,7 @@ func (fd *FilterDialog) createWidgets() {
 			fd.selectedIndex = int(id)
 			entry := fd.filteredEntries[id]
 			fd.selectedPattern = entry.Pattern
-			fd.debugPrint("Filter selected: %s (index: %d)", fd.selectedPattern, fd.selectedIndex)
+				fd.debugPrint("FilterDialog: Filter selected: %s (index: %d)", fd.selectedPattern, fd.selectedIndex)
 			// Keep focus on sink so KeyManager continues to receive keys
 			if fd.parent != nil && fd.sink != nil {
 				fd.parent.Canvas().Focus(fd.sink)

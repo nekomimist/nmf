@@ -106,14 +106,14 @@ func (fm *FileManager) showCopyMoveDialog(op ui.Operation) {
 	// Determine targets: marked files if any; otherwise cursor item
 	targets := fm.collectTargets()
 	if len(targets) == 0 {
-		debugPrint("No valid target for %s", string(op))
+		debugPrint("FileManager: No valid target for %s", string(op))
 		return
 	}
 
 	// Build destination candidates: other windows' directories first, then history without duplicates
 	dest := fm.buildDestinationCandidates()
 	if len(dest) == 0 {
-		debugPrint("No destination candidates available")
+		debugPrint("FileManager: No destination candidates available")
 	}
 
 	// We need full source paths for jobs, not only names — compute now

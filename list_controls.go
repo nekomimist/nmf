@@ -91,7 +91,7 @@ func (fm *FileManager) ApplyFilter(entry *config.FilterEntry) {
 
 	// Validate pattern first
 	if err := fileinfo.ValidatePattern(entry.Pattern); err != nil {
-		debugPrint("Invalid filter pattern '%s': %v", entry.Pattern, err)
+		debugPrint("FileManager: Invalid filter pattern '%s': %v", entry.Pattern, err)
 		return
 	}
 
@@ -110,7 +110,7 @@ func (fm *FileManager) ApplyFilter(entry *config.FilterEntry) {
 	// Apply filter
 	filtered, err := fileinfo.FilterFiles(baseFiles, entry.Pattern)
 	if err != nil {
-		debugPrint("Filter error: %v", err)
+		debugPrint("FileManager: Filter error: %v", err)
 		return
 	}
 
@@ -132,7 +132,7 @@ func (fm *FileManager) ApplyFilter(entry *config.FilterEntry) {
 		fm.RefreshCursor()
 	}
 
-	debugPrint("Applied filter: %s (matched %d/%d files)", entry.Pattern, len(fm.files), len(baseFiles))
+	debugPrint("FileManager: Applied filter: %s (matched %d/%d files)", entry.Pattern, len(fm.files), len(baseFiles))
 }
 
 // ClearFilter completely removes the current filter (for Ctrl+Shift+F).
@@ -155,7 +155,7 @@ func (fm *FileManager) ClearFilter() {
 		fm.fileBinding.Set(items)
 	}
 
-	debugPrint("Filter completely cleared, showing all %d files", len(fm.files))
+	debugPrint("FileManager: Filter completely cleared, showing all %d files", len(fm.files))
 }
 
 // ToggleFilter toggles the current filter on/off.
@@ -187,7 +187,7 @@ func (fm *FileManager) DisableFilter() {
 		fm.fileBinding.Set(items)
 	}
 
-	debugPrint("Filter disabled, showing all %d files", len(fm.files))
+	debugPrint("FileManager: Filter disabled, showing all %d files", len(fm.files))
 }
 
 // saveFilterToHistory saves a filter entry to the history.
@@ -221,13 +221,13 @@ func (fm *FileManager) saveFilterToHistory(entry *config.FilterEntry) {
 
 	// Save config to disk
 	if err := fm.configManager.SaveAsync(fm.config); err != nil {
-		debugPrint("Error saving filter history: %v", err)
+		debugPrint("FileManager: Error saving filter history: %v", err)
 	}
 }
 
 // ShowIncrementalSearchDialog shows the incremental search overlay.
 func (fm *FileManager) ShowIncrementalSearchDialog() {
-	debugPrint("Starting incremental search mode")
+	debugPrint("FileManager: Starting incremental search mode")
 
 	// Update overlay with current files
 	fm.searchOverlay.UpdateFiles(fm.files)
@@ -238,7 +238,7 @@ func (fm *FileManager) ShowIncrementalSearchDialog() {
 		if selectedFile.IsDir {
 			// For directories, navigate into them
 			targetPath := fileinfo.JoinPath(fm.currentPath, selectedFile.Name)
-			debugPrint("Incremental search: navigating to directory %s", targetPath)
+			debugPrint("FileManager: Incremental search navigating to directory %s", targetPath)
 			fm.LoadDirectory(targetPath)
 		} else {
 			// For files, set cursor to them
@@ -251,7 +251,7 @@ func (fm *FileManager) ShowIncrementalSearchDialog() {
 	})
 
 	fm.searchOverlay.SetCancelCallback(func() {
-		debugPrint("Incremental search cancelled")
+		debugPrint("FileManager: Incremental search cancelled")
 		// Pop the search handler and refocus main view
 		fm.keyManager.PopHandler()
 		fm.FocusFileList()
@@ -264,7 +264,7 @@ func (fm *FileManager) ShowIncrementalSearchDialog() {
 
 // ShowSortDialog shows the sort configuration dialog.
 func (fm *FileManager) ShowSortDialog() {
-	debugPrint("Showing sort dialog")
+	debugPrint("FileManager: Showing sort dialog")
 
 	// Get current sort configuration
 	currentConfig := fm.config.UI.Sort
@@ -274,14 +274,14 @@ func (fm *FileManager) ShowSortDialog() {
 
 	// Set up apply callback
 	sortDialog.SetOnApply(func(sortConfig config.SortConfig) {
-		debugPrint("Applying sort configuration: %+v", sortConfig)
+		debugPrint("FileManager: Applying sort configuration: %+v", sortConfig)
 
 		// Store current cursor file name to restore position after sorting
 		var currentFile string
 		cursorIndex := fm.GetCurrentCursorIndex()
 		if cursorIndex >= 0 && cursorIndex < len(fm.files) {
 			currentFile = fm.files[cursorIndex].Name
-			debugPrint("Storing current cursor file: %s", currentFile)
+			debugPrint("FileManager: Storing current cursor file: %s", currentFile)
 		}
 
 		// Update configuration
@@ -289,7 +289,7 @@ func (fm *FileManager) ShowSortDialog() {
 
 		// Save configuration to file
 		if err := fm.configManager.SaveAsync(fm.config); err != nil {
-			debugPrint("Failed to save sort configuration: %v", err)
+			debugPrint("FileManager: Failed to save sort configuration: %v", err)
 		}
 
 		// Re-sort current files and refresh display
@@ -311,7 +311,7 @@ func (fm *FileManager) ShowSortDialog() {
 			for i, file := range fm.files {
 				if file.Name == currentFile {
 					fm.SetCursorByIndex(i)
-					debugPrint("Restored cursor to file: %s at index %d", currentFile, i)
+					debugPrint("FileManager: Restored cursor to file: %s at index %d", currentFile, i)
 					break
 				}
 			}
@@ -325,17 +325,17 @@ func (fm *FileManager) ShowSortDialog() {
 		// Force UI refresh
 		fm.fileList.Refresh()
 
-		debugPrint("Sort configuration applied successfully")
+		debugPrint("FileManager: Sort configuration applied successfully")
 	})
 
 	// Set up cancel callback
 	sortDialog.SetOnCancel(func() {
-		debugPrint("Sort dialog cancelled")
+		debugPrint("FileManager: Sort dialog cancelled")
 	})
 
 	// Set up cleanup callback (pop key handler)
 	sortDialog.SetOnCleanup(func() {
-		debugPrint("Cleaning up sort dialog - popping key handler")
+		debugPrint("FileManager: Cleaning up sort dialog - popping key handler")
 		fm.keyManager.PopHandler()
 	})
 
@@ -349,7 +349,7 @@ func (fm *FileManager) ShowSortDialog() {
 
 // FocusPathEntry focuses the path entry widget.
 func (fm *FileManager) FocusPathEntry() {
-	debugPrint("Focusing path entry")
+	debugPrint("FileManager: Focusing path entry")
 	if fm.pathEntry != nil {
 		fm.window.Canvas().Focus(fm.pathEntry)
 		fm.pathEntry.FocusGained()
@@ -449,7 +449,7 @@ func (fm *FileManager) OpenFile(file *fileinfo.FileInfo) {
 
 	// Regular file: try to open with associated application
 	if err := fileinfo.OpenWithDefaultApp(file.Path); err != nil {
-		debugPrint("Failed to open file '%s': %v", file.Path, err)
+		debugPrint("FileManager: Failed to open file '%s': %v", file.Path, err)
 		ui.ShowMessageDialog(fm.window, "ファイルを開けませんでした", err.Error())
 		return
 	}
@@ -470,7 +470,7 @@ func (fm *FileManager) SetCursorToFile(file *fileinfo.FileInfo) {
 func (fm *FileManager) sortFiles() {
 	sortConfig := fm.config.UI.Sort
 
-	debugPrint("Sorting files: sortBy=%s, order=%s, dirFirst=%t",
+	debugPrint("FileManager: Sorting files: sortBy=%s, order=%s, dirFirst=%t",
 		sortConfig.SortBy, sortConfig.SortOrder, sortConfig.DirectoriesFirst)
 
 	if len(fm.files) <= 1 {

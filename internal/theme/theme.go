@@ -93,20 +93,20 @@ func (t *CustomTheme) loadCustomFont() {
 
 	// Check if font file exists
 	if _, err := os.Stat(fontPath); os.IsNotExist(err) {
-		t.debugPrint("Custom font file not found: %s", fontPath)
+		t.debugPrint("Theme: Custom font file not found: %s", fontPath)
 		return
 	}
 
 	// Read font file
 	fontData, err := ioutil.ReadFile(fontPath)
 	if err != nil {
-		t.debugPrint("Error reading font file %s: %v", fontPath, err)
+		t.debugPrint("Theme: Error reading font file %s: %v", fontPath, err)
 		return
 	}
 
 	// Create font resource
 	t.customFont = fyne.NewStaticResource(filepath.Base(fontPath), fontData)
-	t.debugPrint("Loaded custom font: %s", fontPath)
+	t.debugPrint("Theme: Loaded custom font: %s", fontPath)
 }
 
 // Color methods from default theme

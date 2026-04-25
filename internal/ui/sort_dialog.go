@@ -47,10 +47,10 @@ func (sd *SortDialog) createWidgets() {
 		"Modified",
 		"Extension",
 	}, func(selected string) {
-		sd.debugPrint("Sort by selected: %s", selected)
+		sd.debugPrint("SortDialog: Sort by selected: %s", selected)
 		// Prevent deselection - ensure at least one option is always selected
 		if selected == "" {
-			sd.debugPrint("Preventing sort by deselection, restoring previous selection")
+			sd.debugPrint("SortDialog: Preventing sort by deselection, restoring previous selection")
 			sd.loadCurrentSortBySelection()
 		}
 	})
@@ -60,17 +60,17 @@ func (sd *SortDialog) createWidgets() {
 		"Ascending",
 		"Descending",
 	}, func(selected string) {
-		sd.debugPrint("Sort order selected: %s", selected)
+		sd.debugPrint("SortDialog: Sort order selected: %s", selected)
 		// Prevent deselection - ensure at least one option is always selected
 		if selected == "" {
-			sd.debugPrint("Preventing sort order deselection, restoring previous selection")
+			sd.debugPrint("SortDialog: Preventing sort order deselection, restoring previous selection")
 			sd.loadCurrentSortOrderSelection()
 		}
 	})
 
 	// Directories first checkbox
 	sd.directoriesFirstCB = widget.NewCheck("Directories first", func(checked bool) {
-		sd.debugPrint("Directories first: %t", checked)
+		sd.debugPrint("SortDialog: Directories first: %t", checked)
 	})
 
 	// Set current values
@@ -197,11 +197,11 @@ func (sd *SortDialog) createContent() *fyne.Container {
 // applySettings applies the current dialog settings
 func (sd *SortDialog) applySettings() {
 	if sd.closed {
-		sd.debugPrint("applySettings: Dialog already closed, ignoring")
+		sd.debugPrint("SortDialog: Dialog already closed in applySettings, ignoring")
 		return
 	}
 
-	sd.debugPrint("Applying sort settings")
+	sd.debugPrint("SortDialog: Applying sort settings")
 
 	// Build sort config from UI
 	sortConfig := config.SortConfig{
@@ -229,7 +229,7 @@ func (sd *SortDialog) applySettings() {
 		sortConfig.SortOrder = "asc"
 	}
 
-	sd.debugPrint("Applying sort config: %+v", sortConfig)
+	sd.debugPrint("SortDialog: Applying sort config: %+v", sortConfig)
 
 	// Call apply callback
 	if sd.onApply != nil {
@@ -242,11 +242,11 @@ func (sd *SortDialog) applySettings() {
 // cancel cancels the dialog
 func (sd *SortDialog) cancel() {
 	if sd.closed {
-		sd.debugPrint("cancel: Dialog already closed, ignoring")
+		sd.debugPrint("SortDialog: Dialog already closed in cancel, ignoring")
 		return
 	}
 
-	sd.debugPrint("Sort dialog cancelled")
+	sd.debugPrint("SortDialog: Sort dialog cancelled")
 
 	// Call cancel callback
 	if sd.onCancel != nil {
@@ -259,12 +259,12 @@ func (sd *SortDialog) cancel() {
 // close closes the dialog and cleans up
 func (sd *SortDialog) close() {
 	if sd.closed {
-		sd.debugPrint("close: Dialog already closed, ignoring")
+		sd.debugPrint("SortDialog: Dialog already closed in close, ignoring")
 		return
 	}
 
 	sd.closed = true
-	sd.debugPrint("Closing sort dialog")
+	sd.debugPrint("SortDialog: Closing sort dialog")
 
 	// Call cleanup callback (e.g., to pop key handler)
 	if sd.onCleanup != nil {
@@ -326,31 +326,31 @@ func (sd *SortDialog) GetCurrentSelection() config.SortConfig {
 
 // MoveToPreviousField moves focus to the previous field (Tab navigation)
 func (sd *SortDialog) MoveToPreviousField() {
-	sd.debugPrint("Move to previous field")
+	sd.debugPrint("SortDialog: Move to previous field")
 	// Implementation handled by Fyne's built-in Tab navigation
 }
 
 // MoveToNextField moves focus to the next field (Tab navigation)
 func (sd *SortDialog) MoveToNextField() {
-	sd.debugPrint("Move to next field")
+	sd.debugPrint("SortDialog: Move to next field")
 	// Implementation handled by Fyne's built-in Tab navigation
 }
 
 // ToggleCurrentField toggles the currently focused field (Space key)
 func (sd *SortDialog) ToggleCurrentField() {
-	sd.debugPrint("Toggle current field")
+	sd.debugPrint("SortDialog: Toggle current field")
 	// For radio buttons and checkboxes, this is handled by their native behavior
 }
 
 // AcceptSettings applies the current settings (Enter key)
 func (sd *SortDialog) AcceptSettings() {
-	sd.debugPrint("Accept settings via keyboard")
+	sd.debugPrint("SortDialog: Accept settings via keyboard")
 	sd.applySettings()
 }
 
 // CancelDialog cancels the dialog (Escape key)
 func (sd *SortDialog) CancelDialog() {
-	sd.debugPrint("Cancel dialog via keyboard")
+	sd.debugPrint("SortDialog: Cancel dialog via keyboard")
 	sd.cancel()
 }
 
@@ -358,31 +358,31 @@ func (sd *SortDialog) CancelDialog() {
 
 // SetSortByName sets sort by to Name (1 key)
 func (sd *SortDialog) SetSortByName() {
-	sd.debugPrint("Keyboard shortcut: Set sort by Name")
+	sd.debugPrint("SortDialog: Keyboard shortcut: Set sort by Name")
 	sd.sortByRadio.SetSelected("Name")
 }
 
 // SetSortBySize sets sort by to Size (2 key)
 func (sd *SortDialog) SetSortBySize() {
-	sd.debugPrint("Keyboard shortcut: Set sort by Size")
+	sd.debugPrint("SortDialog: Keyboard shortcut: Set sort by Size")
 	sd.sortByRadio.SetSelected("Size")
 }
 
 // SetSortByModified sets sort by to Modified (3 key)
 func (sd *SortDialog) SetSortByModified() {
-	sd.debugPrint("Keyboard shortcut: Set sort by Modified")
+	sd.debugPrint("SortDialog: Keyboard shortcut: Set sort by Modified")
 	sd.sortByRadio.SetSelected("Modified")
 }
 
 // SetSortByExtension sets sort by to Extension (4 key)
 func (sd *SortDialog) SetSortByExtension() {
-	sd.debugPrint("Keyboard shortcut: Set sort by Extension")
+	sd.debugPrint("SortDialog: Keyboard shortcut: Set sort by Extension")
 	sd.sortByRadio.SetSelected("Extension")
 }
 
 // ToggleSortOrder toggles between Ascending and Descending (O key)
 func (sd *SortDialog) ToggleSortOrder() {
-	sd.debugPrint("Keyboard shortcut: Toggle sort order")
+	sd.debugPrint("SortDialog: Keyboard shortcut: Toggle sort order")
 	if sd.sortOrderRadio.Selected == "Ascending" {
 		sd.sortOrderRadio.SetSelected("Descending")
 	} else {
@@ -392,6 +392,6 @@ func (sd *SortDialog) ToggleSortOrder() {
 
 // ToggleDirectoriesFirst toggles the directories first option (D key)
 func (sd *SortDialog) ToggleDirectoriesFirst() {
-	sd.debugPrint("Keyboard shortcut: Toggle directories first")
+	sd.debugPrint("SortDialog: Keyboard shortcut: Toggle directories first")
 	sd.directoriesFirstCB.SetChecked(!sd.directoriesFirstCB.Checked)
 }

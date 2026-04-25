@@ -40,6 +40,12 @@
 - Config schema source of truth: `internal/config/config.go`.
 - Durable architecture details live under `docs/architecture/`.
 
+## Debug Logging Guidelines
+- Use `debugPrint` for debug-only logs and keep messages short enough to scan in a stream.
+- Start every `debugPrint` message with a source prefix, e.g. `FileManager:`, `KeyManager:`, `SortDialog:`, `DirectoryWatcher:`, `Config:`, or existing package prefixes such as `jobs:`.
+- For high-frequency keyboard logs, prefer compact `key=value` details such as `KeyManager: KeyDown MainScreen handled=false mod=false` instead of prose.
+- Do not duplicate the global `DEBUG:` prefix; `debugPrint` adds it centrally.
+
 ## Architecture References
 - Runtime/module overview: `docs/architecture/overview.md`.
 - VFS/SMB and file opening behavior: `docs/architecture/vfs-smb.md`.

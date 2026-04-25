@@ -120,7 +120,7 @@ func (nhd *NavigationHistoryDialog) createWidgets() {
 		if id < len(nhd.filteredPaths) {
 			nhd.selectedIndex = int(id)
 			nhd.selectedPath = nhd.filteredPaths[id]
-			nhd.debugPrint("History selected: %s (index: %d)", nhd.selectedPath, nhd.selectedIndex)
+			nhd.debugPrint("HistoryDialog: History selected: %s (index: %d)", nhd.selectedPath, nhd.selectedIndex)
 			// Keep focus on sink so KeyManager continues to receive keys
 			if nhd.parent != nil && nhd.sink != nil {
 				nhd.parent.Canvas().Focus(nhd.sink)

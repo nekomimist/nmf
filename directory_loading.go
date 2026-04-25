@@ -35,7 +35,7 @@ func (fm *FileManager) SaveCursorPosition(dirPath string) {
 
 	// Save config to disk
 	if err := fm.configManager.SaveAsync(fm.config); err != nil {
-		debugPrint("Error saving cursor position config: %v", err)
+		debugPrint("FileManager: Error saving cursor position config: %v", err)
 	}
 }
 
@@ -95,7 +95,7 @@ func (fm *FileManager) navigateToPath(inputPath string) {
 	if strings.HasPrefix(path, "~") {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			debugPrint("Error getting home directory: %v", err)
+			debugPrint("FileManager: Error getting home directory: %v", err)
 			fm.pathEntry.SetText(fm.currentPath) // Reset to current path
 			return
 		}
@@ -104,7 +104,7 @@ func (fm *FileManager) navigateToPath(inputPath string) {
 
 	resolvedPath, parsed, err := resolveDirectoryPath(path)
 	if err != nil {
-		debugPrint("Invalid path '%s': %v", inputPath, err)
+		debugPrint("FileManager: Invalid path '%s': %v", inputPath, err)
 		fm.pathEntry.SetText(fm.currentPath) // Reset to current path
 		return
 	}
@@ -226,7 +226,7 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 		if previousPath != "" && previousPath != path {
 			fm.config.AddToNavigationHistory(previousPath)
 			if err := fm.configManager.SaveAsync(fm.config); err != nil {
-				debugPrint("Error saving navigation history: %v", err)
+					debugPrint("FileManager: Error saving navigation history: %v", err)
 			}
 		}
 
