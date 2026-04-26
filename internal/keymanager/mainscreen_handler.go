@@ -32,6 +32,7 @@ type FileManagerInterface interface {
 	OpenNewWindow()
 	ShowDirectoryTreeDialog()
 	ShowNavigationHistoryDialog()
+	ShowDirectoryJumpDialog()
 
 	// Filter management
 	ShowFilterDialog()
@@ -142,6 +143,12 @@ func (mh *MainScreenKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierS
 		if modifiers.CtrlPressed {
 			mh.debugPrint("MainScreen: Ctrl+J detected - showing jobs dialog")
 			mh.fileManager.ShowJobsDialog()
+			return true
+		}
+		// Shift+J - Show configured directory jump dialog
+		if modifiers.ShiftPressed {
+			mh.debugPrint("MainScreen: Shift+J detected - showing directory jump dialog")
+			mh.fileManager.ShowDirectoryJumpDialog()
 			return true
 		}
 

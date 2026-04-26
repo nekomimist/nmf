@@ -81,6 +81,14 @@ func TestGetDefaultConfig(t *testing.T) {
 	if config.UI.FileFilter.Current != nil {
 		t.Error("Expected file filter current to be nil by default")
 	}
+
+	// Test DirectoryJumps defaults
+	if config.UI.DirectoryJumps.Entries == nil {
+		t.Error("Expected directory jump entries to be initialized")
+	}
+	if len(config.UI.DirectoryJumps.Entries) != 0 {
+		t.Errorf("Expected no default directory jumps, got %d", len(config.UI.DirectoryJumps.Entries))
+	}
 }
 
 func TestMergeConfigs(t *testing.T) {
@@ -119,6 +127,13 @@ func TestMergeConfigs(t *testing.T) {
 				Type:      &border,
 				Thickness: &thickness,
 			},
+			DirectoryJumps: rawDirectoryJumpsConfig{
+				Entries: []DirectoryJumpEntry{
+					{Shortcut: "p", Directory: "/projects"},
+					{Shortcut: "", Directory: "/tmp"},
+					{Shortcut: "P", Directory: "/duplicate"},
+				},
+			},
 		},
 	}
 
@@ -151,6 +166,12 @@ func TestMergeConfigs(t *testing.T) {
 	}
 	if defaultConfig.UI.CursorStyle.Type != "border" {
 		t.Errorf("Expected merged cursor type 'border', got '%s'", defaultConfig.UI.CursorStyle.Type)
+	}
+	if len(defaultConfig.UI.DirectoryJumps.Entries) != 3 {
+		t.Fatalf("Expected 3 directory jump entries, got %d", len(defaultConfig.UI.DirectoryJumps.Entries))
+	}
+	if defaultConfig.UI.DirectoryJumps.Entries[1].Shortcut != "" || defaultConfig.UI.DirectoryJumps.Entries[1].Directory != "/tmp" {
+		t.Errorf("Expected directory jump order and empty shortcut to be preserved, got %+v", defaultConfig.UI.DirectoryJumps.Entries)
 	}
 }
 
@@ -272,6 +293,13 @@ func TestManagerSaveAndLoad(t *testing.T) {
 				Type:      "background",
 				Thickness: 5,
 			},
+			DirectoryJumps: DirectoryJumpsConfig{
+				Entries: []DirectoryJumpEntry{
+					{Shortcut: "p", Directory: "/projects"},
+					{Shortcut: "", Directory: "/tmp"},
+					{Shortcut: "P", Directory: "/duplicate"},
+				},
+			},
 		},
 	}
 
@@ -304,5 +332,25 @@ func TestManagerSaveAndLoad(t *testing.T) {
 	}
 	if loadedConfig.UI.ShowHiddenFiles != true {
 		t.Error("Expected loaded ShowHiddenFiles to be true")
+	}
+	if len(loadedConfig.UI.DirectoryJumps.Entries) != 3 {
+		t.Fatalf("Expected loaded directory jumps length 3, got %d", len(loadedConfig.UI.DirectoryJumps.Entries))
+	}
+	if loadedConfig.UI.DirectoryJumps.Entries[2].Shortcut != "P" || loadedConfig.UI.DirectoryJumps.Entries[2].Directory != "/duplicate" {
+		t.Errorf("Expected loaded directory jumps to preserve order and value, got %+v", loadedConfig.UI.DirectoryJumps.Entries)
+	}
+}
+
+func TestCloneConfigDeepCopiesDirectoryJumps(t *testing.T) {
+	cfg := getDefaultConfig()
+	cfg.UI.DirectoryJumps.Entries = []DirectoryJumpEntry{
+		{Shortcut: "p", Directory: "/projects"},
+	}
+
+	clone := cloneConfig(cfg)
+	clone.UI.DirectoryJumps.Entries[0].Directory = "/changed"
+
+	if cfg.UI.DirectoryJumps.Entries[0].Directory != "/projects" {
+		t.Errorf("Expected original directory jump to remain unchanged, got %q", cfg.UI.DirectoryJumps.Entries[0].Directory)
 	}
 }

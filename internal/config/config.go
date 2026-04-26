@@ -44,6 +44,7 @@ type rawUIConfig struct {
 	CursorMemory      rawCursorMemoryConfig      `json:"cursorMemory"`
 	NavigationHistory rawNavigationHistoryConfig `json:"navigationHistory"`
 	FileFilter        rawFileFilterConfig        `json:"fileFilter"`
+	DirectoryJumps    rawDirectoryJumpsConfig    `json:"directoryJumps"`
 }
 
 type rawSortConfig struct {
@@ -76,6 +77,10 @@ type rawFileFilterConfig struct {
 	Current    *FilterEntry  `json:"current"`
 }
 
+type rawDirectoryJumpsConfig struct {
+	Entries []DirectoryJumpEntry `json:"entries"`
+}
+
 // WindowConfig represents window-related settings
 type WindowConfig struct {
 	Width  int `json:"width"`
@@ -98,6 +103,7 @@ type UIConfig struct {
 	CursorMemory      CursorMemoryConfig      `json:"cursorMemory"`
 	NavigationHistory NavigationHistoryConfig `json:"navigationHistory"`
 	FileFilter        FileFilterConfig        `json:"fileFilter"`
+	DirectoryJumps    DirectoryJumpsConfig    `json:"directoryJumps"`
 }
 
 // SortConfig represents file sorting settings
@@ -140,6 +146,17 @@ type FileFilterConfig struct {
 	Entries    []FilterEntry `json:"entries"`    // Filter history (most recent first)
 	Enabled    bool          `json:"enabled"`    // Current filter enabled state
 	Current    *FilterEntry  `json:"current"`    // Currently applied filter pattern
+}
+
+// DirectoryJumpEntry represents a configured directory jump target.
+type DirectoryJumpEntry struct {
+	Shortcut  string `json:"shortcut"`  // Empty or one character, matched case-insensitively
+	Directory string `json:"directory"` // Directory path as written in config.json
+}
+
+// DirectoryJumpsConfig represents manually configured directory jump targets.
+type DirectoryJumpsConfig struct {
+	Entries []DirectoryJumpEntry `json:"entries"` // Config order is display order
 }
 
 // Manager provides configuration management functionality
@@ -359,6 +376,7 @@ func cloneUIConfig(src UIConfig) UIConfig {
 	clone.CursorMemory = cloneCursorMemoryConfig(src.CursorMemory)
 	clone.NavigationHistory = cloneNavigationHistoryConfig(src.NavigationHistory)
 	clone.FileFilter = cloneFileFilterConfig(src.FileFilter)
+	clone.DirectoryJumps = cloneDirectoryJumpsConfig(src.DirectoryJumps)
 	return clone
 }
 
@@ -407,6 +425,15 @@ func cloneFileFilterConfig(src FileFilterConfig) FileFilterConfig {
 	return clone
 }
 
+func cloneDirectoryJumpsConfig(src DirectoryJumpsConfig) DirectoryJumpsConfig {
+	clone := src
+	if src.Entries != nil {
+		clone.Entries = make([]DirectoryJumpEntry, len(src.Entries))
+		copy(clone.Entries, src.Entries)
+	}
+	return clone
+}
+
 // getDefaultConfig returns the default configuration
 func getDefaultConfig() *Config {
 	return &Config{
@@ -446,6 +473,9 @@ func getDefaultConfig() *Config {
 				Entries:    make([]FilterEntry, 0),
 				Enabled:    false,
 				Current:    nil,
+			},
+			DirectoryJumps: DirectoryJumpsConfig{
+				Entries: make([]DirectoryJumpEntry, 0),
 			},
 		},
 	}
@@ -573,6 +603,11 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) {
 	if fileConfig.UI.FileFilter.Current != nil {
 		copyEntry := *fileConfig.UI.FileFilter.Current
 		defaultConfig.UI.FileFilter.Current = &copyEntry
+	}
+
+	// Merge DirectoryJumps config
+	if fileConfig.UI.DirectoryJumps.Entries != nil {
+		defaultConfig.UI.DirectoryJumps.Entries = fileConfig.UI.DirectoryJumps.Entries
 	}
 }
 

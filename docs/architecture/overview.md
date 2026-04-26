@@ -61,6 +61,7 @@ Top-level config sections:
   - `cursorMemory`
   - `navigationHistory`
   - `fileFilter`
+  - `directoryJumps`
 
 Operational notes:
 

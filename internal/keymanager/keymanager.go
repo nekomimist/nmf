@@ -11,6 +11,7 @@ import (
 type ModifierState struct {
 	ShiftPressed bool
 	CtrlPressed  bool
+	AltPressed   bool
 }
 
 // KeyHandler defines the interface for handling keyboard events
@@ -98,6 +99,10 @@ func (km *KeyManager) updateModifierState(ev *fyne.KeyEvent, pressed bool) bool 
 	case desktop.KeyControlLeft, desktop.KeyControlRight:
 		km.modifierState.CtrlPressed = pressed
 		km.debugPrint("KeyManager: Ctrl %s", map[bool]string{true: "down", false: "up"}[pressed])
+		return true
+	case desktop.KeyAltLeft, desktop.KeyAltRight:
+		km.modifierState.AltPressed = pressed
+		km.debugPrint("KeyManager: Alt %s", map[bool]string{true: "down", false: "up"}[pressed])
 		return true
 	}
 	return false

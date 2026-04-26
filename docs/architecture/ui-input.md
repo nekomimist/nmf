@@ -18,7 +18,7 @@ Core model:
   - `OnTypedKey`
   - `OnTypedRune`
 
-Modifier keys (`Shift`, `Ctrl`) are tracked centrally in `KeyManager` and passed to handlers.
+Modifier keys (`Shift`, `Ctrl`, `Alt`) are tracked centrally in `KeyManager` and passed to handlers.
 
 ## Focus Ownership Rules
 
@@ -42,7 +42,7 @@ Required sequence for keyboard-driven dialogs:
 4. On all close paths, `PopHandler` once.
 5. Optionally call parent `Canvas().Unfocus()` to avoid stale focus targets.
 
-This pattern is used in history/filter/tree/copy-move/jobs/quit dialogs.
+This pattern is used in history/filter/tree/directory-jump/copy-move/jobs/quit dialogs.
 
 ## Busy State Behavior
 
