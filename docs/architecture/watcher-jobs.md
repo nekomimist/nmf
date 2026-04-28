@@ -45,9 +45,12 @@ Subscription rules:
 
 ## UI Integration Requirements
 
-- Windows/dialogs that subscribe to jobs updates must always call returned `unsubscribe` on close.
+- Windows that subscribe to jobs updates must always call returned `unsubscribe` on close.
   - Main window cleanup: `window_lifecycle.go`
-  - Jobs dialog cleanup: `internal/ui/jobs_dialog.go`
+- The Jobs view is an app-global singleton window.
+  - FileManager Jobs buttons show or focus the same Jobs window.
+  - Jobs window cleanup: `internal/ui/jobs_window.go`
+  - Last FileManager window cleanup also closes the Jobs window before app quit.
 - Directory watcher must be stopped during window shutdown before process exit.
 
 ## Failure and Cancellation Semantics

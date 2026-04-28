@@ -7,7 +7,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
@@ -15,25 +14,30 @@ import (
 	"nmf/internal/keymanager"
 )
 
-// JobsDialog shows background job queue and allows cancel.
-type JobsDialog struct {
+// JobsWindow shows the global background job queue and allows cancel.
+type JobsWindow struct {
 	list        *widget.List
 	bind        binding.StringList
 	items       []jobs.JobSnapshot
 	selectedIdx int
 	selectedID  int64
 	details     *widget.Label
-	dialog      dialog.Dialog
+	window      fyne.Window
 	sink        *KeySink
-	parent      fyne.Window
 	km          *keymanager.KeyManager
 	debugPrint  func(format string, args ...interface{})
 	jobsUnsub   func()
 	closed      bool
+	onClosed    func()
 }
 
-func NewJobsDialog(km *keymanager.KeyManager, debugPrint func(format string, args ...interface{})) *JobsDialog {
-	jd := &JobsDialog{km: km, debugPrint: debugPrint}
+func NewJobsWindow(app fyne.App, debugPrint func(format string, args ...interface{})) *JobsWindow {
+	jd := &JobsWindow{
+		window:      app.NewWindow("Jobs"),
+		km:          keymanager.NewKeyManager(debugPrint),
+		debugPrint:  debugPrint,
+		selectedIdx: -1,
+	}
 	jd.bind = binding.NewStringList()
 	jd.list = widget.NewListWithData(jd.bind,
 		func() fyne.CanvasObject { return widget.NewLabel("") },
@@ -50,23 +54,20 @@ func NewJobsDialog(km *keymanager.KeyManager, debugPrint func(format string, arg
 		jd.selectedIdx = int(id)
 		if id >= 0 && int(id) < len(jd.items) {
 			jd.selectedID = jd.items[id].ID
+		} else {
+			jd.selectedID = 0
 		}
 		jd.updateDetails()
 		// keep focus on sink for key flow
-		if jd.parent != nil && jd.sink != nil {
-			jd.parent.Canvas().Focus(jd.sink)
+		if jd.window != nil && jd.sink != nil {
+			jd.window.Canvas().Focus(jd.sink)
 		}
 	}
-	return jd
-}
-
-func (jd *JobsDialog) ShowDialog(parent fyne.Window) {
-	jd.parent = parent
 
 	// Buttons
 	cancelBtn := widget.NewButton("Cancel Selected", func() { jd.cancelSelected() })
 	closeBtn := widget.NewButton("Close", func() {
-		jd.CloseDialog()
+		jd.Close()
 	})
 
 	// header and layout
@@ -82,23 +83,51 @@ func (jd *JobsDialog) ShowDialog(parent fyne.Window) {
 	bottom := container.NewHBox(layout.NewSpacer(), cancelBtn, closeBtn)
 	content := container.NewBorder(container.NewVBox(header), bottom, nil, nil, fixed)
 
-	// push dialog key handler, wrap with KeySink and show dialog
-	m := jobs.GetManager()
-	// subscribe for updates and refresh on UI thread
-	jd.jobsUnsub = m.Subscribe(func() { fyne.Do(jd.refresh) })
 	handler := keymanager.NewJobsDialogKeyHandler(jd, jd.debugPrint)
 	jd.km.PushHandler(handler)
 	jd.sink = NewKeySink(content, jd.km, WithTabCapture(true))
-	jd.dialog = dialog.NewCustomWithoutButtons("Jobs", jd.sink, parent)
-	jd.dialog.Resize(fyne.NewSize(720, 480))
-	jd.dialog.Show()
+
+	jd.window.SetContent(jd.sink)
+	jd.window.Resize(fyne.NewSize(720, 480))
+	jd.window.SetOnClosed(jd.handleClosed)
+	return jd
+}
+
+func (jd *JobsWindow) Show() {
+	if jd.closed {
+		return
+	}
+	if jd.jobsUnsub == nil {
+		m := jobs.GetManager()
+		jd.jobsUnsub = m.Subscribe(func() {
+			fyne.Do(func() {
+				if !jd.closed {
+					jd.refresh()
+				}
+			})
+		})
+	}
+	jd.window.Show()
+	jd.window.RequestFocus()
 	jd.refresh()
-	if jd.parent != nil && jd.sink != nil {
-		jd.parent.Canvas().Focus(jd.sink)
+	if jd.window != nil && jd.sink != nil {
+		jd.window.Canvas().Focus(jd.sink)
 	}
 }
 
-func (jd *JobsDialog) refresh() {
+func (jd *JobsWindow) Window() fyne.Window {
+	return jd.window
+}
+
+func (jd *JobsWindow) Closed() bool {
+	return jd.closed
+}
+
+func (jd *JobsWindow) SetOnClosed(fn func()) {
+	jd.onClosed = fn
+}
+
+func (jd *JobsWindow) refresh() {
 	m := jobs.GetManager()
 	snapshots := m.List()
 	jd.items = snapshots
@@ -117,16 +146,29 @@ func (jd *JobsDialog) refresh() {
 	}
 	jd.bind.Set(lines)
 	jd.list.Refresh()
-	// Keep selection stable
-	if jd.selectedIdx >= 0 && jd.selectedIdx < len(lines) {
-		jd.list.Select(widget.ListItemID(jd.selectedIdx))
-	} else if len(lines) > 0 {
-		jd.list.Select(0)
+	// Keep selection stable by job ID.
+	selectIdx := -1
+	if jd.selectedID != 0 {
+		for i, it := range snapshots {
+			if it.ID == jd.selectedID {
+				selectIdx = i
+				break
+			}
+		}
+	}
+	if selectIdx == -1 && len(lines) > 0 {
+		selectIdx = 0
+	}
+	if selectIdx >= 0 {
+		jd.list.Select(widget.ListItemID(selectIdx))
+	} else {
+		jd.selectedIdx = -1
+		jd.selectedID = 0
 	}
 	jd.updateDetails()
 }
 
-func (jd *JobsDialog) updateDetails() {
+func (jd *JobsWindow) updateDetails() {
 	if jd.selectedIdx < 0 || jd.selectedIdx >= len(jd.items) {
 		jd.details.SetText("")
 		return
@@ -156,7 +198,7 @@ func (jd *JobsDialog) updateDetails() {
 }
 
 // Interface methods for key handler
-func (jd *JobsDialog) MoveUp() {
+func (jd *JobsWindow) MoveUp() {
 	if jd.list != nil && jd.list.Length() > 0 {
 		newIdx := jd.selectedIdx - 1
 		if newIdx < 0 {
@@ -165,7 +207,7 @@ func (jd *JobsDialog) MoveUp() {
 		jd.list.Select(widget.ListItemID(newIdx))
 	}
 }
-func (jd *JobsDialog) MoveDown() {
+func (jd *JobsWindow) MoveDown() {
 	if jd.list != nil && jd.list.Length() > 0 {
 		max := jd.list.Length() - 1
 		newIdx := jd.selectedIdx + 1
@@ -175,27 +217,38 @@ func (jd *JobsDialog) MoveDown() {
 		jd.list.Select(widget.ListItemID(newIdx))
 	}
 }
-func (jd *JobsDialog) MoveToTop() {
+func (jd *JobsWindow) MoveToTop() {
 	if jd.list != nil && jd.list.Length() > 0 {
 		jd.list.Select(0)
 	}
 }
-func (jd *JobsDialog) MoveToBottom() {
+func (jd *JobsWindow) MoveToBottom() {
 	if jd.list != nil && jd.list.Length() > 0 {
 		jd.list.Select(jd.list.Length() - 1)
 	}
 }
 
-func (jd *JobsDialog) cancelSelected() {
+func (jd *JobsWindow) cancelSelected() {
 	if jd.selectedID != 0 {
 		m := jobs.GetManager()
 		_ = m.Cancel(jd.selectedID)
 		fyne.Do(jd.refresh)
 	}
 }
-func (jd *JobsDialog) CancelSelected() { jd.cancelSelected() }
+func (jd *JobsWindow) CancelSelected() { jd.cancelSelected() }
 
-func (jd *JobsDialog) CloseDialog() {
+func (jd *JobsWindow) CloseDialog() { jd.Close() }
+
+func (jd *JobsWindow) Close() {
+	if jd.closed {
+		return
+	}
+	if jd.window != nil {
+		jd.window.Close()
+	}
+}
+
+func (jd *JobsWindow) handleClosed() {
 	if jd.closed {
 		return
 	}
@@ -204,12 +257,10 @@ func (jd *JobsDialog) CloseDialog() {
 		jd.jobsUnsub()
 		jd.jobsUnsub = nil
 	}
-	// pop the handler
-	jd.km.PopHandler()
-	if jd.dialog != nil {
-		jd.dialog.Hide()
+	if jd.window != nil {
+		jd.window.Canvas().Unfocus()
 	}
-	if jd.parent != nil {
-		jd.parent.Canvas().Unfocus()
+	if jd.onClosed != nil {
+		jd.onClosed()
 	}
 }

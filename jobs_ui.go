@@ -197,8 +197,7 @@ func (fm *FileManager) collectTargetPaths() []string {
 
 // ShowJobsDialog opens the job queue view
 func (fm *FileManager) ShowJobsDialog() {
-	dlg := ui.NewJobsDialog(fm.keyManager, debugPrint)
-	dlg.ShowDialog(fm.window)
+	showJobsWindow()
 }
 
 // buildDestinationCandidates composes other windows' dirs then history without dups
