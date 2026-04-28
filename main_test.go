@@ -56,3 +56,23 @@ func TestResolveDirectoryPath_EmptyRejected(t *testing.T) {
 		t.Fatalf("expected empty path to fail")
 	}
 }
+
+func TestSameDirectoryPath_LocalCleanedPath(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	if !sameDirectoryPath(filepath.Join(tmpDir, "."), tmpDir) {
+		t.Fatalf("expected cleaned local paths to match")
+	}
+}
+
+func TestSameDirectoryPath_SMBNormalizedPath(t *testing.T) {
+	if !sameDirectoryPath("smb://Example.Local/share/path/", "smb://example.local/share/path") {
+		t.Fatalf("expected normalized SMB paths to match")
+	}
+}
+
+func TestSameDirectoryPath_EmptyDoesNotMatch(t *testing.T) {
+	if sameDirectoryPath("", "") {
+		t.Fatalf("expected empty paths not to match")
+	}
+}

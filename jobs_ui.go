@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -120,6 +122,12 @@ func (fm *FileManager) showCopyMoveDialog(op ui.Operation) {
 	srcPaths := fm.collectTargetPaths()
 	dlg := ui.NewCopyMoveDialog(op, targets, dest, fm.config.UI.NavigationHistory.LastUsed, fm.keyManager, debugPrint)
 	dlg.ShowDialog(fm.window, func(selectedDest string) {
+		if sameDirectoryPath(selectedDest, fm.currentPath) {
+			debugPrint("FileManager: %s destination is current directory; no-op dest=%s", strings.Title(string(op)), selectedDest)
+			fm.FocusFileList()
+			return
+		}
+
 		mgr := jobs.GetManager()
 		if op == ui.OpCopy {
 			mgr.EnqueueCopy(srcPaths, selectedDest)
@@ -130,6 +138,40 @@ func (fm *FileManager) showCopyMoveDialog(op ui.Operation) {
 		ui.ShowMessageDialog(fm.window, strings.Title(string(op)), fmt.Sprintf("Queued %d item(s) to:\n%s", len(srcPaths), selectedDest))
 		fm.FocusFileList()
 	})
+}
+
+func sameDirectoryPath(a, b string) bool {
+	a = strings.TrimSpace(a)
+	b = strings.TrimSpace(b)
+	if a == "" || b == "" {
+		return false
+	}
+
+	resolvedA, _, errA := fileinfo.ResolvePathDisplay(a)
+	if errA == nil {
+		a = resolvedA
+	}
+	resolvedB, _, errB := fileinfo.ResolvePathDisplay(b)
+	if errB == nil {
+		b = resolvedB
+	}
+
+	return normalizeComparablePath(a) == normalizeComparablePath(b)
+}
+
+func normalizeComparablePath(p string) string {
+	p = strings.TrimSpace(p)
+	if fileinfo.IsSMBDisplay(p) {
+		p = strings.ReplaceAll(p, "\\", "/")
+		p = strings.TrimRight(p, "/")
+		return strings.ToLower(p)
+	}
+
+	cleaned := filepath.Clean(p)
+	if runtime.GOOS == "windows" {
+		cleaned = strings.ToLower(cleaned)
+	}
+	return cleaned
 }
 
 // collectTargets returns display names of targets based on selection or cursor

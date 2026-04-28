@@ -8,6 +8,7 @@ import (
 	"os"
 	pathpkg "path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -402,6 +403,10 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 	}
 	base := baseName(src)
 	dst := joinPath(destDir, base)
+	if sameExecutionPath(src, dst) {
+		dbg("job %d: source and destination are identical; no-op %s", j.ID, src.displayPath())
+		return nil
+	}
 
 	if fi.IsDir() {
 		dbg("job %d: mkdir %s (mode=%v)", j.ID, dst.displayPath(), fi.Mode())
@@ -471,6 +476,43 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 		}
 	}
 	return nil
+}
+
+func sameExecutionPath(a, b executionPath) bool {
+	if a.backend != b.backend {
+		return false
+	}
+	if a.backend == backendSMB {
+		return normalizeSMBRoot(a.smbDisplayRoot) == normalizeSMBRoot(b.smbDisplayRoot) &&
+			normalizeSMBExecutionPath(a.path) == normalizeSMBExecutionPath(b.path)
+	}
+
+	ap := filepath.Clean(a.path)
+	bp := filepath.Clean(b.path)
+	if runtime.GOOS == "windows" {
+		ap = strings.ToLower(ap)
+		bp = strings.ToLower(bp)
+	}
+	return ap == bp
+}
+
+func normalizeSMBRoot(root string) string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		root = "smb://"
+	}
+	root = strings.ReplaceAll(root, "\\", "/")
+	root = strings.TrimRight(root, "/")
+	return strings.ToLower(root)
+}
+
+func normalizeSMBExecutionPath(p string) string {
+	p = strings.ReplaceAll(p, "\\", "/")
+	p = pathpkg.Clean("/" + strings.TrimPrefix(p, "/"))
+	if p == "." {
+		return "/"
+	}
+	return p
 }
 
 // resolveExecutionPath maps display paths to backend-specific execution paths.

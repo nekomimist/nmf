@@ -1,9 +1,11 @@
 package jobs
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync/atomic"
@@ -305,6 +307,71 @@ func TestExecutionContextSMBSessionOpenError(t *testing.T) {
 	}
 	if opener.openCalls != 1 {
 		t.Fatalf("expected one OpenSession attempt, got %d", opener.openCalls)
+	}
+}
+
+func TestCopyToSameDirectoryIsNoop(t *testing.T) {
+	tmpDir := t.TempDir()
+	src := filepath.Join(tmpDir, "file.txt")
+	want := []byte("keep me")
+	if err := os.WriteFile(src, want, 0644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	job := &Job{Type: TypeCopy, ctx: context.Background()}
+	if err := copyOrMovePath(job, src, tmpDir); err != nil {
+		t.Fatalf("copy same directory should be no-op: %v", err)
+	}
+
+	got, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("source should remain readable: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("source content changed: got %q want %q", got, want)
+	}
+}
+
+func TestMoveFileToSameDirectoryIsNoop(t *testing.T) {
+	tmpDir := t.TempDir()
+	src := filepath.Join(tmpDir, "file.txt")
+	want := []byte("do not delete")
+	if err := os.WriteFile(src, want, 0644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	job := &Job{Type: TypeMove, ctx: context.Background()}
+	if err := copyOrMovePath(job, src, tmpDir); err != nil {
+		t.Fatalf("move same directory should be no-op: %v", err)
+	}
+
+	got, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("source should remain readable: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("source content changed: got %q want %q", got, want)
+	}
+}
+
+func TestMoveDirectoryToSameParentIsNoop(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcDir := filepath.Join(tmpDir, "dir")
+	child := filepath.Join(srcDir, "child.txt")
+	if err := os.Mkdir(srcDir, 0755); err != nil {
+		t.Fatalf("make source dir: %v", err)
+	}
+	if err := os.WriteFile(child, []byte("child"), 0644); err != nil {
+		t.Fatalf("write child: %v", err)
+	}
+
+	job := &Job{Type: TypeMove, ctx: context.Background()}
+	if err := copyOrMovePath(job, srcDir, tmpDir); err != nil {
+		t.Fatalf("move directory to same parent should be no-op: %v", err)
+	}
+
+	if _, err := os.Stat(child); err != nil {
+		t.Fatalf("source directory contents should remain: %v", err)
 	}
 }
 
