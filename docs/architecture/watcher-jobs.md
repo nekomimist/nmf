@@ -60,6 +60,16 @@ Jobs:
 - Pending jobs can be canceled and removed from queue.
 - Running job cancellation signals context and transitions to `StatusCanceled`.
 - First failed path ends that job as `StatusFailed` with failure details recorded.
+- Copy/move name collisions are resolved at execution time, immediately before
+  writing the destination path.
+- Existing files and symlinks are never overwritten by default. A collision can
+  be skipped, renamed, auto-suffixed as `name (1).ext`, or used to cancel the
+  running job.
+- Same-name destination directories are merged recursively. File collisions
+  inside the merge still use the collision resolver.
+- Copying an item to its own directory is allowed; the exact same destination
+  path is treated as a collision and can become an auto-suffixed duplicate.
+- Moving an item to its exact current path remains a no-op.
 
 Watcher:
 

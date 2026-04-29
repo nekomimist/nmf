@@ -28,10 +28,12 @@ const (
 // Job holds a single copy/move job.
 type Job struct {
 	// immutable fields
-	ID      int64
-	Type    Type
-	Sources []string // absolute/native source paths
-	DestDir string   // absolute/native destination directory
+	ID              int64
+	Type            Type
+	Sources         []string // absolute/native source paths
+	DestDir         string   // absolute/native destination directory
+	Resolver        ConflictResolver
+	conflictDefault ConflictAction
 
 	// state
 	mu            sync.RWMutex
@@ -49,6 +51,40 @@ type Job struct {
 	// cancellation
 	ctx    context.Context
 	cancel context.CancelFunc
+}
+
+// ConflictAction is the user's choice when a destination path already exists.
+type ConflictAction string
+
+const (
+	ConflictSkip       ConflictAction = "skip"
+	ConflictRename     ConflictAction = "rename"
+	ConflictAutoSuffix ConflictAction = "auto_suffix"
+	ConflictCancelJob  ConflictAction = "cancel_job"
+)
+
+// ConflictResolver is called by the worker when a destination name collision is
+// detected at execution time.
+type ConflictResolver func(context.Context, ConflictRequest) ConflictResolution
+
+// ConflictRequest describes a destination name collision.
+type ConflictRequest struct {
+	JobID          int64
+	Type           Type
+	SourcePath     string
+	Destination    string
+	SuggestedName  string
+	SuggestedPath  string
+	IsDir          bool
+	DefaultAction  ConflictAction
+	CanApplyToRest bool
+}
+
+// ConflictResolution contains the selected collision behavior.
+type ConflictResolution struct {
+	Action      ConflictAction
+	NewName     string
+	ApplyToRest bool
 }
 
 // Snapshot returns a copy of important fields for UI.

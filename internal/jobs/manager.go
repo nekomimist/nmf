@@ -117,16 +117,26 @@ func (m *Manager) notify() {
 
 // EnqueueCopy enqueues a copy job.
 func (m *Manager) EnqueueCopy(sources []string, destDir string) *Job {
-	return m.enqueue(TypeCopy, sources, destDir)
+	return m.EnqueueCopyWithResolver(sources, destDir, nil)
 }
 
 // EnqueueMove enqueues a move job.
 func (m *Manager) EnqueueMove(sources []string, destDir string) *Job {
-	return m.enqueue(TypeMove, sources, destDir)
+	return m.EnqueueMoveWithResolver(sources, destDir, nil)
 }
 
-func (m *Manager) enqueue(t Type, sources []string, destDir string) *Job {
-	j := &Job{ID: atomic.AddInt64(&m.nextID, 1), Type: t, Sources: append([]string(nil), sources...), DestDir: destDir, Status: StatusPending, EnqueuedAt: time.Now()}
+// EnqueueCopyWithResolver enqueues a copy job with an optional collision resolver.
+func (m *Manager) EnqueueCopyWithResolver(sources []string, destDir string, resolver ConflictResolver) *Job {
+	return m.enqueue(TypeCopy, sources, destDir, resolver)
+}
+
+// EnqueueMoveWithResolver enqueues a move job with an optional collision resolver.
+func (m *Manager) EnqueueMoveWithResolver(sources []string, destDir string, resolver ConflictResolver) *Job {
+	return m.enqueue(TypeMove, sources, destDir, resolver)
+}
+
+func (m *Manager) enqueue(t Type, sources []string, destDir string, resolver ConflictResolver) *Job {
+	j := &Job{ID: atomic.AddInt64(&m.nextID, 1), Type: t, Sources: append([]string(nil), sources...), DestDir: destDir, Resolver: resolver, Status: StatusPending, EnqueuedAt: time.Now()}
 	j.ctx, j.cancel = contextWithCancel()
 	j.TotalFiles = len(sources)
 
@@ -259,6 +269,14 @@ func (m *Manager) runJob(j *Job) error {
 		dbg("job %d: process %s", j.ID, src)
 		m.notify()
 		if err := copyOrMovePath(j, src, j.DestDir); err != nil {
+			if errors.Is(err, errSkipped) {
+				dbg("job %d: skipped %s", j.ID, src)
+				j.mu.Lock()
+				j.DoneFiles = i + 1
+				j.mu.Unlock()
+				m.notify()
+				continue
+			}
 			// record failure detail
 			fp := failingPath(err)
 			j.mu.Lock()
@@ -278,6 +296,7 @@ func (m *Manager) runJob(j *Job) error {
 // --- copying primitives ---
 
 var errCanceled = errors.New("job canceled")
+var errSkipped = errors.New("job item skipped")
 
 type executionBackend int
 
@@ -403,6 +422,13 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 	}
 	base := baseName(src)
 	dst := joinPath(destDir, base)
+	dst, skipped, err := resolveDestinationConflict(j, execCtx, src, dst, fi)
+	if err != nil {
+		return err
+	}
+	if skipped {
+		return errSkipped
+	}
 	if sameExecutionPath(src, dst) {
 		dbg("job %d: source and destination are identical; no-op %s", j.ID, src.displayPath())
 		return nil
@@ -417,6 +443,7 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 		if err != nil {
 			return wrapPath(src.displayPath(), err)
 		}
+		skippedChild := false
 		for _, e := range entries {
 			if canceled(j) {
 				return errCanceled
@@ -424,8 +451,15 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 			child := joinPath(src, e.Name())
 			dbg("job %d: recurse %s -> %s", j.ID, child.displayPath(), dst.displayPath())
 			if err := copyOrMovePathResolved(j, execCtx, child, dst); err != nil {
+				if errors.Is(err, errSkipped) {
+					skippedChild = true
+					continue
+				}
 				return err
 			}
+		}
+		if skippedChild {
+			return errSkipped
 		}
 		if j.Type == TypeMove {
 			if canceled(j) {
@@ -478,6 +512,104 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 	return nil
 }
 
+func resolveDestinationConflict(j *Job, execCtx *executionContext, src, dst executionPath, srcInfo os.FileInfo) (executionPath, bool, error) {
+	if sameExecutionPath(src, dst) {
+		if j.Type == TypeMove {
+			return dst, false, nil
+		}
+		return askDestinationConflict(j, execCtx, src, dst, srcInfo)
+	}
+
+	dstInfo, err := lstatPath(execCtx, dst)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return dst, false, nil
+		}
+		return dst, false, wrapPath(dst.displayPath(), err)
+	}
+	if srcInfo.IsDir() && dstInfo.IsDir() {
+		return dst, false, nil
+	}
+	return askDestinationConflict(j, execCtx, src, dst, srcInfo)
+}
+
+func askDestinationConflict(j *Job, execCtx *executionContext, src, dst executionPath, srcInfo os.FileInfo) (executionPath, bool, error) {
+	for {
+		suggested, err := nextAvailablePath(execCtx, dst)
+		if err != nil {
+			return dst, false, err
+		}
+		var resolution ConflictResolution
+		switch j.conflictDefault {
+		case ConflictSkip:
+			resolution = ConflictResolution{Action: ConflictSkip}
+		case ConflictAutoSuffix:
+			resolution = ConflictResolution{Action: ConflictAutoSuffix}
+		default:
+			defaultAction := j.conflictDefault
+			if defaultAction == "" {
+				defaultAction = ConflictAutoSuffix
+			}
+			resolution = resolveConflict(j, ConflictRequest{
+				JobID:          j.ID,
+				Type:           j.Type,
+				SourcePath:     src.displayPath(),
+				Destination:    dst.displayPath(),
+				SuggestedName:  baseName(suggested),
+				SuggestedPath:  suggested.displayPath(),
+				IsDir:          srcInfo.IsDir(),
+				DefaultAction:  defaultAction,
+				CanApplyToRest: true,
+			})
+		}
+
+		switch resolution.Action {
+		case ConflictSkip:
+			if resolution.ApplyToRest {
+				j.conflictDefault = ConflictSkip
+			}
+			return dst, true, nil
+		case ConflictCancelJob:
+			return dst, false, errCanceled
+		case ConflictRename:
+			if resolution.ApplyToRest {
+				j.conflictDefault = ConflictRename
+			}
+			name, err := fileinfo.ValidateRenameName(resolution.NewName)
+			if err != nil {
+				if j.Resolver == nil {
+					return dst, false, wrapPath(dst.displayPath(), err)
+				}
+				j.conflictDefault = ConflictRename
+				continue
+			}
+			renamed := joinPath(dirPath(dst), name)
+			if exists, err := pathExists(execCtx, renamed); err != nil {
+				return renamed, false, wrapPath(renamed.displayPath(), err)
+			} else if exists {
+				dst = renamed
+				j.conflictDefault = ConflictRename
+				continue
+			}
+			return renamed, false, nil
+		case ConflictAutoSuffix, "":
+			if resolution.ApplyToRest {
+				j.conflictDefault = ConflictAutoSuffix
+			}
+			return suggested, false, nil
+		default:
+			return dst, false, fmt.Errorf("unknown conflict action: %s", resolution.Action)
+		}
+	}
+}
+
+func resolveConflict(j *Job, req ConflictRequest) ConflictResolution {
+	if j.Resolver == nil {
+		return ConflictResolution{Action: ConflictAutoSuffix}
+	}
+	return j.Resolver(j.ctx, req)
+}
+
 func sameExecutionPath(a, b executionPath) bool {
 	if a.backend != b.backend {
 		return false
@@ -494,6 +626,39 @@ func sameExecutionPath(a, b executionPath) bool {
 		bp = strings.ToLower(bp)
 	}
 	return ap == bp
+}
+
+func pathExists(execCtx *executionContext, p executionPath) (bool, error) {
+	if _, err := lstatPath(execCtx, p); err == nil {
+		return true, nil
+	} else if os.IsNotExist(err) {
+		return false, nil
+	} else {
+		return false, err
+	}
+}
+
+func nextAvailablePath(execCtx *executionContext, dst executionPath) (executionPath, error) {
+	dir := dirPath(dst)
+	stem, ext := splitCopyName(baseName(dst))
+	for i := 1; ; i++ {
+		candidate := joinPath(dir, fmt.Sprintf("%s (%d)%s", stem, i, ext))
+		exists, err := pathExists(execCtx, candidate)
+		if err != nil {
+			return candidate, wrapPath(candidate.displayPath(), err)
+		}
+		if !exists {
+			return candidate, nil
+		}
+	}
+}
+
+func splitCopyName(name string) (string, string) {
+	dot := strings.LastIndex(name, ".")
+	if dot <= 0 {
+		return name, ""
+	}
+	return name[:dot], name[dot:]
 }
 
 func normalizeSMBRoot(root string) string {

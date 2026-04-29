@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -122,22 +123,46 @@ func (fm *FileManager) showCopyMoveDialog(op ui.Operation) {
 	srcPaths := fm.collectTargetPaths()
 	dlg := ui.NewCopyMoveDialog(op, targets, dest, fm.config.UI.NavigationHistory.LastUsed, fm.keyManager, debugPrint)
 	dlg.ShowDialog(fm.window, func(selectedDest string) {
-		if sameDirectoryPath(selectedDest, fm.currentPath) {
+		if op == ui.OpMove && sameDirectoryPath(selectedDest, fm.currentPath) {
 			debugPrint("FileManager: %s destination is current directory; no-op dest=%s", strings.Title(string(op)), selectedDest)
 			fm.FocusFileList()
 			return
 		}
 
 		mgr := jobs.GetManager()
+		resolver := fm.conflictResolver()
 		if op == ui.OpCopy {
-			mgr.EnqueueCopy(srcPaths, selectedDest)
+			mgr.EnqueueCopyWithResolver(srcPaths, selectedDest, resolver)
 		} else {
-			mgr.EnqueueMove(srcPaths, selectedDest)
+			mgr.EnqueueMoveWithResolver(srcPaths, selectedDest, resolver)
 		}
 		// Feedback
 		ui.ShowMessageDialog(fm.window, strings.Title(string(op)), fmt.Sprintf("Queued %d item(s) to:\n%s", len(srcPaths), selectedDest))
 		fm.FocusFileList()
 	})
+}
+
+func (fm *FileManager) conflictResolver() jobs.ConflictResolver {
+	return func(ctx context.Context, req jobs.ConflictRequest) jobs.ConflictResolution {
+		done := make(chan jobs.ConflictResolution, 1)
+		fyne.Do(func() {
+			if fm.window == nil {
+				done <- jobs.ConflictResolution{Action: jobs.ConflictCancelJob}
+				return
+			}
+			dlg := ui.NewConflictDialog(req, fm.keyManager)
+			dlg.ShowDialog(fm.window, func(res jobs.ConflictResolution) {
+				done <- res
+			})
+		})
+
+		select {
+		case <-ctx.Done():
+			return jobs.ConflictResolution{Action: jobs.ConflictCancelJob}
+		case res := <-done:
+			return res
+		}
+	}
 }
 
 func sameDirectoryPath(a, b string) bool {
