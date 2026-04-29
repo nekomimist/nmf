@@ -33,23 +33,17 @@ func (fm *FileManager) setupUI() {
 		func() fyne.CanvasObject {
 			// Create tappable icon (onTapped will be set in UpdateItem)
 			icon := ui.NewTappableIcon(theme.FolderIcon(), nil)
-			// Use RichText for colored filename display
-			nameRichText := widget.NewRichTextFromMarkdown("filename")
+			nameLabel := ui.NewFileNameLabel("filename", fm.customTheme.GetCustomColor("fileRegular"))
 			info := widget.NewLabel("info")
 
-			// Left side: icon + name (with minimal spacing)
 			// Size icon based on text height for consistency
 			textSize := fyne.CurrentApp().Settings().Theme().Size(theme.SizeNameText)
 			icon.Resize(fyne.NewSize(textSize, textSize))
 
-			leftSide := container.NewHBox(
-				icon,
-				nameRichText,
-			)
-
-			// Use border container to align name left and info right
+			// The name is the middle object, so it only receives the space left
+			// after the icon and right-aligned info fields have been placed.
 			borderContainer := container.NewBorder(
-				nil, nil, leftSide, info, nil,
+				nil, nil, icon, info, nameLabel,
 			)
 
 			// Use normal container with max layout to hold content and decorations
@@ -74,77 +68,66 @@ func (fm *FileManager) setupUI() {
 			}
 
 			if border != nil {
-				// Find leftSide and info widgets within border
-				var leftSide *fyne.Container
+				// Find widgets within border
+				var icon *ui.TappableIcon
+				var nameLabel *ui.FileNameLabel
 				var infoLabel *widget.Label
 
 				for _, obj := range border.Objects {
 					if obj == nil {
 						continue
 					}
-					if container, ok := obj.(*fyne.Container); ok {
-						leftSide = container
+					if tappableIcon, ok := obj.(*ui.TappableIcon); ok {
+						icon = tappableIcon
+					} else if fileNameLabel, ok := obj.(*ui.FileNameLabel); ok {
+						nameLabel = fileNameLabel
 					} else if label, ok := obj.(*widget.Label); ok {
 						infoLabel = label
 					}
 				}
 
-				if leftSide != nil && infoLabel != nil && len(leftSide.Objects) >= 2 {
-					// Structure is now: [icon, nameRichText]
-					if icon, ok := leftSide.Objects[0].(*ui.TappableIcon); ok {
-						nameRichText := leftSide.Objects[1].(*widget.RichText)
-
-						// Set icon resource with async service (Windows uses real icons if available)
-						// Default placeholders
-						folderRes := theme.FolderIcon()
-						fileRes := theme.FileIcon()
-						if fileInfo.IsDir {
-							icon.SetResource(folderRes)
-						} else {
-							// Desired icon size roughly equals text size
-							textSize := int(fyne.CurrentApp().Settings().Theme().Size(theme.SizeNameText))
-							ext := strings.ToLower(filepath.Ext(fileInfo.Name))
-							if fm.iconSvc != nil {
-								if res, ok := fm.iconSvc.GetCachedOrRequest(fileInfo.Path, fileInfo.IsDir, ext, textSize); ok && res != nil {
-									icon.SetResource(res)
-								} else {
-									icon.SetResource(fileRes)
-								}
+				if icon != nil && nameLabel != nil && infoLabel != nil {
+					// Set icon resource with async service (Windows uses real icons if available)
+					// Default placeholders
+					folderRes := theme.FolderIcon()
+					fileRes := theme.FileIcon()
+					if fileInfo.IsDir {
+						icon.SetResource(folderRes)
+					} else {
+						// Desired icon size roughly equals text size
+						textSize := int(fyne.CurrentApp().Settings().Theme().Size(theme.SizeNameText))
+						ext := strings.ToLower(filepath.Ext(fileInfo.Name))
+						if fm.iconSvc != nil {
+							if res, ok := fm.iconSvc.GetCachedOrRequest(fileInfo.Path, fileInfo.IsDir, ext, textSize); ok && res != nil {
+								icon.SetResource(res)
 							} else {
 								icon.SetResource(fileRes)
 							}
-						}
-
-						// Set onTapped handler for icon
-						icon.SetOnTapped(func() {
-							if fileInfo.IsDir {
-								fm.LoadDirectory(fileInfo.Path)
-							}
-						})
-
-						// Get text color based on file type
-						textColor := fileinfo.GetTextColor(fileInfo.FileType, fm.customTheme)
-
-						// Create a custom text segment with text color only
-						coloredSegment := &fileinfo.ColoredTextSegment{
-							Text:          fileInfo.Name,
-							Color:         textColor,
-							Strikethrough: fileInfo.Status == fileinfo.StatusDeleted,
-						}
-
-						nameRichText.Segments = []widget.RichTextSegment{coloredSegment}
-						nameRichText.Refresh()
-
-						if fileInfo.IsDir {
-							infoLabel.SetText(fmt.Sprintf("<dir> %s %s",
-								fileInfo.Modified.Format("2006-01-02"),
-								fileInfo.Modified.Format("15:04:05")))
 						} else {
-							infoLabel.SetText(fmt.Sprintf("%s %s %s",
-								fileinfo.FormatFileSize(fileInfo.Size),
-								fileInfo.Modified.Format("2006-01-02"),
-								fileInfo.Modified.Format("15:04:05")))
+							icon.SetResource(fileRes)
 						}
+					}
+
+					// Set onTapped handler for icon
+					icon.SetOnTapped(func() {
+						if fileInfo.IsDir {
+							fm.LoadDirectory(fileInfo.Path)
+						}
+					})
+
+					// Get text color based on file type
+					textColor := fileinfo.GetTextColor(fileInfo.FileType, fm.customTheme)
+					nameLabel.SetFile(fileInfo.Name, textColor, fileInfo.Status == fileinfo.StatusDeleted)
+
+					if fileInfo.IsDir {
+						infoLabel.SetText(fmt.Sprintf("<dir> %s %s",
+							fileInfo.Modified.Format("2006-01-02"),
+							fileInfo.Modified.Format("15:04:05")))
+					} else {
+						infoLabel.SetText(fmt.Sprintf("%s %s %s",
+							fileinfo.FormatFileSize(fileInfo.Size),
+							fileInfo.Modified.Format("2006-01-02"),
+							fileInfo.Modified.Format("15:04:05")))
 					}
 				}
 			}
