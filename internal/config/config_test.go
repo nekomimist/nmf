@@ -29,6 +29,9 @@ func TestGetDefaultConfig(t *testing.T) {
 	if config.Theme.FontPath != "" {
 		t.Errorf("Expected empty font path, got '%s'", config.Theme.FontPath)
 	}
+	if config.Theme.FontName != "" {
+		t.Errorf("Expected empty font name, got '%s'", config.Theme.FontName)
+	}
 
 	// Test UI defaults
 	if config.UI.ShowHiddenFiles {
@@ -99,6 +102,7 @@ func TestMergeConfigs(t *testing.T) {
 	sortOrder := "desc"
 	border := "border"
 	path := "/path/to/font.ttf"
+	fontName := "Noto Sans CJK JP"
 	itemSpacing := 8
 	fontSize := 16
 	width := 1024
@@ -113,6 +117,7 @@ func TestMergeConfigs(t *testing.T) {
 		Theme: rawThemeConfig{
 			Dark:     &falseVal,
 			FontSize: &fontSize,
+			FontName: &fontName,
 			FontPath: &path,
 		},
 		UI: rawUIConfig{
@@ -151,6 +156,9 @@ func TestMergeConfigs(t *testing.T) {
 	}
 	if defaultConfig.Theme.FontSize != 16 {
 		t.Errorf("Expected merged font size 16, got %d", defaultConfig.Theme.FontSize)
+	}
+	if defaultConfig.Theme.FontName != "Noto Sans CJK JP" {
+		t.Errorf("Expected merged font name 'Noto Sans CJK JP', got '%s'", defaultConfig.Theme.FontName)
 	}
 	if defaultConfig.UI.ShowHiddenFiles != true {
 		t.Error("Expected merged ShowHiddenFiles to be true")

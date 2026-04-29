@@ -33,6 +33,7 @@ type rawWindowConfig struct {
 type rawThemeConfig struct {
 	Dark     *bool   `json:"dark"`
 	FontSize *int    `json:"fontSize"`
+	FontName *string `json:"fontName"`
 	FontPath *string `json:"fontPath"`
 }
 
@@ -91,6 +92,7 @@ type WindowConfig struct {
 type ThemeConfig struct {
 	Dark     bool   `json:"dark"`
 	FontSize int    `json:"fontSize"`
+	FontName string `json:"fontName"`
 	FontPath string `json:"fontPath"`
 }
 
@@ -444,6 +446,7 @@ func getDefaultConfig() *Config {
 		Theme: ThemeConfig{
 			Dark:     true,
 			FontSize: 14,
+			FontName: "",
 			FontPath: "",
 		},
 		UI: UIConfig{
@@ -538,6 +541,9 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) {
 	}
 	if fileConfig.Theme.FontSize != nil {
 		defaultConfig.Theme.FontSize = *fileConfig.Theme.FontSize
+	}
+	if fileConfig.Theme.FontName != nil {
+		defaultConfig.Theme.FontName = strings.TrimSpace(*fileConfig.Theme.FontName)
 	}
 	if fileConfig.Theme.FontPath != nil && *fileConfig.Theme.FontPath != "" {
 		defaultConfig.Theme.FontPath = *fileConfig.Theme.FontPath

@@ -54,7 +54,7 @@ Source of truth: `internal/config/config.go`.
 Top-level config sections:
 
 - `window`: `width`, `height`
-- `theme`: `dark`, `fontSize`, `fontPath`
+- `theme`: `dark`, `fontSize`, `fontName`, `fontPath`
 - `ui`:
   - `showHiddenFiles`, `sort`, `itemSpacing`
   - `cursorStyle`

@@ -2,9 +2,6 @@ package theme
 
 import (
 	"image/color"
-	"io/ioutil"
-	"os"
-	"path/filepath"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/theme"
@@ -79,34 +76,14 @@ func NewCustomTheme(config *config.Config, debugPrint func(format string, args .
 		debugPrint: debugPrint,
 	}
 
-	// Load custom font if specified
-	if config.Theme.FontPath != "" {
-		customTheme.loadCustomFont()
-	}
+	customTheme.loadCustomFont()
 
 	return customTheme
 }
 
-// loadCustomFont loads a custom font from the specified path
+// loadCustomFont resolves and loads the configured font.
 func (t *CustomTheme) loadCustomFont() {
-	fontPath := t.config.Theme.FontPath
-
-	// Check if font file exists
-	if _, err := os.Stat(fontPath); os.IsNotExist(err) {
-		t.debugPrint("Theme: Custom font file not found: %s", fontPath)
-		return
-	}
-
-	// Read font file
-	fontData, err := ioutil.ReadFile(fontPath)
-	if err != nil {
-		t.debugPrint("Theme: Error reading font file %s: %v", fontPath, err)
-		return
-	}
-
-	// Create font resource
-	t.customFont = fyne.NewStaticResource(filepath.Base(fontPath), fontData)
-	t.debugPrint("Theme: Loaded custom font: %s", fontPath)
+	t.customFont = resolveThemeFont(t.config.Theme, t.debugPrint)
 }
 
 // Color methods from default theme
