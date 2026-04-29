@@ -60,6 +60,7 @@ type FileManagerInterface interface {
 	// Copy/Move UI
 	ShowCopyDialog()
 	ShowMoveDialog()
+	ShowRenameDialog()
 }
 
 // MainScreenKeyHandler handles keyboard events for the main file list screen
@@ -158,7 +159,11 @@ func (mh *MainScreenKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierS
 
 // OnKeyUp handles key release events
 func (mh *MainScreenKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	// Modifier key state is managed by KeyManager
+	if ev.Name == fyne.KeyR && !modifiers.CtrlPressed && !modifiers.ShiftPressed {
+		mh.debugPrint("MainScreen: R released - show rename dialog")
+		mh.fileManager.ShowRenameDialog()
+		return true
+	}
 	return false
 }
 
@@ -210,6 +215,13 @@ func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modifier
 		if currentIdx >= 0 && currentIdx < len(files) {
 			fileInfo := files[currentIdx]
 			mh.fileManager.OpenFile(&fileInfo)
+		}
+		return true
+
+	case fyne.KeyF2:
+		if !modifiers.CtrlPressed && !modifiers.ShiftPressed {
+			mh.debugPrint("MainScreen: F2 detected - show rename dialog")
+			mh.fileManager.ShowRenameDialog()
 		}
 		return true
 

@@ -138,7 +138,7 @@ func NormalizeInputPath(input string) string {
 
 func isUNC(p string) bool {
 	// Leading \\ or \\?\UNC\
-	return strings.HasPrefix(p, `\\\\?\\UNC\\`) || strings.HasPrefix(p, `\\`)
+	return strings.HasPrefix(p, "\\\\?\\UNC\\") || strings.HasPrefix(p, "\\\\")
 }
 
 func isSMBURL(p string) bool {
@@ -147,7 +147,10 @@ func isSMBURL(p string) bool {
 
 func smbURLToUNC(u string) string {
 	// smb://[user[:pass]@]host/share/seg1/seg2 -> \\host\share\seg1\seg2 (drop creds)
-	s := strings.TrimPrefix(strings.ToLower(u), "smb://")
+	s := strings.TrimSpace(u)
+	if strings.HasPrefix(strings.ToLower(s), "smb://") {
+		s = s[len("smb://"):]
+	}
 	// find authority and path
 	hostAndPath := s
 	// Strip optional creds
@@ -156,16 +159,16 @@ func smbURLToUNC(u string) string {
 	}
 	parts := strings.Split(hostAndPath, "/")
 	if len(parts) == 0 || parts[0] == "" {
-		return `\\` // invalid, best effort
+		return "\\\\" // invalid, best effort
 	}
 	host := parts[0]
 	rest := parts[1:]
 	b := strings.Builder{}
-	b.WriteString(`\\`)
+	b.WriteString("\\\\")
 	b.WriteString(host)
 	if len(rest) > 0 {
-		b.WriteString(`\\`)
-		b.WriteString(strings.Join(rest, `\\`))
+		b.WriteString("\\")
+		b.WriteString(strings.Join(rest, "\\"))
 	}
 	return b.String()
 }
@@ -174,12 +177,14 @@ func parseUNC(unc string) Parsed {
 	// Accept both \\host\share\... and \\?\UNC\host\share\...
 	raw := unc
 	u := unc
-	if strings.HasPrefix(u, `\\\\?\\UNC\\`) {
-		u = strings.TrimPrefix(u, `\\\\?\\UNC\\`)
-	} else if strings.HasPrefix(u, `\\`) {
-		u = strings.TrimPrefix(u, `\\`)
+	if strings.HasPrefix(u, "\\\\?\\UNC\\") {
+		u = strings.TrimPrefix(u, "\\\\?\\UNC\\")
+	} else if strings.HasPrefix(u, "\\\\") {
+		u = strings.TrimPrefix(u, "\\\\")
 	}
-	seg := strings.Split(u, `\\`)
+	seg := strings.FieldsFunc(u, func(r rune) bool {
+		return r == '\\' || r == '/'
+	})
 	host := ""
 	share := ""
 	segments := []string{}

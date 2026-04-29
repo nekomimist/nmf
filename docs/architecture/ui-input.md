@@ -44,6 +44,12 @@ Required sequence for keyboard-driven dialogs:
 
 This pattern is used in history/filter/tree/directory-jump/copy-move/jobs/quit dialogs.
 
+Rename dialog:
+
+- `F2` or `R` opens a single-item rename dialog for the cursor row only.
+- The focused filename entry owns normal text editing; the dialog key handler only commits with Enter and cancels with Escape.
+- Rename is a direct same-directory operation and does not use the copy/move job queue.
+
 ## Busy State Behavior
 
 When directory loading enters busy mode:

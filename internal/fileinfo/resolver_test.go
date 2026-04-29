@@ -36,11 +36,34 @@ func TestParseSMBURLWithCreds(t *testing.T) {
 func TestUNCConversionRoundTripDisplay(t *testing.T) {
 	// to UNC and back to display via parseUNC
 	unc := smbURLToUNC("smb://srv/share/dir/file")
-	if unc == "\\" || len(unc) == 0 {
+	if unc != "\\\\srv\\share\\dir\\file" {
 		t.Fatalf("UNC conversion failed: %q", unc)
 	}
 	p := parseUNC(unc)
 	if p.Display != "smb://srv/share/dir/file" {
+		t.Fatalf("display mismatch: %q", p.Display)
+	}
+}
+
+func TestParseUNCWithSingleBackslashSeparators(t *testing.T) {
+	p := parseUNC("\\\\naja.local\\neko\\a")
+	if p.Host != "naja.local" || p.Share != "neko" {
+		t.Fatalf("host/share mismatch: %q/%q", p.Host, p.Share)
+	}
+	if p.Display != "smb://naja.local/neko/a" {
+		t.Fatalf("display mismatch: %q", p.Display)
+	}
+	if parent := ParentPath(p.Display); parent != "smb://naja.local/neko" {
+		t.Fatalf("parent mismatch: %q", parent)
+	}
+}
+
+func TestParseExtendedUNC(t *testing.T) {
+	p := parseUNC("\\\\?\\UNC\\server\\share\\dir\\file")
+	if p.Host != "server" || p.Share != "share" {
+		t.Fatalf("host/share mismatch: %q/%q", p.Host, p.Share)
+	}
+	if p.Display != "smb://server/share/dir/file" {
 		t.Fatalf("display mismatch: %q", p.Display)
 	}
 }

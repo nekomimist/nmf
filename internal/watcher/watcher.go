@@ -126,6 +126,11 @@ func (dw *DirectoryWatcher) updateSnapshot() {
 	}
 }
 
+// RefreshSnapshot resets the watcher baseline to the file manager's current list.
+func (dw *DirectoryWatcher) RefreshSnapshot() {
+	dw.updateSnapshot()
+}
+
 func (dw *DirectoryWatcher) watchLoop(runID uint64, ticker *time.Ticker, stopChan <-chan struct{}, changeChan chan<- *PendingChanges) {
 	for {
 		select {

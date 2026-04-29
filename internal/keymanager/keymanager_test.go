@@ -35,6 +35,7 @@ func TestKeyManagerTracksAltModifier(t *testing.T) {
 type mainScreenFakeFileManager struct {
 	showJobsCount          int
 	showDirectoryJumpCount int
+	showRenameCount        int
 }
 
 func (f *mainScreenFakeFileManager) GetCurrentCursorIndex() int                 { return 0 }
@@ -64,6 +65,7 @@ func (f *mainScreenFakeFileManager) QuitApplication()                 {}
 func (f *mainScreenFakeFileManager) OpenFile(file *fileinfo.FileInfo) {}
 func (f *mainScreenFakeFileManager) ShowCopyDialog()                  {}
 func (f *mainScreenFakeFileManager) ShowMoveDialog()                  {}
+func (f *mainScreenFakeFileManager) ShowRenameDialog()                { f.showRenameCount++ }
 
 func TestMainScreenShiftJShowsDirectoryJumpDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
@@ -96,5 +98,45 @@ func TestMainScreenCtrlJStillShowsJobsDialog(t *testing.T) {
 	}
 	if fm.showDirectoryJumpCount != 0 {
 		t.Fatalf("ShowDirectoryJumpDialog count = %d, want 0", fm.showDirectoryJumpCount)
+	}
+}
+
+func TestMainScreenF2ShowsRenameDialog(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyF2}, ModifierState{})
+
+	if !handled {
+		t.Fatal("F2 should be handled")
+	}
+	if fm.showRenameCount != 1 {
+		t.Fatalf("ShowRenameDialog count = %d, want 1", fm.showRenameCount)
+	}
+}
+
+func TestMainScreenRKeyUpShowsRenameDialog(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnKeyUp(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{})
+
+	if !handled {
+		t.Fatal("R key up should be handled")
+	}
+	if fm.showRenameCount != 1 {
+		t.Fatalf("ShowRenameDialog count = %d, want 1", fm.showRenameCount)
+	}
+}
+
+func TestMainScreenModifiedRenameKeysDoNotShowRenameDialog(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyF2}, ModifierState{CtrlPressed: true})
+	handler.OnKeyUp(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{ShiftPressed: true})
+
+	if fm.showRenameCount != 0 {
+		t.Fatalf("ShowRenameDialog count = %d, want 0", fm.showRenameCount)
 	}
 }
