@@ -61,6 +61,7 @@ type FileManagerInterface interface {
 	ShowCopyDialog()
 	ShowMoveDialog()
 	ShowRenameDialog()
+	ShowDeleteDialog(permanent bool)
 }
 
 // MainScreenKeyHandler handles keyboard events for the main file list screen
@@ -152,6 +153,12 @@ func (mh *MainScreenKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierS
 			mh.fileManager.ShowDirectoryJumpDialog()
 			return true
 		}
+	case fyne.KeyDelete:
+		if !modifiers.CtrlPressed {
+			mh.debugPrint("MainScreen: Delete detected permanent=%t", modifiers.ShiftPressed)
+			mh.fileManager.ShowDeleteDialog(modifiers.ShiftPressed)
+		}
+		return true
 
 	}
 	return false

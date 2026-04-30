@@ -138,6 +138,8 @@ nmf/
 - `Space` - Toggle selection
 - `Enter` - Open directory
 - `Backspace` - Parent directory
+- `Delete` - Move selected/current item(s) to Trash/Recycling Bin
+- `Shift+Delete` - Permanently delete selected/current item(s) after strong confirmation
 - `Ctrl+T` - Tree navigation dialog
 - `Ctrl+H` - Navigation history dialog
 - `Ctrl+F` - Filter dialog

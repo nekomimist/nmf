@@ -339,6 +339,103 @@ func TestCopyToSameDirectoryUsesAutoSuffix(t *testing.T) {
 	}
 }
 
+func TestDeleteTrashJobUsesTrashBackend(t *testing.T) {
+	oldTrashPath := trashPath
+	defer func() { trashPath = oldTrashPath }()
+
+	var got []string
+	trashPath = func(_ context.Context, p string) error {
+		got = append(got, p)
+		return nil
+	}
+
+	j := &Job{
+		Type:       TypeDelete,
+		Sources:    []string{"one.txt", "two.txt"},
+		DeleteMode: DeleteModeTrash,
+		ctx:        context.Background(),
+		TotalFiles: 2,
+	}
+
+	if err := (&Manager{}).runDeleteJob(j); err != nil {
+		t.Fatalf("runDeleteJob returned error: %v", err)
+	}
+	if strings.Join(got, ",") != "one.txt,two.txt" {
+		t.Fatalf("trash paths = %#v, want both sources", got)
+	}
+	if j.DoneFiles != 2 {
+		t.Fatalf("DoneFiles = %d, want 2", j.DoneFiles)
+	}
+}
+
+func TestPermanentDeleteRemovesDirectoryRecursively(t *testing.T) {
+	tmp := t.TempDir()
+	root := filepath.Join(tmp, "delete-me")
+	if err := os.MkdirAll(filepath.Join(root, "child"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "child", "file.txt"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	j := &Job{Type: TypeDelete, DeleteMode: DeleteModePermanent, ctx: context.Background()}
+	if err := deletePermanentPath(j, newExecutionContext(), root); err != nil {
+		t.Fatalf("deletePermanentPath returned error: %v", err)
+	}
+	if _, err := os.Lstat(root); !os.IsNotExist(err) {
+		t.Fatalf("deleted directory still exists or stat failed unexpectedly: %v", err)
+	}
+}
+
+func TestPermanentDeleteDoesNotFollowDirectorySymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("creating directory symlinks on Windows often requires privileges")
+	}
+	tmp := t.TempDir()
+	targetDir := filepath.Join(tmp, "target")
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	targetFile := filepath.Join(targetDir, "keep.txt")
+	if err := os.WriteFile(targetFile, []byte("keep"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(tmp, "link")
+	if err := os.Symlink(targetDir, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	j := &Job{Type: TypeDelete, DeleteMode: DeleteModePermanent, ctx: context.Background()}
+	if err := deletePermanentPath(j, newExecutionContext(), link); err != nil {
+		t.Fatalf("deletePermanentPath returned error: %v", err)
+	}
+	if _, err := os.Lstat(link); !os.IsNotExist(err) {
+		t.Fatalf("symlink still exists or stat failed unexpectedly: %v", err)
+	}
+	if _, err := os.Lstat(targetFile); err != nil {
+		t.Fatalf("symlink target should remain, got stat error: %v", err)
+	}
+}
+
+func TestValidateDeleteTargetRejectsFilesystemRoot(t *testing.T) {
+	root := string(os.PathSeparator)
+	if runtime.GOOS == "windows" {
+		root = filepath.VolumeName(os.TempDir()) + string(os.PathSeparator)
+	}
+
+	err := validateDeleteTarget(executionPath{path: root, backend: backendLocal})
+	if !errors.Is(err, errUnsafeDeleteTarget) {
+		t.Fatalf("validateDeleteTarget(%q) error = %v, want errUnsafeDeleteTarget", root, err)
+	}
+}
+
+func TestValidateDeleteTargetRejectsSMBShareRoot(t *testing.T) {
+	err := validateDeleteTarget(executionPath{path: "/", backend: backendSMB})
+	if !errors.Is(err, errUnsafeDeleteTarget) {
+		t.Fatalf("validateDeleteTarget(SMB root) error = %v, want errUnsafeDeleteTarget", err)
+	}
+}
+
 func TestMoveFileToSameDirectoryIsNoop(t *testing.T) {
 	tmpDir := t.TempDir()
 	src := filepath.Join(tmpDir, "file.txt")

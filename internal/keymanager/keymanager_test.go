@@ -36,6 +36,8 @@ type mainScreenFakeFileManager struct {
 	showJobsCount          int
 	showDirectoryJumpCount int
 	showRenameCount        int
+	showDeleteCount        int
+	deletePermanent        bool
 }
 
 func (f *mainScreenFakeFileManager) GetCurrentCursorIndex() int                 { return 0 }
@@ -66,6 +68,10 @@ func (f *mainScreenFakeFileManager) OpenFile(file *fileinfo.FileInfo) {}
 func (f *mainScreenFakeFileManager) ShowCopyDialog()                  {}
 func (f *mainScreenFakeFileManager) ShowMoveDialog()                  {}
 func (f *mainScreenFakeFileManager) ShowRenameDialog()                { f.showRenameCount++ }
+func (f *mainScreenFakeFileManager) ShowDeleteDialog(permanent bool) {
+	f.showDeleteCount++
+	f.deletePermanent = permanent
+}
 
 func TestMainScreenShiftJShowsDirectoryJumpDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
@@ -138,5 +144,39 @@ func TestMainScreenModifiedRenameKeysDoNotShowRenameDialog(t *testing.T) {
 
 	if fm.showRenameCount != 0 {
 		t.Fatalf("ShowRenameDialog count = %d, want 0", fm.showRenameCount)
+	}
+}
+
+func TestMainScreenDeleteShowsTrashDeleteDialog(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyDelete}, ModifierState{})
+
+	if !handled {
+		t.Fatal("Delete should be handled")
+	}
+	if fm.showDeleteCount != 1 {
+		t.Fatalf("ShowDeleteDialog count = %d, want 1", fm.showDeleteCount)
+	}
+	if fm.deletePermanent {
+		t.Fatal("Delete should request trash, not permanent delete")
+	}
+}
+
+func TestMainScreenShiftDeleteShowsPermanentDeleteDialog(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyDelete}, ModifierState{ShiftPressed: true})
+
+	if !handled {
+		t.Fatal("Shift+Delete should be handled")
+	}
+	if fm.showDeleteCount != 1 {
+		t.Fatalf("ShowDeleteDialog count = %d, want 1", fm.showDeleteCount)
+	}
+	if !fm.deletePermanent {
+		t.Fatal("Shift+Delete should request permanent delete")
 	}
 }

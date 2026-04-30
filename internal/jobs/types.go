@@ -10,8 +10,17 @@ import (
 type Type string
 
 const (
-	TypeCopy Type = "copy"
-	TypeMove Type = "move"
+	TypeCopy   Type = "copy"
+	TypeMove   Type = "move"
+	TypeDelete Type = "delete"
+)
+
+// DeleteMode controls whether a delete job uses OS trash or permanent removal.
+type DeleteMode string
+
+const (
+	DeleteModeTrash     DeleteMode = "trash"
+	DeleteModePermanent DeleteMode = "permanent"
 )
 
 // Status represents job status.
@@ -25,13 +34,14 @@ const (
 	StatusCanceled  Status = "canceled"
 )
 
-// Job holds a single copy/move job.
+// Job holds a single copy/move/delete job.
 type Job struct {
 	// immutable fields
 	ID              int64
 	Type            Type
 	Sources         []string // absolute/native source paths
 	DestDir         string   // absolute/native destination directory
+	DeleteMode      DeleteMode
 	Resolver        ConflictResolver
 	conflictDefault ConflictAction
 
@@ -101,10 +111,12 @@ func (j *Job) Snapshot() JobSnapshot {
 		Message:       j.Message,
 		Error:         j.Error,
 		DestDir:       j.DestDir,
+		DeleteMode:    j.DeleteMode,
 		EnqueuedAt:    j.EnqueuedAt,
 		StartedAt:     j.StartedAt,
 		CompletedAt:   j.CompletedAt,
 		Sources:       append([]string(nil), j.Sources...),
+		Failures:      append([]JobFailure(nil), j.Failures...),
 	}
 }
 
@@ -115,6 +127,7 @@ type JobSnapshot struct {
 	Status        Status
 	Sources       []string
 	DestDir       string
+	DeleteMode    DeleteMode
 	TotalFiles    int
 	DoneFiles     int
 	CurrentSource string

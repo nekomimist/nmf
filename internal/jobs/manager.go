@@ -125,6 +125,11 @@ func (m *Manager) EnqueueMove(sources []string, destDir string) *Job {
 	return m.EnqueueMoveWithResolver(sources, destDir, nil)
 }
 
+// EnqueueDelete enqueues a delete job.
+func (m *Manager) EnqueueDelete(sources []string, mode DeleteMode) *Job {
+	return m.enqueueDelete(sources, mode)
+}
+
 // EnqueueCopyWithResolver enqueues a copy job with an optional collision resolver.
 func (m *Manager) EnqueueCopyWithResolver(sources []string, destDir string, resolver ConflictResolver) *Job {
 	return m.enqueue(TypeCopy, sources, destDir, resolver)
@@ -144,6 +149,30 @@ func (m *Manager) enqueue(t Type, sources []string, destDir string, resolver Con
 	m.queue = append(m.queue, j)
 	m.mu.Unlock()
 	dbg("enqueue id=%d type=%s n=%d -> %s", j.ID, string(t), len(sources), destDir)
+	m.notify()
+	m.cond.Signal()
+	return j
+}
+
+func (m *Manager) enqueueDelete(sources []string, mode DeleteMode) *Job {
+	if mode == "" {
+		mode = DeleteModeTrash
+	}
+	j := &Job{
+		ID:         atomic.AddInt64(&m.nextID, 1),
+		Type:       TypeDelete,
+		Sources:    append([]string(nil), sources...),
+		DeleteMode: mode,
+		Status:     StatusPending,
+		EnqueuedAt: time.Now(),
+	}
+	j.ctx, j.cancel = contextWithCancel()
+	j.TotalFiles = len(sources)
+
+	m.mu.Lock()
+	m.queue = append(m.queue, j)
+	m.mu.Unlock()
+	dbg("enqueue id=%d type=%s mode=%s n=%d", j.ID, string(TypeDelete), string(mode), len(sources))
 	m.notify()
 	m.cond.Signal()
 	return j
@@ -258,6 +287,9 @@ func (m *Manager) addHistoryLocked(j *Job) {
 // runJob processes one job.
 func (m *Manager) runJob(j *Job) error {
 	dbg("runJob id=%d total=%d dest=%s", j.ID, len(j.Sources), j.DestDir)
+	if j.Type == TypeDelete {
+		return m.runDeleteJob(j)
+	}
 	for i, src := range j.Sources {
 		if canceled(j) {
 			return errCanceled
@@ -293,10 +325,52 @@ func (m *Manager) runJob(j *Job) error {
 	return nil
 }
 
+func (m *Manager) runDeleteJob(j *Job) error {
+	execCtx := newExecutionContext()
+	defer func() {
+		if err := execCtx.close(); err != nil {
+			dbg("job %d: SMB session close error: %v", j.ID, err)
+		}
+	}()
+
+	for i, src := range j.Sources {
+		if canceled(j) {
+			return errCanceled
+		}
+		j.mu.Lock()
+		j.CurrentSource = src
+		j.Message = string(j.DeleteMode)
+		j.mu.Unlock()
+		m.notify()
+
+		var err error
+		if j.DeleteMode == DeleteModePermanent {
+			err = deletePermanentPath(j, execCtx, src)
+		} else {
+			err = trashPath(j.ctx, src)
+		}
+		if err != nil {
+			fp := failingPath(err)
+			j.mu.Lock()
+			j.Failures = append(j.Failures, JobFailure{TopSource: src, Path: fp, Error: err.Error()})
+			j.mu.Unlock()
+			return err
+		}
+		j.mu.Lock()
+		j.DoneFiles = i + 1
+		j.mu.Unlock()
+		m.notify()
+	}
+	return nil
+}
+
 // --- copying primitives ---
 
 var errCanceled = errors.New("job canceled")
 var errSkipped = errors.New("job item skipped")
+var errUnsafeDeleteTarget = errors.New("unsafe delete target")
+
+var trashPath = fileinfo.TrashPath
 
 type executionBackend int
 
@@ -316,6 +390,77 @@ type executionPath struct {
 
 type executionContext struct {
 	smbSessions map[string]fileinfo.SMBSession
+}
+
+func deletePermanentPath(j *Job, execCtx *executionContext, src string) error {
+	srcPath, err := resolveExecutionPath(src)
+	if err != nil {
+		return wrapPath(src, err)
+	}
+	if err := validateDeleteTarget(srcPath); err != nil {
+		return wrapPath(srcPath.displayPath(), err)
+	}
+	return deletePermanentResolved(j, execCtx, srcPath)
+}
+
+func validateDeleteTarget(p executionPath) error {
+	switch p.backend {
+	case backendSMB:
+		clean := normalizeSMBExecutionPath(p.path)
+		if clean == "/" || clean == "." || clean == "" {
+			return fmt.Errorf("%w: refusing to delete SMB share root", errUnsafeDeleteTarget)
+		}
+	default:
+		clean := filepath.Clean(p.path)
+		if clean == "." || clean == "" {
+			return fmt.Errorf("%w: refusing to delete empty or relative root path", errUnsafeDeleteTarget)
+		}
+		volume := filepath.VolumeName(clean)
+		root := string(os.PathSeparator)
+		if volume != "" {
+			root = volume + string(os.PathSeparator)
+		}
+		if clean == root {
+			return fmt.Errorf("%w: refusing to delete filesystem root", errUnsafeDeleteTarget)
+		}
+	}
+	return nil
+}
+
+func deletePermanentResolved(j *Job, execCtx *executionContext, src executionPath) error {
+	if canceled(j) {
+		return errCanceled
+	}
+
+	fi, err := lstatPath(execCtx, src)
+	if err != nil {
+		return wrapPath(src.displayPath(), err)
+	}
+
+	if fi.IsDir() && fi.Mode()&os.ModeSymlink == 0 {
+		entries, err := readDir(execCtx, src)
+		if err != nil {
+			return wrapPath(src.displayPath(), err)
+		}
+		for _, e := range entries {
+			if canceled(j) {
+				return errCanceled
+			}
+			child := joinPath(src, e.Name())
+			if err := deletePermanentResolved(j, execCtx, child); err != nil {
+				return err
+			}
+		}
+	}
+
+	if canceled(j) {
+		return errCanceled
+	}
+	dbg("job %d: permanent delete %s", j.ID, src.displayPath())
+	if err := removePath(execCtx, src); err != nil {
+		return wrapPath(src.displayPath(), err)
+	}
+	return nil
 }
 
 func newExecutionContext() *executionContext {

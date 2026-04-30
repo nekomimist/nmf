@@ -60,6 +60,13 @@ Jobs:
 - Pending jobs can be canceled and removed from queue.
 - Running job cancellation signals context and transitions to `StatusCanceled`.
 - First failed path ends that job as `StatusFailed` with failure details recorded.
+- Delete jobs support two modes:
+  - `trash`: move each top-level source to the OS trash/recycle bin.
+  - `permanent`: recursively remove each top-level source after UI confirmation.
+- Permanent delete refuses filesystem roots and SMB share roots. Symlinks are
+  deleted as links and are not followed.
+- Trash failures are reported as job failures and never fall back to permanent
+  deletion automatically.
 - Copy/move name collisions are resolved at execution time, immediately before
   writing the destination path.
 - Existing files and symlinks are never overwritten by default. A collision can

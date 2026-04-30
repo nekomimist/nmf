@@ -82,3 +82,10 @@ Constraints:
 
 - If direct SMB provider capability is unavailable for a path that resolves to SMB backend, job execution fails with an explicit backend error.
 - Platform parity for direct SMB backend remains an active architecture item (see `docs/architecture-review.md`).
+
+Delete behavior:
+
+- Permanent delete uses the same execution backend model as copy/move.
+- Trash delete uses OS trash/recycle APIs for local-provider paths.
+- Direct SMB trash is unsupported; users must use explicit permanent delete for
+  direct SMB paths.

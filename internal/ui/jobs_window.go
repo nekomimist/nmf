@@ -139,7 +139,11 @@ func (jd *JobsWindow) refresh() {
 			when = it.StartedAt
 		}
 		ts := when.Format("15:04:05")
-		lines[i] = fmt.Sprintf("[%s] %s %d/%d → %s  (%s)", ts, string(it.Type), it.DoneFiles, it.TotalFiles, it.DestDir, status)
+		target := it.DestDir
+		if it.Type == jobs.TypeDelete {
+			target = string(it.DeleteMode)
+		}
+		lines[i] = fmt.Sprintf("[%s] %s %d/%d → %s  (%s)", ts, string(it.Type), it.DoneFiles, it.TotalFiles, target, status)
 		if it.Status == jobs.StatusFailed && it.Error != "" {
 			lines[i] += "  ERROR"
 		}
@@ -175,7 +179,11 @@ func (jd *JobsWindow) updateDetails() {
 	}
 	it := jd.items[jd.selectedIdx]
 	b := &strings.Builder{}
-	fmt.Fprintf(b, "Job #%d %s → %s\nStatus: %s, %d/%d completed\n", it.ID, string(it.Type), it.DestDir, string(it.Status), it.DoneFiles, it.TotalFiles)
+	target := it.DestDir
+	if it.Type == jobs.TypeDelete {
+		target = string(it.DeleteMode)
+	}
+	fmt.Fprintf(b, "Job #%d %s → %s\nStatus: %s, %d/%d completed\n", it.ID, string(it.Type), target, string(it.Status), it.DoneFiles, it.TotalFiles)
 	if it.Status == jobs.StatusFailed {
 		if len(it.Failures) > 0 {
 			fmt.Fprintln(b, "Failures:")

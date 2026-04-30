@@ -50,6 +50,13 @@ Rename dialog:
 - The focused filename entry owns normal text editing; the dialog key handler only commits with Enter and cancels with Escape.
 - Rename is a direct same-directory operation and does not use the copy/move job queue.
 
+Delete dialogs:
+
+- `Delete` opens a confirmation dialog that queues a trash/recycle-bin job.
+- `Shift+Delete` opens a stronger confirmation dialog that requires typing
+  `DELETE` before queueing a permanent delete job.
+- Dialog handlers must pop exactly once on confirm, cancel, or close.
+
 ## Busy State Behavior
 
 When directory loading enters busy mode:
