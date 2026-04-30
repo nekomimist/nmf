@@ -6,17 +6,34 @@ import (
 	"fyne.io/fyne/v2"
 )
 
-func TestCompactMessageSinkClosesOnEnterAndEscape(t *testing.T) {
-	tests := []fyne.KeyName{fyne.KeyReturn, fyne.KeyEscape}
+func TestCompactMessageSinkClosesOnDismissKeyUp(t *testing.T) {
+	tests := []fyne.KeyName{fyne.KeyReturn, fyne.KeyEnter, fyne.KeyEscape}
 	for _, key := range tests {
 		closed := false
 		sink := newCompactMessageSink(nil, func() { closed = true })
 
+		sink.KeyDown(&fyne.KeyEvent{Name: key})
 		sink.TypedKey(&fyne.KeyEvent{Name: key})
+		if closed {
+			t.Fatalf("TypedKey(%s) closed dialog before key release", key)
+		}
+
+		sink.KeyUp(&fyne.KeyEvent{Name: key})
 
 		if !closed {
-			t.Fatalf("TypedKey(%s) did not close dialog", key)
+			t.Fatalf("KeyUp(%s) did not close dialog", key)
 		}
+	}
+}
+
+func TestCompactMessageSinkTypedKeyStillClosesWithoutKeyDown(t *testing.T) {
+	closed := false
+	sink := newCompactMessageSink(nil, func() { closed = true })
+
+	sink.TypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	if !closed {
+		t.Fatal("TypedKey(Return) without KeyDown should close dialog")
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -44,9 +45,12 @@ func ShowCompactMessageDialog(parent fyne.Window, title, message string) {
 
 type compactMessageSink struct {
 	widget.BaseWidget
-	content fyne.CanvasObject
-	onClose func()
+	content           fyne.CanvasObject
+	onClose           func()
+	pressedDismissKey fyne.KeyName
 }
+
+var _ desktop.Keyable = (*compactMessageSink)(nil)
 
 func newCompactMessageSink(content fyne.CanvasObject, onClose func()) *compactMessageSink {
 	s := &compactMessageSink{content: content, onClose: onClose}
@@ -62,9 +66,26 @@ func (s *compactMessageSink) FocusGained() {}
 
 func (s *compactMessageSink) FocusLost() {}
 
+func (s *compactMessageSink) KeyDown(ev *fyne.KeyEvent) {
+	if isCompactMessageDismissKey(ev.Name) {
+		s.pressedDismissKey = normalizeCompactMessageDismissKey(ev.Name)
+	}
+}
+
+func (s *compactMessageSink) KeyUp(ev *fyne.KeyEvent) {
+	if isCompactMessageDismissKey(ev.Name) {
+		s.pressedDismissKey = ""
+		if s.onClose != nil {
+			s.onClose()
+		}
+	}
+}
+
 func (s *compactMessageSink) TypedKey(ev *fyne.KeyEvent) {
-	switch ev.Name {
-	case fyne.KeyEscape, fyne.KeyReturn:
+	if isCompactMessageDismissKey(ev.Name) {
+		if s.pressedDismissKey == normalizeCompactMessageDismissKey(ev.Name) {
+			return
+		}
 		if s.onClose != nil {
 			s.onClose()
 		}
@@ -72,3 +93,19 @@ func (s *compactMessageSink) TypedKey(ev *fyne.KeyEvent) {
 }
 
 func (s *compactMessageSink) TypedRune(_ rune) {}
+
+func isCompactMessageDismissKey(name fyne.KeyName) bool {
+	switch name {
+	case fyne.KeyEscape, fyne.KeyReturn, fyne.KeyEnter:
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeCompactMessageDismissKey(name fyne.KeyName) fyne.KeyName {
+	if name == fyne.KeyEnter {
+		return fyne.KeyReturn
+	}
+	return name
+}

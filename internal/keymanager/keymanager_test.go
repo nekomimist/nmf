@@ -17,6 +17,51 @@ func (noopHandler) OnTypedKey(_ *fyne.KeyEvent, _ ModifierState) bool { return f
 func (noopHandler) OnTypedRune(_ rune, _ ModifierState) bool          { return false }
 func (noopHandler) GetName() string                                   { return "noop" }
 
+type recordingHandler struct {
+	typedKeys []fyne.KeyName
+}
+
+func (h *recordingHandler) OnKeyDown(_ *fyne.KeyEvent, _ ModifierState) bool { return false }
+func (h *recordingHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool   { return false }
+func (h *recordingHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState) bool {
+	h.typedKeys = append(h.typedKeys, ev.Name)
+	return true
+}
+func (h *recordingHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
+func (h *recordingHandler) GetName() string                          { return "recording" }
+
+type popOnKeyDownHandler struct {
+	km *KeyManager
+}
+
+func (h *popOnKeyDownHandler) OnKeyDown(ev *fyne.KeyEvent, _ ModifierState) bool {
+	if ev.Name == fyne.KeyReturn || ev.Name == fyne.KeyEnter {
+		h.km.PopHandler()
+		return true
+	}
+	return false
+}
+func (h *popOnKeyDownHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool    { return false }
+func (h *popOnKeyDownHandler) OnTypedKey(_ *fyne.KeyEvent, _ ModifierState) bool { return false }
+func (h *popOnKeyDownHandler) OnTypedRune(_ rune, _ ModifierState) bool          { return false }
+func (h *popOnKeyDownHandler) GetName() string                                   { return "popOnKeyDown" }
+
+type popOnTypedKeyHandler struct {
+	km *KeyManager
+}
+
+func (h *popOnTypedKeyHandler) OnKeyDown(_ *fyne.KeyEvent, _ ModifierState) bool { return false }
+func (h *popOnTypedKeyHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool   { return false }
+func (h *popOnTypedKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState) bool {
+	if ev.Name == fyne.KeyReturn || ev.Name == fyne.KeyEnter {
+		h.km.PopHandler()
+		return true
+	}
+	return false
+}
+func (h *popOnTypedKeyHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
+func (h *popOnTypedKeyHandler) GetName() string                          { return "popOnTypedKey" }
+
 func TestKeyManagerTracksAltModifier(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	km.PushHandler(noopHandler{})
@@ -29,6 +74,48 @@ func TestKeyManagerTracksAltModifier(t *testing.T) {
 	km.HandleKeyUp(&fyne.KeyEvent{Name: desktop.KeyAltLeft})
 	if km.GetModifierState().AltPressed {
 		t.Fatal("AltPressed should be false after Alt key up")
+	}
+}
+
+func TestKeyManagerDrainsTypedKeyAfterKeyDownPop(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	main := &recordingHandler{}
+	km.PushHandler(main)
+	km.PushHandler(&popOnKeyDownHandler{km: km})
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyEnter})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	if len(main.typedKeys) != 0 {
+		t.Fatalf("typed keys leaked to main while Enter was held: %v", main.typedKeys)
+	}
+
+	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	if len(main.typedKeys) != 1 || main.typedKeys[0] != fyne.KeyReturn {
+		t.Fatalf("typed keys after drain clear = %v, want [Return]", main.typedKeys)
+	}
+}
+
+func TestKeyManagerDrainsRepeatedTypedKeyAfterTypedKeyPop(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	main := &recordingHandler{}
+	km.PushHandler(main)
+	km.PushHandler(&popOnTypedKeyHandler{km: km})
+
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	if len(main.typedKeys) != 0 {
+		t.Fatalf("repeated typed key leaked to main while Enter was held: %v", main.typedKeys)
+	}
+
+	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	if len(main.typedKeys) != 1 || main.typedKeys[0] != fyne.KeyReturn {
+		t.Fatalf("typed keys after drain clear = %v, want [Return]", main.typedKeys)
 	}
 }
 

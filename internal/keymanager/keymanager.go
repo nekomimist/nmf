@@ -38,6 +38,8 @@ type KeyManager struct {
 	modifierState ModifierState
 	mutex         sync.RWMutex
 	debugPrint    func(format string, args ...interface{})
+	stackVersion  uint64
+	drainingKeys  map[fyne.KeyName]struct{}
 }
 
 // NewKeyManager creates a new KeyManager instance
@@ -54,6 +56,7 @@ func (km *KeyManager) PushHandler(handler KeyHandler) {
 	defer km.mutex.Unlock()
 
 	km.handlers = append(km.handlers, handler)
+	km.stackVersion++
 	km.debugPrint("KeyManager: push %s stack=%d", handler.GetName(), len(km.handlers))
 }
 
@@ -72,6 +75,7 @@ func (km *KeyManager) PopHandler() KeyHandler {
 
 	// Remove it from the slice
 	km.handlers = km.handlers[:len(km.handlers)-1]
+	km.stackVersion++
 
 	km.debugPrint("KeyManager: pop %s stack=%d", handler.GetName(), len(km.handlers))
 	return handler
@@ -87,6 +91,74 @@ func (km *KeyManager) GetCurrentHandler() KeyHandler {
 	}
 
 	return km.handlers[len(km.handlers)-1]
+}
+
+func (km *KeyManager) currentHandlerAndVersion() (KeyHandler, uint64) {
+	km.mutex.RLock()
+	defer km.mutex.RUnlock()
+
+	if len(km.handlers) == 0 {
+		return nil, km.stackVersion
+	}
+	return km.handlers[len(km.handlers)-1], km.stackVersion
+}
+
+func (km *KeyManager) currentVersion() uint64 {
+	km.mutex.RLock()
+	defer km.mutex.RUnlock()
+	return km.stackVersion
+}
+
+func normalizeDrainKey(name fyne.KeyName) fyne.KeyName {
+	switch name {
+	case fyne.KeyEnter:
+		return fyne.KeyReturn
+	default:
+		return name
+	}
+}
+
+func (km *KeyManager) isDrainingKeyLocked(name fyne.KeyName) bool {
+	if km.drainingKeys == nil {
+		return false
+	}
+	_, ok := km.drainingKeys[normalizeDrainKey(name)]
+	return ok
+}
+
+func (km *KeyManager) shouldDrainKey(name fyne.KeyName) bool {
+	km.mutex.RLock()
+	defer km.mutex.RUnlock()
+	return km.isDrainingKeyLocked(name)
+}
+
+func (km *KeyManager) markDrainKey(ev *fyne.KeyEvent) {
+	if ev == nil || ev.Name == "" {
+		return
+	}
+
+	km.mutex.Lock()
+	defer km.mutex.Unlock()
+
+	if km.drainingKeys == nil {
+		km.drainingKeys = make(map[fyne.KeyName]struct{})
+	}
+	keyName := normalizeDrainKey(ev.Name)
+	km.drainingKeys[keyName] = struct{}{}
+	km.debugPrint("KeyManager: drain start key=%s", keyName)
+}
+
+func (km *KeyManager) clearDrainKeyLocked(name fyne.KeyName) bool {
+	if km.drainingKeys == nil {
+		return false
+	}
+	keyName := normalizeDrainKey(name)
+	if _, ok := km.drainingKeys[keyName]; !ok {
+		return false
+	}
+	delete(km.drainingKeys, keyName)
+	km.debugPrint("KeyManager: drain end key=%s", keyName)
+	return true
 }
 
 // updateModifierState updates the modifier key state based on key events
@@ -121,15 +193,22 @@ func (km *KeyManager) HandleKeyDown(ev *fyne.KeyEvent) {
 	// Update modifier state first
 	modifierHandled := km.updateModifierState(ev, true)
 	modifiers := km.modifierState
+	draining := km.isDrainingKeyLocked(ev.Name)
 	km.mutex.Unlock()
 
-	// Get current handler
-	km.mutex.RLock()
-	currentHandler := km.GetCurrentHandler()
-	km.mutex.RUnlock()
+	if draining {
+		km.debugPrint("KeyManager: KeyDown drained key=%s mod=%t", ev.Name, modifierHandled)
+		return
+	}
+
+	currentHandler, beforeVersion := km.currentHandlerAndVersion()
 
 	if currentHandler != nil {
 		handled := currentHandler.OnKeyDown(ev, modifiers)
+		afterVersion := km.currentVersion()
+		if afterVersion != beforeVersion {
+			km.markDrainKey(ev)
+		}
 		km.debugPrint("KeyManager: KeyDown %s handled=%t mod=%t", currentHandler.GetName(), handled, modifierHandled)
 	} else {
 		km.debugPrint("KeyManager: KeyDown no handler")
@@ -142,12 +221,15 @@ func (km *KeyManager) HandleKeyUp(ev *fyne.KeyEvent) {
 	// Update modifier state first
 	modifierHandled := km.updateModifierState(ev, false)
 	modifiers := km.modifierState
+	drained := km.clearDrainKeyLocked(ev.Name)
 	km.mutex.Unlock()
 
-	// Get current handler
-	km.mutex.RLock()
-	currentHandler := km.GetCurrentHandler()
-	km.mutex.RUnlock()
+	if drained {
+		km.debugPrint("KeyManager: KeyUp drained key=%s mod=%t", ev.Name, modifierHandled)
+		return
+	}
+
+	currentHandler, _ := km.currentHandlerAndVersion()
 
 	if currentHandler != nil {
 		handled := currentHandler.OnKeyUp(ev, modifiers)
@@ -159,13 +241,23 @@ func (km *KeyManager) HandleKeyUp(ev *fyne.KeyEvent) {
 
 // HandleTypedKey routes typed key events to the current top handler
 func (km *KeyManager) HandleTypedKey(ev *fyne.KeyEvent) {
+	if km.shouldDrainKey(ev.Name) {
+		km.debugPrint("KeyManager: TypedKey drained key=%s", ev.Name)
+		return
+	}
+
 	km.mutex.RLock()
 	modifiers := km.modifierState
-	currentHandler := km.GetCurrentHandler()
 	km.mutex.RUnlock()
+
+	currentHandler, beforeVersion := km.currentHandlerAndVersion()
 
 	if currentHandler != nil {
 		handled := currentHandler.OnTypedKey(ev, modifiers)
+		afterVersion := km.currentVersion()
+		if afterVersion != beforeVersion {
+			km.markDrainKey(ev)
+		}
 		km.debugPrint("KeyManager: TypedKey %s handled=%t", currentHandler.GetName(), handled)
 	} else {
 		km.debugPrint("KeyManager: TypedKey no handler")
