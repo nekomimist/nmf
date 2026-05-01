@@ -62,6 +62,7 @@ type FileManagerInterface interface {
 	ShowMoveDialog()
 	ShowRenameDialog()
 	ShowDeleteDialog(permanent bool)
+	ShowExplorerContextMenu()
 }
 
 // MainScreenKeyHandler handles keyboard events for the main file list screen
@@ -229,6 +230,13 @@ func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modifier
 		if !modifiers.CtrlPressed && !modifiers.ShiftPressed {
 			mh.debugPrint("MainScreen: F2 detected - show rename dialog")
 			mh.fileManager.ShowRenameDialog()
+		}
+		return true
+
+	case fyne.KeyTab:
+		if !modifiers.CtrlPressed && !modifiers.ShiftPressed {
+			mh.debugPrint("MainScreen: Tab detected - show Explorer context menu")
+			mh.fileManager.ShowExplorerContextMenu()
 		}
 		return true
 

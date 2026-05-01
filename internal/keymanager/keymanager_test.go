@@ -124,6 +124,7 @@ type mainScreenFakeFileManager struct {
 	showDirectoryJumpCount int
 	showRenameCount        int
 	showDeleteCount        int
+	showExplorerMenuCount  int
 	deletePermanent        bool
 }
 
@@ -159,6 +160,7 @@ func (f *mainScreenFakeFileManager) ShowDeleteDialog(permanent bool) {
 	f.showDeleteCount++
 	f.deletePermanent = permanent
 }
+func (f *mainScreenFakeFileManager) ShowExplorerContextMenu() { f.showExplorerMenuCount++ }
 
 func TestMainScreenShiftJShowsDirectoryJumpDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
@@ -231,6 +233,34 @@ func TestMainScreenModifiedRenameKeysDoNotShowRenameDialog(t *testing.T) {
 
 	if fm.showRenameCount != 0 {
 		t.Fatalf("ShowRenameDialog count = %d, want 0", fm.showRenameCount)
+	}
+}
+
+func TestMainScreenTabShowsExplorerContextMenu(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyTab}, ModifierState{})
+
+	if !handled {
+		t.Fatal("Tab should be handled")
+	}
+	if fm.showExplorerMenuCount != 1 {
+		t.Fatalf("ShowExplorerContextMenu count = %d, want 1", fm.showExplorerMenuCount)
+	}
+}
+
+func TestMainScreenModifiedTabDoesNotShowExplorerContextMenu(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyTab}, ModifierState{CtrlPressed: true})
+
+	if !handled {
+		t.Fatal("modified Tab should still be handled to keep focus traversal suppressed")
+	}
+	if fm.showExplorerMenuCount != 0 {
+		t.Fatalf("ShowExplorerContextMenu count = %d, want 0", fm.showExplorerMenuCount)
 	}
 }
 
