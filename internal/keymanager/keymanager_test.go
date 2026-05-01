@@ -62,6 +62,30 @@ func (h *popOnTypedKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState) bo
 func (h *popOnTypedKeyHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
 func (h *popOnTypedKeyHandler) GetName() string                          { return "popOnTypedKey" }
 
+type transientStackChangeOnTypedKeyHandler struct {
+	km        *KeyManager
+	typedKeys []fyne.KeyName
+}
+
+func (h *transientStackChangeOnTypedKeyHandler) OnKeyDown(_ *fyne.KeyEvent, _ ModifierState) bool {
+	return false
+}
+func (h *transientStackChangeOnTypedKeyHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool {
+	return false
+}
+func (h *transientStackChangeOnTypedKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState) bool {
+	h.typedKeys = append(h.typedKeys, ev.Name)
+	h.km.PushHandler(noopHandler{})
+	h.km.PopHandler()
+	return true
+}
+func (h *transientStackChangeOnTypedKeyHandler) OnTypedRune(_ rune, _ ModifierState) bool {
+	return false
+}
+func (h *transientStackChangeOnTypedKeyHandler) GetName() string {
+	return "transientStackChange"
+}
+
 func TestKeyManagerTracksAltModifier(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	km.PushHandler(noopHandler{})
@@ -116,6 +140,20 @@ func TestKeyManagerDrainsRepeatedTypedKeyAfterTypedKeyPop(t *testing.T) {
 
 	if len(main.typedKeys) != 1 || main.typedKeys[0] != fyne.KeyReturn {
 		t.Fatalf("typed keys after drain clear = %v, want [Return]", main.typedKeys)
+	}
+}
+
+func TestKeyManagerDoesNotDrainAfterTransientStackChange(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	main := &transientStackChangeOnTypedKeyHandler{km: km}
+	km.PushHandler(main)
+
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyTab})
+	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyTab})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyTab})
+
+	if len(main.typedKeys) != 2 {
+		t.Fatalf("typed keys = %v, want two Tab events", main.typedKeys)
 	}
 }
 

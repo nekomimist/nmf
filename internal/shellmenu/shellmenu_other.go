@@ -11,3 +11,9 @@ var ErrUnsupported = errors.New("shell context menu is unsupported on this platf
 func Show(_ uintptr, _ []string) error {
 	return ErrUnsupported
 }
+
+// ShowAtClientPosition opens a platform-native shell context menu at a window
+// client coordinate.
+func ShowAtClientPosition(_ uintptr, _ []string, _, _ int) error {
+	return ErrUnsupported
+}

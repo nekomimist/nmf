@@ -1,6 +1,7 @@
 package keymanager
 
 import (
+	"reflect"
 	"sync"
 
 	"fyne.io/fyne/v2"
@@ -109,6 +110,19 @@ func (km *KeyManager) currentVersion() uint64 {
 	return km.stackVersion
 }
 
+func sameHandler(a, b KeyHandler) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	if reflect.TypeOf(a) != reflect.TypeOf(b) {
+		return false
+	}
+	if !reflect.TypeOf(a).Comparable() {
+		return false
+	}
+	return a == b
+}
+
 func normalizeDrainKey(name fyne.KeyName) fyne.KeyName {
 	switch name {
 	case fyne.KeyEnter:
@@ -205,8 +219,8 @@ func (km *KeyManager) HandleKeyDown(ev *fyne.KeyEvent) {
 
 	if currentHandler != nil {
 		handled := currentHandler.OnKeyDown(ev, modifiers)
-		afterVersion := km.currentVersion()
-		if afterVersion != beforeVersion {
+		afterHandler, afterVersion := km.currentHandlerAndVersion()
+		if afterVersion != beforeVersion && !sameHandler(currentHandler, afterHandler) {
 			km.markDrainKey(ev)
 		}
 		km.debugPrint("KeyManager: KeyDown %s handled=%t mod=%t", currentHandler.GetName(), handled, modifierHandled)
@@ -254,8 +268,8 @@ func (km *KeyManager) HandleTypedKey(ev *fyne.KeyEvent) {
 
 	if currentHandler != nil {
 		handled := currentHandler.OnTypedKey(ev, modifiers)
-		afterVersion := km.currentVersion()
-		if afterVersion != beforeVersion {
+		afterHandler, afterVersion := km.currentHandlerAndVersion()
+		if afterVersion != beforeVersion && !sameHandler(currentHandler, afterHandler) {
 			km.markDrainKey(ev)
 		}
 		km.debugPrint("KeyManager: TypedKey %s handled=%t", currentHandler.GetName(), handled)

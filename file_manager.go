@@ -27,6 +27,7 @@ type FileManager struct {
 	fileListView   *ui.KeySink
 	pathEntry      *ui.TabEntry
 	cursorPath     string          // Current cursor file path
+	cursorAnchor   cursorRowAnchor // Last visible row object for shell menu positioning
 	selectedFiles  map[string]bool // Set of selected file paths
 	fileBinding    binding.UntypedList
 	config         *config.Config
@@ -53,6 +54,11 @@ type FileManager struct {
 	jobsBlinkOn   bool
 	jobsBlinkStop chan struct{}
 	jobsUnsub     func()
+}
+
+type cursorRowAnchor struct {
+	path   string
+	object fyne.CanvasObject
 }
 
 // Interface implementation for watcher.FileManager.

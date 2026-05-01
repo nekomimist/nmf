@@ -3,7 +3,9 @@ package main
 import (
 	"errors"
 	"runtime"
+	"time"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver"
 
 	"nmf/internal/fileinfo"
@@ -43,6 +45,11 @@ func (fm *FileManager) ShowExplorerContextMenu() {
 			err = shellmenu.ErrUnsupported
 			return
 		}
+		if x, y, ok := fm.cursorMenuClientPosition(); ok {
+			err = shellmenu.ShowAtClientPosition(winCtx.HWND, paths, x, y)
+			return
+		}
+		debugPrint("FileManager: Cursor row anchor unavailable; using mouse position")
 		err = shellmenu.Show(winCtx.HWND, paths)
 	})
 	if err != nil && !errors.Is(err, shellmenu.ErrUnsupported) {
@@ -50,6 +57,40 @@ func (fm *FileManager) ShowExplorerContextMenu() {
 	}
 
 	fm.FocusFileList()
-	fm.SaveCursorPosition(fm.currentPath)
-	fm.LoadDirectory(fm.currentPath)
+	fm.refreshDirectoryAfterShellMenu()
+}
+
+func (fm *FileManager) cursorMenuClientPosition() (int, int, bool) {
+	anchor := fm.cursorAnchor
+	if anchor.object == nil || anchor.path == "" || anchor.path != fm.cursorPath {
+		return 0, 0, false
+	}
+
+	canvas := fyne.CurrentApp().Driver().CanvasForObject(anchor.object)
+	if canvas == nil {
+		return 0, 0, false
+	}
+
+	pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(anchor.object)
+	size := anchor.object.Size()
+	if size.Width <= 0 || size.Height <= 0 {
+		return 0, 0, false
+	}
+
+	clientPos := pos.AddXY(8, size.Height/2)
+	x, y := canvas.PixelCoordinateForPosition(clientPos)
+	return x, y, true
+}
+
+func (fm *FileManager) refreshDirectoryAfterShellMenu() {
+	path := fm.currentPath
+	time.AfterFunc(10*time.Millisecond, func() {
+		fyne.Do(func() {
+			if fm.currentPath != path {
+				return
+			}
+			fm.SaveCursorPosition(path)
+			fm.LoadDirectory(path)
+		})
+	})
 }

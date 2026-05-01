@@ -136,6 +136,11 @@ func (fm *FileManager) setupUI() {
 			currentCursorIdx := fm.GetCurrentCursorIndex()
 			isCursor := index == currentCursorIdx
 			isSelected := fm.selectedFiles[fileInfo.Path]
+			if isCursor {
+				fm.cursorAnchor = cursorRowAnchor{path: fileInfo.Path, object: obj}
+			} else if fm.cursorAnchor.object == obj {
+				fm.cursorAnchor = cursorRowAnchor{}
+			}
 
 			// Clear all decoration elements first
 			outerContainer.Objects = []fyne.CanvasObject{border}

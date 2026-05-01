@@ -63,6 +63,7 @@ var (
 	procDestroyMenu       = modUser32.NewProc("DestroyMenu")
 	procTrackPopupMenuEx  = modUser32.NewProc("TrackPopupMenuEx")
 	procGetCursorPos      = modUser32.NewProc("GetCursorPos")
+	procClientToScreen    = modUser32.NewProc("ClientToScreen")
 	procSetForegroundWnd  = modUser32.NewProc("SetForegroundWindow")
 	procRegisterClassExW  = modUser32.NewProc("RegisterClassExW")
 	procCreateWindowExW   = modUser32.NewProc("CreateWindowExW")
@@ -180,6 +181,28 @@ type cmInvokeCommandInfo struct {
 
 // Show opens the Explorer shell context menu for paths at the current mouse position.
 func Show(hwnd uintptr, paths []string) error {
+	var pt point
+	ret, _, err := procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+	if ret == 0 {
+		return fmt.Errorf("GetCursorPos failed: %w", err)
+	}
+	return showAtScreenPosition(hwnd, paths, pt)
+}
+
+// ShowAtClientPosition opens the Explorer shell context menu at a window client coordinate.
+func ShowAtClientPosition(hwnd uintptr, paths []string, x, y int) error {
+	if hwnd == 0 {
+		return ErrUnsupported
+	}
+	pt := point{x: int32(x), y: int32(y)}
+	ret, _, err := procClientToScreen.Call(hwnd, uintptr(unsafe.Pointer(&pt)))
+	if ret == 0 {
+		return fmt.Errorf("ClientToScreen failed: %w", err)
+	}
+	return showAtScreenPosition(hwnd, paths, pt)
+}
+
+func showAtScreenPosition(hwnd uintptr, paths []string, pt point) error {
 	if hwnd == 0 {
 		return ErrUnsupported
 	}
@@ -266,12 +289,6 @@ func Show(hwnd uintptr, paths []string) error {
 		return err
 	}
 	defer owner.destroy()
-
-	var pt point
-	ret, _, err := procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
-	if ret == 0 {
-		return fmt.Errorf("GetCursorPos failed: %w", err)
-	}
 
 	procSetForegroundWnd.Call(hwnd)
 	cmd, _, _ := procTrackPopupMenuEx.Call(
