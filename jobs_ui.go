@@ -278,6 +278,9 @@ func (fm *FileManager) buildDestinationCandidates() []string {
 				return true
 			}
 			if other.currentPath != "" {
+				if fileinfo.IsArchivePath(other.currentPath) {
+					return true
+				}
 				if _, ok := seen[other.currentPath]; !ok {
 					candidates = append(candidates, other.currentPath)
 					seen[other.currentPath] = struct{}{}
@@ -288,7 +291,7 @@ func (fm *FileManager) buildDestinationCandidates() []string {
 	})
 
 	// Optionally include current path after other windows
-	if fm.currentPath != "" {
+	if fm.currentPath != "" && !fileinfo.IsArchivePath(fm.currentPath) {
 		if _, ok := seen[fm.currentPath]; !ok {
 			candidates = append(candidates, fm.currentPath)
 			seen[fm.currentPath] = struct{}{}
@@ -297,6 +300,9 @@ func (fm *FileManager) buildDestinationCandidates() []string {
 
 	// Append navigation history skipping dups
 	for _, p := range fm.config.GetNavigationHistory() {
+		if fileinfo.IsArchivePath(p) {
+			continue
+		}
 		if _, ok := seen[p]; ok {
 			continue
 		}

@@ -167,7 +167,7 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 			if previousPath != "" {
 				fm.currentPath = previousPath
 				fm.pathEntry.SetText(previousPath)
-				if fm.dirWatcher != nil {
+				if fm.dirWatcher != nil && fm.shouldWatchPath(previousPath) {
 					fm.dirWatcher.SetPollInterval(fm.pollIntervalForPath(previousPath))
 					fm.dirWatcher.Start()
 				}
@@ -226,7 +226,7 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 		if previousPath != "" && previousPath != path {
 			fm.config.AddToNavigationHistory(previousPath)
 			if err := fm.configManager.SaveAsync(fm.config); err != nil {
-					debugPrint("FileManager: Error saving navigation history: %v", err)
+				debugPrint("FileManager: Error saving navigation history: %v", err)
 			}
 		}
 
@@ -280,8 +280,8 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 			fm.cursorPath = ""
 		}
 
-		// Restart watcher with appropriate interval
-		if fm.dirWatcher != nil {
+		// Restart watcher with appropriate interval when the provider can be watched.
+		if fm.dirWatcher != nil && fm.shouldWatchPath(path) {
 			fm.dirWatcher.SetPollInterval(fm.pollIntervalForPath(path))
 			fm.dirWatcher.Start()
 		}
@@ -346,8 +346,19 @@ func (fm *FileManager) endBusy() {
 // pollIntervalForPath returns the recommended watcher polling interval for a path.
 // Remote (SMB) paths get a longer interval to reduce load/latency impact.
 func (fm *FileManager) pollIntervalForPath(p string) time.Duration {
+	if fileinfo.IsArchivePath(p) {
+		return 0
+	}
 	if strings.HasPrefix(strings.ToLower(p), "smb://") {
 		return 4 * time.Second
 	}
 	return 2 * time.Second
+}
+
+func (fm *FileManager) shouldWatchPath(p string) bool {
+	vfs, _, err := fileinfo.ResolveRead(p)
+	if err != nil {
+		return false
+	}
+	return vfs.Capabilities().Watch
 }

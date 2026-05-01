@@ -32,6 +32,8 @@ func debugPrint(format string, args ...interface{}) {
 }
 
 func main() {
+	fileinfo.CleanupOldArchiveOpenTemps()
+
 	// Parse command line flags
 	var startPath string
 	flag.BoolVar(&debugMode, "d", false, "Enable debug mode")

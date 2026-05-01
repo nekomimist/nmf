@@ -1,8 +1,6 @@
 package watcher
 
 import (
-	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -177,16 +175,7 @@ func (dw *DirectoryWatcher) checkForChanges(runID uint64, changeChan chan<- *Pen
 
 	// Build current file map
 	for _, entry := range entries {
-		fullPath := ""
-		if strings.HasPrefix(strings.ToLower(cur), "smb://") {
-			if strings.HasSuffix(cur, "/") {
-				fullPath = cur + entry.Name()
-			} else {
-				fullPath = cur + "/" + entry.Name()
-			}
-		} else {
-			fullPath = filepath.Join(cur, entry.Name())
-		}
+		fullPath := fileinfo.JoinPath(cur, entry.Name())
 		info, err := entry.Info()
 		if err != nil {
 			continue

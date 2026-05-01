@@ -13,8 +13,9 @@ import (
 type Scheme string
 
 const (
-	SchemeFile Scheme = "file"
-	SchemeSMB  Scheme = "smb"
+	SchemeFile    Scheme = "file"
+	SchemeSMB     Scheme = "smb"
+	SchemeArchive Scheme = "archive"
 )
 
 // Parsed contains a normalized view of an input path.
@@ -32,6 +33,8 @@ type Parsed struct {
 	User     string
 	Password string
 	Domain   string
+	Archive  string
+	Inner    string
 }
 
 // ResolveRead maps input into a VFS provider and native path for ReadDir.
@@ -41,6 +44,23 @@ func ResolveRead(input string) (VFS, Parsed, error) {
 	raw := strings.TrimSpace(input)
 	if raw == "" {
 		return LocalFS{}, Parsed{Raw: input, Scheme: SchemeFile, Display: input, Native: input, Provider: "local"}, nil
+	}
+
+	if archiveFile, inner, ok := SplitArchivePath(raw); ok {
+		vfs, err := NewArchiveVFS(archiveFile)
+		if err != nil {
+			return nil, Parsed{Raw: input, Scheme: SchemeArchive, Display: raw, Provider: "archive", Archive: archiveFile, Inner: inner}, err
+		}
+		native := archiveNativePath(inner)
+		return vfs, Parsed{
+			Scheme:   SchemeArchive,
+			Raw:      input,
+			Display:  ArchiveDisplayPath(archiveFile, inner),
+			Native:   native,
+			Provider: "archive",
+			Archive:  archiveFile,
+			Inner:    inner,
+		}, nil
 	}
 
 	// Windows: support UNC and smb://

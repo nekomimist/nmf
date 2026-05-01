@@ -13,10 +13,10 @@ var (
 	procShellExecW = shell32.NewProc("ShellExecuteW")
 )
 
-// OpenWithDefaultApp opens the given path with the OS-associated application.
+// openNativeWithDefaultApp opens the given native path with the OS-associated application.
 // On Windows, this uses ShellExecuteW with the "open" verb. If the path is an
 // smb:// display path, it is converted to UNC first.
-func OpenWithDefaultApp(p string) error {
+func openNativeWithDefaultApp(p string) error {
 	// Convert smb:// to UNC if necessary
 	native := NormalizeInputPath(p)
 

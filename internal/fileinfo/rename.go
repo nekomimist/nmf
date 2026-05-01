@@ -37,6 +37,9 @@ func RenamePortable(oldPath, newName string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if oldParsed.Scheme == SchemeArchive {
+		return "", fmt.Errorf("archive paths are read-only: %s", oldDisplay)
+	}
 	oldVFS, _, err := ResolveRead(oldPath)
 	if err != nil {
 		return "", err

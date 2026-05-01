@@ -446,6 +446,10 @@ func (fm *FileManager) OpenFile(file *fileinfo.FileInfo) {
 		fm.LoadDirectory(file.Path)
 		return
 	}
+	if fileinfo.IsSupportedArchive(file.Path) {
+		fm.LoadDirectory(fileinfo.ArchiveRootPath(file.Path))
+		return
+	}
 
 	// Regular file: try to open with associated application
 	if err := fileinfo.OpenWithDefaultApp(file.Path); err != nil {

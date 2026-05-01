@@ -7,9 +7,9 @@ import (
 	"os/exec"
 )
 
-// OpenWithDefaultApp opens the given path with the system default application.
+// openNativeWithDefaultApp opens the given native path with the system default application.
 // On Unix-like systems, try xdg-open (with basic fallbacks if unavailable).
-func OpenWithDefaultApp(p string) error {
+func openNativeWithDefaultApp(p string) error {
 	// Prefer local mount path for smb:// if available so non-GVFS apps still work.
 	target := p
 	if _, parsed, err := ResolveRead(p); err == nil {

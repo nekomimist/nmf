@@ -7,8 +7,10 @@ Two forms are used throughout the app:
 - Display/canonical path:
   - Local: absolute filesystem path
   - SMB: canonical `smb://host/share/...`
+  - Archive: `outer.zip!/inner/path`
 - Native/provider path:
   - OS/provider-specific path used for I/O (`Parsed.Native`)
+  - Archive: path inside the archive, rooted at `.`
 
 Resolver entrypoints:
 
@@ -16,6 +18,9 @@ Resolver entrypoints:
 - `ResolveDirectoryPath`: normalize + require directory semantics (SMB allowed without stat check).
 - `ResolveAccessibleDirectoryPath`: normalize + require accessible/stat'able directory.
 - `ResolveRead`: select provider and return parsed/native path.
+
+Archive paths are read-only. The root display path for an archive is
+`archive-file!/`; nested archive navigation is intentionally unsupported.
 
 ## Provider Selection Rules
 
@@ -70,6 +75,11 @@ Main-list Enter delegates to `fileinfo.OpenWithDefaultApp`.
   - `gvfs-open`
   - `gnome-open`
   - `kde-open`
+- Archive entries: extract the selected file to an `nmf-archive-open-*`
+  temporary directory, then delegate to the same platform opener.
+
+When Enter is pressed on a supported archive file, the UI navigates to
+`archive-file!/` instead of launching the archive externally.
 
 ## Jobs and SMB Execution Paths
 
@@ -77,11 +87,14 @@ Main-list Enter delegates to `fileinfo.OpenWithDefaultApp`.
 
 - local backend: standard `os`/`filepath` operations
 - SMB backend: provider-native operations (`SMBPathOps`), with per-job session reuse by share root
+- archive backend: read-only `ArchiveVFS` source operations
 
 Constraints:
 
 - If direct SMB provider capability is unavailable for a path that resolves to SMB backend, job execution fails with an explicit backend error.
 - Platform parity for direct SMB backend remains an active architecture item (see `docs/architecture-review.md`).
+- Archive paths can be copy sources. Archive destinations, move, rename, and
+  delete are rejected because archive mutation is out of scope.
 
 Delete behavior:
 

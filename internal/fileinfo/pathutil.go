@@ -15,6 +15,9 @@ func IsSMBDisplay(p string) bool {
 // - For smb:// display paths, it joins using forward slashes.
 // - Otherwise it uses filepath.Join.
 func JoinPath(base, name string) string {
+	if IsArchivePath(base) {
+		return archiveJoinPath(base, name)
+	}
 	if IsSMBDisplay(base) {
 		b := strings.TrimRight(base, "/")
 		return b + "/" + name
@@ -27,6 +30,9 @@ func JoinPath(base, name string) string {
 //     Root (smb://host/share) returns itself.
 //   - Otherwise it uses filepath.Dir.
 func ParentPath(p string) string {
+	if IsArchivePath(p) {
+		return archiveParentPath(p)
+	}
 	if !IsSMBDisplay(p) {
 		return filepath.Dir(p)
 	}
@@ -42,6 +48,9 @@ func ParentPath(p string) string {
 // BaseName returns the last path segment analogous to filepath.Base.
 // For smb:// paths, it uses URL-style segments.
 func BaseName(p string) string {
+	if IsArchivePath(p) {
+		return archiveBaseName(p)
+	}
 	if !IsSMBDisplay(p) {
 		return filepath.Base(p)
 	}

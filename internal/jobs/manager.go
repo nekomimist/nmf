@@ -377,6 +377,7 @@ type executionBackend int
 const (
 	backendLocal executionBackend = iota
 	backendSMB
+	backendArchive
 )
 
 type executionPath struct {
@@ -386,10 +387,12 @@ type executionPath struct {
 	smb            fileinfo.SMBPathOps
 	smbOpener      fileinfo.SMBSessionOpener
 	smbDisplayRoot string
+	archivePath    string
 }
 
 type executionContext struct {
 	smbSessions map[string]fileinfo.SMBSession
+	archiveVFSs map[string]*fileinfo.ArchiveVFS
 }
 
 func deletePermanentPath(j *Job, execCtx *executionContext, src string) error {
@@ -405,6 +408,8 @@ func deletePermanentPath(j *Job, execCtx *executionContext, src string) error {
 
 func validateDeleteTarget(p executionPath) error {
 	switch p.backend {
+	case backendArchive:
+		return fmt.Errorf("%w: archive paths are read-only", errUnsafeDeleteTarget)
 	case backendSMB:
 		clean := normalizeSMBExecutionPath(p.path)
 		if clean == "/" || clean == "." || clean == "" {
@@ -466,6 +471,7 @@ func deletePermanentResolved(j *Job, execCtx *executionContext, src executionPat
 func newExecutionContext() *executionContext {
 	return &executionContext{
 		smbSessions: make(map[string]fileinfo.SMBSession),
+		archiveVFSs: make(map[string]*fileinfo.ArchiveVFS),
 	}
 }
 
@@ -483,7 +489,31 @@ func (ctx *executionContext) close() error {
 		}
 	}
 	ctx.smbSessions = make(map[string]fileinfo.SMBSession)
+	for key, vfs := range ctx.archiveVFSs {
+		if err := vfs.Close(); err != nil {
+			closeErr = errors.Join(closeErr, fmt.Errorf("%s: %w", key, err))
+		}
+	}
+	ctx.archiveVFSs = make(map[string]*fileinfo.ArchiveVFS)
 	return closeErr
+}
+
+func (ctx *executionContext) archiveVFSFor(p executionPath) (*fileinfo.ArchiveVFS, error) {
+	if p.backend != backendArchive {
+		return nil, fmt.Errorf("path is not archive-backed: %s", p.displayPath())
+	}
+	if ctx == nil {
+		return fileinfo.NewArchiveVFS(p.archivePath)
+	}
+	if vfs, ok := ctx.archiveVFSs[p.archivePath]; ok && vfs != nil {
+		return vfs, nil
+	}
+	vfs, err := fileinfo.NewArchiveVFS(p.archivePath)
+	if err != nil {
+		return nil, err
+	}
+	ctx.archiveVFSs[p.archivePath] = vfs
+	return vfs, nil
 }
 
 func (ctx *executionContext) smbOpsFor(p executionPath) (fileinfo.SMBPathOps, error) {
@@ -515,6 +545,8 @@ func (ctx *executionContext) smbOpsFor(p executionPath) (fileinfo.SMBPathOps, er
 
 func (p executionPath) displayPath() string {
 	switch p.backend {
+	case backendArchive:
+		return fileinfo.ArchiveDisplayPath(p.archivePath, p.path)
 	case backendSMB:
 		root := p.smbDisplayRoot
 		if root == "" {
@@ -561,6 +593,13 @@ func copyOrMovePath(j *Job, src string, destDir string) error {
 }
 
 func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath, destDir executionPath) error {
+	if destDir.backend == backendArchive {
+		return wrapPath(destDir.displayPath(), errors.New("archive destinations are read-only"))
+	}
+	if j.Type == TypeMove && src.backend == backendArchive {
+		return wrapPath(src.displayPath(), errors.New("cannot move out of an archive; use copy instead"))
+	}
+
 	fi, err := lstatPath(execCtx, src)
 	if err != nil {
 		return wrapPath(src.displayPath(), err)
@@ -759,6 +798,9 @@ func sameExecutionPath(a, b executionPath) bool {
 	if a.backend != b.backend {
 		return false
 	}
+	if a.backend == backendArchive {
+		return a.archivePath == b.archivePath && normalizeSMBExecutionPath(a.path) == normalizeSMBExecutionPath(b.path)
+	}
 	if a.backend == backendSMB {
 		return normalizeSMBRoot(a.smbDisplayRoot) == normalizeSMBRoot(b.smbDisplayRoot) &&
 			normalizeSMBExecutionPath(a.path) == normalizeSMBExecutionPath(b.path)
@@ -842,6 +884,18 @@ func resolveExecutionPath(p string) (executionPath, error) {
 		native = p
 	}
 
+	if parsed.Scheme == fileinfo.SchemeArchive {
+		if native == "" {
+			native = "."
+		}
+		return executionPath{
+			raw:         p,
+			path:        native,
+			backend:     backendArchive,
+			archivePath: parsed.Archive,
+		}, nil
+	}
+
 	if parsed.Scheme == fileinfo.SchemeSMB && parsed.Provider != "local" {
 		smb, ok := vfs.(fileinfo.SMBPathOps)
 		if !ok {
@@ -873,6 +927,12 @@ func resolveExecutionPath(p string) (executionPath, error) {
 }
 
 func baseName(p executionPath) string {
+	if p.backend == backendArchive {
+		if p.path == "." {
+			return fileinfo.BaseName(p.archivePath)
+		}
+		return pathpkg.Base(p.path)
+	}
 	if p.backend == backendSMB {
 		return p.smb.Base(p.path)
 	}
@@ -881,7 +941,13 @@ func baseName(p executionPath) string {
 
 func joinPath(base executionPath, name string) executionPath {
 	out := base
-	if base.backend == backendSMB {
+	if base.backend == backendArchive {
+		if base.path == "." {
+			out.path = pathpkg.Clean(name)
+		} else {
+			out.path = pathpkg.Join(base.path, name)
+		}
+	} else if base.backend == backendSMB {
 		out.path = base.smb.Join(base.path, name)
 	} else {
 		out.path = filepath.Join(base.path, name)
@@ -892,6 +958,15 @@ func joinPath(base executionPath, name string) executionPath {
 
 func dirPath(p executionPath) executionPath {
 	out := p
+	if p.backend == backendArchive {
+		parent := pathpkg.Dir(strings.TrimPrefix(p.path, "/"))
+		if parent == "." || parent == "/" {
+			parent = "."
+		}
+		out.path = parent
+		out.raw = out.path
+		return out
+	}
 	if p.backend == backendSMB {
 		clean := strings.ReplaceAll(p.path, "\\", "/")
 		parent := pathpkg.Dir(clean)
@@ -908,6 +983,13 @@ func dirPath(p executionPath) executionPath {
 }
 
 func lstatPath(execCtx *executionContext, p executionPath) (os.FileInfo, error) {
+	if p.backend == backendArchive {
+		vfs, err := execCtx.archiveVFSFor(p)
+		if err != nil {
+			return nil, err
+		}
+		return vfs.Stat(p.path)
+	}
 	if p.backend == backendSMB {
 		ops, err := execCtx.smbOpsFor(p)
 		if err != nil {
@@ -919,6 +1001,13 @@ func lstatPath(execCtx *executionContext, p executionPath) (os.FileInfo, error) 
 }
 
 func readDir(execCtx *executionContext, p executionPath) ([]os.DirEntry, error) {
+	if p.backend == backendArchive {
+		vfs, err := execCtx.archiveVFSFor(p)
+		if err != nil {
+			return nil, err
+		}
+		return vfs.ReadDir(p.path)
+	}
 	if p.backend == backendSMB {
 		ops, err := execCtx.smbOpsFor(p)
 		if err != nil {
@@ -930,22 +1019,32 @@ func readDir(execCtx *executionContext, p executionPath) ([]os.DirEntry, error) 
 }
 
 func ensureDir(execCtx *executionContext, p executionPath, mode os.FileMode) error {
+	if p.backend == backendArchive {
+		return errors.New("archive paths are read-only")
+	}
+	perm := mode.Perm()
+	if perm == 0 {
+		perm = 0755
+	}
 	if p.backend == backendSMB {
 		ops, err := execCtx.smbOpsFor(p)
 		if err != nil {
 			return err
 		}
-		return ops.MkdirAll(p.path, 0755)
+		return ops.MkdirAll(p.path, perm)
 	}
-	if err := os.MkdirAll(p.path, 0755); err != nil {
+	if err := os.MkdirAll(p.path, perm); err != nil {
 		return err
 	}
 	// best-effort to set mode
-	_ = os.Chmod(p.path, mode.Perm())
+	_ = os.Chmod(p.path, perm)
 	return nil
 }
 
 func removePath(execCtx *executionContext, p executionPath) error {
+	if p.backend == backendArchive {
+		return errors.New("archive paths are read-only")
+	}
 	if p.backend == backendSMB {
 		ops, err := execCtx.smbOpsFor(p)
 		if err != nil {
@@ -957,6 +1056,9 @@ func removePath(execCtx *executionContext, p executionPath) error {
 }
 
 func readlinkPath(execCtx *executionContext, p executionPath) (string, error) {
+	if p.backend == backendArchive {
+		return "", errors.New("archive symlink targets are not supported")
+	}
 	if p.backend == backendSMB {
 		ops, err := execCtx.smbOpsFor(p)
 		if err != nil {
@@ -968,6 +1070,9 @@ func readlinkPath(execCtx *executionContext, p executionPath) (string, error) {
 }
 
 func symlinkPath(execCtx *executionContext, target string, link executionPath) error {
+	if link.backend == backendArchive {
+		return errors.New("archive paths are read-only")
+	}
 	if link.backend == backendSMB {
 		ops, err := execCtx.smbOpsFor(link)
 		if err != nil {
@@ -979,6 +1084,13 @@ func symlinkPath(execCtx *executionContext, target string, link executionPath) e
 }
 
 func openReadPath(execCtx *executionContext, p executionPath) (io.ReadCloser, error) {
+	if p.backend == backendArchive {
+		vfs, err := execCtx.archiveVFSFor(p)
+		if err != nil {
+			return nil, err
+		}
+		return vfs.Open(p.path)
+	}
 	if p.backend == backendSMB {
 		ops, err := execCtx.smbOpsFor(p)
 		if err != nil {
@@ -990,6 +1102,13 @@ func openReadPath(execCtx *executionContext, p executionPath) (io.ReadCloser, er
 }
 
 func openWritePath(execCtx *executionContext, p executionPath, mode os.FileMode) (io.ReadWriteCloser, error) {
+	if p.backend == backendArchive {
+		return nil, errors.New("archive paths are read-only")
+	}
+	perm := mode.Perm()
+	if perm == 0 {
+		perm = 0666
+	}
 	if p.backend == backendSMB {
 		// SMB create attributes can map mode bits differently than local fs.
 		// Use a writable default for temp output, then rely on replace semantics.
@@ -999,10 +1118,13 @@ func openWritePath(execCtx *executionContext, p executionPath, mode os.FileMode)
 		}
 		return ops.OpenFile(p.path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
 	}
-	return os.OpenFile(p.path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode.Perm())
+	return os.OpenFile(p.path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
 }
 
 func replacePath(execCtx *executionContext, tmp executionPath, dst executionPath) error {
+	if dst.backend == backendArchive {
+		return errors.New("archive paths are read-only")
+	}
 	if dst.backend == backendSMB {
 		ops, err := execCtx.smbOpsFor(dst)
 		if err != nil {
