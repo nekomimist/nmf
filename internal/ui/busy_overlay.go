@@ -54,7 +54,6 @@ func NewBusyOverlay() *BusyOverlay {
 
 	lbl := widget.NewLabel("Working...")
 	lbl.Alignment = fyne.TextAlignCenter
-	lbl.Importance = widget.HighImportance
 
 	// Semi-transparent backdrop
 	bg := canvas.NewRectangle(color.NRGBA{R: 0, G: 0, B: 0, A: 96})
