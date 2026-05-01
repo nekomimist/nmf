@@ -79,7 +79,8 @@ func main() {
 		log.Fatalf("Error loading configuration: %v", err)
 	}
 
-	app := app.New()
+	app := app.NewWithID(appID)
+	app.SetIcon(appIconResource)
 
 	// Apply custom theme
 	customTheme := customtheme.NewCustomTheme(config, debugPrint)
