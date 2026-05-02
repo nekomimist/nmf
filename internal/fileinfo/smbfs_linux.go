@@ -363,6 +363,27 @@ func (s SMBFS) Stat(relPath string) (os.FileInfo, error) {
 	return fi, nil
 }
 
+// StorageInfo returns capacity information for the SMB share.
+func (s SMBFS) StorageInfo(relPath string) (StorageInfo, error) {
+	share, sess, conn, _, err := s.dialAndMount(relPath)
+	if err != nil {
+		return StorageInfo{}, err
+	}
+	defer func() {
+		_ = closeSMBSession(nil, share, sess, conn)
+	}()
+
+	info, err := share.Statfs(normalizeSMBPathForStat(relPath))
+	if err != nil {
+		if isAuthError(err) {
+			ClearCachedCredentials(s.host, s.share)
+		}
+		return StorageInfo{}, err
+	}
+	blockSize := info.BlockSize() * info.FragmentSize()
+	return storageInfoFromBlocks(info.TotalBlockCount(), info.AvailableBlockCount(), blockSize), nil
+}
+
 // Lstat returns file info without following symlinks.
 func (s SMBFS) Lstat(relPath string) (os.FileInfo, error) {
 	share, sess, conn, _, err := s.dialAndMount(relPath)

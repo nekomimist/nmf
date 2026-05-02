@@ -26,9 +26,12 @@ type FileManager struct {
 	fileList       *widget.List
 	fileListView   *ui.KeySink
 	pathEntry      *ui.TabEntry
+	statusLabel    *widget.Label
 	cursorPath     string          // Current cursor file path
 	cursorAnchor   cursorRowAnchor // Last visible row object for shell menu positioning
 	selectedFiles  map[string]bool // Set of selected file paths
+	storageInfo    fileinfo.StorageInfo
+	storageKnown   bool
 	fileBinding    binding.UntypedList
 	config         *config.Config
 	configManager  *config.Manager
@@ -106,6 +109,7 @@ func (fm *FileManager) UpdateFiles(files []fileinfo.FileInfo) {
 
 	// Explicitly refresh on file deletions or modifications, since Fyne only auto-updates on additions.
 	fm.fileList.Refresh()
+	fm.updateStatusBar()
 }
 
 func (fm *FileManager) RemoveFromSelections(path string) {

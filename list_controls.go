@@ -55,11 +55,13 @@ func (fm *FileManager) GetSelectedFiles() map[string]bool {
 // SetFileSelected sets the selection state of a file.
 func (fm *FileManager) SetFileSelected(path string, selected bool) {
 	fm.selectedFiles[path] = selected
+	fm.updateStatusBar()
 }
 
 // RefreshFileList refreshes the file list display.
 func (fm *FileManager) RefreshFileList() {
 	fm.fileList.Refresh()
+	fm.updateStatusBar()
 }
 
 // ShowFilterDialog displays the file filter dialog.
@@ -125,6 +127,7 @@ func (fm *FileManager) ApplyFilter(entry *config.FilterEntry) {
 		}
 	}
 	fm.fileBinding.Set(items)
+	fm.updateStatusBar()
 
 	// Reset cursor to first item if available
 	if len(fm.files) > 0 {
@@ -153,6 +156,7 @@ func (fm *FileManager) ClearFilter() {
 			}
 		}
 		fm.fileBinding.Set(items)
+		fm.updateStatusBar()
 	}
 
 	debugPrint("FileManager: Filter completely cleared, showing all %d files", len(fm.files))
@@ -185,6 +189,7 @@ func (fm *FileManager) DisableFilter() {
 			}
 		}
 		fm.fileBinding.Set(items)
+		fm.updateStatusBar()
 	}
 
 	debugPrint("FileManager: Filter disabled, showing all %d files", len(fm.files))

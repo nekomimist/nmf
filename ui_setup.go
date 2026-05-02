@@ -26,6 +26,8 @@ func (fm *FileManager) setupUI() {
 	fm.pathEntry.OnSubmitted = func(path string) {
 		fm.navigateToPath(path)
 	}
+	fm.statusLabel = widget.NewLabel("")
+	fm.statusLabel.TextStyle = fyne.TextStyle{Monospace: true}
 
 	// Create file list
 	fm.fileList = widget.NewListWithData(
@@ -236,7 +238,7 @@ func (fm *FileManager) setupUI() {
 	// Subscribe to job updates to update indicator
 	fm.jobsUnsub = jobs.GetManager().Subscribe(func() { fyne.Do(fm.onJobsUpdated) })
 	mainContent := container.NewBorder(
-		container.NewVBox(toolbarRow, fm.pathEntry),
+		container.NewVBox(toolbarRow, fm.pathEntry, fm.statusLabel),
 		nil, nil, nil,
 		fm.fileListView,
 	)

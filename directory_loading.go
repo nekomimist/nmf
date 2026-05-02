@@ -178,6 +178,10 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 
 	// Build file list off the UI thread
 	files := make([]fileinfo.FileInfo, 0, len(entries)+1)
+	storage, storageErr := fileinfo.StatStoragePortable(path)
+	if storageErr != nil {
+		debugPrint("FileManager: Storage info unavailable for %s: %v", path, storageErr)
+	}
 
 	// Add parent directory entry if not at root
 	parent := fileinfo.ParentPath(path)
@@ -233,6 +237,10 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 		fm.currentPath = path
 		fm.pathEntry.SetText(path)
 		fm.files = files
+		fm.originalFiles = make([]fileinfo.FileInfo, len(files))
+		copy(fm.originalFiles, files)
+		fm.storageInfo = storage
+		fm.storageKnown = storageErr == nil
 
 		// Sort and build items
 		fm.sortFiles()
@@ -279,6 +287,7 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 		} else {
 			fm.cursorPath = ""
 		}
+		fm.updateStatusBar()
 
 		// Restart watcher with appropriate interval when the provider can be watched.
 		if fm.dirWatcher != nil && fm.shouldWatchPath(path) {
