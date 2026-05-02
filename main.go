@@ -51,7 +51,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error getting current directory: %v", err)
 		}
-		startPath = pwd
+		resolvedStartPath, _, err := resolveDirectoryPath(pwd)
+		if err != nil {
+			log.Fatalf("Error accessing current directory '%s': %v", pwd, err)
+		}
+		startPath = resolvedStartPath
 	} else {
 		if strings.HasPrefix(startPath, "~") {
 			home, err := os.UserHomeDir()
