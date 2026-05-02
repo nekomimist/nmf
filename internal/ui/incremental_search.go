@@ -30,7 +30,6 @@ type IncrementalSearchOverlay struct {
 	allFiles       []fileinfo.FileInfo                   // All files in current directory
 	parent         fyne.Window                           // Parent window for positioning
 	closed         bool                                  // Prevent double-close
-	initialState   bool                                  // True when in initial state (no input yet)
 }
 
 // NewIncrementalSearchOverlay creates a new incremental search overlay
@@ -47,7 +46,6 @@ func NewIncrementalSearchOverlay(
 		debugPrint:   debugPrint,
 		keyManager:   keyManager,
 		visible:      false,
-		initialState: true, // Start in initial state
 	}
 
 	overlay.createWidgets()
@@ -122,7 +120,6 @@ func (iso *IncrementalSearchOverlay) Show(parent fyne.Window) {
 	iso.closed = false
 	iso.searchTerm = ""
 	iso.currentMatch = -1
-	iso.initialState = true // Reset to initial state
 
 	// Update files list
 	iso.updateSearch()
@@ -170,7 +167,6 @@ func (iso *IncrementalSearchOverlay) AddCharacter(char rune) {
 		return
 	}
 
-	iso.initialState = false // No longer in initial state
 	iso.searchTerm += string(char)
 	iso.updateSearch()
 	iso.debugPrint("IncrementalSearchOverlay: Added char '%c', term: '%s'", char, iso.searchTerm)
@@ -250,11 +246,7 @@ func (iso *IncrementalSearchOverlay) IsVisible() bool {
 func (iso *IncrementalSearchOverlay) updateSearch() {
 	iso.matchedFiles = iso.matchedFiles[:0] // Clear slice but keep capacity
 
-	if iso.initialState {
-		// In initial state, don't populate matchedFiles yet
-		// This ensures the initial message is shown
-		iso.currentMatch = -1
-	} else if iso.searchTerm == "" {
+	if iso.searchTerm == "" {
 		// User deleted all characters - show all files
 		iso.matchedFiles = append(iso.matchedFiles, iso.allFiles...)
 		if len(iso.matchedFiles) > 0 {
@@ -284,20 +276,16 @@ func (iso *IncrementalSearchOverlay) updateSearch() {
 
 // updateDisplay updates the overlay display with current search state
 func (iso *IncrementalSearchOverlay) updateDisplay() {
-	if iso.initialState {
-		// Show initial message when first activated
-		iso.searchLabel.SetText("🔍 Incremental Search - Type to search files (↑↓: navigate, Enter: select, Esc: cancel)")
-	} else if len(iso.matchedFiles) == 0 {
+	if len(iso.matchedFiles) == 0 {
 		if iso.searchTerm == "" {
-			// User deleted all search terms - this shouldn't happen with current logic, but just in case
-			iso.searchLabel.SetText("🔍 Incremental Search - Type to search files")
+			iso.searchLabel.SetText("🔍 Type to narrow down")
 		} else {
 			iso.searchLabel.SetText(fmt.Sprintf("🔍 Search: %s (no matches found)", iso.searchTerm))
 		}
 	} else {
 		matchInfo := fmt.Sprintf("[%d/%d]", iso.currentMatch+1, len(iso.matchedFiles))
 		if iso.searchTerm == "" {
-			iso.searchLabel.SetText(fmt.Sprintf("🔍 Incremental Search %s - Type to narrow down", matchInfo))
+			iso.searchLabel.SetText(fmt.Sprintf("🔍 Type to narrow down %s", matchInfo))
 		} else {
 			currentFileName := ""
 			if iso.currentMatch >= 0 && iso.currentMatch < len(iso.matchedFiles) {
