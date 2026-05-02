@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver/desktop"
 
+	"nmf/internal/config"
 	"nmf/internal/fileinfo"
 )
 
@@ -163,6 +164,7 @@ type mainScreenFakeFileManager struct {
 	showRenameCount        int
 	showDeleteCount        int
 	showExplorerMenuCount  int
+	showExternalMenuCount  int
 	deletePermanent        bool
 }
 
@@ -199,6 +201,7 @@ func (f *mainScreenFakeFileManager) ShowDeleteDialog(permanent bool) {
 	f.deletePermanent = permanent
 }
 func (f *mainScreenFakeFileManager) ShowExplorerContextMenu() { f.showExplorerMenuCount++ }
+func (f *mainScreenFakeFileManager) ShowExternalCommandMenu() { f.showExternalMenuCount++ }
 
 func TestMainScreenShiftJShowsDirectoryJumpDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
@@ -333,5 +336,38 @@ func TestMainScreenShiftDeleteShowsPermanentDeleteDialog(t *testing.T) {
 	}
 	if !fm.deletePermanent {
 		t.Fatal("Shift+Delete should request permanent delete")
+	}
+}
+
+func TestMainScreenXShowsExternalCommandMenu(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{})
+
+	if !handled {
+		t.Fatal("X should be handled")
+	}
+	if fm.showExternalMenuCount != 1 {
+		t.Fatalf("ShowExternalCommandMenu count = %d, want 1", fm.showExternalMenuCount)
+	}
+}
+
+func TestMainScreenConfiguredBindingOverridesDefault(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+		{Key: "X", Command: CommandJobsShow},
+	})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{})
+
+	if !handled {
+		t.Fatal("configured X should be handled")
+	}
+	if fm.showJobsCount != 1 {
+		t.Fatalf("ShowJobsDialog count = %d, want 1", fm.showJobsCount)
+	}
+	if fm.showExternalMenuCount != 0 {
+		t.Fatalf("ShowExternalCommandMenu count = %d, want 0", fm.showExternalMenuCount)
 	}
 }

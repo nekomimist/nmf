@@ -12,6 +12,8 @@ Core model:
 
 - `KeyManager` maintains a stack of handlers.
 - Active handler is the top of stack.
+- The main-screen handler maps key events to stable internal command IDs before
+  executing file-manager behavior.
 - Events routed by type:
   - `OnKeyDown`
   - `OnKeyUp`
@@ -19,6 +21,16 @@ Core model:
   - `OnTypedRune`
 
 Modifier keys (`Shift`, `Ctrl`, `Alt`) are tracked centrally in `KeyManager` and passed to handlers.
+
+Main-screen configurable bindings:
+
+- Configured under `ui.keyBindings` in `config.json`.
+- Key specs support forms such as `^N`, `S-J`, `C-S-F`, `A-X`, `F2`, `Return`,
+  and `Delete`.
+- Optional event values are `typed`, `down`, and `up`. When omitted, modifier
+  bindings default to `down`; unmodified bindings default to `typed`.
+- User bindings are evaluated before built-in defaults, so a configured binding
+  for the same key/event overrides the default behavior.
 
 ## Focus Ownership Rules
 

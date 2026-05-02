@@ -62,6 +62,13 @@ Top-level config sections:
   - `navigationHistory`
   - `fileFilter`
   - `directoryJumps`
+  - `keyBindings`
+  - `externalCommands`
+
+Main-screen keyboard shortcuts are resolved through the key manager command
+registry. Configured `keyBindings` map key specifications such as `^N`,
+`S-J`, or `F2` to stable internal command IDs. `externalCommands` define the
+commands shown from the main-screen external command menu.
 
 Operational notes:
 

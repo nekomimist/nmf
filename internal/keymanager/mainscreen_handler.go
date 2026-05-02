@@ -5,348 +5,352 @@ import (
 
 	"fyne.io/fyne/v2"
 
+	"nmf/internal/config"
 	"nmf/internal/fileinfo"
 )
 
-// FileManagerInterface defines the interface needed by MainScreenKeyHandler
+const (
+	CommandCursorUp            = "cursor.up"
+	CommandCursorDown          = "cursor.down"
+	CommandCursorFirst         = "cursor.first"
+	CommandCursorLast          = "cursor.last"
+	CommandOpen                = "open"
+	CommandSelectToggle        = "selection.toggle"
+	CommandParentDirectory     = "directory.parent"
+	CommandRefresh             = "directory.refresh"
+	CommandHome                = "directory.home"
+	CommandWindowNew           = "window.new"
+	CommandTreeShow            = "tree.show"
+	CommandHistoryShow         = "history.show"
+	CommandDirectoryJumpShow   = "directoryJump.show"
+	CommandFilterShow          = "filter.show"
+	CommandFilterClear         = "filter.clear"
+	CommandFilterToggle        = "filter.toggle"
+	CommandSearchShow          = "search.show"
+	CommandSortShow            = "sort.show"
+	CommandJobsShow            = "jobs.show"
+	CommandPathFocus           = "path.focus"
+	CommandQuit                = "app.quit"
+	CommandCopyShow            = "copy.show"
+	CommandMoveShow            = "move.show"
+	CommandRenameShow          = "rename.show"
+	CommandDeleteTrash         = "delete.trash"
+	CommandDeletePermanent     = "delete.permanent"
+	CommandExplorerContextShow = "explorerContext.show"
+	CommandExternalCommandMenu = "externalCommand.menu"
+)
+
+// FileManagerInterface defines the interface needed by MainScreenKeyHandler.
 type FileManagerInterface interface {
-	// Cursor management
 	GetCurrentCursorIndex() int
 	SetCursorByIndex(index int)
 	RefreshCursor()
 
-	// Directory navigation
 	LoadDirectory(path string)
 	GetCurrentPath() string
-	GetFiles() []fileinfo.FileInfo // Returns file list
+	GetFiles() []fileinfo.FileInfo
 
-	// Selection management
 	GetSelectedFiles() map[string]bool
 	SetFileSelected(path string, selected bool)
 	RefreshFileList()
 
-	// State management
 	SaveCursorPosition(dirPath string)
 
-	// Window management
 	OpenNewWindow()
 	ShowDirectoryTreeDialog()
 	ShowNavigationHistoryDialog()
 	ShowDirectoryJumpDialog()
 
-	// Filter management
 	ShowFilterDialog()
 	ClearFilter()
 	ToggleFilter()
 
-	// Incremental search management
 	ShowIncrementalSearchDialog()
-
-	// Sort management
 	ShowSortDialog()
-
-	// Jobs dialog
 	ShowJobsDialog()
-
-	// Path entry focus
 	FocusPathEntry()
-
-	// Application quit
 	QuitApplication()
 
-	// File operations
 	OpenFile(file *fileinfo.FileInfo)
-
-	// Copy/Move UI
 	ShowCopyDialog()
 	ShowMoveDialog()
 	ShowRenameDialog()
 	ShowDeleteDialog(permanent bool)
 	ShowExplorerContextMenu()
+	ShowExternalCommandMenu()
 }
 
-// MainScreenKeyHandler handles keyboard events for the main file list screen
+// MainScreenKeyHandler handles keyboard events for the main file list screen.
 type MainScreenKeyHandler struct {
 	fileManager FileManagerInterface
 	debugPrint  func(format string, args ...interface{})
+	commands    CommandRegistry
+	bindings    []keyBinding
 }
 
-// NewMainScreenKeyHandler creates a new main screen key handler
-func NewMainScreenKeyHandler(fm FileManagerInterface, debugPrint func(format string, args ...interface{})) *MainScreenKeyHandler {
-	return &MainScreenKeyHandler{
+// NewMainScreenKeyHandler creates a new main screen key handler.
+func NewMainScreenKeyHandler(fm FileManagerInterface, debugPrint func(format string, args ...interface{}), configuredBindings ...[]config.KeyBindingEntry) *MainScreenKeyHandler {
+	mh := &MainScreenKeyHandler{
 		fileManager: fm,
 		debugPrint:  debugPrint,
 	}
+	mh.commands = mh.defaultCommands()
+
+	var cfg []config.KeyBindingEntry
+	if len(configuredBindings) > 0 {
+		cfg = configuredBindings[0]
+	}
+	mh.bindings = mh.buildBindings(cfg)
+	return mh
 }
 
-// GetName returns the name of this handler
-func (mh *MainScreenKeyHandler) GetName() string {
-	return "MainScreen"
-}
+func (mh *MainScreenKeyHandler) GetName() string { return "MainScreen" }
 
-// OnKeyDown handles key press events
 func (mh *MainScreenKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	switch ev.Name {
-	case fyne.KeyN:
-		// Ctrl+N - Open new window
-		if modifiers.CtrlPressed {
-			mh.fileManager.OpenNewWindow()
-			return true
-		}
-
-	case fyne.KeyT:
-		// Ctrl+T - Show directory tree dialog
-		if modifiers.CtrlPressed {
-			mh.fileManager.ShowDirectoryTreeDialog()
-			return true
-		}
-
-	case fyne.KeyH:
-		// Ctrl+H - Show navigation history dialog
-		if modifiers.CtrlPressed {
-			mh.fileManager.ShowNavigationHistoryDialog()
-			return true
-		}
-
-	case fyne.KeyF:
-		if modifiers.CtrlPressed && !modifiers.ShiftPressed {
-			// Ctrl+F - Show filter dialog
-			mh.debugPrint("MainScreen: Ctrl+F detected - showing filter dialog")
-			mh.fileManager.ShowFilterDialog()
-		} else if modifiers.CtrlPressed && modifiers.ShiftPressed {
-			// Ctrl+Shift+F - Clear filter
-			mh.debugPrint("MainScreen: Ctrl+Shift+F detected - clearing filter")
-			mh.fileManager.ClearFilter()
-		}
-		return true
-
-	case fyne.KeyS:
-		// Ctrl+S - Show incremental search
-		if modifiers.CtrlPressed {
-			mh.debugPrint("MainScreen: Ctrl+S detected - showing incremental search")
-			mh.fileManager.ShowIncrementalSearchDialog()
-			return true
-		}
-		// Shift+S - Show sort dialog
-		if modifiers.ShiftPressed {
-			mh.debugPrint("MainScreen: Shift+S detected - showing sort dialog")
-			mh.fileManager.ShowSortDialog()
-			return true
-		}
-
-	case fyne.KeyL:
-		// Ctrl+L - Focus path entry
-		if modifiers.CtrlPressed {
-			mh.debugPrint("MainScreen: Ctrl+L detected - focusing path entry")
-			mh.fileManager.FocusPathEntry()
-			return true
-		}
-	case fyne.KeyJ:
-		// Ctrl+J - Show jobs dialog
-		if modifiers.CtrlPressed {
-			mh.debugPrint("MainScreen: Ctrl+J detected - showing jobs dialog")
-			mh.fileManager.ShowJobsDialog()
-			return true
-		}
-		// Shift+J - Show configured directory jump dialog
-		if modifiers.ShiftPressed {
-			mh.debugPrint("MainScreen: Shift+J detected - showing directory jump dialog")
-			mh.fileManager.ShowDirectoryJumpDialog()
-			return true
-		}
-	case fyne.KeyDelete:
-		if !modifiers.CtrlPressed {
-			mh.debugPrint("MainScreen: Delete detected permanent=%t", modifiers.ShiftPressed)
-			mh.fileManager.ShowDeleteDialog(modifiers.ShiftPressed)
-		}
-		return true
-
-	}
-	return false
+	return mh.executeBinding(keyEventDown, ev, modifiers)
 }
 
-// OnKeyUp handles key release events
 func (mh *MainScreenKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	if ev.Name == fyne.KeyR && !modifiers.CtrlPressed && !modifiers.ShiftPressed {
-		mh.debugPrint("MainScreen: R released - show rename dialog")
-		mh.fileManager.ShowRenameDialog()
-		return true
-	}
-	return false
+	return mh.executeBinding(keyEventUp, ev, modifiers)
 }
 
-// OnTypedKey handles typed key events
 func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	switch ev.Name {
-	case fyne.KeyUp:
-		currentIdx := mh.fileManager.GetCurrentCursorIndex()
-		if modifiers.ShiftPressed {
-			// Move up 20 items or to the beginning
-			mh.debugPrint("MainScreen: Shift+Up detected!")
-			newIdx := currentIdx - 20
-			if newIdx < 0 {
-				newIdx = 0
-			}
-			mh.fileManager.SetCursorByIndex(newIdx)
-			mh.fileManager.RefreshCursor()
-		} else {
-			if currentIdx > 0 {
-				mh.fileManager.SetCursorByIndex(currentIdx - 1)
-				mh.fileManager.RefreshCursor()
-			}
-		}
+	if mh.executeBinding(keyEventTyped, ev, modifiers) {
 		return true
-
-	case fyne.KeyDown:
-		currentIdx := mh.fileManager.GetCurrentCursorIndex()
-		files := mh.fileManager.GetFiles()
-		if modifiers.ShiftPressed {
-			// Move down 20 items or to the end
-			mh.debugPrint("MainScreen: Shift+Down detected!")
-			newIdx := currentIdx + 20
-			if newIdx >= len(files) {
-				newIdx = len(files) - 1
-			}
-			mh.fileManager.SetCursorByIndex(newIdx)
-			mh.fileManager.RefreshCursor()
-		} else {
-			if currentIdx < len(files)-1 {
-				mh.fileManager.SetCursorByIndex(currentIdx + 1)
-				mh.fileManager.RefreshCursor()
-			}
-		}
-		return true
-
-	case fyne.KeyReturn:
-		currentIdx := mh.fileManager.GetCurrentCursorIndex()
-		files := mh.fileManager.GetFiles()
-		if currentIdx >= 0 && currentIdx < len(files) {
-			fileInfo := files[currentIdx]
-			mh.fileManager.OpenFile(&fileInfo)
-		}
-		return true
-
-	case fyne.KeyF2:
-		if !modifiers.CtrlPressed && !modifiers.ShiftPressed {
-			mh.debugPrint("MainScreen: F2 detected - show rename dialog")
-			mh.fileManager.ShowRenameDialog()
-		}
-		return true
-
-	case fyne.KeyTab:
-		if !modifiers.CtrlPressed && !modifiers.ShiftPressed {
-			mh.debugPrint("MainScreen: Tab detected - show Explorer context menu")
-			mh.fileManager.ShowExplorerContextMenu()
-		}
-		return true
-
-	case fyne.KeySpace:
-		currentIdx := mh.fileManager.GetCurrentCursorIndex()
-		files := mh.fileManager.GetFiles()
-		if currentIdx >= 0 && currentIdx < len(files) {
-			fileInfo := files[currentIdx]
-			// Don't allow selection of parent directory entry or deleted files
-			if fileInfo.Name != ".." && fileInfo.Status != fileinfo.StatusDeleted {
-				// Toggle selection state of current cursor item
-				selectedFiles := mh.fileManager.GetSelectedFiles()
-				mh.fileManager.SetFileSelected(fileInfo.Path, !selectedFiles[fileInfo.Path])
-				mh.fileManager.RefreshFileList()
-
-				// Move cursor to next file (same as Down key without Shift)
-				if currentIdx < len(files)-1 {
-					mh.fileManager.SetCursorByIndex(currentIdx + 1)
-					mh.fileManager.RefreshCursor()
-				}
-			}
-		}
-		return true
-
-	case fyne.KeyBackspace:
-		parent := fileinfo.ParentPath(mh.fileManager.GetCurrentPath())
-		if parent != mh.fileManager.GetCurrentPath() {
-			mh.fileManager.LoadDirectory(parent)
-		}
-		return true
-
-	case fyne.KeyComma:
-		// Shift+Comma = '<' - Move to first item
-		if modifiers.ShiftPressed {
-			files := mh.fileManager.GetFiles()
-			if len(files) > 0 {
-				mh.fileManager.SetCursorByIndex(0)
-				mh.fileManager.RefreshCursor()
-			}
-		}
-		return true
-
-	case fyne.KeyPeriod:
-		if modifiers.ShiftPressed {
-			// Shift+Period = '>' - Move to last item
-			files := mh.fileManager.GetFiles()
-			if len(files) > 0 {
-				mh.fileManager.SetCursorByIndex(len(files) - 1)
-				mh.fileManager.RefreshCursor()
-			}
-		} else {
-			// Period key - Refresh current directory
-			// Save current cursor position before refresh
-			mh.fileManager.SaveCursorPosition(mh.fileManager.GetCurrentPath())
-			mh.fileManager.LoadDirectory(mh.fileManager.GetCurrentPath())
-		}
-		return true
-
-	case fyne.KeyBackTick:
-		// Shift+` - Navigate to home directory
-		if modifiers.ShiftPressed {
-			homeDir, err := os.UserHomeDir()
-			if err != nil {
-				mh.debugPrint("MainScreen: Failed to get home directory: %v", err)
-			} else {
-				mh.fileManager.LoadDirectory(homeDir)
-			}
-		}
-		return true
-
-	case fyne.KeyF3:
-		// F3 - Toggle filter
-		mh.debugPrint("MainScreen: F3 detected")
-		if !modifiers.CtrlPressed && !modifiers.ShiftPressed {
-			mh.debugPrint("MainScreen: F3 detected - toggling filter")
-			mh.fileManager.ToggleFilter()
-		}
-		return true
-
-	case fyne.KeyQ:
-		// Q - Quit application (main screen only)
-		if !modifiers.CtrlPressed && !modifiers.ShiftPressed {
-			mh.debugPrint("MainScreen: Q detected - quit application")
-			mh.fileManager.QuitApplication()
-		}
-		return true
-
-	case fyne.KeyC:
-		// C - Open copy dialog (no modifiers)
-		if !modifiers.CtrlPressed && !modifiers.ShiftPressed {
-			mh.debugPrint("MainScreen: C detected - show copy dialog")
-			mh.fileManager.ShowCopyDialog()
-		}
-		return true
-
-	case fyne.KeyM:
-		// M - Open move dialog (no modifiers)
-		if !modifiers.CtrlPressed && !modifiers.ShiftPressed {
-			mh.debugPrint("MainScreen: M detected - show move dialog")
-			mh.fileManager.ShowMoveDialog()
-		}
-		return true
-
 	}
+	return ev != nil && ev.Name == fyne.KeyTab
+}
 
+func (mh *MainScreenKeyHandler) OnTypedRune(r rune, modifiers ModifierState) bool {
 	return false
 }
 
-// OnTypedRune handles text input (not used on main screen)
-func (mh *MainScreenKeyHandler) OnTypedRune(r rune, modifiers ModifierState) bool {
-	// Main screen doesn't consume text input directly
+func (mh *MainScreenKeyHandler) executeBinding(event string, ev *fyne.KeyEvent, modifiers ModifierState) bool {
+	for _, binding := range mh.bindings {
+		if binding.event != event || !binding.matches(ev, modifiers) {
+			continue
+		}
+		command, ok := mh.commands[binding.command]
+		if !ok {
+			mh.debugPrint("MainScreen: unknown command=%s key=%s", binding.command, ev.Name)
+			return true
+		}
+		mh.debugPrint("MainScreen: command=%s key=%s event=%s", binding.command, ev.Name, event)
+		command(CommandContext{Modifiers: modifiers})
+		return true
+	}
 	return false
+}
+
+func (mh *MainScreenKeyHandler) buildBindings(configured []config.KeyBindingEntry) []keyBinding {
+	entries := append(configured, defaultMainScreenBindings()...)
+	bindings := make([]keyBinding, 0, len(entries))
+
+	for _, entry := range entries {
+		spec, err := parseKeySpec(entry.Key)
+		if err != nil {
+			mh.debugPrint("MainScreen: invalid key binding key=%q command=%s err=%v", entry.Key, entry.Command, err)
+			continue
+		}
+		event := normalizeEventName(entry.Event, spec)
+		if event == "" {
+			mh.debugPrint("MainScreen: invalid key binding event=%q key=%q command=%s", entry.Event, entry.Key, entry.Command)
+			continue
+		}
+		if _, ok := mh.commands[entry.Command]; !ok {
+			mh.debugPrint("MainScreen: invalid key binding unknown command=%s key=%q", entry.Command, entry.Key)
+			continue
+		}
+		bindings = append(bindings, keyBinding{
+			spec:    spec,
+			event:   event,
+			command: entry.Command,
+		})
+	}
+
+	return bindings
+}
+
+func defaultMainScreenBindings() []config.KeyBindingEntry {
+	return []config.KeyBindingEntry{
+		{Key: "Up", Command: CommandCursorUp, Event: keyEventTyped},
+		{Key: "S-Up", Command: CommandCursorUp, Event: keyEventTyped},
+		{Key: "Down", Command: CommandCursorDown, Event: keyEventTyped},
+		{Key: "S-Down", Command: CommandCursorDown, Event: keyEventTyped},
+		{Key: "Return", Command: CommandOpen, Event: keyEventTyped},
+		{Key: "Space", Command: CommandSelectToggle, Event: keyEventTyped},
+		{Key: "Backspace", Command: CommandParentDirectory, Event: keyEventTyped},
+		{Key: "S-Comma", Command: CommandCursorFirst, Event: keyEventTyped},
+		{Key: "Period", Command: CommandRefresh, Event: keyEventTyped},
+		{Key: "S-Period", Command: CommandCursorLast, Event: keyEventTyped},
+		{Key: "S-Backtick", Command: CommandHome, Event: keyEventTyped},
+		{Key: "F2", Command: CommandRenameShow, Event: keyEventTyped},
+		{Key: "R", Command: CommandRenameShow, Event: keyEventUp},
+		{Key: "Tab", Command: CommandExplorerContextShow, Event: keyEventTyped},
+		{Key: "F3", Command: CommandFilterToggle, Event: keyEventTyped},
+		{Key: "Q", Command: CommandQuit, Event: keyEventTyped},
+		{Key: "C", Command: CommandCopyShow, Event: keyEventTyped},
+		{Key: "M", Command: CommandMoveShow, Event: keyEventTyped},
+		{Key: "X", Command: CommandExternalCommandMenu, Event: keyEventTyped},
+		{Key: "^N", Command: CommandWindowNew, Event: keyEventDown},
+		{Key: "C-S-N", Command: CommandWindowNew, Event: keyEventDown},
+		{Key: "^T", Command: CommandTreeShow, Event: keyEventDown},
+		{Key: "C-S-T", Command: CommandTreeShow, Event: keyEventDown},
+		{Key: "^H", Command: CommandHistoryShow, Event: keyEventDown},
+		{Key: "C-S-H", Command: CommandHistoryShow, Event: keyEventDown},
+		{Key: "^F", Command: CommandFilterShow, Event: keyEventDown},
+		{Key: "C-S-F", Command: CommandFilterClear, Event: keyEventDown},
+		{Key: "^S", Command: CommandSearchShow, Event: keyEventDown},
+		{Key: "C-S-S", Command: CommandSearchShow, Event: keyEventDown},
+		{Key: "S-S", Command: CommandSortShow, Event: keyEventDown},
+		{Key: "^L", Command: CommandPathFocus, Event: keyEventDown},
+		{Key: "C-S-L", Command: CommandPathFocus, Event: keyEventDown},
+		{Key: "^J", Command: CommandJobsShow, Event: keyEventDown},
+		{Key: "C-S-J", Command: CommandJobsShow, Event: keyEventDown},
+		{Key: "S-J", Command: CommandDirectoryJumpShow, Event: keyEventDown},
+		{Key: "Delete", Command: CommandDeleteTrash, Event: keyEventDown},
+		{Key: "S-Delete", Command: CommandDeletePermanent, Event: keyEventDown},
+	}
+}
+
+func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
+	return CommandRegistry{
+		CommandCursorUp:            mh.cursorUp,
+		CommandCursorDown:          mh.cursorDown,
+		CommandCursorFirst:         mh.cursorFirst,
+		CommandCursorLast:          mh.cursorLast,
+		CommandOpen:                mh.openCurrent,
+		CommandSelectToggle:        mh.toggleSelection,
+		CommandParentDirectory:     mh.parentDirectory,
+		CommandRefresh:             mh.refreshDirectory,
+		CommandHome:                mh.homeDirectory,
+		CommandWindowNew:           func(CommandContext) { mh.fileManager.OpenNewWindow() },
+		CommandTreeShow:            func(CommandContext) { mh.fileManager.ShowDirectoryTreeDialog() },
+		CommandHistoryShow:         func(CommandContext) { mh.fileManager.ShowNavigationHistoryDialog() },
+		CommandDirectoryJumpShow:   func(CommandContext) { mh.fileManager.ShowDirectoryJumpDialog() },
+		CommandFilterShow:          func(CommandContext) { mh.fileManager.ShowFilterDialog() },
+		CommandFilterClear:         func(CommandContext) { mh.fileManager.ClearFilter() },
+		CommandFilterToggle:        func(CommandContext) { mh.fileManager.ToggleFilter() },
+		CommandSearchShow:          func(CommandContext) { mh.fileManager.ShowIncrementalSearchDialog() },
+		CommandSortShow:            func(CommandContext) { mh.fileManager.ShowSortDialog() },
+		CommandJobsShow:            func(CommandContext) { mh.fileManager.ShowJobsDialog() },
+		CommandPathFocus:           func(CommandContext) { mh.fileManager.FocusPathEntry() },
+		CommandQuit:                func(CommandContext) { mh.fileManager.QuitApplication() },
+		CommandCopyShow:            func(CommandContext) { mh.fileManager.ShowCopyDialog() },
+		CommandMoveShow:            func(CommandContext) { mh.fileManager.ShowMoveDialog() },
+		CommandRenameShow:          mh.rename,
+		CommandDeleteTrash:         func(CommandContext) { mh.fileManager.ShowDeleteDialog(false) },
+		CommandDeletePermanent:     func(CommandContext) { mh.fileManager.ShowDeleteDialog(true) },
+		CommandExplorerContextShow: func(CommandContext) { mh.fileManager.ShowExplorerContextMenu() },
+		CommandExternalCommandMenu: func(CommandContext) { mh.fileManager.ShowExternalCommandMenu() },
+	}
+}
+
+func (mh *MainScreenKeyHandler) cursorUp(ctx CommandContext) {
+	currentIdx := mh.fileManager.GetCurrentCursorIndex()
+	if ctx.Modifiers.ShiftPressed {
+		newIdx := currentIdx - 20
+		if newIdx < 0 {
+			newIdx = 0
+		}
+		mh.fileManager.SetCursorByIndex(newIdx)
+		mh.fileManager.RefreshCursor()
+		return
+	}
+	if currentIdx > 0 {
+		mh.fileManager.SetCursorByIndex(currentIdx - 1)
+		mh.fileManager.RefreshCursor()
+	}
+}
+
+func (mh *MainScreenKeyHandler) cursorDown(ctx CommandContext) {
+	currentIdx := mh.fileManager.GetCurrentCursorIndex()
+	files := mh.fileManager.GetFiles()
+	if ctx.Modifiers.ShiftPressed {
+		newIdx := currentIdx + 20
+		if newIdx >= len(files) {
+			newIdx = len(files) - 1
+		}
+		mh.fileManager.SetCursorByIndex(newIdx)
+		mh.fileManager.RefreshCursor()
+		return
+	}
+	if currentIdx < len(files)-1 {
+		mh.fileManager.SetCursorByIndex(currentIdx + 1)
+		mh.fileManager.RefreshCursor()
+	}
+}
+
+func (mh *MainScreenKeyHandler) cursorFirst(CommandContext) {
+	files := mh.fileManager.GetFiles()
+	if len(files) > 0 {
+		mh.fileManager.SetCursorByIndex(0)
+		mh.fileManager.RefreshCursor()
+	}
+}
+
+func (mh *MainScreenKeyHandler) cursorLast(CommandContext) {
+	files := mh.fileManager.GetFiles()
+	if len(files) > 0 {
+		mh.fileManager.SetCursorByIndex(len(files) - 1)
+		mh.fileManager.RefreshCursor()
+	}
+}
+
+func (mh *MainScreenKeyHandler) openCurrent(CommandContext) {
+	currentIdx := mh.fileManager.GetCurrentCursorIndex()
+	files := mh.fileManager.GetFiles()
+	if currentIdx >= 0 && currentIdx < len(files) {
+		fileInfo := files[currentIdx]
+		mh.fileManager.OpenFile(&fileInfo)
+	}
+}
+
+func (mh *MainScreenKeyHandler) toggleSelection(CommandContext) {
+	currentIdx := mh.fileManager.GetCurrentCursorIndex()
+	files := mh.fileManager.GetFiles()
+	if currentIdx < 0 || currentIdx >= len(files) {
+		return
+	}
+
+	fileInfo := files[currentIdx]
+	if fileInfo.Name == ".." || fileInfo.Status == fileinfo.StatusDeleted {
+		return
+	}
+
+	selectedFiles := mh.fileManager.GetSelectedFiles()
+	mh.fileManager.SetFileSelected(fileInfo.Path, !selectedFiles[fileInfo.Path])
+	mh.fileManager.RefreshFileList()
+
+	if currentIdx < len(files)-1 {
+		mh.fileManager.SetCursorByIndex(currentIdx + 1)
+		mh.fileManager.RefreshCursor()
+	}
+}
+
+func (mh *MainScreenKeyHandler) parentDirectory(CommandContext) {
+	parent := fileinfo.ParentPath(mh.fileManager.GetCurrentPath())
+	if parent != mh.fileManager.GetCurrentPath() {
+		mh.fileManager.LoadDirectory(parent)
+	}
+}
+
+func (mh *MainScreenKeyHandler) refreshDirectory(CommandContext) {
+	mh.fileManager.SaveCursorPosition(mh.fileManager.GetCurrentPath())
+	mh.fileManager.LoadDirectory(mh.fileManager.GetCurrentPath())
+}
+
+func (mh *MainScreenKeyHandler) homeDirectory(CommandContext) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		mh.debugPrint("MainScreen: Failed to get home directory: %v", err)
+		return
+	}
+	mh.fileManager.LoadDirectory(homeDir)
+}
+
+func (mh *MainScreenKeyHandler) rename(ctx CommandContext) {
+	if !ctx.Modifiers.CtrlPressed && !ctx.Modifiers.ShiftPressed && !ctx.Modifiers.AltPressed {
+		mh.fileManager.ShowRenameDialog()
+	}
 }

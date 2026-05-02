@@ -92,6 +92,12 @@ func TestGetDefaultConfig(t *testing.T) {
 	if len(config.UI.DirectoryJumps.Entries) != 0 {
 		t.Errorf("Expected no default directory jumps, got %d", len(config.UI.DirectoryJumps.Entries))
 	}
+	if config.UI.KeyBindings == nil {
+		t.Error("Expected key bindings to be initialized")
+	}
+	if config.UI.ExternalCommands == nil {
+		t.Error("Expected external commands to be initialized")
+	}
 }
 
 func TestMergeConfigs(t *testing.T) {
@@ -139,6 +145,12 @@ func TestMergeConfigs(t *testing.T) {
 					{Shortcut: "P", Directory: "/duplicate"},
 				},
 			},
+			KeyBindings: []KeyBindingEntry{
+				{Key: "X", Command: "jobs.show"},
+			},
+			ExternalCommands: []ExternalCommandEntry{
+				{Name: "Open in editor", Extensions: []string{".go"}, Command: "vim", Args: []string{"{file}"}},
+			},
 		},
 	}
 
@@ -180,6 +192,12 @@ func TestMergeConfigs(t *testing.T) {
 	}
 	if defaultConfig.UI.DirectoryJumps.Entries[1].Shortcut != "" || defaultConfig.UI.DirectoryJumps.Entries[1].Directory != "/tmp" {
 		t.Errorf("Expected directory jump order and empty shortcut to be preserved, got %+v", defaultConfig.UI.DirectoryJumps.Entries)
+	}
+	if len(defaultConfig.UI.KeyBindings) != 1 || defaultConfig.UI.KeyBindings[0].Key != "X" {
+		t.Errorf("Expected key bindings to be merged, got %+v", defaultConfig.UI.KeyBindings)
+	}
+	if len(defaultConfig.UI.ExternalCommands) != 1 || defaultConfig.UI.ExternalCommands[0].Command != "vim" {
+		t.Errorf("Expected external commands to be merged, got %+v", defaultConfig.UI.ExternalCommands)
 	}
 }
 
