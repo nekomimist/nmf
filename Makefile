@@ -3,7 +3,7 @@ APP_NAME := NMF
 APP_ID := io.github.nekomimist.nmf
 DIST := dist
 
-.PHONY: build build-linux build-windows build-windows-tmp-cache test clean
+.PHONY: build build-linux build-windows test test-windows-compile debug-env clean
 
 build: build-linux
 
@@ -19,14 +19,17 @@ build-windows:
 	mv $(APP_NAME).exe $(DIST)/$(APP).exe
 	objcopy --subsystem windows:6.0 $(DIST)/$(APP).exe
 
-build-windows-tmp-cache:
-	GOCACHE=/tmp/nmf-go-build-cache \
-	ZIG_LOCAL_CACHE_DIR=/tmp/zig-local-cache \
-	ZIG_GLOBAL_CACHE_DIR=/tmp/zig-global-cache \
-	$(MAKE) build-windows
-
 test:
 	go test ./internal/...
+
+test-windows-compile:
+	CC="zig cc -target x86_64-windows-gnu" \
+	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
+	go test -exec=true ./internal/...
+
+# Prints the effective environment passed through Codex/project config.
+debug-env:
+	env || true
 
 clean:
 	rm -rf $(DIST)

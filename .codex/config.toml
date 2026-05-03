@@ -1,0 +1,7 @@
+sandbox_mode = "workspace-write"
+approval_policy = "on-request"
+
+[shell_environment_policy.set]
+GOCACHE = "/home/neko/src/nmf/.cache/go-build"
+ZIG_LOCAL_CACHE_DIR = "/home/neko/src/nmf/.cache/zig-local"
+ZIG_GLOBAL_CACHE_DIR = "/home/neko/src/nmf/.cache/zig-global"

@@ -40,6 +40,7 @@ nmf.exe
 # Build directories
 build/
 dist/
+.cache/
 
 # Config files that might contain sensitive data
 config.local.json
