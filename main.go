@@ -2,9 +2,14 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"fyne.io/fyne/v2/app"
 
@@ -12,7 +17,6 @@ import (
 	"nmf/internal/fileinfo"
 	"nmf/internal/jobs"
 	customtheme "nmf/internal/theme"
-	"sync"
 )
 
 // Global debug flag
@@ -31,14 +35,48 @@ func debugPrint(format string, args ...interface{}) {
 	}
 }
 
+func setupDebugLogging(path string) (*os.File, error) {
+	if path == "" {
+		return nil, nil
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return nil, fmt.Errorf("creating debug log directory: %w", err)
+	}
+
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	debugMode = true
+	log.SetOutput(io.MultiWriter(file, os.Stderr))
+	debugPrint("Logger: debug log started path=%s time=%s", path, time.Now().Format(time.RFC3339))
+	return file, nil
+}
+
 func main() {
 	fileinfo.CleanupOldArchiveOpenTemps()
 
 	// Parse command line flags
 	var startPath string
+	var debugLogPath string
 	flag.BoolVar(&debugMode, "d", false, "Enable debug mode")
+	flag.StringVar(&debugLogPath, "debug-log", "", "Write debug logs to the specified file")
 	flag.StringVar(&startPath, "path", "", "Starting directory path")
 	flag.Parse()
+
+	debugLogFile, err := setupDebugLogging(debugLogPath)
+	if err != nil {
+		log.Fatalf("Error opening debug log '%s': %v", debugLogPath, err)
+	}
+	if debugLogFile != nil {
+		defer func() {
+			if err := debugLogFile.Close(); err != nil {
+				log.Printf("Error closing debug log: %v", err)
+			}
+		}()
+	}
 
 	// If no path specified via flag, check remaining arguments
 	if startPath == "" && flag.NArg() > 0 {
