@@ -12,6 +12,8 @@ import (
 const (
 	CommandCursorUp            = "cursor.up"
 	CommandCursorDown          = "cursor.down"
+	CommandCursorPageUp        = "cursor.pageUp"
+	CommandCursorPageDown      = "cursor.pageDown"
 	CommandCursorFirst         = "cursor.first"
 	CommandCursorLast          = "cursor.last"
 	CommandOpen                = "open"
@@ -149,16 +151,16 @@ func (mh *MainScreenKeyHandler) buildBindings(configured []config.KeyBindingEntr
 	for _, entry := range entries {
 		spec, err := parseKeySpec(entry.Key)
 		if err != nil {
-			mh.debugPrint("MainScreen: invalid key binding key=%q command=%s err=%v", entry.Key, entry.Command, err)
+			mh.debugPrint("MainScreen: WARNING invalid key binding key=%q command=%s err=%v", entry.Key, entry.Command, err)
 			continue
 		}
 		event := normalizeEventName(entry.Event, spec)
 		if event == "" {
-			mh.debugPrint("MainScreen: invalid key binding event=%q key=%q command=%s", entry.Event, entry.Key, entry.Command)
+			mh.debugPrint("MainScreen: WARNING invalid key binding event=%q key=%q command=%s", entry.Event, entry.Key, entry.Command)
 			continue
 		}
 		if _, ok := mh.commands[entry.Command]; !ok {
-			mh.debugPrint("MainScreen: invalid key binding unknown command=%s key=%q", entry.Command, entry.Key)
+			mh.debugPrint("MainScreen: WARNING invalid key binding unknown command=%s key=%q", entry.Command, entry.Key)
 			continue
 		}
 		bindings = append(bindings, keyBinding{
@@ -174,9 +176,9 @@ func (mh *MainScreenKeyHandler) buildBindings(configured []config.KeyBindingEntr
 func defaultMainScreenBindings() []config.KeyBindingEntry {
 	return []config.KeyBindingEntry{
 		{Key: "Up", Command: CommandCursorUp, Event: keyEventTyped},
-		{Key: "S-Up", Command: CommandCursorUp, Event: keyEventTyped},
+		{Key: "S-Up", Command: CommandCursorPageUp, Event: keyEventTyped},
 		{Key: "Down", Command: CommandCursorDown, Event: keyEventTyped},
-		{Key: "S-Down", Command: CommandCursorDown, Event: keyEventTyped},
+		{Key: "S-Down", Command: CommandCursorPageDown, Event: keyEventTyped},
 		{Key: "Return", Command: CommandOpen, Event: keyEventTyped},
 		{Key: "Space", Command: CommandSelectToggle, Event: keyEventTyped},
 		{Key: "Backspace", Command: CommandParentDirectory, Event: keyEventTyped},
@@ -192,23 +194,16 @@ func defaultMainScreenBindings() []config.KeyBindingEntry {
 		{Key: "C", Command: CommandCopyShow, Event: keyEventTyped},
 		{Key: "M", Command: CommandMoveShow, Event: keyEventTyped},
 		{Key: "X", Command: CommandExternalCommandMenu, Event: keyEventTyped},
-		{Key: "^N", Command: CommandWindowNew, Event: keyEventDown},
-		{Key: "C-S-N", Command: CommandWindowNew, Event: keyEventDown},
-		{Key: "^T", Command: CommandTreeShow, Event: keyEventDown},
-		{Key: "C-S-T", Command: CommandTreeShow, Event: keyEventDown},
-		{Key: "^H", Command: CommandHistoryShow, Event: keyEventDown},
-		{Key: "C-S-H", Command: CommandHistoryShow, Event: keyEventDown},
-		{Key: "^F", Command: CommandFilterShow, Event: keyEventDown},
-		{Key: "C-S-F", Command: CommandFilterClear, Event: keyEventDown},
-		{Key: "^S", Command: CommandSearchShow, Event: keyEventDown},
-		{Key: "C-S-S", Command: CommandSearchShow, Event: keyEventDown},
-		{Key: "S-S", Command: CommandSortShow, Event: keyEventDown},
-		{Key: "^L", Command: CommandPathFocus, Event: keyEventDown},
-		{Key: "C-S-L", Command: CommandPathFocus, Event: keyEventDown},
-		{Key: "^J", Command: CommandJobsShow, Event: keyEventDown},
-		{Key: "C-S-J", Command: CommandJobsShow, Event: keyEventDown},
-		{Key: "S-J", Command: CommandDirectoryJumpShow, Event: keyEventDown},
-		{Key: "Delete", Command: CommandDeleteTrash, Event: keyEventDown},
+		{Key: "C-N", Command: CommandWindowNew, Event: keyEventDown},
+		{Key: "C-T", Command: CommandTreeShow, Event: keyEventDown},
+		{Key: "C-H", Command: CommandHistoryShow, Event: keyEventDown},
+		{Key: "C-F", Command: CommandFilterShow, Event: keyEventDown},
+		{Key: "C-S", Command: CommandSearchShow, Event: keyEventDown},
+		{Key: "S-S", Command: CommandSortShow, Event: keyEventTyped},
+		{Key: "C-L", Command: CommandPathFocus, Event: keyEventDown},
+		{Key: "S-J", Command: CommandJobsShow, Event: keyEventTyped},
+		{Key: "J", Command: CommandDirectoryJumpShow, Event: keyEventTyped},
+		{Key: "Delete", Command: CommandDeleteTrash, Event: keyEventTyped},
 		{Key: "S-Delete", Command: CommandDeletePermanent, Event: keyEventDown},
 	}
 }
@@ -217,6 +212,8 @@ func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
 	return CommandRegistry{
 		CommandCursorUp:            mh.cursorUp,
 		CommandCursorDown:          mh.cursorDown,
+		CommandCursorPageUp:        mh.cursorPageUp,
+		CommandCursorPageDown:      mh.cursorPageDown,
 		CommandCursorFirst:         mh.cursorFirst,
 		CommandCursorLast:          mh.cursorLast,
 		CommandOpen:                mh.openCurrent,
@@ -246,39 +243,49 @@ func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
 	}
 }
 
-func (mh *MainScreenKeyHandler) cursorUp(ctx CommandContext) {
+func (mh *MainScreenKeyHandler) cursorUp(CommandContext) {
 	currentIdx := mh.fileManager.GetCurrentCursorIndex()
-	if ctx.Modifiers.ShiftPressed {
-		newIdx := currentIdx - 20
-		if newIdx < 0 {
-			newIdx = 0
-		}
-		mh.fileManager.SetCursorByIndex(newIdx)
-		mh.fileManager.RefreshCursor()
-		return
-	}
 	if currentIdx > 0 {
 		mh.fileManager.SetCursorByIndex(currentIdx - 1)
 		mh.fileManager.RefreshCursor()
 	}
 }
 
-func (mh *MainScreenKeyHandler) cursorDown(ctx CommandContext) {
+func (mh *MainScreenKeyHandler) cursorDown(CommandContext) {
 	currentIdx := mh.fileManager.GetCurrentCursorIndex()
 	files := mh.fileManager.GetFiles()
-	if ctx.Modifiers.ShiftPressed {
-		newIdx := currentIdx + 20
-		if newIdx >= len(files) {
-			newIdx = len(files) - 1
-		}
-		mh.fileManager.SetCursorByIndex(newIdx)
-		mh.fileManager.RefreshCursor()
-		return
-	}
 	if currentIdx < len(files)-1 {
 		mh.fileManager.SetCursorByIndex(currentIdx + 1)
 		mh.fileManager.RefreshCursor()
 	}
+}
+
+func (mh *MainScreenKeyHandler) cursorPageUp(CommandContext) {
+	currentIdx := mh.fileManager.GetCurrentCursorIndex()
+	files := mh.fileManager.GetFiles()
+	if len(files) == 0 {
+		return
+	}
+	newIdx := currentIdx - 20
+	if newIdx < 0 {
+		newIdx = 0
+	}
+	mh.fileManager.SetCursorByIndex(newIdx)
+	mh.fileManager.RefreshCursor()
+}
+
+func (mh *MainScreenKeyHandler) cursorPageDown(CommandContext) {
+	currentIdx := mh.fileManager.GetCurrentCursorIndex()
+	files := mh.fileManager.GetFiles()
+	if len(files) == 0 {
+		return
+	}
+	newIdx := currentIdx + 20
+	if newIdx >= len(files) {
+		newIdx = len(files) - 1
+	}
+	mh.fileManager.SetCursorByIndex(newIdx)
+	mh.fileManager.RefreshCursor()
 }
 
 func (mh *MainScreenKeyHandler) cursorFirst(CommandContext) {

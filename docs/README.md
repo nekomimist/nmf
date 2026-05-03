@@ -14,6 +14,9 @@ This directory is the canonical source for project design and operational docume
   - Stable technical design and module boundaries.
   - Cross-cutting behavior (VFS/SMB, watcher lifecycle, UI input model).
   - Current index: `docs/architecture/README.md`.
+- `docs/configuration.md`
+  - User-editable `config.json` fields, examples, key binding syntax, and
+    external command configuration.
 - `docs/architecture-review.md`
   - Active architecture risk register (unresolved items only).
 - `docs/runbooks/` (recommended when needed)
@@ -24,6 +27,7 @@ This directory is the canonical source for project design and operational docume
 ## Maintenance policy
 
 - If a topic explains "how the system should be designed," place it in `docs/architecture/`.
+- If a topic explains "how to configure the app," place it in `docs/configuration.md`.
 - If a topic explains "how agents should operate in this repo," place it in `AGENTS.md`.
 - If a risk is resolved, remove it from `docs/architecture-review.md`.
 - Prefer short, linkable pages over one large document.

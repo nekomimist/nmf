@@ -40,21 +40,35 @@ func parseKeySpec(input string) (keySpec, error) {
 	if raw == "" {
 		return keySpec{}, fmt.Errorf("empty key specification")
 	}
-
 	parts := strings.Split(raw, "-")
-	last := strings.TrimSpace(parts[len(parts)-1])
-	if last == "" {
+	modParts := parts[:len(parts)-1]
+	keyToken := strings.TrimSpace(parts[len(parts)-1])
+	if keyToken == "" {
+		if raw == "-" {
+			keyToken = "-"
+			modParts = nil
+		} else if strings.HasSuffix(raw, "--") {
+			keyToken = "-"
+			modParts = parts[:len(parts)-2]
+		}
+	}
+	if keyToken == "" {
 		return keySpec{}, fmt.Errorf("missing key name in %q", input)
 	}
 
-	spec := keySpec{key: normalizeKeyName(last)}
-	for _, part := range parts[:len(parts)-1] {
+	keyName, err := normalizeKeyName(keyToken)
+	if err != nil {
+		return keySpec{}, err
+	}
+
+	spec := keySpec{key: keyName}
+	for _, part := range modParts {
 		switch strings.ToUpper(strings.TrimSpace(part)) {
-		case "S", "SHIFT":
+		case "S":
 			spec.mod.ShiftPressed = true
-		case "C", "CTRL", "CONTROL", "^":
+		case "C":
 			spec.mod.CtrlPressed = true
-		case "A", "ALT", "M", "META":
+		case "A":
 			spec.mod.AltPressed = true
 		case "":
 		default:
@@ -62,58 +76,119 @@ func parseKeySpec(input string) (keySpec, error) {
 		}
 	}
 
-	for strings.HasPrefix(last, "^") {
-		spec.mod.CtrlPressed = true
-		last = strings.TrimPrefix(last, "^")
-		if last == "" {
-			return keySpec{}, fmt.Errorf("missing key name in %q", input)
-		}
-		spec.key = normalizeKeyName(last)
-	}
-
 	return spec, nil
 }
 
-func normalizeKeyName(name string) fyne.KeyName {
-	upper := strings.ToUpper(strings.TrimSpace(name))
-	switch upper {
-	case "ENTER":
-		return fyne.KeyReturn
-	case "RETURN":
-		return fyne.KeyReturn
-	case "ESC":
-		return fyne.KeyEscape
-	case "SPACE":
-		return fyne.KeySpace
-	case "TAB":
-		return fyne.KeyTab
-	case "BACKSPACE":
-		return fyne.KeyBackspace
-	case "DELETE", "DEL":
-		return fyne.KeyDelete
-	case "UP":
-		return fyne.KeyUp
-	case "DOWN":
-		return fyne.KeyDown
-	case "LEFT":
-		return fyne.KeyLeft
-	case "RIGHT":
-		return fyne.KeyRight
-	case "COMMA":
-		return fyne.KeyComma
-	case "PERIOD", "DOT":
-		return fyne.KeyPeriod
-	case "BACKTICK", "BACKQUOTE":
-		return fyne.KeyBackTick
-	default:
-		if strings.HasPrefix(upper, "F") {
-			return fyne.KeyName(upper)
-		}
-		if len([]rune(upper)) == 1 {
-			return fyne.KeyName(upper)
-		}
-		return fyne.KeyName(name)
+func normalizeKeyName(name string) (fyne.KeyName, error) {
+	key := strings.TrimSpace(name)
+	if key == "" {
+		return fyne.KeyUnknown, fmt.Errorf("empty key name")
 	}
+	if alias, ok := keyNameAliases[strings.ToUpper(key)]; ok {
+		return alias, nil
+	}
+	if _, ok := validKeyNames[fyne.KeyName(key)]; ok {
+		return fyne.KeyName(key), nil
+	}
+	upper := strings.ToUpper(key)
+	if _, ok := validKeyNames[fyne.KeyName(upper)]; ok {
+		return fyne.KeyName(upper), nil
+	}
+	return fyne.KeyUnknown, fmt.Errorf("unknown key name %q", name)
+}
+
+var keyNameAliases = map[string]fyne.KeyName{
+	"BACKSPACE": fyne.KeyBackspace,
+	"BACKTICK":  fyne.KeyBackTick,
+	"BACKQUOTE": fyne.KeyBackTick,
+	"COMMA":     fyne.KeyComma,
+	"DEL":       fyne.KeyDelete,
+	"DOT":       fyne.KeyPeriod,
+	"ENTER":     fyne.KeyReturn,
+	"ESC":       fyne.KeyEscape,
+	"PAGEUP":    fyne.KeyPageUp,
+	"PAGEDOWN":  fyne.KeyPageDown,
+	"PERIOD":    fyne.KeyPeriod,
+}
+
+var validKeyNames = map[fyne.KeyName]struct{}{
+	fyne.KeyEscape:       {},
+	fyne.KeyReturn:       {},
+	fyne.KeyTab:          {},
+	fyne.KeyBackspace:    {},
+	fyne.KeyInsert:       {},
+	fyne.KeyDelete:       {},
+	fyne.KeyRight:        {},
+	fyne.KeyLeft:         {},
+	fyne.KeyDown:         {},
+	fyne.KeyUp:           {},
+	fyne.KeyPageUp:       {},
+	fyne.KeyPageDown:     {},
+	fyne.KeyHome:         {},
+	fyne.KeyEnd:          {},
+	fyne.KeyF1:           {},
+	fyne.KeyF2:           {},
+	fyne.KeyF3:           {},
+	fyne.KeyF4:           {},
+	fyne.KeyF5:           {},
+	fyne.KeyF6:           {},
+	fyne.KeyF7:           {},
+	fyne.KeyF8:           {},
+	fyne.KeyF9:           {},
+	fyne.KeyF10:          {},
+	fyne.KeyF11:          {},
+	fyne.KeyF12:          {},
+	fyne.KeyEnter:        {},
+	fyne.Key0:            {},
+	fyne.Key1:            {},
+	fyne.Key2:            {},
+	fyne.Key3:            {},
+	fyne.Key4:            {},
+	fyne.Key5:            {},
+	fyne.Key6:            {},
+	fyne.Key7:            {},
+	fyne.Key8:            {},
+	fyne.Key9:            {},
+	fyne.KeyA:            {},
+	fyne.KeyB:            {},
+	fyne.KeyC:            {},
+	fyne.KeyD:            {},
+	fyne.KeyE:            {},
+	fyne.KeyF:            {},
+	fyne.KeyG:            {},
+	fyne.KeyH:            {},
+	fyne.KeyI:            {},
+	fyne.KeyJ:            {},
+	fyne.KeyK:            {},
+	fyne.KeyL:            {},
+	fyne.KeyM:            {},
+	fyne.KeyN:            {},
+	fyne.KeyO:            {},
+	fyne.KeyP:            {},
+	fyne.KeyQ:            {},
+	fyne.KeyR:            {},
+	fyne.KeyS:            {},
+	fyne.KeyT:            {},
+	fyne.KeyU:            {},
+	fyne.KeyV:            {},
+	fyne.KeyW:            {},
+	fyne.KeyX:            {},
+	fyne.KeyY:            {},
+	fyne.KeyZ:            {},
+	fyne.KeySpace:        {},
+	fyne.KeyApostrophe:   {},
+	fyne.KeyComma:        {},
+	fyne.KeyMinus:        {},
+	fyne.KeyPeriod:       {},
+	fyne.KeySlash:        {},
+	fyne.KeyBackslash:    {},
+	fyne.KeyLeftBracket:  {},
+	fyne.KeyRightBracket: {},
+	fyne.KeySemicolon:    {},
+	fyne.KeyEqual:        {},
+	fyne.KeyAsterisk:     {},
+	fyne.KeyPlus:         {},
+	fyne.KeyBackTick:     {},
 }
 
 func normalizeEventName(event string, spec keySpec) string {

@@ -167,7 +167,7 @@ type DirectoryJumpsConfig struct {
 
 // KeyBindingEntry maps a key specification to an internal command.
 type KeyBindingEntry struct {
-	Key     string `json:"key"`             // Examples: "^N", "S-J", "A-X", "F2"
+	Key     string `json:"key"`             // Forms: "Key", "S-Key", "A-Key", "C-Key"
 	Command string `json:"command"`         // Stable internal command ID
 	Event   string `json:"event,omitempty"` // Optional: "typed", "down", or "up"
 }
