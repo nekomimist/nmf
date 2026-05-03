@@ -37,6 +37,17 @@ func TestCompactMessageSinkTypedKeyStillClosesWithoutKeyDown(t *testing.T) {
 	}
 }
 
+func TestCompactMessageSinkIgnoresCarriedKeyUp(t *testing.T) {
+	closed := false
+	sink := newCompactMessageSink(nil, func() { closed = true })
+
+	sink.KeyUp(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	if closed {
+		t.Fatal("KeyUp(Return) without matching KeyDown should not close dialog")
+	}
+}
+
 func TestCompactMessageSinkIgnoresOtherKeys(t *testing.T) {
 	closed := false
 	sink := newCompactMessageSink(nil, func() { closed = true })

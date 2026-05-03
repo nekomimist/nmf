@@ -6,8 +6,6 @@ import (
 	"strings"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/config"
@@ -20,31 +18,56 @@ import (
 func (fm *FileManager) ShowExternalCommandMenu() {
 	targets := fm.collectTargetPaths()
 	if len(targets) == 0 {
-		ui.ShowCompactMessageDialog(fm.window, "Command", "No file selected.")
+		fm.showExternalCommandPopup(informationalExternalCommandMenuItem("No file selected."))
 		return
 	}
 
 	commands := fm.matchingExternalCommands(targets[0])
 	if len(commands) == 0 {
-		ui.ShowCompactMessageDialog(fm.window, "Command", "No external commands match this file.")
+		fm.showExternalCommandPopup(informationalExternalCommandMenuItem("No external commands match this file."))
 		return
 	}
 
-	var dlg dialog.Dialog
-	buttons := make([]fyne.CanvasObject, 0, len(commands))
+	items := make([]*fyne.MenuItem, 0, len(commands))
 	for _, command := range commands {
 		entry := command
-		buttons = append(buttons, widget.NewButton(entry.Name, func() {
-			if dlg != nil {
-				dlg.Hide()
+		items = append(items, fyne.NewMenuItem(entry.Name, func() {
+			if fm.runExternalCommand(entry, targets) {
+				fm.FocusFileList()
 			}
-			fm.runExternalCommand(entry, targets)
 		}))
 	}
 
-	content := container.NewVBox(buttons...)
-	dlg = dialog.NewCustom("Run Command", "Cancel", content, fm.window)
-	dlg.Show()
+	fm.showExternalCommandPopup(items...)
+}
+
+func informationalExternalCommandMenuItem(label string) *fyne.MenuItem {
+	return fyne.NewMenuItem(label, func() {})
+}
+
+func (fm *FileManager) showExternalCommandPopup(items ...*fyne.MenuItem) {
+	if fm.window == nil || fm.window.Canvas() == nil {
+		return
+	}
+
+	menu := fyne.NewMenu("Run Command", items...)
+	widget.ShowPopUpMenuAtPosition(menu, fm.window.Canvas(), fm.externalCommandMenuPosition())
+}
+
+func (fm *FileManager) externalCommandMenuPosition() fyne.Position {
+	anchor := fm.cursorAnchor
+	if anchor.object != nil && anchor.path != "" && anchor.path == fm.cursorPath {
+		canvas := fyne.CurrentApp().Driver().CanvasForObject(anchor.object)
+		if canvas != nil {
+			pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(anchor.object)
+			size := anchor.object.Size()
+			if size.Width > 0 && size.Height > 0 {
+				return pos.AddXY(8, size.Height)
+			}
+		}
+	}
+
+	return fyne.NewPos(8, 8)
 }
 
 func (fm *FileManager) matchingExternalCommands(target string) []config.ExternalCommandEntry {
@@ -76,15 +99,16 @@ func externalCommandMatches(target string, extensions []string) bool {
 	return false
 }
 
-func (fm *FileManager) runExternalCommand(entry config.ExternalCommandEntry, targets []string) {
+func (fm *FileManager) runExternalCommand(entry config.ExternalCommandEntry, targets []string) bool {
 	args := expandExternalCommandArgs(entry.Args, targets, fm.currentPath)
 	cmd := exec.Command(entry.Command, args...)
 	if err := cmd.Start(); err != nil {
 		debugPrint("FileManager: external command failed command=%s err=%v", entry.Command, err)
-		ui.ShowMessageDialog(fm.window, "Command failed", err.Error())
-		return
+		ui.ShowCompactMessageDialog(fm.window, "Command failed", err.Error())
+		return false
 	}
 	debugPrint("FileManager: external command started command=%s pid=%d", entry.Command, cmd.Process.Pid)
+	return true
 }
 
 func expandExternalCommandArgs(templates []string, targets []string, dir string) []string {

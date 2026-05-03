@@ -73,11 +73,17 @@ func (s *compactMessageSink) KeyDown(ev *fyne.KeyEvent) {
 }
 
 func (s *compactMessageSink) KeyUp(ev *fyne.KeyEvent) {
-	if isCompactMessageDismissKey(ev.Name) {
-		s.pressedDismissKey = ""
-		if s.onClose != nil {
-			s.onClose()
-		}
+	if !isCompactMessageDismissKey(ev.Name) {
+		return
+	}
+
+	pressedKey := s.pressedDismissKey
+	s.pressedDismissKey = ""
+	if pressedKey != normalizeCompactMessageDismissKey(ev.Name) {
+		return
+	}
+	if s.onClose != nil {
+		s.onClose()
 	}
 }
 
