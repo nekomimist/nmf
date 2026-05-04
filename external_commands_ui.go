@@ -112,35 +112,55 @@ func (fm *FileManager) runExternalCommand(entry config.ExternalCommandEntry, tar
 }
 
 func expandExternalCommandArgs(templates []string, targets []string, dir string) []string {
+	commandTargets := make([]string, len(targets))
+	for i, target := range targets {
+		commandTargets[i] = externalCommandArgumentPath(target)
+	}
+	commandDir := externalCommandArgumentPath(dir)
+
 	if len(templates) == 0 {
-		args := make([]string, len(targets))
-		copy(args, targets)
+		args := make([]string, len(commandTargets))
+		copy(args, commandTargets)
 		return args
 	}
 
 	first := ""
 	name := ""
 	if len(targets) > 0 {
-		first = targets[0]
-		name = fileinfo.BaseName(first)
+		first = commandTargets[0]
+		name = fileinfo.BaseName(targets[0])
 	}
 
 	var args []string
 	for _, template := range templates {
 		if template == "{files}" {
-			args = append(args, targets...)
+			args = append(args, commandTargets...)
 			continue
 		}
 		if strings.Contains(template, "{files}") {
-			for _, target := range targets {
+			for _, target := range commandTargets {
 				args = append(args, strings.ReplaceAll(template, "{files}", target))
 			}
 			continue
 		}
 		arg := strings.ReplaceAll(template, "{file}", first)
-		arg = strings.ReplaceAll(arg, "{dir}", dir)
+		arg = strings.ReplaceAll(arg, "{dir}", commandDir)
 		arg = strings.ReplaceAll(arg, "{name}", name)
 		args = append(args, arg)
 	}
 	return args
+}
+
+func externalCommandArgumentPath(displayPath string) string {
+	_, parsed, err := fileinfo.ResolveRead(displayPath)
+	if err != nil {
+		return fileinfo.NormalizeInputPath(displayPath)
+	}
+	if parsed.Provider == "local" && parsed.Native != "" {
+		return parsed.Native
+	}
+	if parsed.Scheme == fileinfo.SchemeFile && parsed.Native != "" {
+		return parsed.Native
+	}
+	return fileinfo.NormalizeInputPath(displayPath)
 }
