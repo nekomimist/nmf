@@ -38,6 +38,15 @@ Cross-window/global state:
 - window registry and count in `main.go`
 - singleton jobs manager in `internal/jobs`
 
+Window placement:
+
+- `Ctrl-N` creates a new `FileManager` beside the source window when the
+  platform supports native placement.
+- Windows uses `driver.NativeWindow` plus Win32 `HWND` APIs in
+  `window_position_windows.go`.
+- Other platforms intentionally use the window manager's default placement via
+  `window_position_other.go`.
+
 ## Package Boundaries
 
 - `internal/config`: configuration schema and async persistence.

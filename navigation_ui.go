@@ -13,6 +13,7 @@ import (
 func (fm *FileManager) OpenNewWindow() {
 	newFM := NewFileManager(fyne.CurrentApp(), fm.currentPath, fm.config, fm.configManager, fm.customTheme)
 	newFM.window.Show()
+	positionWindowNextTo(fm.window, newFM.window)
 }
 
 // ShowDirectoryTreeDialog shows the directory tree navigation dialog.

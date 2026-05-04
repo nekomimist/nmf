@@ -23,11 +23,13 @@ lisp系言語が好なので候補を選ぶと下記になるだろう。
 - config.json内のカスタマイズ可能な部分は全てstarlarkでも書けるようにする
 
 ## 雑多なコネタ。ぱっとできる事がなければこちらに取り組む
-- Ctrl-Nで出した新しいFile Managerは可能ならば元にFile Managerのそばに出したい
 - OK/Cancel的な二択ボタンは CancelIcon と ConfirmIcon をつけて、Confirmのほうのアイコン色を 
   ThemeのPrimaryColorにしたほうがちゃんとしたFyneのアプリっぽいかもしれない。
 
 # DONE 以下は一応終わったもの
+## 新規File Managerの横配置
+- WindowsではCtrl-Nで出した新しいFile Managerを元のFile Managerの横に出す。
+
 ## コマンド実行メニュー
 - 現状ENTERでopen相当の動作ができるが、Xで拡張子毎の実行メニューを出したい。
   - 複数のコマンドを登録できて、ファイル名はコマンドの引数として渡される
