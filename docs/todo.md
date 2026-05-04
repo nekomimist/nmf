@@ -1,5 +1,33 @@
 # 実用になるために必要なToDo
 
+## コンフィグ記述言語の導入
+- キーに自作関数を割りあてられると嬉しいので、それなりの機能を揃えた言語がいい。
+- とはいえいまさら固有のDSLを覚えたくもないので、一般的な言語がいい。
+- とはいえ補助的なものはので性能はそこまで気にしない。
+- Emacsやvimにちゃんと言語modeがある言語がいい。
+- 関数の中からnmf側で定義された機能を表す関数を呼びたい→goで定義した関数を言語側から呼べる必要がある
+- go側から言語側で定義された関数を呼べて評価結果を取れるほうがいいだろう
+- pure goがいいな
+- ちゃんと最新goでも動くものがいい
+
+### lisp系言語か否か……？
+lisp系言語が好なので候補を選ぶと下記になるだろう。
+- zygomys	 : https://github.com/glycerine/zygomys : starも多いし、充実してそう。無難そう。
+- elps : https://github.com/luthersystems/elps      : ドキュメントはそこそこ整備されてるように見える
+- lisp : https://github.com/jig/lisp                : あまりドキュメントが充実してない？
+この中ではzygomysが一番GitHub starが多いが……
+
+### でもまあ組み込みに苦労するのもイヤなので 第一選択はstarlarkとする
+- emacsのmodeもある。
+- config.jsonも呼んでからinit.starを読むよううな作りがよいだろう
+- config.json内のカスタマイズ可能な部分は全てstarlarkでも書けるようにする
+
+## 雑多なコネタ。ぱっとできる事がなければこちらに取り組む
+- Ctrl-Nで出した新しいFile Managerは可能ならば元にFile Managerのそばに出したい
+- OK/Cancel的な二択ボタンは CancelIcon と ConfirmIcon をつけて、Confirmのほうのアイコン色を 
+  ThemeのPrimaryColorにしたほうがちゃんとしたFyneのアプリっぽいかもしれない。
+
+# DONE 以下は一応終わったもの
 ## コマンド実行メニュー
 - 現状ENTERでopen相当の動作ができるが、Xで拡張子毎の実行メニューを出したい。
   - 複数のコマンドを登録できて、ファイル名はコマンドの引数として渡される
@@ -15,29 +43,3 @@
 	- OnTypedKeyで扱えないものはOnKeyDownでハンドリングしてるものが多いが、OnKeyUpであるべきかも。
   - 現状のconfig.jsonの枠組みだと書き辛いかもしれないが、
     この機能を作ってしまわないとコンフィグ記述言語を導入する意味が小さいかもしれない。
-
-## コンフィグ記述言語の導入
-- キーに自作関数を割りあてられると嬉しいので、それなりの機能を揃えた言語がいい。
-- とはいえいまさら固有のDSLを覚えたくもないので、一般的な言語がいい。
-- とはいえ補助的なものはので性能はそこまで気にしない。
-- Emacsやvimにちゃんと言語modeがある言語がいい。
-- 関数の中からnmf側で定義された機能を表す関数を呼びたい→goで定義した関数を言語側から呼べる必要がある
-- go側から言語側で定義された関数を呼べて評価結果を取れるほうがいいだろう
-- lisp系言語が好き
-- pure goがいいな
-- ちゃんと最新goでもサポートされているmoduleがいいな
-
-というわけで下記が候補だろうか。一番シンプルなのを選びたいが……。
-
-- zygomys	 : https://github.com/glycerine/zygomys  
-  - starも多いし、充実してそう。無難そう。
-- elps : https://github.com/luthersystems/elps
-  - ドキュメントはそこそこ整備されてるように見える
-- lisp : https://github.com/jig/lisp
-  - https://github.com/kanaka/mal の派生の実装らしい。あまりドキュメントが充実してない？
-
-
-## 雑多なコネタ。ぱっとできる事がなければこちらに取り組む
-- Ctrl-Nで出した新しいFile Managerは可能ならば元にFile Managerのそばに出したい
-- OK/Cancel的な二択ボタンは CancelIcon と ConfirmIcon をつけて、Confirmのほうのアイコン色を 
-  ThemeのPrimaryColorにしたほうがちゃんとしたFyneのアプリっぽいかもしれない。
