@@ -64,7 +64,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 	fm.searchHandler = keymanager.NewIncrementalSearchKeyHandler(fm, debugPrint)
 
 	// Setup KeyManager with main screen handler
-	mainHandler := keymanager.NewMainScreenKeyHandler(fm, debugPrint)
+	mainHandler := keymanager.NewMainScreenKeyHandler(fm, debugPrint, config.UI.KeyBindings)
 	fm.keyManager.PushHandler(mainHandler)
 
 	fm.setupUI()

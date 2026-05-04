@@ -46,6 +46,8 @@ type rawUIConfig struct {
 	NavigationHistory rawNavigationHistoryConfig `json:"navigationHistory"`
 	FileFilter        rawFileFilterConfig        `json:"fileFilter"`
 	DirectoryJumps    rawDirectoryJumpsConfig    `json:"directoryJumps"`
+	KeyBindings       []KeyBindingEntry          `json:"keyBindings"`
+	ExternalCommands  []ExternalCommandEntry     `json:"externalCommands"`
 }
 
 type rawSortConfig struct {
@@ -106,6 +108,8 @@ type UIConfig struct {
 	NavigationHistory NavigationHistoryConfig `json:"navigationHistory"`
 	FileFilter        FileFilterConfig        `json:"fileFilter"`
 	DirectoryJumps    DirectoryJumpsConfig    `json:"directoryJumps"`
+	KeyBindings       []KeyBindingEntry       `json:"keyBindings,omitempty"`
+	ExternalCommands  []ExternalCommandEntry  `json:"externalCommands,omitempty"`
 }
 
 // SortConfig represents file sorting settings
@@ -159,6 +163,21 @@ type DirectoryJumpEntry struct {
 // DirectoryJumpsConfig represents manually configured directory jump targets.
 type DirectoryJumpsConfig struct {
 	Entries []DirectoryJumpEntry `json:"entries"` // Config order is display order
+}
+
+// KeyBindingEntry maps a key specification to an internal command.
+type KeyBindingEntry struct {
+	Key     string `json:"key"`             // Forms: "Key", "S-Key", "A-Key", "C-Key"
+	Command string `json:"command"`         // Stable internal command ID
+	Event   string `json:"event,omitempty"` // Optional: "typed", "down", or "up"
+}
+
+// ExternalCommandEntry describes a command that can be run for matching files.
+type ExternalCommandEntry struct {
+	Name       string   `json:"name"`                 // Menu label
+	Extensions []string `json:"extensions,omitempty"` // Case-insensitive, with or without dot; "*" matches all files
+	Command    string   `json:"command"`              // Executable path or command name
+	Args       []string `json:"args,omitempty"`       // Supports {file}, {files}, {dir}, {name}
 }
 
 // Manager provides configuration management functionality
@@ -379,6 +398,8 @@ func cloneUIConfig(src UIConfig) UIConfig {
 	clone.NavigationHistory = cloneNavigationHistoryConfig(src.NavigationHistory)
 	clone.FileFilter = cloneFileFilterConfig(src.FileFilter)
 	clone.DirectoryJumps = cloneDirectoryJumpsConfig(src.DirectoryJumps)
+	clone.KeyBindings = cloneKeyBindingEntries(src.KeyBindings)
+	clone.ExternalCommands = cloneExternalCommandEntries(src.ExternalCommands)
 	return clone
 }
 
@@ -436,6 +457,34 @@ func cloneDirectoryJumpsConfig(src DirectoryJumpsConfig) DirectoryJumpsConfig {
 	return clone
 }
 
+func cloneKeyBindingEntries(src []KeyBindingEntry) []KeyBindingEntry {
+	if src == nil {
+		return nil
+	}
+	clone := make([]KeyBindingEntry, len(src))
+	copy(clone, src)
+	return clone
+}
+
+func cloneExternalCommandEntries(src []ExternalCommandEntry) []ExternalCommandEntry {
+	if src == nil {
+		return nil
+	}
+	clone := make([]ExternalCommandEntry, len(src))
+	for i, entry := range src {
+		clone[i] = entry
+		if entry.Extensions != nil {
+			clone[i].Extensions = make([]string, len(entry.Extensions))
+			copy(clone[i].Extensions, entry.Extensions)
+		}
+		if entry.Args != nil {
+			clone[i].Args = make([]string, len(entry.Args))
+			copy(clone[i].Args, entry.Args)
+		}
+	}
+	return clone
+}
+
 // getDefaultConfig returns the default configuration
 func getDefaultConfig() *Config {
 	return &Config{
@@ -480,6 +529,8 @@ func getDefaultConfig() *Config {
 			DirectoryJumps: DirectoryJumpsConfig{
 				Entries: make([]DirectoryJumpEntry, 0),
 			},
+			KeyBindings:      make([]KeyBindingEntry, 0),
+			ExternalCommands: make([]ExternalCommandEntry, 0),
 		},
 	}
 }
@@ -614,6 +665,12 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) {
 	// Merge DirectoryJumps config
 	if fileConfig.UI.DirectoryJumps.Entries != nil {
 		defaultConfig.UI.DirectoryJumps.Entries = fileConfig.UI.DirectoryJumps.Entries
+	}
+	if fileConfig.UI.KeyBindings != nil {
+		defaultConfig.UI.KeyBindings = fileConfig.UI.KeyBindings
+	}
+	if fileConfig.UI.ExternalCommands != nil {
+		defaultConfig.UI.ExternalCommands = fileConfig.UI.ExternalCommands
 	}
 }
 

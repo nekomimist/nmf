@@ -1,6 +1,10 @@
 package ui
 
 import (
+	"math"
+	"strings"
+	"unicode/utf8"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
@@ -26,9 +30,10 @@ func ShowCompactMessageDialog(parent fyne.Window, title, message string) {
 	}
 
 	label := widget.NewLabel(message)
-	label.Alignment = fyne.TextAlignCenter
-	label.Wrapping = fyne.TextWrapOff
-	messageBox := container.NewGridWrap(fyne.NewSize(320, 48), container.NewCenter(label))
+	label.Alignment = fyne.TextAlignLeading
+	label.Wrapping = fyne.TextWrapBreak
+	messageSize, dialogSize := compactMessageDialogSizes(message)
+	messageBox := container.NewGridWrap(messageSize, container.NewPadded(label))
 	content := container.NewVBox(
 		messageBox,
 		container.NewGridWithColumns(1, widget.NewButton("OK", closeDialog)),
@@ -37,10 +42,52 @@ func ShowCompactMessageDialog(parent fyne.Window, title, message string) {
 
 	d = dialog.NewCustomWithoutButtons(title, sink, parent)
 	d.Show()
-	d.Resize(fyne.NewSize(360, 130))
+	d.Resize(dialogSize)
 	if parent != nil {
 		parent.Canvas().Focus(sink)
 	}
+}
+
+func compactMessageDialogSizes(message string) (fyne.Size, fyne.Size) {
+	const (
+		messageWidth      = float32(520)
+		minMessageHeight  = float32(72)
+		lineHeight        = float32(28)
+		verticalPadding   = float32(24)
+		dialogExtraWidth  = float32(40)
+		dialogExtraHeight = float32(92)
+	)
+
+	lines := compactMessageEstimatedLineCount(message, 52)
+	messageHeight := maxFloat32(minMessageHeight, float32(lines)*lineHeight+verticalPadding)
+	messageSize := fyne.NewSize(messageWidth, messageHeight)
+	return messageSize, fyne.NewSize(messageWidth+dialogExtraWidth, messageHeight+dialogExtraHeight)
+}
+
+func compactMessageEstimatedLineCount(message string, charsPerLine int) int {
+	if charsPerLine <= 0 {
+		return 1
+	}
+	lines := 0
+	for _, line := range strings.Split(message, "\n") {
+		length := utf8.RuneCountInString(line)
+		if length == 0 {
+			lines++
+			continue
+		}
+		lines += int(math.Ceil(float64(length) / float64(charsPerLine)))
+	}
+	if lines < 1 {
+		return 1
+	}
+	return lines
+}
+
+func maxFloat32(a, b float32) float32 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 type compactMessageSink struct {
@@ -73,11 +120,17 @@ func (s *compactMessageSink) KeyDown(ev *fyne.KeyEvent) {
 }
 
 func (s *compactMessageSink) KeyUp(ev *fyne.KeyEvent) {
-	if isCompactMessageDismissKey(ev.Name) {
-		s.pressedDismissKey = ""
-		if s.onClose != nil {
-			s.onClose()
-		}
+	if !isCompactMessageDismissKey(ev.Name) {
+		return
+	}
+
+	pressedKey := s.pressedDismissKey
+	s.pressedDismissKey = ""
+	if pressedKey != normalizeCompactMessageDismissKey(ev.Name) {
+		return
+	}
+	if s.onClose != nil {
+		s.onClose()
 	}
 }
 

@@ -28,6 +28,9 @@ type CustomColorScheme struct {
 
 	// Cursor color
 	Cursor color.RGBA
+
+	// Focus color
+	Focus color.RGBA
 }
 
 var (
@@ -44,6 +47,7 @@ var (
 		FileHidden:    color.RGBA{120, 120, 120, 255}, // Medium gray for light theme
 		// Cursor color for light theme
 		Cursor: color.RGBA{0, 0, 0, 255}, // Black cursor for light theme
+		Focus:  color.RGBA{120, 175, 235, 255},
 	}
 
 	DarkColorScheme = &CustomColorScheme{
@@ -59,6 +63,7 @@ var (
 		FileHidden:    color.RGBA{105, 105, 105, 255}, // Dim gray for dark theme
 		// Cursor color for dark theme (current config default)
 		Cursor: color.RGBA{255, 255, 255, 255}, // White cursor for dark theme
+		Focus:  color.RGBA{45, 95, 170, 255},
 	}
 )
 
@@ -88,6 +93,9 @@ func (t *CustomTheme) loadCustomFont() {
 
 // Color methods from default theme
 func (t *CustomTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
+	if name == theme.ColorNameFocus {
+		return t.GetCustomColor("focus")
+	}
 	if t.config.Theme.Dark {
 		return theme.DarkTheme().Color(name, variant)
 	}
@@ -171,6 +179,8 @@ func (t *CustomTheme) GetCustomColor(colorType string) color.RGBA {
 		return scheme.FileHidden
 	case "cursor":
 		return scheme.Cursor
+	case "focus":
+		return scheme.Focus
 	default:
 		// Return transparent color as fallback
 		return color.RGBA{0, 0, 0, 0}
