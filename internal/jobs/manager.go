@@ -442,7 +442,7 @@ func deletePermanentResolved(j *Job, execCtx *executionContext, src executionPat
 		return wrapPath(src.displayPath(), err)
 	}
 
-	if fi.IsDir() && fi.Mode()&os.ModeSymlink == 0 {
+	if fi.IsDir() && !isLinkLikeForTraversal(execCtx, src, fi) {
 		entries, err := readDir(execCtx, src)
 		if err != nil {
 			return wrapPath(src.displayPath(), err)
@@ -571,6 +571,32 @@ func canceled(j *Job) bool {
 	}
 }
 
+func isLinkLikeForTraversal(execCtx *executionContext, p executionPath, fi os.FileInfo) bool {
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return true
+	}
+	if !fileinfo.IsLinkModeCandidate(fi.Mode()) {
+		return false
+	}
+	_, err := readlinkPath(execCtx, p)
+	return err == nil
+}
+
+func linkTargetForCopy(execCtx *executionContext, p executionPath, fi os.FileInfo) (string, bool, error) {
+	if fi.Mode()&os.ModeSymlink != 0 {
+		target, err := readlinkPath(execCtx, p)
+		return target, true, err
+	}
+	if !fileinfo.IsLinkModeCandidate(fi.Mode()) {
+		return "", false, nil
+	}
+	target, err := readlinkPath(execCtx, p)
+	if err != nil {
+		return "", false, nil
+	}
+	return target, true, nil
+}
+
 // copyOrMovePath copies or moves a path (file or directory).
 func copyOrMovePath(j *Job, src string, destDir string) error {
 	srcPath, err := resolveExecutionPath(src)
@@ -618,6 +644,30 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 		return nil
 	}
 
+	if target, isLink, err := linkTargetForCopy(execCtx, src, fi); err != nil {
+		return wrapPath(src.displayPath(), err)
+	} else if isLink {
+		if j.Type == TypeMove {
+			if err := renamePath(execCtx, src, dst); err == nil {
+				dbg("job %d: rename link %s -> %s", j.ID, src.displayPath(), dst.displayPath())
+				return nil
+			} else {
+				dbg("job %d: rename link fallback %s -> %s: %v", j.ID, src.displayPath(), dst.displayPath(), err)
+			}
+		}
+		dbg("job %d: symlink %s -> %s", j.ID, dst.displayPath(), target)
+		if err := symlinkPath(execCtx, target, dst); err != nil {
+			return wrapPath(dst.displayPath(), err)
+		}
+		if j.Type == TypeMove {
+			dbg("job %d: unlink %s", j.ID, src.displayPath())
+			if err := removePath(execCtx, src); err != nil {
+				return wrapPath(src.displayPath(), err)
+			}
+		}
+		return nil
+	}
+
 	if fi.IsDir() {
 		dbg("job %d: mkdir %s (mode=%v)", j.ID, dst.displayPath(), fi.Mode())
 		if err := ensureDir(execCtx, dst, fi.Mode()); err != nil {
@@ -651,27 +701,6 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 			}
 			// remove empty dir after moving children
 			dbg("job %d: rmdir %s", j.ID, src.displayPath())
-			if err := removePath(execCtx, src); err != nil {
-				return wrapPath(src.displayPath(), err)
-			}
-		}
-		return nil
-	}
-
-	// handle symlink as symlink
-	if fi.Mode()&os.ModeSymlink != 0 {
-		target, err := readlinkPath(execCtx, src)
-		if err != nil {
-			return wrapPath(src.displayPath(), err)
-		}
-		// remove existing destination symlink/file if exists
-		_ = removePath(execCtx, dst)
-		dbg("job %d: symlink %s -> %s", j.ID, dst.displayPath(), target)
-		if err := symlinkPath(execCtx, target, dst); err != nil {
-			return wrapPath(dst.displayPath(), err)
-		}
-		if j.Type == TypeMove {
-			dbg("job %d: unlink %s", j.ID, src.displayPath())
 			if err := removePath(execCtx, src); err != nil {
 				return wrapPath(src.displayPath(), err)
 			}
@@ -1081,6 +1110,26 @@ func symlinkPath(execCtx *executionContext, target string, link executionPath) e
 		return ops.Symlink(target, link.path)
 	}
 	return os.Symlink(target, link.path)
+}
+
+func renamePath(execCtx *executionContext, src executionPath, dst executionPath) error {
+	if src.backend != dst.backend {
+		return errors.New("cannot rename across backends")
+	}
+	if dst.backend == backendArchive {
+		return errors.New("archive paths are read-only")
+	}
+	if dst.backend == backendSMB {
+		if normalizeSMBRoot(src.smbDisplayRoot) != normalizeSMBRoot(dst.smbDisplayRoot) {
+			return errors.New("cannot rename across SMB shares")
+		}
+		ops, err := execCtx.smbOpsFor(src)
+		if err != nil {
+			return err
+		}
+		return ops.Rename(src.path, dst.path)
+	}
+	return os.Rename(src.path, dst.path)
 }
 
 func openReadPath(execCtx *executionContext, p executionPath) (io.ReadCloser, error) {

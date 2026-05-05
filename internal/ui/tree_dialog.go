@@ -116,12 +116,14 @@ func (dtd *DirectoryTreeDialog) getDirectoryChildren(path string) []string {
 
 	var children []string
 	for _, entry := range entries {
-		if entry.IsDir() {
-			childPath := fileinfo.JoinPath(path, entry.Name())
-			// Skip hidden directories unless they're important system ones
-			if !strings.HasPrefix(entry.Name(), ".") || entry.Name() == ".." {
-				children = append(children, childPath)
-			}
+		childPath := fileinfo.JoinPath(path, entry.Name())
+		metadata, err := fileinfo.InspectPath(childPath, entry.Name(), entry)
+		if err != nil || !metadata.IsDir {
+			continue
+		}
+		// Skip hidden directories unless they're important system ones
+		if !strings.HasPrefix(entry.Name(), ".") || entry.Name() == ".." {
+			children = append(children, childPath)
 		}
 	}
 
@@ -135,11 +137,7 @@ func (dtd *DirectoryTreeDialog) isDirectory(path string) bool {
 		return isDir
 	}
 
-	info, err := fileinfo.StatPortable(path)
-	if err != nil {
-		return false
-	}
-	return info.IsDir()
+	return fileinfo.IsNavigableDirectory(path)
 }
 
 // getDisplayName returns the display name for a directory path

@@ -417,6 +417,83 @@ func TestPermanentDeleteDoesNotFollowDirectorySymlink(t *testing.T) {
 	}
 }
 
+func TestCopyDirectorySymlinkCopiesLinkOnly(t *testing.T) {
+	tmp := t.TempDir()
+	targetDir, targetFile := makeSymlinkTargetTree(t, tmp)
+	link := filepath.Join(tmp, "link")
+	createDirectorySymlink(t, targetDir, link)
+	dstRoot := filepath.Join(tmp, "dst")
+	if err := os.Mkdir(dstRoot, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	j := &Job{Type: TypeCopy, ctx: context.Background()}
+	if err := copyOrMovePath(j, link, dstRoot); err != nil {
+		t.Fatalf("copyOrMovePath returned error: %v", err)
+	}
+
+	dstLink := filepath.Join(dstRoot, "link")
+	assertSymlink(t, dstLink)
+	if _, err := os.Lstat(targetFile); err != nil {
+		t.Fatalf("symlink target should remain, got stat error: %v", err)
+	}
+}
+
+func TestMoveDirectorySymlinkMovesLinkOnly(t *testing.T) {
+	tmp := t.TempDir()
+	targetDir, targetFile := makeSymlinkTargetTree(t, tmp)
+	link := filepath.Join(tmp, "link")
+	createDirectorySymlink(t, targetDir, link)
+	dstRoot := filepath.Join(tmp, "dst")
+	if err := os.Mkdir(dstRoot, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	j := &Job{Type: TypeMove, ctx: context.Background()}
+	if err := copyOrMovePath(j, link, dstRoot); err != nil {
+		t.Fatalf("copyOrMovePath returned error: %v", err)
+	}
+
+	if _, err := os.Lstat(link); !os.IsNotExist(err) {
+		t.Fatalf("source symlink still exists or stat failed unexpectedly: %v", err)
+	}
+	assertSymlink(t, filepath.Join(dstRoot, "link"))
+	if _, err := os.Lstat(targetFile); err != nil {
+		t.Fatalf("symlink target should remain, got stat error: %v", err)
+	}
+}
+
+func makeSymlinkTargetTree(t *testing.T, root string) (string, string) {
+	t.Helper()
+	targetDir := filepath.Join(root, "target")
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	targetFile := filepath.Join(targetDir, "keep.txt")
+	if err := os.WriteFile(targetFile, []byte("keep"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return targetDir, targetFile
+}
+
+func createDirectorySymlink(t *testing.T, target string, link string) {
+	t.Helper()
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+}
+
+func assertSymlink(t *testing.T, path string) {
+	t.Helper()
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("Lstat(%q) returned error: %v", path, err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("%q mode = %v, want symlink", path, info.Mode())
+	}
+}
+
 func TestValidateDeleteTargetRejectsFilesystemRoot(t *testing.T) {
 	root := string(os.PathSeparator)
 	if runtime.GOOS == "windows" {

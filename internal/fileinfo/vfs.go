@@ -30,6 +30,8 @@ type LocalFS struct{}
 
 func (LocalFS) ReadDir(path string) ([]os.DirEntry, error) { return os.ReadDir(path) }
 func (LocalFS) Stat(path string) (os.FileInfo, error)      { return os.Stat(path) }
+func (LocalFS) Lstat(path string) (os.FileInfo, error)     { return os.Lstat(path) }
+func (LocalFS) Readlink(path string) (string, error)       { return os.Readlink(path) }
 func (LocalFS) Capabilities() Capabilities                 { return Capabilities{FastList: true, Watch: true} }
 func (LocalFS) Join(elem ...string) string                 { return filepath.Join(elem...) }
 func (LocalFS) Base(p string) string                       { return filepath.Base(p) }

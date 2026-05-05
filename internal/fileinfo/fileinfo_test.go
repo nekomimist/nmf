@@ -2,6 +2,8 @@ package fileinfo
 
 import (
 	"image/color"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -52,6 +54,65 @@ func TestDetermineFileType(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFileInfoFromDirEntryDirectorySymlink(t *testing.T) {
+	tmp := t.TempDir()
+	target := filepath.Join(tmp, "target")
+	if err := os.Mkdir(target, 0755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(tmp, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	entry := readDirEntry(t, tmp, "link")
+	got, err := FileInfoFromDirEntry(tmp, entry)
+	if err != nil {
+		t.Fatalf("FileInfoFromDirEntry returned error: %v", err)
+	}
+	if got.FileType != FileTypeSymlink {
+		t.Fatalf("FileType = %v, want FileTypeSymlink", got.FileType)
+	}
+	if !got.IsDir {
+		t.Fatal("directory symlink should be navigable")
+	}
+}
+
+func TestFileInfoFromDirEntryBrokenSymlinkIsNotNavigable(t *testing.T) {
+	tmp := t.TempDir()
+	link := filepath.Join(tmp, "broken")
+	if err := os.Symlink("missing-target", link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	entry := readDirEntry(t, tmp, "broken")
+	got, err := FileInfoFromDirEntry(tmp, entry)
+	if err != nil {
+		t.Fatalf("FileInfoFromDirEntry returned error: %v", err)
+	}
+	if got.FileType != FileTypeSymlink {
+		t.Fatalf("FileType = %v, want FileTypeSymlink", got.FileType)
+	}
+	if got.IsDir {
+		t.Fatal("broken symlink should not be navigable")
+	}
+}
+
+func readDirEntry(t *testing.T, dir string, name string) os.DirEntry {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.Name() == name {
+			return entry
+		}
+	}
+	t.Fatalf("entry %q not found", name)
+	return nil
 }
 
 // mockThemeColorProvider implements ThemeColorProvider for testing

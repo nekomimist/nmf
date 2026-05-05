@@ -175,23 +175,11 @@ func (dw *DirectoryWatcher) checkForChanges(runID uint64, changeChan chan<- *Pen
 
 	// Build current file map
 	for _, entry := range entries {
-		fullPath := fileinfo.JoinPath(cur, entry.Name())
-		info, err := entry.Info()
+		fileInfo, err := fileinfo.FileInfoFromDirEntry(cur, entry)
 		if err != nil {
 			continue
 		}
-
-		fileType := fileinfo.DetermineFileType(fullPath, entry.Name(), entry.IsDir())
-		fileInfo := fileinfo.FileInfo{
-			Name:     entry.Name(),
-			Path:     fullPath,
-			IsDir:    entry.IsDir(),
-			Size:     info.Size(),
-			Modified: info.ModTime(),
-			FileType: fileType,
-			Status:   fileinfo.StatusNormal,
-		}
-		currentFiles[fullPath] = fileInfo
+		currentFiles[fileInfo.Path] = fileInfo
 	}
 
 	// Detect changes

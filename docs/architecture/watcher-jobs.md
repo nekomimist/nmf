@@ -65,6 +65,9 @@ Jobs:
   - `permanent`: recursively remove each top-level source after UI confirmation.
 - Permanent delete refuses filesystem roots and SMB share roots. Symlinks are
   deleted as links and are not followed.
+- Directory symlinks and Windows junction-like reparse points are navigable in
+  the UI when their targets are directories, but copy/move/delete still operate
+  on the link itself rather than the target tree.
 - Trash failures are reported as job failures and never fall back to permanent
   deletion automatically.
 - Copy/move name collisions are resolved at execution time, immediately before

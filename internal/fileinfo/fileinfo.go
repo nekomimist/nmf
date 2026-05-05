@@ -3,9 +3,6 @@ package fileinfo
 import (
 	"fmt"
 	"image/color"
-	"os"
-	"runtime"
-	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -61,29 +58,11 @@ type ListItem struct {
 
 // DetermineFileType determines the file type based on file attributes
 func DetermineFileType(path string, name string, isDir bool) FileType {
-	// Check if it's a symlink first (works on both Linux and Windows)
-	if info, err := os.Lstat(path); err == nil {
-		if info.Mode()&os.ModeSymlink != 0 {
-			return FileTypeSymlink
-		}
+	metadata, err := InspectPath(path, name, nil)
+	if err == nil {
+		return metadata.FileType
 	}
-
-	// Check for directory
-	if isDir {
-		return FileTypeDirectory
-	}
-
-	// Check for hidden files (starting with .)
-	if strings.HasPrefix(name, ".") {
-		return FileTypeHidden
-	}
-
-	// Check for Windows hidden file attribute
-	if runtime.GOOS == "windows" && IsWindowsHidden(path) {
-		return FileTypeHidden
-	}
-
-	return FileTypeRegular
+	return determineFileType(path, name, isDir, false)
 }
 
 // GetTextColor returns the text color based on file type

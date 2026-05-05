@@ -199,20 +199,9 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 	}
 
 	for _, entry := range entries {
-		info, err := entry.Info()
+		fi, err := fileinfo.FileInfoFromDirEntry(path, entry)
 		if err != nil {
 			continue
-		}
-		fullPath := fileinfo.JoinPath(path, entry.Name())
-		fileType := fileinfo.DetermineFileType(fullPath, entry.Name(), entry.IsDir())
-		fi := fileinfo.FileInfo{
-			Name:     entry.Name(),
-			Path:     fullPath,
-			IsDir:    entry.IsDir(),
-			Size:     info.Size(),
-			Modified: info.ModTime(),
-			FileType: fileType,
-			Status:   fileinfo.StatusNormal,
 		}
 		files = append(files, fi)
 	}
