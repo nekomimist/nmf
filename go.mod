@@ -9,6 +9,7 @@ require (
 	github.com/go-text/typesetting v0.3.4
 	github.com/hirochachacha/go-smb2 v1.1.0
 	github.com/mholt/archives v0.1.5
+	go.starlark.net v0.0.0-20260326113308-fadfc96def35
 	golang.org/x/sys v0.43.0
 )
 

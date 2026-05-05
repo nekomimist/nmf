@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/data/binding"
 
 	"nmf/internal/config"
+	"nmf/internal/configscript"
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 	"nmf/internal/secret"
@@ -17,7 +18,7 @@ import (
 	"nmf/internal/watcher"
 )
 
-func NewFileManager(app fyne.App, path string, config *config.Config, configManager *config.Manager, customTheme *customtheme.CustomTheme) *FileManager {
+func NewFileManager(app fyne.App, path string, config *config.Config, configManager *config.Manager, customTheme *customtheme.CustomTheme, configScript *configscript.Runtime) *FileManager {
 	fm := &FileManager{
 		window:         app.NewWindow("File Manager"),
 		currentPath:    path,
@@ -26,6 +27,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 		fileBinding:    binding.NewUntypedList(),
 		config:         config,
 		configManager:  configManager,
+		configScript:   configScript,
 		customTheme:    customTheme,
 		cursorRenderer: ui.NewCursorRenderer(config.UI.CursorStyle),
 		keyManager:     keymanager.NewKeyManager(debugPrint),
@@ -64,7 +66,11 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 	fm.searchHandler = keymanager.NewIncrementalSearchKeyHandler(fm, debugPrint)
 
 	// Setup KeyManager with main screen handler
-	mainHandler := keymanager.NewMainScreenKeyHandler(fm, debugPrint, config.UI.KeyBindings)
+	var scriptCommands keymanager.CommandRegistry
+	if configScript != nil {
+		scriptCommands = configScript.Commands
+	}
+	mainHandler := keymanager.NewMainScreenKeyHandlerWithCommands(fm, debugPrint, config.UI.KeyBindings, scriptCommands)
 	fm.keyManager.PushHandler(mainHandler)
 
 	fm.setupUI()

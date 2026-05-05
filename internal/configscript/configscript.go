@@ -1,0 +1,743 @@
+package configscript
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strings"
+
+	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
+	"go.starlark.net/syntax"
+
+	"nmf/internal/config"
+	"nmf/internal/keymanager"
+)
+
+const (
+	// FileName is the Starlark initialization file name.
+	FileName = "init.star"
+
+	commandPrefix       = "user."
+	commandContextKey   = "nmf.commandContext"
+	maxExecutionSteps   = 1_000_000
+	maxLoadModuleDepth  = 32
+	defaultModuleSuffix = ".star"
+)
+
+// Runtime holds Starlark-defined runtime behavior.
+type Runtime struct {
+	Commands keymanager.CommandRegistry
+
+	cfg        *config.Config
+	configDir  string
+	debugPrint func(format string, args ...interface{})
+	loaded     bool
+	saveMask   saveMask
+
+	moduleCache map[string]starlark.StringDict
+	loading     map[string]bool
+	loadDepth   int
+}
+
+type saveMask struct {
+	window                      bool
+	theme                       bool
+	uiShowHiddenFiles           bool
+	uiSort                      bool
+	uiItemSpacing               bool
+	uiCursorStyle               bool
+	uiCursorMemoryMaxEntries    bool
+	uiNavigationHistoryMaxEntry bool
+	uiFileFilterMaxEntries      bool
+	uiDirectoryJumps            bool
+	uiKeyBindings               bool
+	uiExternalCommands          bool
+}
+
+// ScriptPath returns the init.star path next to config.json.
+func ScriptPath(configPath string) string {
+	return filepath.Join(filepath.Dir(configPath), FileName)
+}
+
+// Load reads and executes init.star if it exists.
+func Load(path string, cfg *config.Config, debugPrint func(format string, args ...interface{})) (*Runtime, error) {
+	rt := newRuntime(path, cfg, debugPrint)
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			rt.debugPrint("ConfigScript: init file not found path=%s", path)
+			return rt, nil
+		}
+		return nil, fmt.Errorf("reading Starlark config %s: %w", path, err)
+	}
+
+	if err := rt.execFile(path, data); err != nil {
+		return nil, err
+	}
+	rt.loaded = true
+	rt.debugPrint("ConfigScript: loaded path=%s commands=%d", path, len(rt.Commands))
+	return rt, nil
+}
+
+func newRuntime(path string, cfg *config.Config, debugPrint func(format string, args ...interface{})) *Runtime {
+	configDir := filepath.Dir(path)
+	if abs, err := filepath.Abs(configDir); err == nil {
+		configDir = abs
+	}
+	if debugPrint == nil {
+		debugPrint = func(string, ...interface{}) {}
+	}
+	return &Runtime{
+		Commands:    make(keymanager.CommandRegistry),
+		cfg:         cfg,
+		configDir:   configDir,
+		debugPrint:  debugPrint,
+		moduleCache: make(map[string]starlark.StringDict),
+		loading:     make(map[string]bool),
+	}
+}
+
+// Loaded reports whether an init.star file was found and executed.
+func (rt *Runtime) Loaded() bool {
+	return rt != nil && rt.loaded
+}
+
+// SaveTransform returns a config save hook that strips Starlark-only overrides.
+func (rt *Runtime) SaveTransform(base *config.Config) config.SaveTransform {
+	if rt == nil {
+		return nil
+	}
+	baseCopy := config.Clone(base)
+	mask := rt.saveMask
+	return func(current *config.Config) *config.Config {
+		if current == nil || baseCopy == nil {
+			return current
+		}
+		if mask.window {
+			current.Window = baseCopy.Window
+		}
+		if mask.theme {
+			current.Theme = baseCopy.Theme
+		}
+		if mask.uiShowHiddenFiles {
+			current.UI.ShowHiddenFiles = baseCopy.UI.ShowHiddenFiles
+		}
+		if mask.uiSort {
+			current.UI.Sort = baseCopy.UI.Sort
+		}
+		if mask.uiItemSpacing {
+			current.UI.ItemSpacing = baseCopy.UI.ItemSpacing
+		}
+		if mask.uiCursorStyle {
+			current.UI.CursorStyle = baseCopy.UI.CursorStyle
+		}
+		if mask.uiCursorMemoryMaxEntries {
+			current.UI.CursorMemory.MaxEntries = baseCopy.UI.CursorMemory.MaxEntries
+		}
+		if mask.uiNavigationHistoryMaxEntry {
+			current.UI.NavigationHistory.MaxEntries = baseCopy.UI.NavigationHistory.MaxEntries
+		}
+		if mask.uiFileFilterMaxEntries {
+			current.UI.FileFilter.MaxEntries = baseCopy.UI.FileFilter.MaxEntries
+		}
+		if mask.uiDirectoryJumps {
+			current.UI.DirectoryJumps = baseCopy.UI.DirectoryJumps
+		}
+		if mask.uiKeyBindings {
+			current.UI.KeyBindings = baseCopy.UI.KeyBindings
+		}
+		if mask.uiExternalCommands {
+			current.UI.ExternalCommands = baseCopy.UI.ExternalCommands
+		}
+		return current
+	}
+}
+
+func (rt *Runtime) execFile(path string, data []byte) error {
+	thread := rt.newThread("nmf init")
+	globals, err := starlark.ExecFileOptions(rt.fileOptions(), thread, path, data, rt.predeclared())
+	if err != nil {
+		return fmt.Errorf("executing Starlark config %s: %s", path, formatStarlarkError(err))
+	}
+	rt.moduleCache[path] = globals
+	return nil
+}
+
+func (rt *Runtime) fileOptions() *syntax.FileOptions {
+	return &syntax.FileOptions{
+		TopLevelControl: true,
+	}
+}
+
+func (rt *Runtime) newThread(name string) *starlark.Thread {
+	thread := &starlark.Thread{
+		Name: name,
+		Print: func(_ *starlark.Thread, msg string) {
+			rt.debugPrint("ConfigScript: %s", msg)
+		},
+		Load: func(_ *starlark.Thread, module string) (starlark.StringDict, error) {
+			return rt.loadModule(module)
+		},
+	}
+	thread.SetMaxExecutionSteps(maxExecutionSteps)
+	return thread
+}
+
+func (rt *Runtime) loadModule(module string) (starlark.StringDict, error) {
+	path, err := rt.resolveModule(module)
+	if err != nil {
+		return nil, err
+	}
+	if globals, ok := rt.moduleCache[path]; ok {
+		return globals, nil
+	}
+	if rt.loading[path] {
+		return nil, fmt.Errorf("cyclic Starlark load: %s", module)
+	}
+	if rt.loadDepth >= maxLoadModuleDepth {
+		return nil, fmt.Errorf("Starlark load depth exceeded at %s", module)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	rt.loading[path] = true
+	rt.loadDepth++
+	defer func() {
+		rt.loadDepth--
+		delete(rt.loading, path)
+	}()
+
+	thread := rt.newThread("nmf load " + module)
+	globals, err := starlark.ExecFileOptions(rt.fileOptions(), thread, path, data, rt.predeclared())
+	if err != nil {
+		return nil, fmt.Errorf("%s", formatStarlarkError(err))
+	}
+	rt.moduleCache[path] = globals
+	return globals, nil
+}
+
+func (rt *Runtime) resolveModule(module string) (string, error) {
+	name := strings.TrimSpace(module)
+	if name == "" {
+		return "", fmt.Errorf("empty Starlark module name")
+	}
+	name = filepath.FromSlash(name)
+	if filepath.IsAbs(name) {
+		return "", fmt.Errorf("absolute Starlark loads are not allowed: %s", module)
+	}
+	if filepath.Ext(name) == "" {
+		name += defaultModuleSuffix
+	}
+
+	path := filepath.Clean(filepath.Join(rt.configDir, name))
+	rel, err := filepath.Rel(rt.configDir, path)
+	if err != nil {
+		return "", err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", fmt.Errorf("Starlark load outside config directory is not allowed: %s", module)
+	}
+	return path, nil
+}
+
+func (rt *Runtime) predeclared() starlark.StringDict {
+	return starlark.StringDict{
+		"nmf": starlarkstruct.FromStringDict(starlark.String("nmf"), starlark.StringDict{
+			"window":             starlark.NewBuiltin("nmf.window", rt.builtinWindow),
+			"theme":              starlark.NewBuiltin("nmf.theme", rt.builtinTheme),
+			"ui":                 starlark.NewBuiltin("nmf.ui", rt.builtinUI),
+			"sort":               starlark.NewBuiltin("nmf.sort", rt.builtinSort),
+			"cursor_style":       starlark.NewBuiltin("nmf.cursor_style", rt.builtinCursorStyle),
+			"cursor_memory":      starlark.NewBuiltin("nmf.cursor_memory", rt.builtinCursorMemory),
+			"navigation_history": starlark.NewBuiltin("nmf.navigation_history", rt.builtinNavigationHistory),
+			"file_filter":        starlark.NewBuiltin("nmf.file_filter", rt.builtinFileFilter),
+			"directory_jump":     starlark.NewBuiltin("nmf.directory_jump", rt.builtinDirectoryJump),
+			"clear_directory_jumps": starlark.NewBuiltin(
+				"nmf.clear_directory_jumps",
+				rt.builtinClearDirectoryJumps,
+			),
+			"key":        starlark.NewBuiltin("nmf.key", rt.builtinKey),
+			"clear_keys": starlark.NewBuiltin("nmf.clear_keys", rt.builtinClearKeys),
+			"external_command": starlark.NewBuiltin(
+				"nmf.external_command",
+				rt.builtinExternalCommand,
+			),
+			"clear_external_commands": starlark.NewBuiltin(
+				"nmf.clear_external_commands",
+				rt.builtinClearExternalCommands,
+			),
+			"command":        starlark.NewBuiltin("nmf.command", rt.builtinCommand),
+			"run":            starlark.NewBuiltin("nmf.run", rt.builtinRun),
+			"load_directory": starlark.NewBuiltin("nmf.load_directory", rt.builtinLoadDirectory),
+			"current_path":   starlark.NewBuiltin("nmf.current_path", rt.builtinCurrentPath),
+			"getenv":         starlark.NewBuiltin("nmf.getenv", rt.builtinGetenv),
+			"os":             starlark.NewBuiltin("nmf.os", rt.builtinOS),
+			"hostname":       starlark.NewBuiltin("nmf.hostname", rt.builtinHostname),
+		}),
+	}
+}
+
+func (rt *Runtime) builtinWindow(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	width := rt.cfg.Window.Width
+	height := rt.cfg.Window.Height
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "width?", &width, "height?", &height); err != nil {
+		return nil, err
+	}
+	if width <= 0 || height <= 0 {
+		return nil, fmt.Errorf("window width and height must be positive")
+	}
+	rt.cfg.Window.Width = width
+	rt.cfg.Window.Height = height
+	rt.saveMask.window = true
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinTheme(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	dark := rt.cfg.Theme.Dark
+	fontSize := rt.cfg.Theme.FontSize
+	fontName := rt.cfg.Theme.FontName
+	fontPath := rt.cfg.Theme.FontPath
+	if err := starlark.UnpackArgs(
+		fn.Name(),
+		args,
+		kwargs,
+		"dark?", &dark,
+		"font_size?", &fontSize,
+		"font_name?", &fontName,
+		"font_path?", &fontPath,
+	); err != nil {
+		return nil, err
+	}
+	if fontSize < 0 {
+		return nil, fmt.Errorf("font_size must be zero or positive")
+	}
+	rt.cfg.Theme.Dark = dark
+	rt.cfg.Theme.FontSize = fontSize
+	rt.cfg.Theme.FontName = strings.TrimSpace(fontName)
+	rt.cfg.Theme.FontPath = fontPath
+	rt.saveMask.theme = true
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinUI(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	showHiddenFiles := rt.cfg.UI.ShowHiddenFiles
+	itemSpacing := rt.cfg.UI.ItemSpacing
+	if err := starlark.UnpackArgs(
+		fn.Name(),
+		args,
+		kwargs,
+		"show_hidden_files?", &showHiddenFiles,
+		"item_spacing?", &itemSpacing,
+	); err != nil {
+		return nil, err
+	}
+	if itemSpacing < 0 {
+		return nil, fmt.Errorf("item_spacing must be zero or positive")
+	}
+	rt.cfg.UI.ShowHiddenFiles = showHiddenFiles
+	rt.cfg.UI.ItemSpacing = itemSpacing
+	rt.saveMask.uiShowHiddenFiles = true
+	rt.saveMask.uiItemSpacing = true
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinSort(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	sortBy := rt.cfg.UI.Sort.SortBy
+	sortOrder := rt.cfg.UI.Sort.SortOrder
+	directoriesFirst := rt.cfg.UI.Sort.DirectoriesFirst
+	if err := starlark.UnpackArgs(
+		fn.Name(),
+		args,
+		kwargs,
+		"by?", &sortBy,
+		"order?", &sortOrder,
+		"directories_first?", &directoriesFirst,
+	); err != nil {
+		return nil, err
+	}
+	if !isOneOf(sortBy, "name", "size", "modified", "extension") {
+		return nil, fmt.Errorf("sort by must be one of name, size, modified, or extension")
+	}
+	if !isOneOf(sortOrder, "asc", "desc") {
+		return nil, fmt.Errorf("sort order must be asc or desc")
+	}
+	rt.cfg.UI.Sort.SortBy = sortBy
+	rt.cfg.UI.Sort.SortOrder = sortOrder
+	rt.cfg.UI.Sort.DirectoriesFirst = directoriesFirst
+	rt.saveMask.uiSort = true
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinCursorStyle(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	styleType := rt.cfg.UI.CursorStyle.Type
+	thickness := rt.cfg.UI.CursorStyle.Thickness
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "type?", &styleType, "thickness?", &thickness); err != nil {
+		return nil, err
+	}
+	if !isOneOf(styleType, "underline", "border", "background", "icon", "font") {
+		return nil, fmt.Errorf("cursor style type must be underline, border, background, icon, or font")
+	}
+	if thickness < 0 {
+		return nil, fmt.Errorf("cursor thickness must be zero or positive")
+	}
+	rt.cfg.UI.CursorStyle.Type = styleType
+	rt.cfg.UI.CursorStyle.Thickness = thickness
+	rt.saveMask.uiCursorStyle = true
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinCursorMemory(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	maxEntries := rt.cfg.UI.CursorMemory.MaxEntries
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "max_entries?", &maxEntries); err != nil {
+		return nil, err
+	}
+	if maxEntries <= 0 {
+		return nil, fmt.Errorf("max_entries must be positive")
+	}
+	rt.cfg.UI.CursorMemory.MaxEntries = maxEntries
+	rt.saveMask.uiCursorMemoryMaxEntries = true
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinNavigationHistory(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	maxEntries := rt.cfg.UI.NavigationHistory.MaxEntries
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "max_entries?", &maxEntries); err != nil {
+		return nil, err
+	}
+	if maxEntries <= 0 {
+		return nil, fmt.Errorf("max_entries must be positive")
+	}
+	rt.cfg.UI.NavigationHistory.MaxEntries = maxEntries
+	rt.saveMask.uiNavigationHistoryMaxEntry = true
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinFileFilter(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	maxEntries := rt.cfg.UI.FileFilter.MaxEntries
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "max_entries?", &maxEntries); err != nil {
+		return nil, err
+	}
+	if maxEntries <= 0 {
+		return nil, fmt.Errorf("max_entries must be positive")
+	}
+	rt.cfg.UI.FileFilter.MaxEntries = maxEntries
+	rt.saveMask.uiFileFilterMaxEntries = true
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinDirectoryJump(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var shortcut string
+	var directory string
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "shortcut", &shortcut, "directory", &directory); err != nil {
+		return nil, err
+	}
+	if len([]rune(shortcut)) > 1 {
+		return nil, fmt.Errorf("directory jump shortcut must be empty or one character")
+	}
+	if strings.TrimSpace(directory) == "" {
+		return nil, fmt.Errorf("directory jump directory must not be empty")
+	}
+	rt.cfg.UI.DirectoryJumps.Entries = append(rt.cfg.UI.DirectoryJumps.Entries, config.DirectoryJumpEntry{
+		Shortcut:  shortcut,
+		Directory: directory,
+	})
+	rt.saveMask.uiDirectoryJumps = true
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinClearDirectoryJumps(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := starlark.UnpackArgs("nmf.clear_directory_jumps", args, kwargs); err != nil {
+		return nil, err
+	}
+	rt.cfg.UI.DirectoryJumps.Entries = nil
+	rt.saveMask.uiDirectoryJumps = true
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinKey(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var key string
+	var command string
+	var event string
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "key", &key, "command", &command, "event?", &event); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(key) == "" {
+		return nil, fmt.Errorf("key must not be empty")
+	}
+	if strings.TrimSpace(command) == "" {
+		return nil, fmt.Errorf("command must not be empty")
+	}
+	rt.cfg.UI.KeyBindings = append(rt.cfg.UI.KeyBindings, config.KeyBindingEntry{
+		Key:     key,
+		Command: command,
+		Event:   event,
+	})
+	rt.saveMask.uiKeyBindings = true
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinClearKeys(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := starlark.UnpackArgs("nmf.clear_keys", args, kwargs); err != nil {
+		return nil, err
+	}
+	rt.cfg.UI.KeyBindings = nil
+	rt.saveMask.uiKeyBindings = true
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinExternalCommand(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var name string
+	var command string
+	extensionsValue := starlark.Value(starlark.None)
+	argsValue := starlark.Value(starlark.None)
+	if err := starlark.UnpackArgs(
+		fn.Name(),
+		args,
+		kwargs,
+		"name", &name,
+		"command", &command,
+		"extensions?", &extensionsValue,
+		"args?", &argsValue,
+	); err != nil {
+		return nil, err
+	}
+	extensions, err := stringList(extensionsValue, "extensions")
+	if err != nil {
+		return nil, err
+	}
+	commandArgs, err := stringList(argsValue, "args")
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(name) == "" {
+		return nil, fmt.Errorf("external command name must not be empty")
+	}
+	if strings.TrimSpace(command) == "" {
+		return nil, fmt.Errorf("external command command must not be empty")
+	}
+	rt.cfg.UI.ExternalCommands = append(rt.cfg.UI.ExternalCommands, config.ExternalCommandEntry{
+		Name:       name,
+		Extensions: extensions,
+		Command:    command,
+		Args:       commandArgs,
+	})
+	rt.saveMask.uiExternalCommands = true
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinClearExternalCommands(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := starlark.UnpackArgs("nmf.clear_external_commands", args, kwargs); err != nil {
+		return nil, err
+	}
+	rt.cfg.UI.ExternalCommands = nil
+	rt.saveMask.uiExternalCommands = true
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinCommand(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var id string
+	var value starlark.Value
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "id", &id, "fn", &value); err != nil {
+		return nil, err
+	}
+	id = strings.TrimSpace(id)
+	if !strings.HasPrefix(id, commandPrefix) {
+		return nil, fmt.Errorf("custom command id must start with %q", commandPrefix)
+	}
+	callable, ok := value.(starlark.Callable)
+	if !ok {
+		return nil, fmt.Errorf("command fn must be callable, got %s", value.Type())
+	}
+	rt.Commands[id] = func(ctx keymanager.CommandContext) {
+		if err := rt.callCommand(id, callable, ctx); err != nil {
+			rt.debugPrint("ConfigScript: command failed id=%s err=%s", id, formatStarlarkError(err))
+		}
+	}
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinRun(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var command string
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "command", &command); err != nil {
+		return nil, err
+	}
+	ctx, err := commandContext(thread, fn.Name())
+	if err != nil {
+		return nil, err
+	}
+	if ctx.RunCommand == nil {
+		return starlark.False, nil
+	}
+	return starlark.Bool(ctx.RunCommand(command)), nil
+}
+
+func (rt *Runtime) builtinLoadDirectory(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var path string
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "path", &path); err != nil {
+		return nil, err
+	}
+	ctx, err := commandContext(thread, fn.Name())
+	if err != nil {
+		return nil, err
+	}
+	if ctx.FileManager == nil {
+		return nil, fmt.Errorf("%s requires a file manager", fn.Name())
+	}
+	ctx.FileManager.LoadDirectory(path)
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinCurrentPath(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs); err != nil {
+		return nil, err
+	}
+	ctx, err := commandContext(thread, fn.Name())
+	if err != nil {
+		return nil, err
+	}
+	if ctx.FileManager == nil {
+		return starlark.String(""), nil
+	}
+	return starlark.String(ctx.FileManager.GetCurrentPath()), nil
+}
+
+func (rt *Runtime) builtinGetenv(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var name string
+	defaultValue := starlark.Value(starlark.None)
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "name", &name, "default?", &defaultValue); err != nil {
+		return nil, err
+	}
+	if name == "" {
+		return nil, fmt.Errorf("environment variable name must not be empty")
+	}
+	if value, ok := os.LookupEnv(name); ok {
+		return starlark.String(value), nil
+	}
+	if defaultValue == starlark.None {
+		return starlark.None, nil
+	}
+	defaultString, ok := starlark.AsString(defaultValue)
+	if !ok {
+		return nil, fmt.Errorf("default must be a string or None, got %s", defaultValue.Type())
+	}
+	return starlark.String(defaultString), nil
+}
+
+func (rt *Runtime) builtinOS(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs); err != nil {
+		return nil, err
+	}
+	return starlark.String(runtime.GOOS), nil
+}
+
+func (rt *Runtime) builtinHostname(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs); err != nil {
+		return nil, err
+	}
+	name, err := os.Hostname()
+	if err != nil {
+		rt.debugPrint("ConfigScript: hostname err=%s", err)
+		return starlark.String(""), nil
+	}
+	return starlark.String(name), nil
+}
+
+func (rt *Runtime) callCommand(id string, callable starlark.Callable, ctx keymanager.CommandContext) error {
+	thread := rt.newThread("nmf command " + id)
+	thread.SetLocal(commandContextKey, ctx)
+	_, err := starlark.Call(thread, callable, starlark.Tuple{commandContextValue(ctx)}, nil)
+	return err
+}
+
+func commandContext(thread *starlark.Thread, fnName string) (keymanager.CommandContext, error) {
+	value := thread.Local(commandContextKey)
+	ctx, ok := value.(keymanager.CommandContext)
+	if !ok {
+		return keymanager.CommandContext{}, fmt.Errorf("%s can only be used while a custom command is running", fnName)
+	}
+	return ctx, nil
+}
+
+func commandContextValue(ctx keymanager.CommandContext) starlark.Value {
+	fields := starlark.StringDict{
+		"key":   starlark.String(ctx.Key),
+		"event": starlark.String(ctx.Event),
+		"shift": starlark.Bool(ctx.Modifiers.ShiftPressed),
+		"ctrl":  starlark.Bool(ctx.Modifiers.CtrlPressed),
+		"alt":   starlark.Bool(ctx.Modifiers.AltPressed),
+	}
+	if ctx.FileManager != nil {
+		fields["current_path"] = starlark.String(ctx.FileManager.GetCurrentPath())
+		files := ctx.FileManager.GetFiles()
+		idx := ctx.FileManager.GetCurrentCursorIndex()
+		if idx >= 0 && idx < len(files) {
+			fields["current_file"] = starlark.String(files[idx].Path)
+			fields["current_name"] = starlark.String(files[idx].Name)
+		} else {
+			fields["current_file"] = starlark.String("")
+			fields["current_name"] = starlark.String("")
+		}
+
+		selected := ctx.FileManager.GetSelectedFiles()
+		paths := make([]string, 0, len(selected))
+		for path, isSelected := range selected {
+			if isSelected {
+				paths = append(paths, path)
+			}
+		}
+		sort.Strings(paths)
+		values := make([]starlark.Value, len(paths))
+		for i, path := range paths {
+			values[i] = starlark.String(path)
+		}
+		fields["selected_files"] = starlark.NewList(values)
+	}
+	return starlarkstruct.FromStringDict(starlark.String("ctx"), fields)
+}
+
+func stringList(value starlark.Value, name string) ([]string, error) {
+	if value == nil || value == starlark.None {
+		return nil, nil
+	}
+	iterable := starlark.Iterate(value)
+	if iterable == nil {
+		return nil, fmt.Errorf("%s must be a list or tuple of strings", name)
+	}
+	defer iterable.Done()
+
+	var result []string
+	var item starlark.Value
+	for iterable.Next(&item) {
+		s, ok := starlark.AsString(item)
+		if !ok {
+			return nil, fmt.Errorf("%s must contain only strings, got %s", name, item.Type())
+		}
+		result = append(result, s)
+	}
+	return result, nil
+}
+
+func formatStarlarkError(err error) string {
+	var evalErr *starlark.EvalError
+	if errors.As(err, &evalErr) {
+		return evalErr.Backtrace()
+	}
+	return err.Error()
+}
+
+func isOneOf(value string, allowed ...string) bool {
+	for _, candidate := range allowed {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
+}

@@ -33,6 +33,9 @@ Main-screen configurable bindings:
   bindings default to `down`; unmodified bindings default to `typed`.
 - User bindings are evaluated before built-in defaults, so a configured binding
   for the same key/event overrides the default behavior.
+- Optional `init.star` configuration can append bindings and register `user.*`
+  commands. Starlark command functions receive key/modifier context and may call
+  `nmf.run(command_id)` to compose built-in or custom commands.
 
 ## Focus Ownership Rules
 

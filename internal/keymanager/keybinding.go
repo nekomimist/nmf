@@ -16,6 +16,11 @@ const (
 // CommandContext carries transient input state into command execution.
 type CommandContext struct {
 	Modifiers ModifierState
+	Key       fyne.KeyName
+	Event     string
+
+	FileManager FileManagerInterface
+	RunCommand  func(command string) bool
 }
 
 // CommandFunc executes an internal command.

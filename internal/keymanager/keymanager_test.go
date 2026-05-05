@@ -377,6 +377,56 @@ func TestMainScreenConfiguredBindingOverridesDefault(t *testing.T) {
 	}
 }
 
+func TestMainScreenConfiguredBindingCanUseExtraCommand(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	var got CommandContext
+	handler := NewMainScreenKeyHandlerWithCommands(
+		fm,
+		func(string, ...interface{}) {},
+		[]config.KeyBindingEntry{{Key: "S-X", Command: "user.test"}},
+		CommandRegistry{
+			"user.test": func(ctx CommandContext) {
+				got = ctx
+			},
+		},
+	)
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{ShiftPressed: true})
+
+	if !handled {
+		t.Fatal("configured extra command should be handled")
+	}
+	if got.Key != fyne.KeyX || got.Event != keyEventTyped || !got.Modifiers.ShiftPressed {
+		t.Fatalf("context = %+v, want key=X event=typed shift=true", got)
+	}
+	if got.FileManager != fm {
+		t.Fatal("context should carry file manager")
+	}
+}
+
+func TestMainScreenExtraCommandCanRunInternalCommand(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandlerWithCommands(
+		fm,
+		func(string, ...interface{}) {},
+		[]config.KeyBindingEntry{{Key: "X", Command: "user.jobs"}},
+		CommandRegistry{
+			"user.jobs": func(ctx CommandContext) {
+				ctx.RunCommand(CommandJobsShow)
+			},
+		},
+	)
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{})
+
+	if !handled {
+		t.Fatal("configured extra command should be handled")
+	}
+	if fm.showJobsCount != 1 {
+		t.Fatalf("ShowJobsDialog count = %d, want 1", fm.showJobsCount)
+	}
+}
+
 func TestMainScreenShiftUpUsesPageUpCommand(t *testing.T) {
 	fm := &mainScreenFakeFileManager{
 		cursorIndex: 30,

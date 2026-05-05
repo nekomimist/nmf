@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/config"
+	"nmf/internal/configscript"
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 	customtheme "nmf/internal/theme"
@@ -35,6 +36,7 @@ type FileManager struct {
 	fileBinding    binding.UntypedList
 	config         *config.Config
 	configManager  *config.Manager
+	configScript   *configscript.Runtime
 	customTheme    *customtheme.CustomTheme                // Custom theme for colors
 	cursorRenderer ui.CursorRenderer                       // Cursor display renderer
 	keyManager     *keymanager.KeyManager                  // Keyboard input manager

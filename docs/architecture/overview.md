@@ -8,7 +8,8 @@ This document describes runtime composition, package boundaries, and core state 
 
 1. `main.go`
    - Parse CLI flags (`-d`, `-path`) and normalize startup path via `resolveDirectoryPath` (`internal/fileinfo.ResolveDirectoryPath`).
-   - Load config via `internal/config.Manager`.
+   - Load config via `internal/config.Manager`, then apply optional
+     `init.star` via `internal/configscript`.
    - Create Fyne app and apply custom theme.
    - Install jobs debug hook (`internal/jobs.SetDebug`).
 2. `bootstrap.go` (`NewFileManager`)
@@ -50,6 +51,7 @@ Window placement:
 ## Package Boundaries
 
 - `internal/config`: configuration schema and async persistence.
+- `internal/configscript`: optional Starlark overlay configuration and custom command registration.
 - `internal/fileinfo`: path resolver, VFS abstraction, platform file openers, SMB support, icon service.
 - `internal/watcher`: polling watcher with run-generation lifecycle protection.
 - `internal/jobs`: copy/move queue manager and background worker.
@@ -61,7 +63,8 @@ Window placement:
 Source of truth: `internal/config/config.go`.
 
 User-facing `config.json` syntax and examples are documented in
-`docs/configuration.md`.
+`docs/configuration.md`. Optional Starlark configuration is documented in
+`docs/starlark-configuration.md`.
 
 Top-level config sections:
 
@@ -81,6 +84,13 @@ Main-screen keyboard shortcuts are resolved through the key manager command
 registry. Configured `keyBindings` map key specifications such as `C-N`,
 `S-J`, or `F2` to stable internal command IDs. `externalCommands` define the
 commands shown from the main-screen external command menu.
+
+If `init.star` is present next to `config.json`, it is loaded after JSON and
+before Fyne theme/window construction. Starlark can overlay all user-editable
+configuration fields, append or replace list-style configuration, and register
+`user.*` command IDs for key bindings. Config saves pass through a transform
+that restores Starlark-owned fields to the pre-overlay JSON values while
+preserving runtime state.
 
 Operational notes:
 

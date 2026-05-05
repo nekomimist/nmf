@@ -17,6 +17,9 @@ This directory is the canonical source for project design and operational docume
 - `docs/configuration.md`
   - User-editable `config.json` fields, examples, key binding syntax, and
     external command configuration.
+- `docs/starlark-configuration.md`
+  - Optional `init.star` overlay configuration, custom commands, and
+    persistence behavior.
 - `docs/architecture-review.md`
   - Active architecture risk register (unresolved items only).
 - `docs/runbooks/` (recommended when needed)

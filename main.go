@@ -14,6 +14,7 @@ import (
 	"fyne.io/fyne/v2/app"
 
 	"nmf/internal/config"
+	"nmf/internal/configscript"
 	"nmf/internal/fileinfo"
 	"nmf/internal/jobs"
 	customtheme "nmf/internal/theme"
@@ -116,22 +117,30 @@ func main() {
 			log.Printf("Error closing config manager: %v", err)
 		}
 	}()
-	config, err := configManager.Load()
+	cfg, err := configManager.Load()
 	if err != nil {
 		log.Fatalf("Error loading configuration: %v", err)
+	}
+	persistentConfig := config.Clone(cfg)
+	configScript, err := configscript.Load(configscript.ScriptPath(configManager.ConfigPath()), cfg, debugPrint)
+	if err != nil {
+		log.Fatalf("Error loading Starlark configuration: %v", err)
+	}
+	if configScript.Loaded() {
+		configManager.SetSaveTransform(configScript.SaveTransform(persistentConfig))
 	}
 
 	app := app.NewWithID(appID)
 	app.SetIcon(appIconResource)
 
 	// Apply custom theme
-	customTheme := customtheme.NewCustomTheme(config, debugPrint)
+	customTheme := customtheme.NewCustomTheme(cfg, debugPrint)
 	app.Settings().SetTheme(customTheme)
 
 	// Install debug logger for jobs package (prints only in -d mode)
 	jobs.SetDebug(debugPrint)
 
-	fm := NewFileManager(app, startPath, config, configManager, customTheme)
+	fm := NewFileManager(app, startPath, cfg, configManager, customTheme, configScript)
 	fm.window.ShowAndRun()
 }
 

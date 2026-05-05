@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -185,12 +186,18 @@ type Manager struct {
 	configPath string
 	debugPrint func(format string, args ...interface{})
 
+	saveTransformMu sync.RWMutex
+	saveTransform   SaveTransform
+
 	saveDelay     time.Duration
 	saveRequests  chan *Config
 	flushRequests chan chan error
 	closeRequests chan chan error
 	stopped       chan struct{}
 }
+
+// SaveTransform can adjust a config snapshot before it is persisted.
+type SaveTransform func(*Config) *Config
 
 // ErrManagerClosed is returned when operations are attempted after Close has been called.
 var ErrManagerClosed = errors.New("config manager closed")
@@ -209,6 +216,18 @@ func NewManager(debugPrint func(format string, args ...interface{})) *Manager {
 
 	m.startWorker()
 	return m
+}
+
+// ConfigPath returns the full config.json path used by this manager.
+func (m *Manager) ConfigPath() string {
+	return m.configPath
+}
+
+// SetSaveTransform installs a hook used to adjust snapshots before saving.
+func (m *Manager) SetSaveTransform(transform SaveTransform) {
+	m.saveTransformMu.Lock()
+	defer m.saveTransformMu.Unlock()
+	m.saveTransform = transform
 }
 
 // Load loads configuration from file and merges with defaults
@@ -239,7 +258,7 @@ func (m *Manager) Save(config *Config) error {
 		return err
 	}
 
-	configCopy := cloneConfig(config)
+	configCopy := m.prepareForSave(config)
 	return m.saveConfig(configCopy)
 }
 
@@ -251,7 +270,7 @@ func (m *Manager) SaveAsync(config *Config) error {
 	default:
 	}
 
-	configCopy := cloneConfig(config)
+	configCopy := m.prepareForSave(config)
 
 	select {
 	case m.saveRequests <- configCopy:
@@ -259,6 +278,22 @@ func (m *Manager) SaveAsync(config *Config) error {
 	case <-m.stopped:
 		return ErrManagerClosed
 	}
+}
+
+func (m *Manager) prepareForSave(config *Config) *Config {
+	configCopy := cloneConfig(config)
+
+	m.saveTransformMu.RLock()
+	transform := m.saveTransform
+	m.saveTransformMu.RUnlock()
+	if transform == nil {
+		return configCopy
+	}
+	transformed := transform(configCopy)
+	if transformed == nil {
+		return configCopy
+	}
+	return transformed
 }
 
 // Flush forces any pending asynchronous save to be written immediately.
@@ -390,6 +425,11 @@ func cloneConfig(cfg *Config) *Config {
 	copyConfig := *cfg
 	copyConfig.UI = cloneUIConfig(cfg.UI)
 	return &copyConfig
+}
+
+// Clone returns a deep copy of cfg suitable for independent mutation.
+func Clone(cfg *Config) *Config {
+	return cloneConfig(cfg)
 }
 
 func cloneUIConfig(src UIConfig) UIConfig {
