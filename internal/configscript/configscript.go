@@ -280,6 +280,7 @@ func (rt *Runtime) predeclared() starlark.StringDict {
 			"exec":           starlark.NewBuiltin("nmf.exec", rt.builtinExec),
 			"load_directory": starlark.NewBuiltin("nmf.load_directory", rt.builtinLoadDirectory),
 			"current_path":   starlark.NewBuiltin("nmf.current_path", rt.builtinCurrentPath),
+			"current_sort":   starlark.NewBuiltin("nmf.current_sort", rt.builtinCurrentSort),
 			"getenv":         starlark.NewBuiltin("nmf.getenv", rt.builtinGetenv),
 			"os":             starlark.NewBuiltin("nmf.os", rt.builtinOS),
 			"hostname":       starlark.NewBuiltin("nmf.hostname", rt.builtinHostname),
@@ -351,10 +352,11 @@ func (rt *Runtime) builtinUI(_ *starlark.Thread, fn *starlark.Builtin, args star
 	return starlark.None, nil
 }
 
-func (rt *Runtime) builtinSort(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinSort(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	sortBy := rt.cfg.UI.Sort.SortBy
 	sortOrder := rt.cfg.UI.Sort.SortOrder
 	directoriesFirst := rt.cfg.UI.Sort.DirectoriesFirst
+	temporary := false
 	if err := starlark.UnpackArgs(
 		fn.Name(),
 		args,
@@ -362,18 +364,26 @@ func (rt *Runtime) builtinSort(_ *starlark.Thread, fn *starlark.Builtin, args st
 		"by?", &sortBy,
 		"order?", &sortOrder,
 		"directories_first?", &directoriesFirst,
+		"temporary?", &temporary,
 	); err != nil {
 		return nil, err
 	}
-	if !isOneOf(sortBy, "name", "size", "modified", "extension") {
-		return nil, fmt.Errorf("sort by must be one of name, size, modified, or extension")
+	sortConfig, err := validateSortConfig(sortBy, sortOrder, directoriesFirst)
+	if err != nil {
+		return nil, err
 	}
-	if !isOneOf(sortOrder, "asc", "desc") {
-		return nil, fmt.Errorf("sort order must be asc or desc")
+	if temporary {
+		ctx, err := commandContext(thread, fn.Name())
+		if err != nil {
+			return nil, err
+		}
+		if ctx.FileManager == nil {
+			return nil, fmt.Errorf("%s with temporary=True requires a file manager", fn.Name())
+		}
+		ctx.FileManager.ApplyTemporarySort(sortConfig)
+		return starlark.None, nil
 	}
-	rt.cfg.UI.Sort.SortBy = sortBy
-	rt.cfg.UI.Sort.SortOrder = sortOrder
-	rt.cfg.UI.Sort.DirectoriesFirst = directoriesFirst
+	rt.cfg.UI.Sort = sortConfig
 	rt.saveMask.uiSort = true
 	return starlark.None, nil
 }
@@ -649,6 +659,20 @@ func (rt *Runtime) builtinCurrentPath(thread *starlark.Thread, fn *starlark.Buil
 	return starlark.String(ctx.FileManager.GetCurrentPath()), nil
 }
 
+func (rt *Runtime) builtinCurrentSort(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs); err != nil {
+		return nil, err
+	}
+	ctx, err := commandContext(thread, fn.Name())
+	if err != nil {
+		return nil, err
+	}
+	if ctx.FileManager == nil {
+		return nil, fmt.Errorf("%s requires a file manager", fn.Name())
+	}
+	return sortConfigValue(ctx.FileManager.CurrentSort()), nil
+}
+
 func (rt *Runtime) builtinGetenv(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var name string
 	defaultValue := starlark.Value(starlark.None)
@@ -729,6 +753,14 @@ func commandContextValue(ctx keymanager.CommandContext) starlark.Value {
 	return starlarkstruct.FromStringDict(starlark.String("ctx"), fields)
 }
 
+func sortConfigValue(sortConfig config.SortConfig) starlark.Value {
+	return starlarkstruct.FromStringDict(starlark.String("sort"), starlark.StringDict{
+		"by":                starlark.String(sortConfig.SortBy),
+		"order":             starlark.String(sortConfig.SortOrder),
+		"directories_first": starlark.Bool(sortConfig.DirectoriesFirst),
+	})
+}
+
 func commandContextTargets(fm keymanager.FileManagerInterface) (dir string, file string, name string, files []string) {
 	dir = fileinfo.CommandArgumentPath(fm.GetCurrentPath())
 	targets := commandContextTargetPaths(fm)
@@ -796,6 +828,20 @@ func formatStarlarkError(err error) string {
 		return evalErr.Backtrace()
 	}
 	return err.Error()
+}
+
+func validateSortConfig(sortBy string, sortOrder string, directoriesFirst bool) (config.SortConfig, error) {
+	if !isOneOf(sortBy, "name", "size", "modified", "extension") {
+		return config.SortConfig{}, fmt.Errorf("sort by must be one of name, size, modified, or extension")
+	}
+	if !isOneOf(sortOrder, "asc", "desc") {
+		return config.SortConfig{}, fmt.Errorf("sort order must be asc or desc")
+	}
+	return config.SortConfig{
+		SortBy:           sortBy,
+		SortOrder:        sortOrder,
+		DirectoriesFirst: directoriesFirst,
+	}, nil
 }
 
 func isOneOf(value string, allowed ...string) bool {

@@ -28,6 +28,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 		config:         config,
 		configManager:  configManager,
 		configScript:   configScript,
+		activeSort:     config.UI.Sort,
 		customTheme:    customTheme,
 		cursorRenderer: ui.NewCursorRenderer(config.UI.CursorStyle),
 		keyManager:     keymanager.NewKeyManager(debugPrint),

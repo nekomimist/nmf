@@ -12,10 +12,6 @@
   - 名前を指定してメニューを出せる機能を追加する
   - なにか足りない事はないか？
 
-### ソート状態を一時的に一発で変えられるコマンドがあるとよさそう
-- nmf.sort(by, order, directories_first)は(おそらく)設定のsortを書きかえるものだろう。
-  デフォルトは変えずに一時的に変更できるとよい。temporary = Trueとかつけられるようにする？
-
 ## 全ファイルマークできるコマンドがほしい
 - デフォルトキーバインドはC-Aで。
 
@@ -40,6 +36,7 @@
 - `user.*` コマンドとして Starlark 関数を登録し、キーに割り当てられる。
 - Starlark由来のオーバーレイは通常保存時に `config.json` へ逆流しない。
 - デフォルトキーを無効化するための `noop` コマンドと `nmf.unkey()`。
+- `nmf.sort(..., temporary = True)` で設定を保存せず一時的にソート状態を変えられる。
 
 ## 新規File Managerの横配置
 - WindowsではCtrl-Nで出した新しいFile Managerを元のFile Managerの横に出す。

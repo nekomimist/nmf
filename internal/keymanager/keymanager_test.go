@@ -174,12 +174,17 @@ type mainScreenFakeFileManager struct {
 	files                  []fileinfo.FileInfo
 }
 
-func (f *mainScreenFakeFileManager) GetCurrentCursorIndex() int                 { return f.cursorIndex }
-func (f *mainScreenFakeFileManager) SetCursorByIndex(index int)                 { f.setCursorIndex = index }
-func (f *mainScreenFakeFileManager) RefreshCursor()                             {}
-func (f *mainScreenFakeFileManager) LoadDirectory(path string)                  {}
-func (f *mainScreenFakeFileManager) GetCurrentPath() string                     { return "" }
-func (f *mainScreenFakeFileManager) GetFiles() []fileinfo.FileInfo              { return f.files }
+func (f *mainScreenFakeFileManager) GetCurrentCursorIndex() int    { return f.cursorIndex }
+func (f *mainScreenFakeFileManager) SetCursorByIndex(index int)    { f.setCursorIndex = index }
+func (f *mainScreenFakeFileManager) RefreshCursor()                {}
+func (f *mainScreenFakeFileManager) LoadDirectory(path string)     {}
+func (f *mainScreenFakeFileManager) GetCurrentPath() string        { return "" }
+func (f *mainScreenFakeFileManager) GetFiles() []fileinfo.FileInfo { return f.files }
+func (f *mainScreenFakeFileManager) CurrentSort() config.SortConfig {
+	return config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}
+}
+func (f *mainScreenFakeFileManager) ApplyTemporarySort(sortConfig config.SortConfig) {
+}
 func (f *mainScreenFakeFileManager) GetSelectedFiles() map[string]bool          { return nil }
 func (f *mainScreenFakeFileManager) SetFileSelected(path string, selected bool) {}
 func (f *mainScreenFakeFileManager) RefreshFileList()                           {}

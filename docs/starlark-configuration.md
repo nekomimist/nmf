@@ -83,6 +83,18 @@ def compare_supported(ctx):
         nmf.exec("meld", args = files)
 
 nmf.command("user.compare_supported", compare_supported)
+
+def toggle_name_modified(ctx):
+    sort = nmf.current_sort()
+    if sort.by == "modified":
+        by = "name"
+        order = "asc"
+    else:
+        by = "modified"
+        order = "desc"
+    nmf.sort(by = by, order = order, directories_first = sort.directories_first, temporary = True)
+
+nmf.command("user.toggle_name_modified", toggle_name_modified)
 ```
 
 ## Configuration API
@@ -93,7 +105,7 @@ Scalar sections:
 - `nmf.theme(dark = bool, font_size = int, font_name = str, font_path = str)`
 - `nmf.ui(show_hidden_files = bool, item_spacing = int)`
 - `nmf.sort(by = "name|size|modified|extension", order = "asc|desc",
-  directories_first = bool)`
+  directories_first = bool, temporary = bool)`
 - `nmf.cursor_style(type = "underline|border|background|icon|font",
   thickness = int)`
 - `nmf.cursor_memory(max_entries = int)`
@@ -159,6 +171,11 @@ Command-only helpers:
   `{file}` placeholders.
 - `nmf.load_directory(path)` loads a directory path.
 - `nmf.current_path()` returns the active directory path.
+- `nmf.current_sort()` returns the active file-list sort as a struct with
+  `by`, `order`, and `directories_first` fields.
+- `nmf.sort(..., temporary = True)` re-sorts the active file list without
+  changing configuration or saving to `config.json`. It can only be used while a
+  custom command is running.
 
 Available built-in command IDs are listed in `docs/configuration.md`.
 

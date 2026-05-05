@@ -184,6 +184,79 @@ nmf.command("user.parent", parent)
 	}
 }
 
+func TestCustomCommandCanApplyTemporarySort(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def sort_size(ctx):
+    nmf.sort(by = "size", order = "desc", directories_first = False, temporary = True)
+nmf.command("user.sort_size", sort_size)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	cfg := testConfig()
+	rt, err := Load(path, cfg, func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	fm := &configScriptFakeFileManager{}
+	rt.Commands["user.sort_size"](keymanager.CommandContext{FileManager: fm})
+
+	want := config.SortConfig{SortBy: "size", SortOrder: "desc", DirectoriesFirst: false}
+	if !fm.temporarySortApplied || !reflect.DeepEqual(fm.temporarySort, want) {
+		t.Fatalf("temporary sort = applied %t config %+v, want %+v", fm.temporarySortApplied, fm.temporarySort, want)
+	}
+	if cfg.UI.Sort.SortBy != "name" || cfg.UI.Sort.SortOrder != "asc" || !cfg.UI.Sort.DirectoriesFirst {
+		t.Fatalf("persistent sort changed to %+v, want default", cfg.UI.Sort)
+	}
+}
+
+func TestCustomCommandCanReadCurrentSort(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def toggle_sort(ctx):
+    sort = nmf.current_sort()
+    if sort.by == "modified":
+        by = "name"
+    else:
+        by = "modified"
+    nmf.sort(by = by, order = "desc", directories_first = sort.directories_first, temporary = True)
+nmf.command("user.toggle_sort", toggle_sort)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	fm := &configScriptFakeFileManager{
+		currentSort: config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true},
+	}
+	rt.Commands["user.toggle_sort"](keymanager.CommandContext{FileManager: fm})
+
+	want := config.SortConfig{SortBy: "modified", SortOrder: "desc", DirectoriesFirst: true}
+	if !reflect.DeepEqual(fm.currentSort, want) {
+		t.Fatalf("current sort = %+v, want %+v", fm.currentSort, want)
+	}
+}
+
+func TestCurrentSortRequiresCommandContext(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	if err := os.WriteFile(path, []byte(`nmf.current_sort()`), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	if _, err := Load(path, testConfig(), func(string, ...interface{}) {}); err == nil {
+		t.Fatal("Load should reject nmf.current_sort outside a command")
+	}
+}
+
 func TestCustomCommandCanExecExternalCommand(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, FileName)
@@ -519,18 +592,32 @@ func testConfig() *config.Config {
 }
 
 type configScriptFakeFileManager struct {
-	currentPath   string
-	cursorIndex   int
-	files         []fileinfo.FileInfo
-	selectedFiles map[string]bool
+	currentPath          string
+	cursorIndex          int
+	files                []fileinfo.FileInfo
+	selectedFiles        map[string]bool
+	currentSort          config.SortConfig
+	temporarySort        config.SortConfig
+	temporarySortApplied bool
 }
 
-func (f *configScriptFakeFileManager) GetCurrentCursorIndex() int        { return f.cursorIndex }
-func (f *configScriptFakeFileManager) SetCursorByIndex(index int)        { f.cursorIndex = index }
-func (f *configScriptFakeFileManager) RefreshCursor()                    {}
-func (f *configScriptFakeFileManager) LoadDirectory(path string)         { f.currentPath = path }
-func (f *configScriptFakeFileManager) GetCurrentPath() string            { return f.currentPath }
-func (f *configScriptFakeFileManager) GetFiles() []fileinfo.FileInfo     { return f.files }
+func (f *configScriptFakeFileManager) GetCurrentCursorIndex() int    { return f.cursorIndex }
+func (f *configScriptFakeFileManager) SetCursorByIndex(index int)    { f.cursorIndex = index }
+func (f *configScriptFakeFileManager) RefreshCursor()                {}
+func (f *configScriptFakeFileManager) LoadDirectory(path string)     { f.currentPath = path }
+func (f *configScriptFakeFileManager) GetCurrentPath() string        { return f.currentPath }
+func (f *configScriptFakeFileManager) GetFiles() []fileinfo.FileInfo { return f.files }
+func (f *configScriptFakeFileManager) CurrentSort() config.SortConfig {
+	if f.currentSort.SortBy == "" {
+		return config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}
+	}
+	return f.currentSort
+}
+func (f *configScriptFakeFileManager) ApplyTemporarySort(sortConfig config.SortConfig) {
+	f.currentSort = sortConfig
+	f.temporarySort = sortConfig
+	f.temporarySortApplied = true
+}
 func (f *configScriptFakeFileManager) GetSelectedFiles() map[string]bool { return f.selectedFiles }
 func (f *configScriptFakeFileManager) SetFileSelected(path string, selected bool) {
 	if f.selectedFiles == nil {

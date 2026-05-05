@@ -54,6 +54,8 @@ type FileManagerInterface interface {
 	LoadDirectory(path string)
 	GetCurrentPath() string
 	GetFiles() []fileinfo.FileInfo
+	CurrentSort() config.SortConfig
+	ApplyTemporarySort(sortConfig config.SortConfig)
 
 	GetSelectedFiles() map[string]bool
 	SetFileSelected(path string, selected bool)
