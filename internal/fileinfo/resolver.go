@@ -156,6 +156,21 @@ func NormalizeInputPath(input string) string {
 	return input
 }
 
+// CommandArgumentPath converts a display path to the path form passed to external commands.
+func CommandArgumentPath(displayPath string) string {
+	_, parsed, err := ResolveRead(displayPath)
+	if err != nil {
+		return NormalizeInputPath(displayPath)
+	}
+	if parsed.Provider == "local" && parsed.Native != "" {
+		return parsed.Native
+	}
+	if parsed.Scheme == SchemeFile && parsed.Native != "" {
+		return parsed.Native
+	}
+	return NormalizeInputPath(displayPath)
+}
+
 func isUNC(p string) bool {
 	// Leading \\ or \\?\UNC\
 	return strings.HasPrefix(p, "\\\\?\\UNC\\") || strings.HasPrefix(p, "\\\\")

@@ -62,6 +62,27 @@ def open_parent_and_refresh(ctx):
 
 nmf.command("user.open_parent_and_refresh", open_parent_and_refresh)
 nmf.key("C-P", "user.open_parent_and_refresh", event = "down")
+
+def edit_current(ctx):
+    nmf.exec("vim", args = [ctx.current_file])
+
+nmf.command("user.edit_current", edit_current)
+nmf.key("E", "user.edit_current")
+
+def open_media(ctx):
+    if ctx.current_name.endswith(".mp4"):
+        nmf.exec("mpv", args = [ctx.current_file])
+    elif ctx.current_name.endswith(".png"):
+        nmf.exec("imv", args = [ctx.current_file])
+
+nmf.command("user.open_media", open_media)
+
+def compare_supported(ctx):
+    files = [path for path in ctx.selected_files if path.endswith(".go")]
+    if files:
+        nmf.exec("meld", args = files)
+
+nmf.command("user.compare_supported", compare_supported)
 ```
 
 ## Configuration API
@@ -120,14 +141,19 @@ The command function receives one `ctx` struct:
 - `ctx.key`: key name such as `X`, `F2`, or `Return`
 - `ctx.event`: `typed`, `down`, or `up`
 - `ctx.shift`, `ctx.ctrl`, `ctx.alt`: modifier booleans
-- `ctx.current_path`: current directory path
-- `ctx.current_file`: current cursor item path, or empty
-- `ctx.current_name`: current cursor item name, or empty
-- `ctx.selected_files`: sorted list of selected paths
+- `ctx.current_path`: current directory path in external-command argument form
+- `ctx.current_file`: first target path in external-command argument form, or empty
+- `ctx.current_name`: base name of the first target, or empty
+- `ctx.selected_files`: target paths in external-command argument form. Selected
+  files are used when present; otherwise the cursor item is used.
 
 Command-only helpers:
 
 - `nmf.run(command_id)` runs a built-in or `user.*` command and returns a bool.
+- `nmf.exec(command, args = [])` starts an external command and returns a bool.
+  `args` is passed as raw strings; use `ctx.current_file`,
+  `ctx.selected_files`, `ctx.current_path`, and `ctx.current_name` instead of
+  `{file}` placeholders.
 - `nmf.load_directory(path)` loads a directory path.
 - `nmf.current_path()` returns the active directory path.
 

@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 
 	"go.starlark.net/starlark"
@@ -14,6 +13,7 @@ import (
 	"go.starlark.net/syntax"
 
 	"nmf/internal/config"
+	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 )
 
@@ -276,6 +276,7 @@ func (rt *Runtime) predeclared() starlark.StringDict {
 			),
 			"command":        starlark.NewBuiltin("nmf.command", rt.builtinCommand),
 			"run":            starlark.NewBuiltin("nmf.run", rt.builtinRun),
+			"exec":           starlark.NewBuiltin("nmf.exec", rt.builtinExec),
 			"load_directory": starlark.NewBuiltin("nmf.load_directory", rt.builtinLoadDirectory),
 			"current_path":   starlark.NewBuiltin("nmf.current_path", rt.builtinCurrentPath),
 			"getenv":         starlark.NewBuiltin("nmf.getenv", rt.builtinGetenv),
@@ -579,6 +580,29 @@ func (rt *Runtime) builtinRun(thread *starlark.Thread, fn *starlark.Builtin, arg
 	return starlark.Bool(ctx.RunCommand(command)), nil
 }
 
+func (rt *Runtime) builtinExec(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var command string
+	argsValue := starlark.Value(starlark.None)
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "command", &command, "args?", &argsValue); err != nil {
+		return nil, err
+	}
+	commandArgs, err := stringList(argsValue, "args")
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(command) == "" {
+		return nil, fmt.Errorf("exec command must not be empty")
+	}
+	ctx, err := commandContext(thread, fn.Name())
+	if err != nil {
+		return nil, err
+	}
+	if ctx.RunExternalCommand == nil {
+		return starlark.False, nil
+	}
+	return starlark.Bool(ctx.RunExternalCommand(command, commandArgs)), nil
+}
+
 func (rt *Runtime) builtinLoadDirectory(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var path string
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "path", &path); err != nil {
@@ -675,25 +699,11 @@ func commandContextValue(ctx keymanager.CommandContext) starlark.Value {
 		"alt":   starlark.Bool(ctx.Modifiers.AltPressed),
 	}
 	if ctx.FileManager != nil {
-		fields["current_path"] = starlark.String(ctx.FileManager.GetCurrentPath())
-		files := ctx.FileManager.GetFiles()
-		idx := ctx.FileManager.GetCurrentCursorIndex()
-		if idx >= 0 && idx < len(files) {
-			fields["current_file"] = starlark.String(files[idx].Path)
-			fields["current_name"] = starlark.String(files[idx].Name)
-		} else {
-			fields["current_file"] = starlark.String("")
-			fields["current_name"] = starlark.String("")
-		}
+		dir, file, name, paths := commandContextTargets(ctx.FileManager)
+		fields["current_path"] = starlark.String(dir)
+		fields["current_file"] = starlark.String(file)
+		fields["current_name"] = starlark.String(name)
 
-		selected := ctx.FileManager.GetSelectedFiles()
-		paths := make([]string, 0, len(selected))
-		for path, isSelected := range selected {
-			if isSelected {
-				paths = append(paths, path)
-			}
-		}
-		sort.Strings(paths)
 		values := make([]starlark.Value, len(paths))
 		for i, path := range paths {
 			values[i] = starlark.String(path)
@@ -701,6 +711,45 @@ func commandContextValue(ctx keymanager.CommandContext) starlark.Value {
 		fields["selected_files"] = starlark.NewList(values)
 	}
 	return starlarkstruct.FromStringDict(starlark.String("ctx"), fields)
+}
+
+func commandContextTargets(fm keymanager.FileManagerInterface) (dir string, file string, name string, files []string) {
+	dir = fileinfo.CommandArgumentPath(fm.GetCurrentPath())
+	targets := commandContextTargetPaths(fm)
+	files = make([]string, len(targets))
+	for i, target := range targets {
+		files[i] = fileinfo.CommandArgumentPath(target.Path)
+	}
+	if len(targets) > 0 {
+		file = files[0]
+		name = fileinfo.BaseName(targets[0].Path)
+	}
+	return dir, file, name, files
+}
+
+func commandContextTargetPaths(fm keymanager.FileManagerInterface) []fileinfo.FileInfo {
+	files := fm.GetFiles()
+	selected := fm.GetSelectedFiles()
+	targets := make([]fileinfo.FileInfo, 0, len(selected))
+	for _, fi := range files {
+		if !selected[fi.Path] || !isCommandContextTarget(fi) {
+			continue
+		}
+		targets = append(targets, fi)
+	}
+	if len(targets) > 0 {
+		return targets
+	}
+
+	idx := fm.GetCurrentCursorIndex()
+	if idx >= 0 && idx < len(files) && isCommandContextTarget(files[idx]) {
+		return []fileinfo.FileInfo{files[idx]}
+	}
+	return nil
+}
+
+func isCommandContextTarget(fi fileinfo.FileInfo) bool {
+	return fi.Name != ".." && fi.Status != fileinfo.StatusDeleted
 }
 
 func stringList(value starlark.Value, name string) ([]string, error) {

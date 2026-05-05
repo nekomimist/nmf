@@ -84,6 +84,10 @@ type FileManagerInterface interface {
 	ShowExternalCommandMenu()
 }
 
+type externalCommandRunner interface {
+	RunExternalCommand(command string, args []string) bool
+}
+
 // MainScreenKeyHandler handles keyboard events for the main file list screen.
 type MainScreenKeyHandler struct {
 	fileManager     FileManagerInterface
@@ -160,6 +164,9 @@ func (mh *MainScreenKeyHandler) executeBinding(event string, ev *fyne.KeyEvent, 
 		}
 		ctx.RunCommand = func(command string) bool {
 			return mh.executeCommand(command, ctx)
+		}
+		if runner, ok := mh.fileManager.(externalCommandRunner); ok {
+			ctx.RunExternalCommand = runner.RunExternalCommand
 		}
 		mh.executeCommand(binding.command, ctx)
 		return true

@@ -32,7 +32,7 @@ func (fm *FileManager) ShowExternalCommandMenu() {
 	for _, command := range commands {
 		entry := command
 		items = append(items, fyne.NewMenuItem(entry.Name, func() {
-			if fm.runExternalCommand(entry, targets) {
+			if fm.runExternalCommandTemplate(entry.Command, entry.Args, targets) {
 				fm.FocusFileList()
 			}
 		}))
@@ -99,24 +99,31 @@ func externalCommandMatches(target string, extensions []string) bool {
 	return false
 }
 
-func (fm *FileManager) runExternalCommand(entry config.ExternalCommandEntry, targets []string) bool {
-	args := expandExternalCommandArgs(entry.Args, targets, fm.currentPath)
-	cmd := exec.Command(entry.Command, args...)
+func (fm *FileManager) RunExternalCommand(command string, args []string) bool {
+	return fm.runExternalCommand(command, args)
+}
+
+func (fm *FileManager) runExternalCommandTemplate(command string, argTemplates []string, targets []string) bool {
+	return fm.runExternalCommand(command, expandExternalCommandArgs(argTemplates, targets, fm.currentPath))
+}
+
+func (fm *FileManager) runExternalCommand(command string, args []string) bool {
+	cmd := exec.Command(command, args...)
 	if err := cmd.Start(); err != nil {
-		debugPrint("FileManager: external command failed command=%s err=%v", entry.Command, err)
+		debugPrint("FileManager: external command failed command=%s err=%v", command, err)
 		ui.ShowCompactMessageDialog(fm.window, "Command failed", err.Error())
 		return false
 	}
-	debugPrint("FileManager: external command started command=%s pid=%d", entry.Command, cmd.Process.Pid)
+	debugPrint("FileManager: external command started command=%s pid=%d", command, cmd.Process.Pid)
 	return true
 }
 
 func expandExternalCommandArgs(templates []string, targets []string, dir string) []string {
 	commandTargets := make([]string, len(targets))
 	for i, target := range targets {
-		commandTargets[i] = externalCommandArgumentPath(target)
+		commandTargets[i] = fileinfo.CommandArgumentPath(target)
 	}
-	commandDir := externalCommandArgumentPath(dir)
+	commandDir := fileinfo.CommandArgumentPath(dir)
 
 	if len(templates) == 0 {
 		args := make([]string, len(commandTargets))
@@ -152,15 +159,5 @@ func expandExternalCommandArgs(templates []string, targets []string, dir string)
 }
 
 func externalCommandArgumentPath(displayPath string) string {
-	_, parsed, err := fileinfo.ResolveRead(displayPath)
-	if err != nil {
-		return fileinfo.NormalizeInputPath(displayPath)
-	}
-	if parsed.Provider == "local" && parsed.Native != "" {
-		return parsed.Native
-	}
-	if parsed.Scheme == fileinfo.SchemeFile && parsed.Native != "" {
-		return parsed.Native
-	}
-	return fileinfo.NormalizeInputPath(displayPath)
+	return fileinfo.CommandArgumentPath(displayPath)
 }

@@ -40,3 +40,16 @@ func TestExpandExternalCommandArgs(t *testing.T) {
 		t.Fatalf("expandExternalCommandArgs() = %#v, want %#v", got, want)
 	}
 }
+
+func TestExpandExternalCommandArgsWithoutTargets(t *testing.T) {
+	got := expandExternalCommandArgs(
+		[]string{"--dir", "{dir}", "--file={file}", "--name={name}"},
+		nil,
+		"/tmp",
+	)
+	want := []string{"--dir", "/tmp", "--file=", "--name="}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expandExternalCommandArgs() = %#v, want %#v", got, want)
+	}
+}
