@@ -167,6 +167,7 @@ type mainScreenFakeFileManager struct {
 	showDeleteCount        int
 	showExplorerMenuCount  int
 	showExternalMenuCount  int
+	showSortCount          int
 	deletePermanent        bool
 	cursorIndex            int
 	setCursorIndex         int
@@ -193,7 +194,7 @@ func (f *mainScreenFakeFileManager) ShowFilterDialog()                {}
 func (f *mainScreenFakeFileManager) ClearFilter()                     {}
 func (f *mainScreenFakeFileManager) ToggleFilter()                    {}
 func (f *mainScreenFakeFileManager) ShowIncrementalSearchDialog()     {}
-func (f *mainScreenFakeFileManager) ShowSortDialog()                  {}
+func (f *mainScreenFakeFileManager) ShowSortDialog()                  { f.showSortCount++ }
 func (f *mainScreenFakeFileManager) ShowJobsDialog()                  { f.showJobsCount++ }
 func (f *mainScreenFakeFileManager) FocusPathEntry()                  {}
 func (f *mainScreenFakeFileManager) QuitApplication()                 {}
@@ -374,6 +375,22 @@ func TestMainScreenConfiguredBindingOverridesDefault(t *testing.T) {
 	}
 	if fm.showExternalMenuCount != 0 {
 		t.Fatalf("ShowExternalCommandMenu count = %d, want 0", fm.showExternalMenuCount)
+	}
+}
+
+func TestMainScreenNoopCommandOverridesDefault(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+		{Key: "S-S", Command: CommandNoop},
+	})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyS}, ModifierState{ShiftPressed: true})
+
+	if !handled {
+		t.Fatal("configured noop should be handled")
+	}
+	if fm.showSortCount != 0 {
+		t.Fatalf("ShowSortDialog count = %d, want 0", fm.showSortCount)
 	}
 }
 

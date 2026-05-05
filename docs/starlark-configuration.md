@@ -105,12 +105,15 @@ List sections:
 - `nmf.directory_jump(shortcut, directory)`
 - `nmf.clear_directory_jumps()`
 - `nmf.key(key, command, event = "")`
+- `nmf.unkey(key, event = "")`
 - `nmf.clear_keys()`
 - `nmf.external_command(name, command, extensions = [], args = [])`
 - `nmf.clear_external_commands()`
 
 List APIs append to values already loaded from `config.json`. Use the matching
 `clear_*` function when the Starlark file should own the whole list.
+`nmf.unkey` appends a binding to the built-in `noop` command, which disables a
+default key binding with the same key and event for the current run.
 
 Utility API:
 

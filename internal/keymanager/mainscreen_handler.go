@@ -40,6 +40,7 @@ const (
 	CommandDeletePermanent     = "delete.permanent"
 	CommandExplorerContextShow = "explorerContext.show"
 	CommandExternalCommandMenu = "externalCommand.menu"
+	CommandNoop                = "noop"
 )
 
 const maxNestedCommandDepth = 32
@@ -300,6 +301,7 @@ func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
 		CommandDeletePermanent:     func(CommandContext) { mh.fileManager.ShowDeleteDialog(true) },
 		CommandExplorerContextShow: func(CommandContext) { mh.fileManager.ShowExplorerContextMenu() },
 		CommandExternalCommandMenu: func(CommandContext) { mh.fileManager.ShowExternalCommandMenu() },
+		CommandNoop:                func(CommandContext) {},
 	}
 }
 

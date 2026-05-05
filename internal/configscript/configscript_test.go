@@ -131,6 +131,31 @@ func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T
 	}
 }
 
+func TestUnkeyBindsKeyToNoop(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+nmf.unkey("S-S")
+nmf.unkey("C-S", event = "down")
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	cfg := testConfig()
+	if _, err := Load(path, cfg, func(string, ...interface{}) {}); err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	want := []config.KeyBindingEntry{
+		{Key: "S-S", Command: keymanager.CommandNoop},
+		{Key: "C-S", Command: keymanager.CommandNoop, Event: "down"},
+	}
+	if !reflect.DeepEqual(cfg.UI.KeyBindings, want) {
+		t.Fatalf("key bindings = %#v, want %#v", cfg.UI.KeyBindings, want)
+	}
+}
+
 func TestCustomCommandCanRunInternalCommand(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, FileName)

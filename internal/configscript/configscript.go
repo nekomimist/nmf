@@ -265,6 +265,7 @@ func (rt *Runtime) predeclared() starlark.StringDict {
 				rt.builtinClearDirectoryJumps,
 			),
 			"key":        starlark.NewBuiltin("nmf.key", rt.builtinKey),
+			"unkey":      starlark.NewBuiltin("nmf.unkey", rt.builtinUnkey),
 			"clear_keys": starlark.NewBuiltin("nmf.clear_keys", rt.builtinClearKeys),
 			"external_command": starlark.NewBuiltin(
 				"nmf.external_command",
@@ -464,11 +465,26 @@ func (rt *Runtime) builtinClearDirectoryJumps(_ *starlark.Thread, _ *starlark.Bu
 }
 
 func (rt *Runtime) builtinKey(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return rt.appendKeyBinding(fn.Name(), args, kwargs)
+}
+
+func (rt *Runtime) builtinUnkey(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return rt.appendKeyBinding(fn.Name(), args, kwargs, keymanager.CommandNoop)
+}
+
+func (rt *Runtime) appendKeyBinding(fnName string, args starlark.Tuple, kwargs []starlark.Tuple, fixedCommand ...string) (starlark.Value, error) {
 	var key string
 	var command string
 	var event string
-	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "key", &key, "command", &command, "event?", &event); err != nil {
-		return nil, err
+	if len(fixedCommand) > 0 {
+		command = fixedCommand[0]
+		if err := starlark.UnpackArgs(fnName, args, kwargs, "key", &key, "event?", &event); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := starlark.UnpackArgs(fnName, args, kwargs, "key", &key, "command", &command, "event?", &event); err != nil {
+			return nil, err
+		}
 	}
 	if strings.TrimSpace(key) == "" {
 		return nil, fmt.Errorf("key must not be empty")

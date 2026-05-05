@@ -131,7 +131,8 @@ default behavior.
   "ui": {
     "keyBindings": [
       { "key": "S-A-C-F2", "command": "rename.show", "event": "typed" },
-      { "key": "C-N", "command": "window.new", "event": "down" }
+      { "key": "C-N", "command": "window.new", "event": "down" },
+      { "key": "S-S", "command": "noop" }
     ]
   }
 }
@@ -188,6 +189,7 @@ Available main-screen commands:
 - `delete.trash`, `delete.permanent`
 - `explorerContext.show`
 - `externalCommand.menu`
+- `noop`
 
 Starlark `init.star` can register additional command IDs with the `user.`
 prefix and bind them through the same key binding mechanism.
