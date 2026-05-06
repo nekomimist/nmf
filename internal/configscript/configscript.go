@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"go.starlark.net/starlark"
@@ -31,6 +32,7 @@ const (
 // Runtime holds Starlark-defined runtime behavior.
 type Runtime struct {
 	Commands keymanager.CommandRegistry
+	Menus    map[string]*Menu
 
 	cfg        *config.Config
 	configDir  string
@@ -38,9 +40,24 @@ type Runtime struct {
 	loaded     bool
 	saveMask   saveMask
 
-	moduleCache map[string]starlark.StringDict
-	loading     map[string]bool
-	loadDepth   int
+	moduleCache   map[string]starlark.StringDict
+	loading       map[string]bool
+	loadDepth     int
+	keyCommandSeq int
+}
+
+// Menu holds Starlark-defined menu metadata and entries.
+type Menu struct {
+	Name  string
+	Title string
+	Items []MenuItem
+}
+
+// MenuItem holds a Starlark-defined menu item action.
+type MenuItem struct {
+	Label    string
+	Command  string
+	Callable starlark.Callable
 }
 
 type saveMask struct {
@@ -94,6 +111,7 @@ func newRuntime(path string, cfg *config.Config, debugPrint func(format string, 
 	}
 	return &Runtime{
 		Commands:    make(keymanager.CommandRegistry),
+		Menus:       make(map[string]*Menu),
 		cfg:         cfg,
 		configDir:   configDir,
 		debugPrint:  debugPrint,
@@ -276,6 +294,10 @@ func (rt *Runtime) predeclared() starlark.StringDict {
 				rt.builtinClearExternalCommands,
 			),
 			"command":        starlark.NewBuiltin("nmf.command", rt.builtinCommand),
+			"menu":           starlark.NewBuiltin("nmf.menu", rt.builtinMenu),
+			"menu_item":      starlark.NewBuiltin("nmf.menu_item", rt.builtinMenuItem),
+			"clear_menu":     starlark.NewBuiltin("nmf.clear_menu", rt.builtinClearMenu),
+			"show_menu":      starlark.NewBuiltin("nmf.show_menu", rt.builtinShowMenu),
 			"run":            starlark.NewBuiltin("nmf.run", rt.builtinRun),
 			"exec":           starlark.NewBuiltin("nmf.exec", rt.builtinExec),
 			"load_directory": starlark.NewBuiltin("nmf.load_directory", rt.builtinLoadDirectory),
@@ -492,8 +514,26 @@ func (rt *Runtime) appendKeyBinding(fnName string, args starlark.Tuple, kwargs [
 			return nil, err
 		}
 	} else {
-		if err := starlark.UnpackArgs(fnName, args, kwargs, "key", &key, "command", &command, "event?", &event); err != nil {
+		commandValue := starlark.Value(starlark.None)
+		fnValue := starlark.Value(starlark.None)
+		if err := starlark.UnpackArgs(fnName, args, kwargs, "key", &key, "cmd?", &commandValue, "event?", &event, "fn?", &fnValue); err != nil {
 			return nil, err
+		}
+		var hasCommand bool
+		var err error
+		command, hasCommand, err = optionalString(commandValue, "cmd")
+		if err != nil {
+			return nil, err
+		}
+		callable, hasCallable, err := optionalCallable(fnValue, "fn")
+		if err != nil {
+			return nil, err
+		}
+		if hasCommand == hasCallable {
+			return nil, fmt.Errorf("key binding must specify exactly one of cmd or fn")
+		}
+		if hasCallable {
+			command = rt.registerGeneratedKeyCommand(callable)
 		}
 	}
 	if strings.TrimSpace(key) == "" {
@@ -509,6 +549,17 @@ func (rt *Runtime) appendKeyBinding(fnName string, args starlark.Tuple, kwargs [
 	})
 	rt.saveMask.uiKeyBindings = true
 	return starlark.None, nil
+}
+
+func (rt *Runtime) registerGeneratedKeyCommand(callable starlark.Callable) string {
+	rt.keyCommandSeq++
+	id := commandPrefix + "__key." + strconv.Itoa(rt.keyCommandSeq)
+	rt.Commands[id] = func(ctx keymanager.CommandContext) {
+		if err := rt.callCommand(id, callable, ctx); err != nil {
+			rt.debugPrint("ConfigScript: command failed id=%s err=%s", id, formatStarlarkError(err))
+		}
+	}
+	return id
 }
 
 func (rt *Runtime) builtinClearKeys(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -530,13 +581,13 @@ func (rt *Runtime) builtinExternalCommand(_ *starlark.Thread, fn *starlark.Built
 		args,
 		kwargs,
 		"name", &name,
-		"command", &command,
-		"extensions?", &extensionsValue,
+		"cmd", &command,
+		"exts?", &extensionsValue,
 		"args?", &argsValue,
 	); err != nil {
 		return nil, err
 	}
-	extensions, err := stringList(extensionsValue, "extensions")
+	extensions, err := stringList(extensionsValue, "exts")
 	if err != nil {
 		return nil, err
 	}
@@ -548,7 +599,7 @@ func (rt *Runtime) builtinExternalCommand(_ *starlark.Thread, fn *starlark.Built
 		return nil, fmt.Errorf("external command name must not be empty")
 	}
 	if strings.TrimSpace(command) == "" {
-		return nil, fmt.Errorf("external command command must not be empty")
+		return nil, fmt.Errorf("external command cmd must not be empty")
 	}
 	rt.cfg.UI.ExternalCommands = append(rt.cfg.UI.ExternalCommands, config.ExternalCommandEntry{
 		Name:       name,
@@ -588,6 +639,142 @@ func (rt *Runtime) builtinCommand(_ *starlark.Thread, fn *starlark.Builtin, args
 			rt.debugPrint("ConfigScript: command failed id=%s err=%s", id, formatStarlarkError(err))
 		}
 	}
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinMenu(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
+	var name string
+	var title string
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "name", &name, "title?", &title); err != nil {
+		return nil, err
+	}
+	name = strings.TrimSpace(name)
+	title = strings.TrimSpace(title)
+	if name == "" {
+		return nil, fmt.Errorf("menu name must not be empty")
+	}
+	if title == "" {
+		title = name
+	}
+	menu := rt.ensureMenu(name)
+	menu.Title = title
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinMenuItem(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
+	var menuName string
+	var label string
+	commandValue := starlark.Value(starlark.None)
+	fnValue := starlark.Value(starlark.None)
+	if err := starlark.UnpackArgs(
+		fn.Name(),
+		args,
+		kwargs,
+		"menu", &menuName,
+		"label", &label,
+		"cmd?", &commandValue,
+		"fn?", &fnValue,
+	); err != nil {
+		return nil, err
+	}
+	menuName = strings.TrimSpace(menuName)
+	label = strings.TrimSpace(label)
+	if menuName == "" {
+		return nil, fmt.Errorf("menu item menu must not be empty")
+	}
+	if label == "" {
+		return nil, fmt.Errorf("menu item label must not be empty")
+	}
+
+	command, hasCommand, err := optionalString(commandValue, "cmd")
+	if err != nil {
+		return nil, err
+	}
+	callable, hasCallable, err := optionalCallable(fnValue, "fn")
+	if err != nil {
+		return nil, err
+	}
+	if hasCommand == hasCallable {
+		return nil, fmt.Errorf("menu item must specify exactly one of cmd or fn")
+	}
+
+	menu := rt.ensureMenu(menuName)
+	menu.Items = append(menu.Items, MenuItem{
+		Label:    label,
+		Command:  command,
+		Callable: callable,
+	})
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinClearMenu(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
+	var name string
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "name", &name); err != nil {
+		return nil, err
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, fmt.Errorf("menu name must not be empty")
+	}
+	menu := rt.ensureMenu(name)
+	menu.Items = nil
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinShowMenu(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var name string
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "name", &name); err != nil {
+		return nil, err
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, fmt.Errorf("menu name must not be empty")
+	}
+	ctx, err := commandContext(thread, fn.Name())
+	if err != nil {
+		return nil, err
+	}
+	if ctx.FileManager == nil {
+		return nil, fmt.Errorf("%s requires a file manager", fn.Name())
+	}
+
+	menu, ok := rt.Menus[name]
+	if !ok || len(menu.Items) == 0 {
+		ctx.FileManager.ShowCommandMenu(name, []keymanager.CommandMenuItem{{
+			Label:  fmt.Sprintf("Menu %q has no items.", name),
+			Action: func() {},
+		}})
+		return starlark.None, nil
+	}
+
+	items := make([]keymanager.CommandMenuItem, 0, len(menu.Items))
+	for _, item := range menu.Items {
+		entry := item
+		items = append(items, keymanager.CommandMenuItem{
+			Label: entry.Label,
+			Action: func() {
+				if entry.Command != "" {
+					if ctx.RunCommand != nil {
+						ctx.RunCommand(entry.Command)
+					}
+					return
+				}
+				if err := rt.callCommand("menu."+name+"."+entry.Label, entry.Callable, ctx); err != nil {
+					rt.debugPrint("ConfigScript: menu item failed menu=%s label=%s err=%s", name, entry.Label, formatStarlarkError(err))
+				}
+			},
+		})
+	}
+	ctx.FileManager.ShowCommandMenu(menu.Title, items)
 	return starlark.None, nil
 }
 
@@ -730,6 +917,13 @@ func commandContext(thread *starlark.Thread, fnName string) (keymanager.CommandC
 	return ctx, nil
 }
 
+func rejectCommandContext(thread *starlark.Thread, fnName string) error {
+	if thread != nil && thread.Local(commandContextKey) != nil {
+		return fmt.Errorf("%s cannot be used while a custom command is running", fnName)
+	}
+	return nil
+}
+
 func commandContextValue(ctx keymanager.CommandContext) starlark.Value {
 	fields := starlark.StringDict{
 		"key":   starlark.String(ctx.Key),
@@ -759,6 +953,18 @@ func sortConfigValue(sortConfig config.SortConfig) starlark.Value {
 		"order":             starlark.String(sortConfig.SortOrder),
 		"directories_first": starlark.Bool(sortConfig.DirectoriesFirst),
 	})
+}
+
+func (rt *Runtime) ensureMenu(name string) *Menu {
+	if rt.Menus == nil {
+		rt.Menus = make(map[string]*Menu)
+	}
+	menu, ok := rt.Menus[name]
+	if !ok {
+		menu = &Menu{Name: name, Title: name}
+		rt.Menus[name] = menu
+	}
+	return menu
 }
 
 func commandContextTargets(fm keymanager.FileManagerInterface) (dir string, file string, name string, files []string) {
@@ -820,6 +1026,32 @@ func stringList(value starlark.Value, name string) ([]string, error) {
 		result = append(result, s)
 	}
 	return result, nil
+}
+
+func optionalString(value starlark.Value, name string) (string, bool, error) {
+	if value == nil || value == starlark.None {
+		return "", false, nil
+	}
+	result, ok := starlark.AsString(value)
+	if !ok {
+		return "", false, fmt.Errorf("%s must be a string or None, got %s", name, value.Type())
+	}
+	result = strings.TrimSpace(result)
+	if result == "" {
+		return "", false, fmt.Errorf("%s must not be empty", name)
+	}
+	return result, true, nil
+}
+
+func optionalCallable(value starlark.Value, name string) (starlark.Callable, bool, error) {
+	if value == nil || value == starlark.None {
+		return nil, false, nil
+	}
+	callable, ok := value.(starlark.Callable)
+	if !ok {
+		return nil, false, fmt.Errorf("%s must be callable or None, got %s", name, value.Type())
+	}
+	return callable, true, nil
 }
 
 func formatStarlarkError(err error) string {

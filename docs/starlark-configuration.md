@@ -51,8 +51,8 @@ if nmf.os() == "windows":
 nmf.clear_external_commands()
 nmf.external_command(
     name = "Open in Vim",
-    extensions = ["go", "md"],
-    command = "vim",
+    exts = ["go", "md"],
+    cmd = "vim",
     args = ["{file}"],
 )
 
@@ -66,8 +66,7 @@ nmf.key("C-P", "user.open_parent_and_refresh", event = "down")
 def edit_current(ctx):
     nmf.exec("vim", args = [ctx.current_file])
 
-nmf.command("user.edit_current", edit_current)
-nmf.key("E", "user.edit_current")
+nmf.key("E", fn = edit_current)
 
 def open_media(ctx):
     if ctx.current_name.endswith(".mp4"):
@@ -95,6 +94,21 @@ def toggle_name_modified(ctx):
     nmf.sort(by = by, order = order, directories_first = sort.directories_first, temporary = True)
 
 nmf.command("user.toggle_name_modified", toggle_name_modified)
+
+nmf.menu("tools", title = "Tools")
+nmf.menu_item("tools", "Refresh", cmd = "directory.refresh")
+
+def edit_from_menu(ctx):
+    if ctx.current_file:
+        nmf.exec("vim", args = [ctx.current_file])
+
+nmf.menu_item("tools", "Edit in Vim", fn = edit_from_menu)
+
+def show_tools(ctx):
+    nmf.show_menu("tools")
+
+nmf.command("user.show_tools", show_tools)
+nmf.key("T", "user.show_tools")
 ```
 
 ## Configuration API
@@ -116,16 +130,20 @@ List sections:
 
 - `nmf.directory_jump(shortcut, directory)`
 - `nmf.clear_directory_jumps()`
-- `nmf.key(key, command, event = "")`
+- `nmf.key(key, cmd = None, fn = None, event = "")`
 - `nmf.unkey(key, event = "")`
 - `nmf.clear_keys()`
-- `nmf.external_command(name, command, extensions = [], args = [])`
+- `nmf.external_command(name, cmd, exts = [], args = [])`
 - `nmf.clear_external_commands()`
+- `nmf.menu(name, title = "")`
+- `nmf.menu_item(menu, label, cmd = None, fn = None)`
+- `nmf.clear_menu(name)`
 
 List APIs append to values already loaded from `config.json`. Use the matching
 `clear_*` function when the Starlark file should own the whole list.
 `nmf.unkey` appends a binding to the built-in `noop` command, which disables a
 default key binding with the same key and event for the current run.
+Menu definitions are runtime-only and are not saved to `config.json`.
 
 Utility API:
 
@@ -150,6 +168,9 @@ nmf.key("S-J", "user.show_jobs", event = "typed")
 
 Custom command IDs must start with `user.` so they cannot override built-in
 commands accidentally.
+Use `nmf.command` when a function needs a stable reusable command ID for
+`nmf.run`, JSON key bindings, or menu items. For Starlark-only key bindings,
+`nmf.key(key, fn = callable)` can bind a function directly.
 
 The command function receives one `ctx` struct:
 
@@ -176,6 +197,8 @@ Command-only helpers:
 - `nmf.sort(..., temporary = True)` re-sorts the active file list without
   changing configuration or saving to `config.json`. It can only be used while a
   custom command is running.
+- `nmf.show_menu(name)` displays a Starlark-defined menu. It can only be used
+  while a custom command is running.
 
 Available built-in command IDs are listed in `docs/configuration.md`.
 

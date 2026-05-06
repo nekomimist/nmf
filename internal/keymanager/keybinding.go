@@ -31,6 +31,12 @@ type CommandFunc func(CommandContext)
 // CommandRegistry maps stable command IDs to implementations.
 type CommandRegistry map[string]CommandFunc
 
+// CommandMenuItem describes a UI-agnostic command menu entry.
+type CommandMenuItem struct {
+	Label  string
+	Action func()
+}
+
 type keyBinding struct {
 	spec    keySpec
 	event   string

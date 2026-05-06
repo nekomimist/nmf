@@ -32,8 +32,8 @@ nmf.key("C-P", "user.parent", event = "down")
 nmf.clear_external_commands()
 nmf.external_command(
     name = "Open in Vim",
-    extensions = ["go", "md"],
-    command = "vim",
+    exts = ["go", "md"],
+    cmd = "vim",
     args = ["{file}"],
 )
 def parent(ctx):
@@ -156,6 +156,92 @@ nmf.unkey("C-S", event = "down")
 	}
 }
 
+func TestKeyCanBindCallable(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def edit(ctx):
+    nmf.exec("vim", args = [ctx.current_file])
+nmf.key("E", fn = edit)
+nmf.key("C-E", fn = edit, event = "down")
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	cfg := testConfig()
+	rt, err := Load(path, cfg, func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if len(cfg.UI.KeyBindings) != 2 {
+		t.Fatalf("key bindings = %+v, want two generated bindings", cfg.UI.KeyBindings)
+	}
+	first := cfg.UI.KeyBindings[0]
+	second := cfg.UI.KeyBindings[1]
+	if first.Key != "E" || first.Command == "" || first.Event != "" {
+		t.Fatalf("first binding = %+v, want E generated command", first)
+	}
+	if second.Key != "C-E" || second.Command == "" || second.Event != "down" {
+		t.Fatalf("second binding = %+v, want C-E generated down command", second)
+	}
+	if first.Command == second.Command {
+		t.Fatalf("generated commands should be unique, got %q", first.Command)
+	}
+	if _, ok := rt.Commands[first.Command]; !ok {
+		t.Fatalf("missing generated command %q", first.Command)
+	}
+
+	var gotCommand string
+	var gotArgs []string
+	rt.Commands[first.Command](keymanager.CommandContext{
+		FileManager: &configScriptFakeFileManager{
+			currentPath: "/tmp",
+			cursorIndex: 0,
+			files: []fileinfo.FileInfo{
+				{Name: "main.go", Path: "/tmp/main.go"},
+			},
+		},
+		RunExternalCommand: func(command string, args []string) bool {
+			gotCommand = command
+			gotArgs = args
+			return true
+		},
+	})
+	if gotCommand != "vim" || !reflect.DeepEqual(gotArgs, []string{"/tmp/main.go"}) {
+		t.Fatalf("exec = %q %#v, want vim current file", gotCommand, gotArgs)
+	}
+}
+
+func TestKeyRejectsInvalidCallableBindings(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+	}{
+		{name: "both command and fn", src: `
+def f(ctx):
+    pass
+nmf.key("E", "directory.refresh", fn = f)
+`},
+		{name: "neither cmd nor fn", src: `nmf.key("E")`},
+		{name: "non callable fn", src: `nmf.key("E", fn = "nope")`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, FileName)
+			if err := os.WriteFile(path, []byte(tt.src), 0644); err != nil {
+				t.Fatalf("WriteFile failed: %v", err)
+			}
+			if _, err := Load(path, testConfig(), func(string, ...interface{}) {}); err == nil {
+				t.Fatal("Load should reject invalid key binding")
+			}
+		})
+	}
+}
+
 func TestCustomCommandCanRunInternalCommand(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, FileName)
@@ -254,6 +340,179 @@ func TestCurrentSortRequiresCommandContext(t *testing.T) {
 
 	if _, err := Load(path, testConfig(), func(string, ...interface{}) {}); err == nil {
 		t.Fatal("Load should reject nmf.current_sort outside a command")
+	}
+}
+
+func TestLoadRegistersStarlarkMenu(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+nmf.menu("tools", title = "Tools")
+nmf.menu_item("tools", "Refresh", cmd = "directory.refresh")
+def edit(ctx):
+    nmf.exec("vim", args = [ctx.current_file])
+nmf.menu_item("tools", "Edit", fn = edit)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	menu := rt.Menus["tools"]
+	if menu == nil {
+		t.Fatal("tools menu was not registered")
+	}
+	if menu.Title != "Tools" {
+		t.Fatalf("menu title = %q, want Tools", menu.Title)
+	}
+	if len(menu.Items) != 2 || menu.Items[0].Label != "Refresh" || menu.Items[0].Command != "directory.refresh" || menu.Items[1].Label != "Edit" || menu.Items[1].Callable == nil {
+		t.Fatalf("menu items = %+v, want command and callable items", menu.Items)
+	}
+}
+
+func TestCustomCommandCanShowStarlarkMenu(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+nmf.menu("tools", title = "Tools")
+nmf.menu_item("tools", "Refresh", cmd = "directory.refresh")
+def edit(ctx):
+    nmf.exec("vim", args = [ctx.current_file])
+nmf.menu_item("tools", "Edit", fn = edit)
+def show_tools(ctx):
+    nmf.show_menu("tools")
+nmf.command("user.show_tools", show_tools)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	fm := &configScriptFakeFileManager{
+		currentPath: "/tmp",
+		cursorIndex: 0,
+		files: []fileinfo.FileInfo{
+			{Name: "main.go", Path: "/tmp/main.go"},
+		},
+	}
+	var ran string
+	var gotCommand string
+	var gotArgs []string
+	rt.Commands["user.show_tools"](keymanager.CommandContext{
+		FileManager: fm,
+		RunCommand: func(command string) bool {
+			ran = command
+			return true
+		},
+		RunExternalCommand: func(command string, args []string) bool {
+			gotCommand = command
+			gotArgs = args
+			return true
+		},
+	})
+
+	if fm.menuTitle != "Tools" {
+		t.Fatalf("menu title = %q, want Tools", fm.menuTitle)
+	}
+	if labels := fm.menuLabels(); !reflect.DeepEqual(labels, []string{"Refresh", "Edit"}) {
+		t.Fatalf("menu labels = %#v, want Refresh/Edit", labels)
+	}
+
+	fm.menuItems[0].Action()
+	if ran != "directory.refresh" {
+		t.Fatalf("ran command = %q, want directory.refresh", ran)
+	}
+
+	fm.menuItems[1].Action()
+	if gotCommand != "vim" || !reflect.DeepEqual(gotArgs, []string{"/tmp/main.go"}) {
+		t.Fatalf("exec = %q %#v, want vim current file", gotCommand, gotArgs)
+	}
+}
+
+func TestShowMenuDisplaysInformationalItemForMissingMenu(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def show_missing(ctx):
+    nmf.show_menu("missing")
+nmf.command("user.show_missing", show_missing)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	fm := &configScriptFakeFileManager{}
+	rt.Commands["user.show_missing"](keymanager.CommandContext{FileManager: fm})
+
+	if fm.menuTitle != "missing" || len(fm.menuItems) != 1 || fm.menuItems[0].Label == "" {
+		t.Fatalf("missing menu display = title %q items %+v, want one informational item", fm.menuTitle, fm.menuItems)
+	}
+}
+
+func TestMenuRegistrationRejectsInvalidItems(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+	}{
+		{name: "empty menu", src: `nmf.menu("")`},
+		{name: "empty label", src: `nmf.menu_item("tools", "", cmd = "directory.refresh")`},
+		{name: "both actions", src: `
+def f(ctx):
+    pass
+nmf.menu_item("tools", "Bad", cmd = "directory.refresh", fn = f)
+`},
+		{name: "no actions", src: `nmf.menu_item("tools", "Bad")`},
+		{name: "non callable fn", src: `nmf.menu_item("tools", "Bad", fn = "nope")`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, FileName)
+			if err := os.WriteFile(path, []byte(tt.src), 0644); err != nil {
+				t.Fatalf("WriteFile failed: %v", err)
+			}
+			if _, err := Load(path, testConfig(), func(string, ...interface{}) {}); err == nil {
+				t.Fatal("Load should reject invalid menu registration")
+			}
+		})
+	}
+}
+
+func TestMenuRegistrationFailsInsideCustomCommand(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def bad(ctx):
+    nmf.menu("late")
+nmf.command("user.bad", bad)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	var logs []string
+	rt.debugPrint = func(format string, args ...interface{}) {
+		logs = append(logs, format)
+	}
+	rt.Commands["user.bad"](keymanager.CommandContext{})
+	if len(logs) == 0 {
+		t.Fatal("command should log menu registration failure")
 	}
 }
 
@@ -599,6 +858,8 @@ type configScriptFakeFileManager struct {
 	currentSort          config.SortConfig
 	temporarySort        config.SortConfig
 	temporarySortApplied bool
+	menuTitle            string
+	menuItems            []keymanager.CommandMenuItem
 }
 
 func (f *configScriptFakeFileManager) GetCurrentCursorIndex() int    { return f.cursorIndex }
@@ -646,3 +907,14 @@ func (f *configScriptFakeFileManager) ShowRenameDialog()                 {}
 func (f *configScriptFakeFileManager) ShowDeleteDialog(permanent bool)   {}
 func (f *configScriptFakeFileManager) ShowExplorerContextMenu()          {}
 func (f *configScriptFakeFileManager) ShowExternalCommandMenu()          {}
+func (f *configScriptFakeFileManager) ShowCommandMenu(title string, items []keymanager.CommandMenuItem) {
+	f.menuTitle = title
+	f.menuItems = items
+}
+func (f *configScriptFakeFileManager) menuLabels() []string {
+	labels := make([]string, len(f.menuItems))
+	for i, item := range f.menuItems {
+		labels[i] = item.Label
+	}
+	return labels
+}

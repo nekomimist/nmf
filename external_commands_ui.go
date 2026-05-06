@@ -10,6 +10,7 @@ import (
 
 	"nmf/internal/config"
 	"nmf/internal/fileinfo"
+	"nmf/internal/keymanager"
 	"nmf/internal/ui"
 )
 
@@ -18,13 +19,13 @@ import (
 func (fm *FileManager) ShowExternalCommandMenu() {
 	targets := fm.collectTargetPaths()
 	if len(targets) == 0 {
-		fm.showExternalCommandPopup(informationalExternalCommandMenuItem("No file selected."))
+		fm.showCommandPopup("Run Command", informationalExternalCommandMenuItem("No file selected."))
 		return
 	}
 
 	commands := fm.matchingExternalCommands(targets[0])
 	if len(commands) == 0 {
-		fm.showExternalCommandPopup(informationalExternalCommandMenuItem("No external commands match this file."))
+		fm.showCommandPopup("Run Command", informationalExternalCommandMenuItem("No external commands match this file."))
 		return
 	}
 
@@ -38,19 +39,34 @@ func (fm *FileManager) ShowExternalCommandMenu() {
 		}))
 	}
 
-	fm.showExternalCommandPopup(items...)
+	fm.showCommandPopup("Run Command", items...)
 }
 
 func informationalExternalCommandMenuItem(label string) *fyne.MenuItem {
 	return fyne.NewMenuItem(label, func() {})
 }
 
-func (fm *FileManager) showExternalCommandPopup(items ...*fyne.MenuItem) {
+// ShowCommandMenu displays a generic command menu at the current cursor row.
+func (fm *FileManager) ShowCommandMenu(title string, items []keymanager.CommandMenuItem) {
+	menuItems := make([]*fyne.MenuItem, 0, len(items))
+	for _, item := range items {
+		entry := item
+		menuItems = append(menuItems, fyne.NewMenuItem(entry.Label, func() {
+			if entry.Action != nil {
+				entry.Action()
+			}
+			fm.FocusFileList()
+		}))
+	}
+	fm.showCommandPopup(title, menuItems...)
+}
+
+func (fm *FileManager) showCommandPopup(title string, items ...*fyne.MenuItem) {
 	if fm.window == nil || fm.window.Canvas() == nil {
 		return
 	}
 
-	menu := fyne.NewMenu("Run Command", items...)
+	menu := fyne.NewMenu(title, items...)
 	widget.ShowPopUpMenuAtPosition(menu, fm.window.Canvas(), fm.externalCommandMenuPosition())
 }
 

@@ -85,6 +85,7 @@ type FileManagerInterface interface {
 	ShowDeleteDialog(permanent bool)
 	ShowExplorerContextMenu()
 	ShowExternalCommandMenu()
+	ShowCommandMenu(title string, items []CommandMenuItem)
 }
 
 type externalCommandRunner interface {

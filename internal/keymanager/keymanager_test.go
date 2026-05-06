@@ -213,6 +213,8 @@ func (f *mainScreenFakeFileManager) ShowDeleteDialog(permanent bool) {
 }
 func (f *mainScreenFakeFileManager) ShowExplorerContextMenu() { f.showExplorerMenuCount++ }
 func (f *mainScreenFakeFileManager) ShowExternalCommandMenu() { f.showExternalMenuCount++ }
+func (f *mainScreenFakeFileManager) ShowCommandMenu(title string, items []CommandMenuItem) {
+}
 
 func TestMainScreenJShowsDirectoryJumpDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
