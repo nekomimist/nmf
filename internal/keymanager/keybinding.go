@@ -33,8 +33,9 @@ type CommandRegistry map[string]CommandFunc
 
 // CommandMenuItem describes a UI-agnostic command menu entry.
 type CommandMenuItem struct {
-	Label  string
-	Action func()
+	Label     string
+	Separator bool
+	Action    func()
 }
 
 type keyBinding struct {

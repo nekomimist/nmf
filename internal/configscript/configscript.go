@@ -55,9 +55,10 @@ type Menu struct {
 
 // MenuItem holds a Starlark-defined menu item action.
 type MenuItem struct {
-	Label    string
-	Command  string
-	Callable starlark.Callable
+	Label     string
+	Command   string
+	Separator bool
+	Callable  starlark.Callable
 }
 
 type saveMask struct {
@@ -296,6 +297,7 @@ func (rt *Runtime) predeclared() starlark.StringDict {
 			"command":        starlark.NewBuiltin("nmf.command", rt.builtinCommand),
 			"menu":           starlark.NewBuiltin("nmf.menu", rt.builtinMenu),
 			"menu_item":      starlark.NewBuiltin("nmf.menu_item", rt.builtinMenuItem),
+			"menu_separator": starlark.NewBuiltin("nmf.menu_separator", rt.builtinMenuSeparator),
 			"clear_menu":     starlark.NewBuiltin("nmf.clear_menu", rt.builtinClearMenu),
 			"show_menu":      starlark.NewBuiltin("nmf.show_menu", rt.builtinShowMenu),
 			"run":            starlark.NewBuiltin("nmf.run", rt.builtinRun),
@@ -713,6 +715,24 @@ func (rt *Runtime) builtinMenuItem(thread *starlark.Thread, fn *starlark.Builtin
 	return starlark.None, nil
 }
 
+func (rt *Runtime) builtinMenuSeparator(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
+	var menuName string
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "menu", &menuName); err != nil {
+		return nil, err
+	}
+	menuName = strings.TrimSpace(menuName)
+	if menuName == "" {
+		return nil, fmt.Errorf("menu separator menu must not be empty")
+	}
+
+	menu := rt.ensureMenu(menuName)
+	menu.Items = append(menu.Items, MenuItem{Separator: true})
+	return starlark.None, nil
+}
+
 func (rt *Runtime) builtinClearMenu(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if err := rejectCommandContext(thread, fn.Name()); err != nil {
 		return nil, err
@@ -759,6 +779,10 @@ func (rt *Runtime) builtinShowMenu(thread *starlark.Thread, fn *starlark.Builtin
 	items := make([]keymanager.CommandMenuItem, 0, len(menu.Items))
 	for _, item := range menu.Items {
 		entry := item
+		if entry.Separator {
+			items = append(items, keymanager.CommandMenuItem{Separator: true})
+			continue
+		}
 		items = append(items, keymanager.CommandMenuItem{
 			Label: entry.Label,
 			Action: func() {

@@ -97,6 +97,7 @@ nmf.command("user.toggle_name_modified", toggle_name_modified)
 
 nmf.menu("tools", title = "Tools")
 nmf.menu_item("tools", "Refresh", cmd = "directory.refresh")
+nmf.menu_separator("tools")
 
 def edit_from_menu(ctx):
     if ctx.current_file:
@@ -137,6 +138,7 @@ List sections:
 - `nmf.clear_external_commands()`
 - `nmf.menu(name, title = "")`
 - `nmf.menu_item(menu, label, cmd = None, fn = None)`
+- `nmf.menu_separator(menu)`
 - `nmf.clear_menu(name)`
 
 List APIs append to values already loaded from `config.json`. Use the matching

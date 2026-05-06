@@ -349,6 +349,7 @@ func TestLoadRegistersStarlarkMenu(t *testing.T) {
 	src := `
 nmf.menu("tools", title = "Tools")
 nmf.menu_item("tools", "Refresh", cmd = "directory.refresh")
+nmf.menu_separator("tools")
 def edit(ctx):
     nmf.exec("vim", args = [ctx.current_file])
 nmf.menu_item("tools", "Edit", fn = edit)
@@ -369,8 +370,8 @@ nmf.menu_item("tools", "Edit", fn = edit)
 	if menu.Title != "Tools" {
 		t.Fatalf("menu title = %q, want Tools", menu.Title)
 	}
-	if len(menu.Items) != 2 || menu.Items[0].Label != "Refresh" || menu.Items[0].Command != "directory.refresh" || menu.Items[1].Label != "Edit" || menu.Items[1].Callable == nil {
-		t.Fatalf("menu items = %+v, want command and callable items", menu.Items)
+	if len(menu.Items) != 3 || menu.Items[0].Label != "Refresh" || menu.Items[0].Command != "directory.refresh" || !menu.Items[1].Separator || menu.Items[2].Label != "Edit" || menu.Items[2].Callable == nil {
+		t.Fatalf("menu items = %+v, want command, separator, and callable items", menu.Items)
 	}
 }
 
@@ -380,6 +381,7 @@ func TestCustomCommandCanShowStarlarkMenu(t *testing.T) {
 	src := `
 nmf.menu("tools", title = "Tools")
 nmf.menu_item("tools", "Refresh", cmd = "directory.refresh")
+nmf.menu_separator("tools")
 def edit(ctx):
     nmf.exec("vim", args = [ctx.current_file])
 nmf.menu_item("tools", "Edit", fn = edit)
@@ -421,8 +423,11 @@ nmf.command("user.show_tools", show_tools)
 	if fm.menuTitle != "Tools" {
 		t.Fatalf("menu title = %q, want Tools", fm.menuTitle)
 	}
-	if labels := fm.menuLabels(); !reflect.DeepEqual(labels, []string{"Refresh", "Edit"}) {
-		t.Fatalf("menu labels = %#v, want Refresh/Edit", labels)
+	if labels := fm.menuLabels(); !reflect.DeepEqual(labels, []string{"Refresh", "", "Edit"}) {
+		t.Fatalf("menu labels = %#v, want Refresh/separator/Edit", labels)
+	}
+	if !fm.menuItems[1].Separator {
+		t.Fatalf("menu item 1 = %+v, want separator", fm.menuItems[1])
 	}
 
 	fm.menuItems[0].Action()
@@ -430,7 +435,7 @@ nmf.command("user.show_tools", show_tools)
 		t.Fatalf("ran command = %q, want directory.refresh", ran)
 	}
 
-	fm.menuItems[1].Action()
+	fm.menuItems[2].Action()
 	if gotCommand != "vim" || !reflect.DeepEqual(gotArgs, []string{"/tmp/main.go"}) {
 		t.Fatalf("exec = %q %#v, want vim current file", gotCommand, gotArgs)
 	}
@@ -467,6 +472,7 @@ func TestMenuRegistrationRejectsInvalidItems(t *testing.T) {
 	}{
 		{name: "empty menu", src: `nmf.menu("")`},
 		{name: "empty label", src: `nmf.menu_item("tools", "", cmd = "directory.refresh")`},
+		{name: "empty separator menu", src: `nmf.menu_separator("")`},
 		{name: "both actions", src: `
 def f(ctx):
     pass

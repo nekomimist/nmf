@@ -51,12 +51,17 @@ func (fm *FileManager) ShowCommandMenu(title string, items []keymanager.CommandM
 	menuItems := make([]*fyne.MenuItem, 0, len(items))
 	for _, item := range items {
 		entry := item
-		menuItems = append(menuItems, fyne.NewMenuItem(entry.Label, func() {
+		if entry.Separator {
+			menuItems = append(menuItems, fyne.NewMenuItemSeparator())
+			continue
+		}
+		menuItem := fyne.NewMenuItem(entry.Label, func() {
 			if entry.Action != nil {
 				entry.Action()
 			}
 			fm.FocusFileList()
-		}))
+		})
+		menuItems = append(menuItems, menuItem)
 	}
 	fm.showCommandPopup(title, menuItems...)
 }
