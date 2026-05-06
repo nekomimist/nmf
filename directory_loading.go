@@ -230,14 +230,11 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 		copy(fm.originalFiles, files)
 		fm.storageInfo = storage
 		fm.storageKnown = storageErr == nil
+		fm.activeSort = fm.config.UI.Sort
 
 		// Sort and build items
 		fm.sortFiles()
-		items := make([]interface{}, 0, len(fm.files))
-		for i, f := range fm.files {
-			items = append(items, fileinfo.ListItem{Index: i, FileInfo: f})
-		}
-		fm.fileBinding.Set(items)
+		fm.rebuildFileBinding()
 
 		// Clear selections and restore cursor
 		fm.selectedFiles = make(map[string]bool)

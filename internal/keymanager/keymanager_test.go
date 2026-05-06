@@ -167,18 +167,24 @@ type mainScreenFakeFileManager struct {
 	showDeleteCount        int
 	showExplorerMenuCount  int
 	showExternalMenuCount  int
+	showSortCount          int
 	deletePermanent        bool
 	cursorIndex            int
 	setCursorIndex         int
 	files                  []fileinfo.FileInfo
 }
 
-func (f *mainScreenFakeFileManager) GetCurrentCursorIndex() int                 { return f.cursorIndex }
-func (f *mainScreenFakeFileManager) SetCursorByIndex(index int)                 { f.setCursorIndex = index }
-func (f *mainScreenFakeFileManager) RefreshCursor()                             {}
-func (f *mainScreenFakeFileManager) LoadDirectory(path string)                  {}
-func (f *mainScreenFakeFileManager) GetCurrentPath() string                     { return "" }
-func (f *mainScreenFakeFileManager) GetFiles() []fileinfo.FileInfo              { return f.files }
+func (f *mainScreenFakeFileManager) GetCurrentCursorIndex() int    { return f.cursorIndex }
+func (f *mainScreenFakeFileManager) SetCursorByIndex(index int)    { f.setCursorIndex = index }
+func (f *mainScreenFakeFileManager) RefreshCursor()                {}
+func (f *mainScreenFakeFileManager) LoadDirectory(path string)     {}
+func (f *mainScreenFakeFileManager) GetCurrentPath() string        { return "" }
+func (f *mainScreenFakeFileManager) GetFiles() []fileinfo.FileInfo { return f.files }
+func (f *mainScreenFakeFileManager) CurrentSort() config.SortConfig {
+	return config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}
+}
+func (f *mainScreenFakeFileManager) ApplyTemporarySort(sortConfig config.SortConfig) {
+}
 func (f *mainScreenFakeFileManager) GetSelectedFiles() map[string]bool          { return nil }
 func (f *mainScreenFakeFileManager) SetFileSelected(path string, selected bool) {}
 func (f *mainScreenFakeFileManager) RefreshFileList()                           {}
@@ -193,7 +199,7 @@ func (f *mainScreenFakeFileManager) ShowFilterDialog()                {}
 func (f *mainScreenFakeFileManager) ClearFilter()                     {}
 func (f *mainScreenFakeFileManager) ToggleFilter()                    {}
 func (f *mainScreenFakeFileManager) ShowIncrementalSearchDialog()     {}
-func (f *mainScreenFakeFileManager) ShowSortDialog()                  {}
+func (f *mainScreenFakeFileManager) ShowSortDialog()                  { f.showSortCount++ }
 func (f *mainScreenFakeFileManager) ShowJobsDialog()                  { f.showJobsCount++ }
 func (f *mainScreenFakeFileManager) FocusPathEntry()                  {}
 func (f *mainScreenFakeFileManager) QuitApplication()                 {}
@@ -207,6 +213,8 @@ func (f *mainScreenFakeFileManager) ShowDeleteDialog(permanent bool) {
 }
 func (f *mainScreenFakeFileManager) ShowExplorerContextMenu() { f.showExplorerMenuCount++ }
 func (f *mainScreenFakeFileManager) ShowExternalCommandMenu() { f.showExternalMenuCount++ }
+func (f *mainScreenFakeFileManager) ShowCommandMenu(title string, items []CommandMenuItem) {
+}
 
 func TestMainScreenJShowsDirectoryJumpDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
@@ -374,6 +382,72 @@ func TestMainScreenConfiguredBindingOverridesDefault(t *testing.T) {
 	}
 	if fm.showExternalMenuCount != 0 {
 		t.Fatalf("ShowExternalCommandMenu count = %d, want 0", fm.showExternalMenuCount)
+	}
+}
+
+func TestMainScreenNoopCommandOverridesDefault(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+		{Key: "S-S", Command: CommandNoop},
+	})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyS}, ModifierState{ShiftPressed: true})
+
+	if !handled {
+		t.Fatal("configured noop should be handled")
+	}
+	if fm.showSortCount != 0 {
+		t.Fatalf("ShowSortDialog count = %d, want 0", fm.showSortCount)
+	}
+}
+
+func TestMainScreenConfiguredBindingCanUseExtraCommand(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	var got CommandContext
+	handler := NewMainScreenKeyHandlerWithCommands(
+		fm,
+		func(string, ...interface{}) {},
+		[]config.KeyBindingEntry{{Key: "S-X", Command: "user.test"}},
+		CommandRegistry{
+			"user.test": func(ctx CommandContext) {
+				got = ctx
+			},
+		},
+	)
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{ShiftPressed: true})
+
+	if !handled {
+		t.Fatal("configured extra command should be handled")
+	}
+	if got.Key != fyne.KeyX || got.Event != keyEventTyped || !got.Modifiers.ShiftPressed {
+		t.Fatalf("context = %+v, want key=X event=typed shift=true", got)
+	}
+	if got.FileManager != fm {
+		t.Fatal("context should carry file manager")
+	}
+}
+
+func TestMainScreenExtraCommandCanRunInternalCommand(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandlerWithCommands(
+		fm,
+		func(string, ...interface{}) {},
+		[]config.KeyBindingEntry{{Key: "X", Command: "user.jobs"}},
+		CommandRegistry{
+			"user.jobs": func(ctx CommandContext) {
+				ctx.RunCommand(CommandJobsShow)
+			},
+		},
+	)
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{})
+
+	if !handled {
+		t.Fatal("configured extra command should be handled")
+	}
+	if fm.showJobsCount != 1 {
+		t.Fatalf("ShowJobsDialog count = %d, want 1", fm.showJobsCount)
 	}
 }
 

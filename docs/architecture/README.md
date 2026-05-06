@@ -14,6 +14,8 @@ This folder holds durable design documentation.
   - Watcher lifecycle contract and jobs manager integration points.
 - `ui-input.md`
   - KeyManager stack, focus model, and dialog input conventions.
+- `../starlark-configuration.md`
+  - User-facing Starlark overlay syntax and custom command behavior.
 
 ## Writing rules
 

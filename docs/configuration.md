@@ -10,6 +10,10 @@ NMF loads `config.json` from the OS-specific app config directory:
 The schema source of truth is `internal/config/config.go`. Missing fields use
 defaults, and some runtime state is saved back into this file.
 
+After `config.json` is loaded, NMF also loads an optional `init.star` from the
+same directory. Starlark settings overlay JSON for the current run and can define
+custom commands for key bindings. See `docs/starlark-configuration.md`.
+
 ## Example
 
 ```json
@@ -127,7 +131,8 @@ default behavior.
   "ui": {
     "keyBindings": [
       { "key": "S-A-C-F2", "command": "rename.show", "event": "typed" },
-      { "key": "C-N", "command": "window.new", "event": "down" }
+      { "key": "C-N", "command": "window.new", "event": "down" },
+      { "key": "S-S", "command": "noop" }
     ]
   }
 }
@@ -184,6 +189,10 @@ Available main-screen commands:
 - `delete.trash`, `delete.permanent`
 - `explorerContext.show`
 - `externalCommand.menu`
+- `noop`
+
+Starlark `init.star` can register additional command IDs with the `user.`
+prefix and bind them through the same key binding mechanism.
 
 ## External Commands
 

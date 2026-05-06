@@ -11,7 +11,7 @@ import (
 )
 
 func (fm *FileManager) OpenNewWindow() {
-	newFM := NewFileManager(fyne.CurrentApp(), fm.currentPath, fm.config, fm.configManager, fm.customTheme)
+	newFM := NewFileManager(fyne.CurrentApp(), fm.currentPath, fm.config, fm.configManager, fm.customTheme, fm.configScript)
 	newFM.window.Show()
 	positionWindowNextTo(fm.window, newFM.window)
 }

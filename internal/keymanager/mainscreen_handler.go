@@ -40,7 +40,10 @@ const (
 	CommandDeletePermanent     = "delete.permanent"
 	CommandExplorerContextShow = "explorerContext.show"
 	CommandExternalCommandMenu = "externalCommand.menu"
+	CommandNoop                = "noop"
 )
+
+const maxNestedCommandDepth = 32
 
 // FileManagerInterface defines the interface needed by MainScreenKeyHandler.
 type FileManagerInterface interface {
@@ -51,6 +54,8 @@ type FileManagerInterface interface {
 	LoadDirectory(path string)
 	GetCurrentPath() string
 	GetFiles() []fileinfo.FileInfo
+	CurrentSort() config.SortConfig
+	ApplyTemporarySort(sortConfig config.SortConfig)
 
 	GetSelectedFiles() map[string]bool
 	SetFileSelected(path string, selected bool)
@@ -80,29 +85,48 @@ type FileManagerInterface interface {
 	ShowDeleteDialog(permanent bool)
 	ShowExplorerContextMenu()
 	ShowExternalCommandMenu()
+	ShowCommandMenu(title string, items []CommandMenuItem)
+}
+
+type externalCommandRunner interface {
+	RunExternalCommand(command string, args []string) bool
 }
 
 // MainScreenKeyHandler handles keyboard events for the main file list screen.
 type MainScreenKeyHandler struct {
-	fileManager FileManagerInterface
-	debugPrint  func(format string, args ...interface{})
-	commands    CommandRegistry
-	bindings    []keyBinding
+	fileManager     FileManagerInterface
+	debugPrint      func(format string, args ...interface{})
+	commands        CommandRegistry
+	bindings        []keyBinding
+	runningCommands map[string]int
+	runningDepth    int
 }
 
 // NewMainScreenKeyHandler creates a new main screen key handler.
 func NewMainScreenKeyHandler(fm FileManagerInterface, debugPrint func(format string, args ...interface{}), configuredBindings ...[]config.KeyBindingEntry) *MainScreenKeyHandler {
-	mh := &MainScreenKeyHandler{
-		fileManager: fm,
-		debugPrint:  debugPrint,
-	}
-	mh.commands = mh.defaultCommands()
-
 	var cfg []config.KeyBindingEntry
 	if len(configuredBindings) > 0 {
 		cfg = configuredBindings[0]
 	}
-	mh.bindings = mh.buildBindings(cfg)
+	return NewMainScreenKeyHandlerWithCommands(fm, debugPrint, cfg, nil)
+}
+
+// NewMainScreenKeyHandlerWithCommands creates a handler with additional commands.
+func NewMainScreenKeyHandlerWithCommands(fm FileManagerInterface, debugPrint func(format string, args ...interface{}), configuredBindings []config.KeyBindingEntry, extraCommands CommandRegistry) *MainScreenKeyHandler {
+	mh := &MainScreenKeyHandler{
+		fileManager:     fm,
+		debugPrint:      debugPrint,
+		runningCommands: make(map[string]int),
+	}
+	mh.commands = mh.defaultCommands()
+	for id, command := range extraCommands {
+		if _, exists := mh.commands[id]; exists {
+			mh.debugPrint("MainScreen: WARNING extra command ignored existing command=%s", id)
+			continue
+		}
+		mh.commands[id] = command
+	}
+	mh.bindings = mh.buildBindings(configuredBindings)
 	return mh
 }
 
@@ -132,16 +156,56 @@ func (mh *MainScreenKeyHandler) executeBinding(event string, ev *fyne.KeyEvent, 
 		if binding.event != event || !binding.matches(ev, modifiers) {
 			continue
 		}
-		command, ok := mh.commands[binding.command]
-		if !ok {
-			mh.debugPrint("MainScreen: unknown command=%s key=%s", binding.command, ev.Name)
-			return true
+		key := fyne.KeyName("")
+		if ev != nil {
+			key = ev.Name
 		}
-		mh.debugPrint("MainScreen: command=%s key=%s event=%s", binding.command, ev.Name, event)
-		command(CommandContext{Modifiers: modifiers})
+		ctx := CommandContext{
+			Modifiers:   modifiers,
+			Key:         key,
+			Event:       event,
+			FileManager: mh.fileManager,
+		}
+		ctx.RunCommand = func(command string) bool {
+			return mh.executeCommand(command, ctx)
+		}
+		if runner, ok := mh.fileManager.(externalCommandRunner); ok {
+			ctx.RunExternalCommand = runner.RunExternalCommand
+		}
+		mh.executeCommand(binding.command, ctx)
 		return true
 	}
 	return false
+}
+
+func (mh *MainScreenKeyHandler) executeCommand(commandID string, ctx CommandContext) bool {
+	command, ok := mh.commands[commandID]
+	if !ok {
+		mh.debugPrint("MainScreen: unknown command=%s key=%s", commandID, ctx.Key)
+		return false
+	}
+	if mh.runningDepth >= maxNestedCommandDepth {
+		mh.debugPrint("MainScreen: command depth exceeded command=%s", commandID)
+		return false
+	}
+	if mh.runningCommands[commandID] > 0 {
+		mh.debugPrint("MainScreen: recursive command skipped command=%s", commandID)
+		return false
+	}
+
+	mh.debugPrint("MainScreen: command=%s key=%s event=%s", commandID, ctx.Key, ctx.Event)
+	mh.runningDepth++
+	mh.runningCommands[commandID]++
+	defer func() {
+		mh.runningDepth--
+		mh.runningCommands[commandID]--
+		if mh.runningCommands[commandID] == 0 {
+			delete(mh.runningCommands, commandID)
+		}
+	}()
+
+	command(ctx)
+	return true
 }
 
 func (mh *MainScreenKeyHandler) buildBindings(configured []config.KeyBindingEntry) []keyBinding {
@@ -240,6 +304,7 @@ func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
 		CommandDeletePermanent:     func(CommandContext) { mh.fileManager.ShowDeleteDialog(true) },
 		CommandExplorerContextShow: func(CommandContext) { mh.fileManager.ShowExplorerContextMenu() },
 		CommandExternalCommandMenu: func(CommandContext) { mh.fileManager.ShowExternalCommandMenu() },
+		CommandNoop:                func(CommandContext) {},
 	}
 }
 

@@ -1,32 +1,32 @@
 # 実用になるために必要なToDo
 
-## コンフィグ記述言語の導入
-- キーに自作関数を割りあてられると嬉しいので、それなりの機能を揃えた言語がいい。
-- とはいえいまさら固有のDSLを覚えたくもないので、一般的な言語がいい。
-- とはいえ補助的なものはので性能はそこまで気にしない。
-- Emacsやvimにちゃんと言語modeがある言語がいい。
-- 関数の中からnmf側で定義された機能を表す関数を呼びたい→goで定義した関数を言語側から呼べる必要がある
-- go側から言語側で定義された関数を呼べて評価結果を取れるほうがいいだろう
-- pure goがいいな
-- ちゃんと最新goでも動くものがいい
+## 全ファイルマークできるコマンドがほしい
+- デフォルトキーバインドはC-Aで。
 
-### lisp系言語か否か……？
-lisp系言語が好なので候補を選ぶと下記になるだろう。
-- zygomys	 : https://github.com/glycerine/zygomys : starも多いし、充実してそう。無難そう。
-- elps : https://github.com/luthersystems/elps      : ドキュメントはそこそこ整備されてるように見える
-- lisp : https://github.com/jig/lisp                : あまりドキュメントが充実してない？
-この中ではzygomysが一番GitHub starが多いが……
+## 実行前のコマンドライン編集
+- nmf.execおよびnmf.external_commandにオプションを追加して(edit = Trueみたいな？)、
+  一行の編集ダイヤログを出して、実際に実行する文字列を確認・編集できるようにする
+  (exec.Commandの引数はargs, ... だから1行に合成して、編集されて再度分解する？要検討)
+- ダイヤログでCancel/OKを選択させて、OKなら実行。
 
-### でもまあ組み込みに苦労するのもイヤなので 第一選択はstarlarkとする
-- emacsのmodeもある。
-- config.jsonも呼んでからinit.starを読むよううな作りがよいだろう
-- config.json内のカスタマイズ可能な部分は全てstarlarkでも書けるようにする
+## 1行編集系のキーバインドを改善したい
+- pathEntryとか、Renameコマンドで出るダイヤログとかはreadline / Windowsっぽいの2拓くらいあってもいい
+- Historyとかの絞り込み系の欄もCtrl-HがBSになるくらいはほしい
 
-## 雑多なコネタ。ぱっとできる事がなければこちらに取り組む
-- OK/Cancel的な二択ボタンは CancelIcon と ConfirmIcon をつけて、Confirmのほうのアイコン色を 
-  ThemeのPrimaryColorにしたほうがちゃんとしたFyneのアプリっぽいかもしれない。
+## OK/Cancel的な二択ボタン
+- あまり統一感がないかもしれない。CancelIconとConfirmIcon をつけて、Confirmのほうのアイコン色を 
+  ThemeのPrimaryColorにした上でボタンサイズを揃えたほうがFyneのアプリっぽいかもしれない。(優先度低)
 
 # DONE 以下は一応終わったもの
+## コンフィグ記述言語の導入
+- Starlarkの `init.star` を `config.json` の後に読む。
+- `config.json` の主なカスタマイズ項目を Starlark API から設定できる。
+- `user.*` コマンドとして Starlark 関数を登録し、キーに割り当てられる。
+- Starlark由来のオーバーレイは通常保存時に `config.json` へ逆流しない。
+- デフォルトキーを無効化するための `noop` コマンドと `nmf.unkey()`。
+- `nmf.sort(..., temporary = True)` で設定を保存せず一時的にソート状態を変えられる。
+- Starlarkから固定登録の名前付きメニューを作って `nmf.show_menu()` で表示できる。
+
 ## 新規File Managerの横配置
 - WindowsではCtrl-Nで出した新しいFile Managerを元のFile Managerの横に出す。
 

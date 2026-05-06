@@ -16,6 +16,13 @@ const (
 // CommandContext carries transient input state into command execution.
 type CommandContext struct {
 	Modifiers ModifierState
+	Key       fyne.KeyName
+	Event     string
+
+	FileManager FileManagerInterface
+	RunCommand  func(command string) bool
+
+	RunExternalCommand func(command string, args []string) bool
 }
 
 // CommandFunc executes an internal command.
@@ -23,6 +30,13 @@ type CommandFunc func(CommandContext)
 
 // CommandRegistry maps stable command IDs to implementations.
 type CommandRegistry map[string]CommandFunc
+
+// CommandMenuItem describes a UI-agnostic command menu entry.
+type CommandMenuItem struct {
+	Label     string
+	Separator bool
+	Action    func()
+}
 
 type keyBinding struct {
 	spec    keySpec

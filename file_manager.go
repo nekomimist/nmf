@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/config"
+	"nmf/internal/configscript"
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 	customtheme "nmf/internal/theme"
@@ -35,6 +36,8 @@ type FileManager struct {
 	fileBinding    binding.UntypedList
 	config         *config.Config
 	configManager  *config.Manager
+	configScript   *configscript.Runtime
+	activeSort     config.SortConfig
 	customTheme    *customtheme.CustomTheme                // Custom theme for colors
 	cursorRenderer ui.CursorRenderer                       // Cursor display renderer
 	keyManager     *keymanager.KeyManager                  // Keyboard input manager
@@ -82,7 +85,8 @@ func (fm *FileManager) UpdateFiles(files []fileinfo.FileInfo) {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
 
-	fm.originalFiles = files
+	fm.originalFiles = make([]fileinfo.FileInfo, len(files))
+	copy(fm.originalFiles, files)
 
 	// Apply filter if one is active
 	if fm.currentFilter != nil && fm.currentFilter.Pattern != "" {
@@ -97,15 +101,10 @@ func (fm *FileManager) UpdateFiles(files []fileinfo.FileInfo) {
 		fm.files = files
 	}
 
+	fm.sortFilesWithConfig(fm.CurrentSort())
+
 	// Update binding to reflect all changes
-	items := make([]interface{}, len(fm.files))
-	for i, file := range fm.files {
-		items[i] = fileinfo.ListItem{
-			Index:    i,
-			FileInfo: file,
-		}
-	}
-	fm.fileBinding.Set(items)
+	fm.rebuildFileBinding()
 
 	// Explicitly refresh on file deletions or modifications, since Fyne only auto-updates on additions.
 	fm.fileList.Refresh()

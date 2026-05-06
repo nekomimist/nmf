@@ -367,6 +367,38 @@ func TestManagerSaveAndLoad(t *testing.T) {
 	}
 }
 
+func TestManagerSaveUsesTransform(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "test_config.json")
+
+	manager := NewManager(func(string, ...interface{}) {})
+	manager.configPath = configPath
+	defer func() {
+		if err := manager.Close(); err != nil {
+			t.Fatalf("manager.Close failed: %v", err)
+		}
+	}()
+
+	cfg := getDefaultConfig()
+	cfg.Window.Width = 1200
+	manager.SetSaveTransform(func(snapshot *Config) *Config {
+		snapshot.Window.Width = 800
+		return snapshot
+	})
+
+	if err := manager.Save(cfg); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	loaded, err := manager.Load()
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if loaded.Window.Width != 800 {
+		t.Fatalf("loaded window width = %d, want transformed 800", loaded.Window.Width)
+	}
+}
+
 func TestCloneConfigDeepCopiesDirectoryJumps(t *testing.T) {
 	cfg := getDefaultConfig()
 	cfg.UI.DirectoryJumps.Entries = []DirectoryJumpEntry{

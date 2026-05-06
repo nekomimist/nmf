@@ -64,6 +64,20 @@ func (fm *FileManager) RefreshFileList() {
 	fm.updateStatusBar()
 }
 
+// CurrentSort returns the sort configuration currently used for the visible list.
+func (fm *FileManager) CurrentSort() config.SortConfig {
+	if fm.activeSort.SortBy == "" || fm.activeSort.SortOrder == "" {
+		return fm.config.UI.Sort
+	}
+	return fm.activeSort
+}
+
+// ApplyTemporarySort applies a sort configuration without changing persisted settings.
+func (fm *FileManager) ApplyTemporarySort(sortConfig config.SortConfig) {
+	debugPrint("FileManager: Applying temporary sort configuration: %+v", sortConfig)
+	fm.applySort(sortConfig)
+}
+
 // ShowFilterDialog displays the file filter dialog.
 func (fm *FileManager) ShowFilterDialog() {
 	// Get current filter entries from config
@@ -117,16 +131,10 @@ func (fm *FileManager) ApplyFilter(entry *config.FilterEntry) {
 	}
 
 	fm.files = filtered
+	fm.sortFilesWithConfig(fm.CurrentSort())
 
 	// Update UI
-	items := make([]interface{}, len(fm.files))
-	for i, file := range fm.files {
-		items[i] = fileinfo.ListItem{
-			Index:    i,
-			FileInfo: file,
-		}
-	}
-	fm.fileBinding.Set(items)
+	fm.rebuildFileBinding()
 	fm.updateStatusBar()
 
 	// Reset cursor to first item if available
@@ -146,16 +154,10 @@ func (fm *FileManager) ClearFilter() {
 
 	if len(fm.originalFiles) > 0 {
 		fm.files = fm.originalFiles
+		fm.sortFilesWithConfig(fm.CurrentSort())
 
 		// Update UI
-		items := make([]interface{}, len(fm.files))
-		for i, file := range fm.files {
-			items[i] = fileinfo.ListItem{
-				Index:    i,
-				FileInfo: file,
-			}
-		}
-		fm.fileBinding.Set(items)
+		fm.rebuildFileBinding()
 		fm.updateStatusBar()
 	}
 
@@ -179,16 +181,10 @@ func (fm *FileManager) DisableFilter() {
 
 	if len(fm.originalFiles) > 0 {
 		fm.files = fm.originalFiles
+		fm.sortFilesWithConfig(fm.CurrentSort())
 
 		// Update UI
-		items := make([]interface{}, len(fm.files))
-		for i, file := range fm.files {
-			items[i] = fileinfo.ListItem{
-				Index:    i,
-				FileInfo: file,
-			}
-		}
-		fm.fileBinding.Set(items)
+		fm.rebuildFileBinding()
 		fm.updateStatusBar()
 	}
 
@@ -281,14 +277,6 @@ func (fm *FileManager) ShowSortDialog() {
 	sortDialog.SetOnApply(func(sortConfig config.SortConfig) {
 		debugPrint("FileManager: Applying sort configuration: %+v", sortConfig)
 
-		// Store current cursor file name to restore position after sorting
-		var currentFile string
-		cursorIndex := fm.GetCurrentCursorIndex()
-		if cursorIndex >= 0 && cursorIndex < len(fm.files) {
-			currentFile = fm.files[cursorIndex].Name
-			debugPrint("FileManager: Storing current cursor file: %s", currentFile)
-		}
-
 		// Update configuration
 		fm.config.UI.Sort = sortConfig
 
@@ -297,38 +285,7 @@ func (fm *FileManager) ShowSortDialog() {
 			debugPrint("FileManager: Failed to save sort configuration: %v", err)
 		}
 
-		// Re-sort current files and refresh display
-		fm.sortFiles()
-
-		// Rebuild items after sorting
-		items := make([]interface{}, 0, len(fm.files))
-		for i, file := range fm.files {
-			listItem := fileinfo.ListItem{
-				Index:    i,
-				FileInfo: file,
-			}
-			items = append(items, listItem)
-		}
-		fm.fileBinding.Set(items)
-
-		// Restore cursor position to the same file if possible
-		if currentFile != "" {
-			for i, file := range fm.files {
-				if file.Name == currentFile {
-					fm.SetCursorByIndex(i)
-					debugPrint("FileManager: Restored cursor to file: %s at index %d", currentFile, i)
-					break
-				}
-			}
-		} else {
-			// If no previous cursor file, set cursor to first item
-			if len(fm.files) > 0 {
-				fm.SetCursorByIndex(0)
-			}
-		}
-
-		// Force UI refresh
-		fm.fileList.Refresh()
+		fm.applySort(sortConfig)
 
 		debugPrint("FileManager: Sort configuration applied successfully")
 	})
@@ -477,8 +434,10 @@ func (fm *FileManager) SetCursorToFile(file *fileinfo.FileInfo) {
 
 // sortFiles sorts the fm.files slice according to the configuration.
 func (fm *FileManager) sortFiles() {
-	sortConfig := fm.config.UI.Sort
+	fm.sortFilesWithConfig(fm.CurrentSort())
+}
 
+func (fm *FileManager) sortFilesWithConfig(sortConfig config.SortConfig) {
 	debugPrint("FileManager: Sorting files: sortBy=%s, order=%s, dirFirst=%t",
 		sortConfig.SortBy, sortConfig.SortOrder, sortConfig.DirectoriesFirst)
 
@@ -542,6 +501,35 @@ func (fm *FileManager) sortFiles() {
 
 		fm.files = newFiles
 	}
+}
+
+func (fm *FileManager) applySort(sortConfig config.SortConfig) {
+	currentPath := fm.cursorPath
+	fm.activeSort = sortConfig
+
+	fm.sortFilesWithConfig(sortConfig)
+	fm.rebuildFileBinding()
+
+	if currentPath != "" {
+		fm.cursorPath = currentPath
+		if fm.GetCurrentCursorIndex() >= 0 {
+			debugPrint("FileManager: Restored cursor to path: %s", currentPath)
+		} else {
+			fm.SetCursorByIndex(0)
+		}
+	} else if len(fm.files) > 0 {
+		fm.SetCursorByIndex(0)
+	}
+
+	fm.RefreshCursor()
+}
+
+func (fm *FileManager) rebuildFileBinding() {
+	items := make([]interface{}, 0, len(fm.files))
+	for i, file := range fm.files {
+		items = append(items, fileinfo.ListItem{Index: i, FileInfo: file})
+	}
+	fm.fileBinding.Set(items)
 }
 
 // sortSlice sorts a slice of FileInfo according to the sort configuration.
