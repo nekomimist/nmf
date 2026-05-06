@@ -1,5 +1,10 @@
 # Starlark Configuration
 
+> [!NOTE]
+> Starlark configuration support is currently experimental.
+> Its API and behavior may change as the feature evolves, and future releases
+> may include breaking changes.
+
 NMF can load an optional Starlark initialization file after `config.json`.
 This gives users a programmable configuration layer while preserving the
 existing JSON file and runtime state persistence.
