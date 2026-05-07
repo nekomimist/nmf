@@ -112,9 +112,14 @@ func (fm *FileManager) setupUI() {
 
 					// Set onTapped handler for icon
 					icon.SetOnTapped(func() {
+						debugPrint("FileManager: Icon tapped path=%s dir=%t", fileInfo.Path, fileInfo.IsDir)
 						if fileInfo.IsDir {
 							fm.LoadDirectory(fileInfo.Path)
 						}
+					})
+					icon.SetOnDragged(func() {
+						debugPrint("FileManager: Icon dragged path=%s", fileInfo.Path)
+						fm.StartFileDrag(fileInfo)
 					})
 
 					// Get text color based on file type
@@ -190,6 +195,7 @@ func (fm *FileManager) setupUI() {
 
 	// Handle cursor movement (both mouse and keyboard)
 	fm.fileList.OnSelected = func(id widget.ListItemID) {
+		debugPrint("FileManager: List selected id=%d", id)
 		fm.SetCursorByIndex(id)
 		// Clear list selection to avoid double cursor effect when switching back to keyboard
 		fm.fileList.UnselectAll()

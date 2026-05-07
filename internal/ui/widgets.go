@@ -5,6 +5,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -12,8 +13,12 @@ import (
 // TappableIcon is a custom icon widget that can handle tap events
 type TappableIcon struct {
 	widget.BaseWidget
-	icon     *widget.Icon
-	onTapped func()
+	icon      *widget.Icon
+	onTapped  func()
+	onDragged func()
+	dragging  bool
+	pressed   bool
+	pressPos  fyne.Position
 }
 
 // NewTappableIcon creates a new tappable icon widget
@@ -34,6 +39,55 @@ func (ti *TappableIcon) Tapped(_ *fyne.PointEvent) {
 	}
 }
 
+// MouseDown records the initial press for native file drag startup.
+func (ti *TappableIcon) MouseDown(ev *desktop.MouseEvent) {
+	if ev.Button != desktop.MouseButtonPrimary {
+		return
+	}
+	ti.pressed = true
+	ti.dragging = false
+	ti.pressPos = ev.AbsolutePosition
+}
+
+// MouseUp clears any pending native drag startup.
+func (ti *TappableIcon) MouseUp(ev *desktop.MouseEvent) {
+	if ev.Button == desktop.MouseButtonPrimary {
+		ti.pressed = false
+		ti.dragging = false
+	}
+}
+
+// MouseIn implements desktop.Hoverable.
+func (ti *TappableIcon) MouseIn(_ *desktop.MouseEvent) {}
+
+// MouseMoved starts a native drag after pointer movement exceeds a small threshold.
+func (ti *TappableIcon) MouseMoved(ev *desktop.MouseEvent) {
+	if !ti.pressed || ev.Button != desktop.MouseButtonPrimary {
+		return
+	}
+	if ti.dragging {
+		return
+	}
+	dx := ev.AbsolutePosition.X - ti.pressPos.X
+	dy := ev.AbsolutePosition.Y - ti.pressPos.Y
+	const dragStartDistance float32 = 4
+	if dx*dx+dy*dy < dragStartDistance*dragStartDistance {
+		return
+	}
+	ti.dragging = true
+	if ti.onDragged != nil {
+		ti.onDragged()
+	}
+	// Native drag loops can consume the pointer release before Fyne dispatches
+	// DragEnd, so do not keep the local guard latched after the start callback.
+	ti.dragging = false
+}
+
+// MouseOut implements desktop.Hoverable.
+func (ti *TappableIcon) MouseOut() {
+	ti.dragging = false
+}
+
 // SetResource sets the icon resource
 func (ti *TappableIcon) SetResource(resource fyne.Resource) {
 	ti.icon.SetResource(resource)
@@ -43,6 +97,13 @@ func (ti *TappableIcon) SetResource(resource fyne.Resource) {
 // SetOnTapped sets the tap handler function
 func (ti *TappableIcon) SetOnTapped(onTapped func()) {
 	ti.onTapped = onTapped
+}
+
+// SetOnDragged sets the callback invoked when a drag starts.
+func (ti *TappableIcon) SetOnDragged(onDragged func()) {
+	ti.onDragged = onDragged
+	ti.dragging = false
+	ti.pressed = false
 }
 
 // CreateRenderer creates the widget renderer

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/test"
 )
 
@@ -47,5 +48,46 @@ func TestFileNameLabelDisplayTextReturnsEmptyForNoWidth(t *testing.T) {
 
 	if got := label.displayText(0); got != "" {
 		t.Fatalf("displayText(0) = %q, want empty string", got)
+	}
+}
+
+func TestTappableIconMouseMovedStartsDragAfterThreshold(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	calls := 0
+	icon := NewTappableIcon(nil, nil)
+	icon.SetOnDragged(func() { calls++ })
+
+	icon.MouseDown(&desktop.MouseEvent{
+		PointEvent: fyne.PointEvent{AbsolutePosition: fyne.NewPos(10, 10)},
+		Button:     desktop.MouseButtonPrimary,
+	})
+	icon.MouseMoved(&desktop.MouseEvent{
+		PointEvent: fyne.PointEvent{AbsolutePosition: fyne.NewPos(12, 12)},
+		Button:     desktop.MouseButtonPrimary,
+	})
+	if calls != 0 {
+		t.Fatalf("drag calls = %d, want 0 before threshold", calls)
+	}
+
+	icon.MouseMoved(&desktop.MouseEvent{
+		PointEvent: fyne.PointEvent{AbsolutePosition: fyne.NewPos(13, 13)},
+		Button:     desktop.MouseButtonPrimary,
+	})
+	if calls != 1 {
+		t.Fatalf("drag calls = %d, want 1 after diagonal threshold", calls)
+	}
+
+	icon.MouseDown(&desktop.MouseEvent{
+		PointEvent: fyne.PointEvent{AbsolutePosition: fyne.NewPos(10, 10)},
+		Button:     desktop.MouseButtonPrimary,
+	})
+	icon.MouseMoved(&desktop.MouseEvent{
+		PointEvent: fyne.PointEvent{AbsolutePosition: fyne.NewPos(16, 12)},
+		Button:     desktop.MouseButtonPrimary,
+	})
+	if calls != 2 {
+		t.Fatalf("drag calls = %d, want 2 after axis threshold", calls)
 	}
 }

@@ -20,3 +20,10 @@ func TestShowAtClientPositionReturnsUnsupportedOffWindows(t *testing.T) {
 		t.Fatalf("ShowAtClientPosition error = %v, want ErrUnsupported", err)
 	}
 }
+
+func TestStartFileDragReturnsUnsupportedOffWindows(t *testing.T) {
+	err := StartFileDrag(0, []string{"/tmp/example"})
+	if !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("StartFileDrag error = %v, want ErrUnsupported", err)
+	}
+}

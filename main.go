@@ -17,6 +17,7 @@ import (
 	"nmf/internal/configscript"
 	"nmf/internal/fileinfo"
 	"nmf/internal/jobs"
+	"nmf/internal/shellmenu"
 	customtheme "nmf/internal/theme"
 )
 
@@ -139,6 +140,7 @@ func main() {
 
 	// Install debug logger for jobs package (prints only in -d mode)
 	jobs.SetDebug(debugPrint)
+	shellmenu.Debugf = debugPrint
 
 	fm := NewFileManager(app, startPath, cfg, configManager, customTheme, configScript)
 	fm.window.ShowAndRun()
