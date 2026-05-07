@@ -10,6 +10,8 @@ This folder holds durable design documentation.
   - Runtime composition, package boundaries, and key data flows.
 - `vfs-smb.md`
   - Canonical path model and provider-specific behavior.
+- `platform-behavior.md`
+  - Platform-specific desktop integrations and support policy.
 - `watcher-jobs.md`
   - Watcher lifecycle contract and jobs manager integration points.
 - `ui-input.md`

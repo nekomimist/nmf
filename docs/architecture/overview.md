@@ -48,6 +48,9 @@ Window placement:
 - Other platforms intentionally use the window manager's default placement via
   `window_position_other.go`.
 
+Other platform-specific desktop integrations, including native shell context
+menus and outbound file dragging, are summarized in `platform-behavior.md`.
+
 ## Package Boundaries
 
 - `internal/config`: configuration schema and async persistence.
