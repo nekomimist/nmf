@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 
@@ -19,17 +20,34 @@ import (
 // ErrUnsupported indicates that the shell context menu is unavailable.
 var ErrUnsupported = errors.New("shell context menu is unsupported on this platform")
 
+// Debugf receives optional debug messages from this package.
+var Debugf func(format string, args ...interface{})
+
+func dbg(format string, args ...interface{}) {
+	if Debugf != nil {
+		Debugf("shellmenu: "+format, args...)
+	}
+}
+
 const (
 	coinitApartmentThreaded = 0x2
 	sFalse                  = 0x1
 	rpcEChangedMode         = 0x80010106
+	sOK                     = 0x0
 
 	cmfNormal = 0x0
 
 	tpmRightButton = 0x0002
 	tpmReturnCmd   = 0x0100
 
-	swShowNormal = 1
+	dropEffectCopy             = 0x00000001
+	dragdropSCancel            = 0x00040101
+	dragdropSDrop              = 0x00040100
+	dragdropSUseDefaultCursors = 0x00040102
+	mouseKeyStateLeftButton    = 0x00000001
+	eNoInterface               = 0x80004002
+	ePointer                   = 0x80004003
+	swShowNormal               = 1
 
 	wmInitMenuPopup = 0x0117
 	wmDrawItem      = 0x002B
@@ -43,6 +61,9 @@ const (
 const gwlUserData = ^uintptr(20)
 
 var (
+	iidIUnknown      = windows.GUID{Data1: 0x00000000, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
+	iidIDataObject   = windows.GUID{Data1: 0x0000010E, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
+	iidIDropSource   = windows.GUID{Data1: 0x00000121, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
 	iidIShellFolder  = windows.GUID{Data1: 0x000214E6, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
 	iidIContextMenu  = windows.GUID{Data1: 0x000214E4, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
 	iidIContextMenu2 = windows.GUID{Data1: 0x000214F4, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
@@ -55,9 +76,12 @@ var (
 	procSHParseDisplayName = modShell32.NewProc("SHParseDisplayName")
 	procSHBindToParent     = modShell32.NewProc("SHBindToParent")
 
-	procCoInitializeEx = modOle32.NewProc("CoInitializeEx")
-	procCoUninitialize = modOle32.NewProc("CoUninitialize")
-	procCoTaskMemFree  = modOle32.NewProc("CoTaskMemFree")
+	procCoInitializeEx  = modOle32.NewProc("CoInitializeEx")
+	procCoUninitialize  = modOle32.NewProc("CoUninitialize")
+	procCoTaskMemFree   = modOle32.NewProc("CoTaskMemFree")
+	procOleInitialize   = modOle32.NewProc("OleInitialize")
+	procOleUninitialize = modOle32.NewProc("OleUninitialize")
+	procDoDragDrop      = modOle32.NewProc("DoDragDrop")
 
 	procCreatePopupMenu   = modUser32.NewProc("CreatePopupMenu")
 	procDestroyMenu       = modUser32.NewProc("DestroyMenu")
@@ -73,6 +97,14 @@ var (
 	procGetWindowLongPtrW = modUser32.NewProc("GetWindowLongPtrW")
 
 	menuOwnerWndProcPtr = syscall.NewCallback(menuOwnerWndProc)
+
+	dropSourceVtblInst = dropSourceVtbl{
+		queryInterface:    syscall.NewCallback(dropSourceQueryInterface),
+		addRef:            syscall.NewCallback(dropSourceAddRef),
+		release:           syscall.NewCallback(dropSourceRelease),
+		queryContinueDrag: syscall.NewCallback(dropSourceQueryContinueDrag),
+		giveFeedback:      syscall.NewCallback(dropSourceGiveFeedback),
+	}
 )
 
 type point struct {
@@ -103,6 +135,23 @@ type unknownVtbl struct {
 
 type unknown struct {
 	vtbl *unknownVtbl
+}
+
+type dataObject struct {
+	vtbl *unknownVtbl
+}
+
+type dropSourceVtbl struct {
+	queryInterface    uintptr
+	addRef            uintptr
+	release           uintptr
+	queryContinueDrag uintptr
+	giveFeedback      uintptr
+}
+
+type dropSource struct {
+	vtbl *dropSourceVtbl
+	refs uint32
 }
 
 type shellFolderVtbl struct {
@@ -200,6 +249,71 @@ func ShowAtClientPosition(hwnd uintptr, paths []string, x, y int) error {
 		return fmt.Errorf("ClientToScreen failed: %w", err)
 	}
 	return showAtScreenPosition(hwnd, paths, pt)
+}
+
+// StartFileDrag starts a Windows Shell drag operation for the provided paths.
+// Only copy effects are advertised; the source files are never removed by nmf.
+func StartFileDrag(hwnd uintptr, paths []string) error {
+	if hwnd == 0 {
+		return ErrUnsupported
+	}
+	nativePaths := normalizePaths(paths)
+	dbg("StartFileDrag hwnd=%d sources=%d", hwnd, len(nativePaths))
+	if len(nativePaths) == 0 {
+		return nil
+	}
+	for i, p := range nativePaths {
+		dbg("StartFileDrag source[%d]=%s", i, p)
+	}
+	if err := ensureSameParent(nativePaths); err != nil {
+		dbg("StartFileDrag rejected: %v", err)
+		return err
+	}
+
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	oleInited, err := initializeOLE()
+	if err != nil {
+		dbg("StartFileDrag OleInitialize error=%v", err)
+		return err
+	}
+	dbg("StartFileDrag ole_initialized=%t", oleInited)
+	if oleInited {
+		defer procOleUninitialize.Call()
+	}
+
+	folder, childPIDLs, absPIDLs, err := shellFolderAndChildren(nativePaths)
+	if err != nil {
+		dbg("StartFileDrag shell folder error=%v", err)
+		return err
+	}
+	defer releaseUnknown((*unknown)(unsafe.Pointer(folder)))
+	for _, pidl := range absPIDLs {
+		defer procCoTaskMemFree.Call(pidl)
+	}
+
+	data, err := shellDataObject(hwnd, folder, childPIDLs)
+	if err != nil {
+		dbg("StartFileDrag data object error=%v", err)
+		return err
+	}
+	defer releaseUnknown((*unknown)(unsafe.Pointer(data)))
+
+	source := newDropSource()
+	defer dropSourceRelease(uintptr(unsafe.Pointer(source)))
+	var effect uint32
+	hr, _, _ := procDoDragDrop.Call(
+		uintptr(unsafe.Pointer(data)),
+		uintptr(unsafe.Pointer(source)),
+		dropEffectCopy,
+		uintptr(unsafe.Pointer(&effect)),
+	)
+	dbg("StartFileDrag DoDragDrop hr=0x%x effect=0x%x", uint32(hr), effect)
+	if failed(hr) && uint32(hr) != dragdropSCancel {
+		return fmt.Errorf("DoDragDrop failed: 0x%x", uint32(hr))
+	}
+	return nil
 }
 
 func showAtScreenPosition(hwnd uintptr, paths []string, pt point) error {
@@ -320,6 +434,27 @@ func showAtScreenPosition(hwnd uintptr, paths []string, pt point) error {
 	return nil
 }
 
+func shellDataObject(hwnd uintptr, folder *shellFolder, childPIDLs []uintptr) (*dataObject, error) {
+	if folder == nil || len(childPIDLs) == 0 {
+		return nil, ErrUnsupported
+	}
+	var data *dataObject
+	hr, _, _ := syscall.SyscallN(
+		folder.vtbl.getUIObjectOf,
+		uintptr(unsafe.Pointer(folder)),
+		hwnd,
+		uintptr(len(childPIDLs)),
+		uintptr(unsafe.Pointer(&childPIDLs[0])),
+		uintptr(unsafe.Pointer(&iidIDataObject)),
+		0,
+		uintptr(unsafe.Pointer(&data)),
+	)
+	if failed(hr) {
+		return nil, fmt.Errorf("IShellFolder.GetUIObjectOf(IDataObject) failed: 0x%x", uint32(hr))
+	}
+	return data, nil
+}
+
 func normalizePaths(paths []string) []string {
 	out := make([]string, 0, len(paths))
 	for _, p := range paths {
@@ -355,6 +490,21 @@ func initializeCOM() (bool, error) {
 	default:
 		if failed(hr) {
 			return false, fmt.Errorf("CoInitializeEx failed: 0x%x", uint32(hr))
+		}
+		return true, nil
+	}
+}
+
+func initializeOLE() (bool, error) {
+	hr, _, _ := procOleInitialize.Call(0)
+	switch uint32(hr) {
+	case 0, sFalse:
+		return true, nil
+	case rpcEChangedMode:
+		return false, nil
+	default:
+		if failed(hr) {
+			return false, fmt.Errorf("OleInitialize failed: 0x%x", uint32(hr))
 		}
 		return true, nil
 	}
@@ -448,6 +598,58 @@ func releaseUnknown(obj *unknown) {
 
 func failed(hr uintptr) bool {
 	return int32(uint32(hr)) < 0
+}
+
+func newDropSource() *dropSource {
+	return &dropSource{vtbl: &dropSourceVtblInst, refs: 1}
+}
+
+func dropSourceQueryInterface(this uintptr, riid uintptr, ppv uintptr) uintptr {
+	if ppv == 0 {
+		return uintptr(ePointer)
+	}
+	out := (*uintptr)(unsafe.Pointer(ppv))
+	*out = 0
+	if riid == 0 {
+		return uintptr(eNoInterface)
+	}
+	guid := (*windows.GUID)(unsafe.Pointer(riid))
+	if *guid == iidIUnknown || *guid == iidIDropSource {
+		*out = this
+		dropSourceAddRef(this)
+		return sOK
+	}
+	return uintptr(eNoInterface)
+}
+
+func dropSourceAddRef(this uintptr) uintptr {
+	if this == 0 {
+		return 0
+	}
+	source := (*dropSource)(unsafe.Pointer(this))
+	return uintptr(atomic.AddUint32(&source.refs, 1))
+}
+
+func dropSourceRelease(this uintptr) uintptr {
+	if this == 0 {
+		return 0
+	}
+	source := (*dropSource)(unsafe.Pointer(this))
+	return uintptr(atomic.AddUint32(&source.refs, ^uint32(0)))
+}
+
+func dropSourceQueryContinueDrag(_ uintptr, escapePressed uintptr, keyState uintptr) uintptr {
+	if escapePressed != 0 {
+		return uintptr(dragdropSCancel)
+	}
+	if keyState&mouseKeyStateLeftButton == 0 {
+		return uintptr(dragdropSDrop)
+	}
+	return sOK
+}
+
+func dropSourceGiveFeedback(_ uintptr, _ uintptr) uintptr {
+	return uintptr(dragdropSUseDefaultCursors)
 }
 
 type menuOwner struct {
