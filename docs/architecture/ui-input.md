@@ -61,10 +61,14 @@ Required sequence for keyboard-driven dialogs:
 
 This pattern is used in history/filter/tree/directory-jump/copy-move/jobs/quit dialogs.
 
-Rename dialog:
+Line edit dialogs:
 
 - `F2` or `R` opens a single-item rename dialog for the cursor row only.
-- The focused filename entry owns normal text editing; the dialog key handler only commits with Enter and cancels with Escape.
+- `C-L` opens a path edit dialog instead of focusing the path display directly.
+- The focused entry owns normal text input and standard Entry editing; the dialog key handler commits with Enter, cancels with Escape, and adds readline-style Ctrl-A/E/B/F/H/D/K/U editing.
+
+Rename behavior:
+
 - Rename is a direct same-directory operation and does not use the copy/move job queue.
 
 Delete dialogs:

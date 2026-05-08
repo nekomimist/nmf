@@ -20,12 +20,10 @@ import (
 )
 
 func (fm *FileManager) setupUI() {
-	// Path entry for direct path input
-	fm.pathEntry = ui.NewTabEntry()
-	fm.pathEntry.SetText(fm.currentPath)
-	fm.pathEntry.OnSubmitted = func(path string) {
-		fm.navigateToPath(path)
-	}
+	// Path display. Editing is handled through the line edit dialog.
+	fm.pathDisplay = widget.NewLabel(fm.currentPath)
+	fm.pathDisplay.TextStyle = fyne.TextStyle{Monospace: true}
+	fm.pathDisplay.Truncation = fyne.TextTruncateClip
 	fm.statusLabel = widget.NewLabel("")
 	fm.statusLabel.TextStyle = fyne.TextStyle{Monospace: true}
 
@@ -244,7 +242,7 @@ func (fm *FileManager) setupUI() {
 	// Subscribe to job updates to update indicator
 	fm.jobsUnsub = jobs.GetManager().Subscribe(func() { fyne.Do(fm.onJobsUpdated) })
 	mainContent := container.NewBorder(
-		container.NewVBox(toolbarRow, fm.pathEntry, fm.statusLabel),
+		container.NewVBox(toolbarRow, fm.pathDisplay, fm.statusLabel),
 		nil, nil, nil,
 		fm.fileListView,
 	)

@@ -21,7 +21,13 @@ func (fm *FileManager) ShowRenameDialog() {
 		return
 	}
 
-	dlg := ui.NewRenameDialog(target.Name, fm.keyManager)
+	dlg := ui.NewLineEditDialog(ui.LineEditDialogOptions{
+		Title:       "Rename",
+		Prompt:      "New name:",
+		CurrentText: target.Name,
+		InitialText: target.Name,
+		ConfirmText: "Rename",
+	}, fm.keyManager)
 	dlg.ShowDialog(fm.window, func(newName string) bool {
 		return fm.renameCurrentFile(target, newName)
 	})

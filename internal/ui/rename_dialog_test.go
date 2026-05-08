@@ -57,15 +57,15 @@ func TestMiddleEllipsizeFileNameHandlesTinyLimit(t *testing.T) {
 	}
 }
 
-func TestRenameEntryEscapeCancels(t *testing.T) {
+func TestLineEditEntryEscapeCancels(t *testing.T) {
 	cancelled := false
-	entry := newRenameEntry(func() {
+	entry := NewLineEditEntry(func() {
 		cancelled = true
 	})
 
 	entry.TypedKey(&fyne.KeyEvent{Name: fyne.KeyEscape})
 
 	if !cancelled {
-		t.Fatal("Escape should cancel rename entry")
+		t.Fatal("Escape should cancel line edit entry")
 	}
 }
