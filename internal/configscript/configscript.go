@@ -475,9 +475,6 @@ func (rt *Runtime) builtinDirectoryJump(_ *starlark.Thread, fn *starlark.Builtin
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "shortcut", &shortcut, "directory", &directory); err != nil {
 		return nil, err
 	}
-	if len([]rune(shortcut)) > 1 {
-		return nil, fmt.Errorf("directory jump shortcut must be empty or one character")
-	}
 	if strings.TrimSpace(directory) == "" {
 		return nil, fmt.Errorf("directory jump directory must not be empty")
 	}

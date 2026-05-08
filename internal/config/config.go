@@ -157,13 +157,13 @@ type FileFilterConfig struct {
 
 // DirectoryJumpEntry represents a configured directory jump target.
 type DirectoryJumpEntry struct {
-	Shortcut  string `json:"shortcut"`  // Empty or one character, matched case-insensitively
+	Shortcut  string `json:"shortcut"`  // Empty or shortcut prefix, matched case-insensitively
 	Directory string `json:"directory"` // Directory path as written in config.json
 }
 
 // DirectoryJumpsConfig represents manually configured directory jump targets.
 type DirectoryJumpsConfig struct {
-	Entries []DirectoryJumpEntry `json:"entries"` // Config order is display order
+	Entries []DirectoryJumpEntry `json:"entries"` // Entries are displayed by shortcut sort order
 }
 
 // KeyBindingEntry maps a key specification to an internal command.

@@ -148,6 +148,8 @@ List sections:
 
 List APIs append to values already loaded from `config.json`. Use the matching
 `clear_*` function when the Starlark file should own the whole list.
+Directory jump shortcuts may be empty or multiple characters; the dialog filters
+them by case-insensitive prefix.
 `nmf.unkey` appends a binding to the built-in `noop` command, which disables a
 default key binding with the same key and event for the current run.
 Menu definitions are runtime-only and are not saved to `config.json`.

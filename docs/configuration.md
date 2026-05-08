@@ -102,7 +102,7 @@ If manually editing them, preserve their JSON shape:
 
 ## Directory Jumps
 
-`ui.directoryJumps.entries` is an ordered list of jump targets.
+`ui.directoryJumps.entries` is a list of jump targets.
 
 ```json
 {
@@ -117,8 +117,13 @@ If manually editing them, preserve their JSON shape:
 }
 ```
 
-- `shortcut`: empty or one character. Matching is case-insensitive.
+- `shortcut`: empty or a shortcut prefix. Matching is case-insensitive.
 - `directory`: path as written in config; path resolution happens when used.
+
+The Directory Jump dialog filters by shortcut prefix. When a non-empty filter
+leaves exactly one candidate, nmf jumps to that directory automatically. The
+unfiltered list shows shortcut entries first, sorted by shortcut length and then
+alphabetically; entries without shortcuts appear last.
 
 ## Key Bindings
 

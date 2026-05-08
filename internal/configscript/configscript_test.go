@@ -26,7 +26,7 @@ nmf.cursor_memory(max_entries = 12)
 nmf.navigation_history(max_entries = 9)
 nmf.file_filter(max_entries = 7)
 nmf.clear_directory_jumps()
-nmf.directory_jump("p", "~/projects")
+nmf.directory_jump("proj", "~/projects")
 nmf.clear_keys()
 nmf.key("C-P", "user.parent", event = "down")
 nmf.clear_external_commands()
@@ -75,7 +75,9 @@ nmf.command("user.parent", parent)
 			cfg.UI.FileFilter.MaxEntries,
 		)
 	}
-	if len(cfg.UI.DirectoryJumps.Entries) != 1 || cfg.UI.DirectoryJumps.Entries[0].Directory != "~/projects" {
+	if len(cfg.UI.DirectoryJumps.Entries) != 1 ||
+		cfg.UI.DirectoryJumps.Entries[0].Shortcut != "proj" ||
+		cfg.UI.DirectoryJumps.Entries[0].Directory != "~/projects" {
 		t.Fatalf("directory jumps = %+v, want one projects entry", cfg.UI.DirectoryJumps.Entries)
 	}
 	if len(cfg.UI.KeyBindings) != 1 || cfg.UI.KeyBindings[0].Command != "user.parent" {

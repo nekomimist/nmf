@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -19,7 +21,6 @@ type DirectoryJumpDialog struct {
 	jumpList        *widget.List
 	allEntries      []config.DirectoryJumpEntry
 	filteredEntries []config.DirectoryJumpEntry
-	shortcutTargets map[string]string
 	selectedIndex   int
 	selectedPath    string
 	debugPrint      func(format string, args ...interface{})
@@ -38,10 +39,9 @@ func NewDirectoryJumpDialog(
 	debugPrint func(format string, args ...interface{}),
 ) *DirectoryJumpDialog {
 	d := &DirectoryJumpDialog{
-		allEntries:      copyDirectoryJumpEntries(entries),
-		shortcutTargets: buildDirectoryJumpShortcutTargets(entries),
-		debugPrint:      debugPrint,
-		keyManager:      keyManager,
+		allEntries: sortDirectoryJumpEntries(copyDirectoryJumpEntries(entries)),
+		debugPrint: debugPrint,
+		keyManager: keyManager,
 	}
 	d.createWidgets()
 	d.updateFilteredEntries("")
@@ -54,29 +54,36 @@ func copyDirectoryJumpEntries(entries []config.DirectoryJumpEntry) []config.Dire
 	return copied
 }
 
-func buildDirectoryJumpShortcutTargets(entries []config.DirectoryJumpEntry) map[string]string {
-	targets := make(map[string]string)
-	for _, entry := range entries {
-		key := NormalizeDirectoryJumpShortcut(entry.Shortcut)
-		if key == "" {
-			continue
+func sortDirectoryJumpEntries(entries []config.DirectoryJumpEntry) []config.DirectoryJumpEntry {
+	sort.SliceStable(entries, func(i, j int) bool {
+		leftShortcut := NormalizeDirectoryJumpShortcut(entries[i].Shortcut)
+		rightShortcut := NormalizeDirectoryJumpShortcut(entries[j].Shortcut)
+		if leftShortcut == "" || rightShortcut == "" {
+			return leftShortcut != "" && rightShortcut == ""
 		}
-		if _, exists := targets[key]; !exists {
-			targets[key] = entry.Directory
+		leftLen := utf8.RuneCountInString(leftShortcut)
+		rightLen := utf8.RuneCountInString(rightShortcut)
+		if leftLen != rightLen {
+			return leftLen < rightLen
 		}
-	}
-	return targets
+		if leftShortcut != rightShortcut {
+			return leftShortcut < rightShortcut
+		}
+		return strings.ToLower(entries[i].Directory) < strings.ToLower(entries[j].Directory)
+	})
+	return entries
 }
 
 func filterDirectoryJumpEntries(entries []config.DirectoryJumpEntry, query string) []config.DirectoryJumpEntry {
-	if query == "" {
+	needle := NormalizeDirectoryJumpShortcut(query)
+	if needle == "" {
 		return entries
 	}
 
-	needle := strings.ToLower(query)
 	filtered := []config.DirectoryJumpEntry{}
 	for _, entry := range entries {
-		if strings.Contains(strings.ToLower(entry.Directory), needle) {
+		shortcut := NormalizeDirectoryJumpShortcut(entry.Shortcut)
+		if shortcut != "" && strings.HasPrefix(shortcut, needle) {
 			filtered = append(filtered, entry)
 		}
 	}
@@ -85,16 +92,12 @@ func filterDirectoryJumpEntries(entries []config.DirectoryJumpEntry, query strin
 
 // NormalizeDirectoryJumpShortcut normalizes configured and typed shortcut keys.
 func NormalizeDirectoryJumpShortcut(shortcut string) string {
-	runes := []rune(strings.TrimSpace(shortcut))
-	if len(runes) != 1 {
-		return ""
-	}
-	return strings.ToLower(string(runes[0]))
+	return strings.ToLower(strings.TrimSpace(shortcut))
 }
 
 func (d *DirectoryJumpDialog) createWidgets() {
 	d.searchEntry = NewCustomSearchEntry()
-	d.searchEntry.SetPlaceHolder("Type to filter directories...")
+	d.searchEntry.SetPlaceHolder("Type shortcut prefix...")
 	d.searchEntry.OnChanged = func(query string) {
 		d.updateFilteredEntries(query)
 	}
@@ -151,7 +154,7 @@ func directoryJumpShortcutCellSize() fyne.Size {
 	padding := appTheme.Size(theme.SizeNamePadding)
 	innerPadding := appTheme.Size(theme.SizeNameInnerPadding)
 
-	return fyne.NewSize(textSize+padding*2, textSize+innerPadding*2)
+	return fyne.NewSize(textSize*6+padding*2, textSize+innerPadding*2)
 }
 
 func (d *DirectoryJumpDialog) updateFilteredEntries(query string) {
@@ -167,6 +170,11 @@ func (d *DirectoryJumpDialog) updateFilteredEntries(query string) {
 		d.selectedIndex = -1
 		d.selectedPath = ""
 	}
+
+	if NormalizeDirectoryJumpShortcut(query) != "" && len(d.filteredEntries) == 1 {
+		d.debugPrint("DirectoryJumpDialog: unique shortcut match path=%s", d.filteredEntries[0].Directory)
+		d.acceptPath(d.filteredEntries[0].Directory)
+	}
 }
 
 // ShowDialog shows the configured directory jump dialog.
@@ -180,7 +188,7 @@ func (d *DirectoryJumpDialog) ShowDialog(parent fyne.Window, callback func(strin
 	listScroll := container.NewScroll(d.jumpList)
 	listScroll.SetMinSize(fyne.NewSize(600, 400))
 
-	emptyLabel := widget.NewLabel("No matching directories found")
+	emptyLabel := widget.NewLabel("No matching shortcuts found")
 	emptyLabel.Alignment = fyne.TextAlignCenter
 	emptyLabel.Hide()
 
@@ -316,11 +324,14 @@ func (d *DirectoryJumpDialog) BackspaceSearch() {
 	}
 }
 
-// CopySelectedPathToSearch copies the selected directory into the search text.
-func (d *DirectoryJumpDialog) CopySelectedPathToSearch() {
-	if d.searchEntry != nil && d.selectedPath != "" {
-		d.searchEntry.SetText(d.selectedPath)
-		d.debugPrint("DirectoryJumpDialog: copy selected path=%s", d.selectedPath)
+// CopySelectedShortcutToSearch copies the selected shortcut into the search text.
+func (d *DirectoryJumpDialog) CopySelectedShortcutToSearch() {
+	if d.searchEntry != nil && d.selectedIndex >= 0 && d.selectedIndex < len(d.filteredEntries) {
+		shortcut := d.filteredEntries[d.selectedIndex].Shortcut
+		if shortcut != "" {
+			d.searchEntry.SetText(shortcut)
+			d.debugPrint("DirectoryJumpDialog: copy selected shortcut=%s", shortcut)
+		}
 	}
 }
 
@@ -332,17 +343,6 @@ func (d *DirectoryJumpDialog) SelectCurrentItem() {
 // AcceptSelection accepts the selected row.
 func (d *DirectoryJumpDialog) AcceptSelection() {
 	d.acceptPath(d.selectedPath)
-}
-
-// AcceptShortcut accepts an Alt+shortcut match, ignoring current filter state.
-func (d *DirectoryJumpDialog) AcceptShortcut(shortcut string) {
-	key := NormalizeDirectoryJumpShortcut(shortcut)
-	path := d.shortcutTargets[key]
-	if path == "" {
-		return
-	}
-	d.debugPrint("DirectoryJumpDialog: shortcut %s path=%s", key, path)
-	d.acceptPath(path)
 }
 
 func (d *DirectoryJumpDialog) acceptPath(path string) {

@@ -16,7 +16,7 @@ func TestNormalizeDirectoryJumpShortcut(t *testing.T) {
 		{name: "lower", in: "p", want: "p"},
 		{name: "upper", in: "P", want: "p"},
 		{name: "trim", in: " P ", want: "p"},
-		{name: "multiple", in: "pp", want: ""},
+		{name: "multiple", in: "Proj", want: "proj"},
 	}
 
 	for _, tt := range tests {
@@ -28,41 +28,62 @@ func TestNormalizeDirectoryJumpShortcut(t *testing.T) {
 	}
 }
 
-func TestBuildDirectoryJumpShortcutTargetsKeepsFirstNonEmptyShortcut(t *testing.T) {
+func TestSortDirectoryJumpEntriesOrdersShortcutsBeforeEmpty(t *testing.T) {
 	entries := []config.DirectoryJumpEntry{
-		{Shortcut: "p", Directory: "/projects"},
 		{Shortcut: "", Directory: "/tmp"},
-		{Shortcut: "", Directory: "/var/tmp"},
-		{Shortcut: "P", Directory: "/duplicate"},
+		{Shortcut: "proj", Directory: "/projects"},
 		{Shortcut: "d", Directory: "/downloads"},
+		{Shortcut: "pa", Directory: "/archive"},
+		{Shortcut: "", Directory: "/var/tmp"},
+		{Shortcut: "b", Directory: "/backup"},
 	}
 
-	targets := buildDirectoryJumpShortcutTargets(entries)
+	sorted := sortDirectoryJumpEntries(copyDirectoryJumpEntries(entries))
+	got := make([]string, len(sorted))
+	for i, entry := range sorted {
+		got[i] = entry.Shortcut + ":" + entry.Directory
+	}
+	want := []string{
+		"b:/backup",
+		"d:/downloads",
+		"pa:/archive",
+		"proj:/projects",
+		":/tmp",
+		":/var/tmp",
+	}
 
-	if got := targets["p"]; got != "/projects" {
-		t.Fatalf("shortcut p target = %q, want /projects", got)
-	}
-	if got := targets["d"]; got != "/downloads" {
-		t.Fatalf("shortcut d target = %q, want /downloads", got)
-	}
-	if _, ok := targets[""]; ok {
-		t.Fatal("empty shortcut should not be registered")
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("sorted entries = %v, want %v", got, want)
+		}
 	}
 }
 
-func TestFilterDirectoryJumpEntriesMatchesDirectoryOnly(t *testing.T) {
+func TestFilterDirectoryJumpEntriesMatchesShortcutPrefixOnly(t *testing.T) {
 	entries := []config.DirectoryJumpEntry{
-		{Shortcut: "p", Directory: "/work/projects"},
+		{Shortcut: "proj", Directory: "/work/projects"},
+		{Shortcut: "pa", Directory: "/work/archive"},
+		{Shortcut: "", Directory: "/plain"},
 		{Shortcut: "x", Directory: "/tmp"},
 	}
 
-	filtered := filterDirectoryJumpEntries(entries, "proj")
-	if len(filtered) != 1 || filtered[0].Directory != "/work/projects" {
-		t.Fatalf("directory query result = %+v, want only /work/projects", filtered)
+	filtered := filterDirectoryJumpEntries(entries, "p")
+	if len(filtered) != 2 || filtered[0].Directory != "/work/projects" || filtered[1].Directory != "/work/archive" {
+		t.Fatalf("shortcut prefix query result = %+v, want projects and archive", filtered)
 	}
 
-	filtered = filterDirectoryJumpEntries(entries, "x")
+	filtered = filterDirectoryJumpEntries(entries, "work")
 	if len(filtered) != 0 {
-		t.Fatalf("shortcut-only query result = %+v, want empty", filtered)
+		t.Fatalf("directory-only query result = %+v, want empty", filtered)
+	}
+
+	filtered = filterDirectoryJumpEntries(entries, "pr")
+	if len(filtered) != 1 || filtered[0].Directory != "/work/projects" {
+		t.Fatalf("unique shortcut query result = %+v, want only /work/projects", filtered)
+	}
+
+	filtered = filterDirectoryJumpEntries(entries, "")
+	if len(filtered) != len(entries) {
+		t.Fatalf("empty query result length = %d, want %d", len(filtered), len(entries))
 	}
 }

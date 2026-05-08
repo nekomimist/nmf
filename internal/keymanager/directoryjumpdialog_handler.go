@@ -16,11 +16,10 @@ type DirectoryJumpDialogInterface interface {
 	ClearSearch()
 	AppendToSearch(char string)
 	BackspaceSearch()
-	CopySelectedPathToSearch()
+	CopySelectedShortcutToSearch()
 
 	SelectCurrentItem()
 	AcceptSelection()
-	AcceptShortcut(shortcut string)
 	CancelDialog()
 }
 
@@ -47,13 +46,6 @@ func (h *DirectoryJumpDialogKeyHandler) GetName() string {
 
 // OnKeyDown handles key press events.
 func (h *DirectoryJumpDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	if modifiers.AltPressed {
-		shortcut := string(ev.Name)
-		if shortcut != "" {
-			h.dialog.AcceptShortcut(shortcut)
-			return true
-		}
-	}
 	return false
 }
 
@@ -97,7 +89,7 @@ func (h *DirectoryJumpDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers 
 		h.dialog.ClearSearch()
 		return true
 	case fyne.KeyTab:
-		h.dialog.CopySelectedPathToSearch()
+		h.dialog.CopySelectedShortcutToSearch()
 		return true
 	}
 	return false
