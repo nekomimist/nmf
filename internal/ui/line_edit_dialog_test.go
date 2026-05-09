@@ -120,29 +120,26 @@ func TestLineEditEntryInsertTextAtCursor(t *testing.T) {
 	}
 }
 
-func TestLineEditEntryKeyDownHandlesReadlineKeys(t *testing.T) {
+func TestLineEditEntryReadlineShortcutKeys(t *testing.T) {
 	entry := NewLineEditEntry(nil)
 	entry.SetText("abcd")
 	entry.MoveCursorEnd()
 
-	entry.KeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
-	entry.KeyDown(&fyne.KeyEvent{Name: fyne.KeyA})
+	entry.TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyA, Modifier: fyne.KeyModifierControl})
 
 	if entry.CursorColumn != 0 {
 		t.Fatalf("cursor after ctrl-a = %d, want 0", entry.CursorColumn)
 	}
 
-	entry.KeyDown(&fyne.KeyEvent{Name: fyne.KeyE})
+	entry.TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyE, Modifier: fyne.KeyModifierControl})
 	if entry.CursorColumn != 4 {
 		t.Fatalf("cursor after ctrl-e = %d, want 4", entry.CursorColumn)
 	}
 
-	entry.KeyDown(&fyne.KeyEvent{Name: fyne.KeyH})
+	entry.TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyH, Modifier: fyne.KeyModifierControl})
 	if entry.Text != "abc" {
 		t.Fatalf("text after ctrl-h = %q, want %q", entry.Text, "abc")
 	}
-
-	entry.KeyUp(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
 }
 
 func TestLineEditEntrySelectAllShortcutMovesToStart(t *testing.T) {
@@ -157,16 +154,56 @@ func TestLineEditEntrySelectAllShortcutMovesToStart(t *testing.T) {
 	}
 }
 
-func TestLineEditEntryFocusLostClearsCtrlState(t *testing.T) {
+func TestLineEditEntryReadlineShortcutRepeats(t *testing.T) {
 	entry := NewLineEditEntry(nil)
 	entry.SetText("abcd")
 	entry.MoveCursorEnd()
-	entry.KeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
 
-	entry.FocusLost()
-	entry.KeyDown(&fyne.KeyEvent{Name: fyne.KeyA})
+	shortcut := &desktop.CustomShortcut{KeyName: fyne.KeyH, Modifier: fyne.KeyModifierControl}
+	entry.TypedShortcut(shortcut)
+	entry.TypedShortcut(shortcut)
+	entry.TypedShortcut(shortcut)
+
+	if entry.Text != "a" {
+		t.Fatalf("text after repeated ctrl-h = %q, want %q", entry.Text, "a")
+	}
+	if entry.CursorColumn != 1 {
+		t.Fatalf("cursor after repeated ctrl-h = %d, want 1", entry.CursorColumn)
+	}
+}
+
+func TestLineEditEntryReadlineCursorShortcutRepeats(t *testing.T) {
+	entry := NewLineEditEntry(nil)
+	entry.SetText("abcd")
+	entry.MoveCursorEnd()
+
+	left := &desktop.CustomShortcut{KeyName: fyne.KeyB, Modifier: fyne.KeyModifierControl}
+	entry.TypedShortcut(left)
+	entry.TypedShortcut(left)
+
+	if entry.CursorColumn != 2 {
+		t.Fatalf("cursor after repeated ctrl-b = %d, want 2", entry.CursorColumn)
+	}
+
+	right := &desktop.CustomShortcut{KeyName: fyne.KeyF, Modifier: fyne.KeyModifierControl}
+	entry.TypedShortcut(right)
+	entry.TypedShortcut(right)
 
 	if entry.CursorColumn != 4 {
-		t.Fatalf("cursor after plain a keydown = %d, want 4", entry.CursorColumn)
+		t.Fatalf("cursor after repeated ctrl-f = %d, want 4", entry.CursorColumn)
+	}
+}
+
+func TestLineEditEntryReadlineShortcutDoesNotDoubleApplyAfterKeyDown(t *testing.T) {
+	entry := NewLineEditEntry(nil)
+	entry.SetText("abcd")
+	entry.MoveCursorEnd()
+
+	entry.KeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
+	entry.KeyDown(&fyne.KeyEvent{Name: fyne.KeyH})
+	entry.TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyH, Modifier: fyne.KeyModifierControl})
+
+	if entry.Text != "abc" {
+		t.Fatalf("text after keydown plus shortcut ctrl-h = %q, want %q", entry.Text, "abc")
 	}
 }

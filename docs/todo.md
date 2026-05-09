@@ -6,10 +6,6 @@
 ## 絞り込み系のキーバインドを改善したい
 - Readlineほどのバインドは不要だが、History等の絞り込み系の欄もCtrl-HがBSになるくらいはほしい
 
-## 1行編集のReadline系制御キーのリピートを効かせたい
-- Ctrl-Hなどの制御キーは単発では効くが、キーリピートが効かない。
-- Fyne/driver側でリピート時にどのイベントが流れるかを確認してから対応する。
-
 ## OK/Cancel的な二択ボタン
 - あまり統一感がないかもしれない。CancelIconとConfirmIcon をつけて、Confirmのほうのアイコン色を
   ThemeのPrimaryColorにした上でボタンサイズを揃えたほうがFyneのアプリっぽいかもしれない。
@@ -21,6 +17,10 @@
 - editがtrueのときは、一行編集ダイヤログで実行前のコマンドラインを確認・編集できる。
 - editがtrueのときは、編集して任意のコマンドを入れられるように空コマンドも許可する。
 - 内部的にはexec.Commandのcommand/argsを一度1行に合成し、編集後にシェル風の引用符・バックスラッシュ規則で再分解して実行する。
+
+## 1行編集のReadline系制御キーのリピートを効かせたい
+- Ctrl-Hなどの制御キーは単発では効くが、キーリピートが効かない問題に対応。
+- Fyne/driver側ではrepeatがKeyDownではなくTypedShortcut側へ流れるため、1行編集EntryでCtrl系CustomShortcutを処理する。
 
 ## 1行編集ダイヤログを実装する
 - GNU readlineっぽいキーバインドの汎用1行編集ダイヤログを実装。

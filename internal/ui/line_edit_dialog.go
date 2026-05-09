@@ -194,7 +194,6 @@ func (d *LineEditDialog) entryIsFocused() bool {
 type LineEditEntry struct {
 	TabEntry
 	onCancel func()
-	ctrlDown bool
 }
 
 // NewLineEditEntry creates an entry for LineEditDialog.
@@ -217,35 +216,26 @@ func (e *LineEditEntry) TypedKey(ev *fyne.KeyEvent) {
 }
 
 func (e *LineEditEntry) FocusLost() {
-	e.ctrlDown = false
 	e.TabEntry.FocusLost()
 }
 
 func (e *LineEditEntry) KeyDown(ev *fyne.KeyEvent) {
-	switch ev.Name {
-	case desktop.KeyControlLeft, desktop.KeyControlRight:
-		e.ctrlDown = true
-		e.TabEntry.KeyDown(ev)
-		return
-	}
-	if e.ctrlDown && e.handleReadlineKey(ev.Name) {
-		return
-	}
 	e.TabEntry.KeyDown(ev)
 }
 
 func (e *LineEditEntry) KeyUp(ev *fyne.KeyEvent) {
-	switch ev.Name {
-	case desktop.KeyControlLeft, desktop.KeyControlRight:
-		e.ctrlDown = false
-	}
 	e.TabEntry.KeyUp(ev)
 }
 
 func (e *LineEditEntry) TypedShortcut(shortcut fyne.Shortcut) {
-	switch shortcut.(type) {
+	switch s := shortcut.(type) {
 	case *fyne.ShortcutSelectAll:
 		e.MoveCursorStart()
+	case *desktop.CustomShortcut:
+		if s.Modifier == fyne.KeyModifierControl && e.handleReadlineKey(s.KeyName) {
+			return
+		}
+		e.TabEntry.TypedShortcut(shortcut)
 	default:
 		e.TabEntry.TypedShortcut(shortcut)
 	}
