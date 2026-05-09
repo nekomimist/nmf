@@ -6,6 +6,11 @@
 ## 絞り込み系のキーバインドを改善したい
 - Readlineほどのバインドは不要だが、History等の絞り込み系の欄もCtrl-HがBSになるくらいはほしい
 
+## KeyDown/KeyUp系キーバインドのrepeat適性を棚卸ししたい
+- Fyne/GLFWではキーリピートがKeyDownではなくTypedKey/TypedShortcut側へ流れる。
+- repeatしてほしい操作はtyped/TypedShortcutへ寄せ、長押しで増殖して困る操作はdown/upに残す。
+- History/Filter/DirectoryJump/CopyMoveなどの検索系でCtrl-HをBackspace相当にする余地がある。
+
 ## OK/Cancel的な二択ボタン
 - あまり統一感がないかもしれない。CancelIconとConfirmIcon をつけて、Confirmのほうのアイコン色を
   ThemeのPrimaryColorにした上でボタンサイズを揃えたほうがFyneのアプリっぽいかもしれない。
