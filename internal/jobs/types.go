@@ -67,10 +67,12 @@ type Job struct {
 type ConflictAction string
 
 const (
-	ConflictSkip       ConflictAction = "skip"
-	ConflictRename     ConflictAction = "rename"
-	ConflictAutoSuffix ConflictAction = "auto_suffix"
-	ConflictCancelJob  ConflictAction = "cancel_job"
+	ConflictSkip             ConflictAction = "skip"
+	ConflictRename           ConflictAction = "rename"
+	ConflictAutoSuffix       ConflictAction = "auto_suffix"
+	ConflictOverwriteIfNewer ConflictAction = "overwrite_if_newer"
+	ConflictOverwrite        ConflictAction = "overwrite"
+	ConflictCancelJob        ConflictAction = "cancel_job"
 )
 
 // ConflictResolver is called by the worker when a destination name collision is
@@ -83,6 +85,8 @@ type ConflictRequest struct {
 	Type           Type
 	SourcePath     string
 	Destination    string
+	SourceModified time.Time
+	DestModified   time.Time
 	SuggestedName  string
 	SuggestedPath  string
 	IsDir          bool

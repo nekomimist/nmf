@@ -6,6 +6,8 @@ import "fyne.io/fyne/v2"
 type ConflictDialogInterface interface {
 	Continue()
 	CancelJob()
+	SelectOverwriteIfNewer()
+	SelectOverwrite()
 	SelectAutoName()
 	SelectRename()
 	SelectSkip()
@@ -28,6 +30,12 @@ func (h *ConflictDialogKeyHandler) GetName() string { return "ConflictDialog" }
 func (h *ConflictDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	if modifiers.AltPressed {
 		switch ev.Name {
+		case fyne.KeyN:
+			h.dialog.SelectOverwriteIfNewer()
+			return true
+		case fyne.KeyO:
+			h.dialog.SelectOverwrite()
+			return true
 		case fyne.KeyA:
 			h.dialog.SelectAutoName()
 			return true
