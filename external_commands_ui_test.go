@@ -3,7 +3,32 @@ package main
 import (
 	"reflect"
 	"testing"
+
+	"nmf/internal/config"
 )
+
+func TestMatchingExternalCommandsAllowsEmptyCommandWhenEditable(t *testing.T) {
+	fm := &FileManager{
+		config: &config.Config{
+			UI: config.UIConfig{
+				ExternalCommands: []config.ExternalCommandEntry{
+					{Name: "skip empty command", Command: ""},
+					{Name: "edit anything", Command: "", Edit: true},
+					{Name: "run vim", Command: "vim"},
+					{Name: "", Command: "ignored", Edit: true},
+				},
+			},
+		},
+	}
+
+	got := fm.matchingExternalCommands("/tmp/a.txt")
+	if len(got) != 2 {
+		t.Fatalf("matchingExternalCommands() = %+v, want two commands", got)
+	}
+	if got[0].Name != "edit anything" || got[1].Name != "run vim" {
+		t.Fatalf("matchingExternalCommands() = %+v, want editable empty command and vim", got)
+	}
+}
 
 func TestExternalCommandMatchesExtensions(t *testing.T) {
 	tests := []struct {

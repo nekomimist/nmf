@@ -22,7 +22,7 @@ type CommandContext struct {
 	FileManager FileManagerInterface
 	RunCommand  func(command string) bool
 
-	RunExternalCommand func(command string, args []string) bool
+	RunExternalCommand func(command string, args []string, edit bool) bool
 }
 
 // CommandFunc executes an internal command.

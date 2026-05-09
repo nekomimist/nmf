@@ -89,7 +89,7 @@ type FileManagerInterface interface {
 }
 
 type externalCommandRunner interface {
-	RunExternalCommand(command string, args []string) bool
+	RunExternalCommand(command string, args []string, edit bool) bool
 }
 
 // MainScreenKeyHandler handles keyboard events for the main file list screen.
