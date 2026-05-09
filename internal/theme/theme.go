@@ -96,6 +96,12 @@ func (t *CustomTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant)
 	if name == theme.ColorNameFocus {
 		return t.GetCustomColor("focus")
 	}
+	if name == theme.ColorNamePrimary {
+		if t.config.Theme.Dark {
+			return theme.DarkTheme().Color(theme.ColorNameForeground, variant)
+		}
+		return theme.LightTheme().Color(theme.ColorNameForeground, variant)
+	}
 	if t.config.Theme.Dark {
 		return theme.DarkTheme().Color(name, variant)
 	}

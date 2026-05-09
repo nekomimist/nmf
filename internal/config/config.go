@@ -179,6 +179,7 @@ type ExternalCommandEntry struct {
 	Extensions []string `json:"extensions,omitempty"` // Case-insensitive, with or without dot; "*" matches all files
 	Command    string   `json:"command"`              // Executable path or command name
 	Args       []string `json:"args,omitempty"`       // Supports {file}, {files}, {dir}, {name}
+	Edit       bool     `json:"edit,omitempty"`       // Confirm and edit the final command line before running
 }
 
 // Manager provides configuration management functionality

@@ -26,7 +26,7 @@ type FileManager struct {
 	originalFiles  []fileinfo.FileInfo // Original files before filtering
 	fileList       *widget.List
 	fileListView   *ui.KeySink
-	pathEntry      *ui.TabEntry
+	pathDisplay    *widget.Label
 	statusLabel    *widget.Label
 	cursorPath     string          // Current cursor file path
 	cursorAnchor   cursorRowAnchor // Last visible row object for shell menu positioning

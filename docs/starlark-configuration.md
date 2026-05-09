@@ -59,6 +59,7 @@ nmf.external_command(
     exts = ["go", "md"],
     cmd = "vim",
     args = ["{file}"],
+    edit = True,
 )
 
 def open_parent_and_refresh(ctx):
@@ -139,7 +140,7 @@ List sections:
 - `nmf.key(key, cmd = None, fn = None, event = "")`
 - `nmf.unkey(key, event = "")`
 - `nmf.clear_keys()`
-- `nmf.external_command(name, cmd, exts = [], args = [])`
+- `nmf.external_command(name, cmd, exts = [], args = [], edit = False)`
 - `nmf.clear_external_commands()`
 - `nmf.menu(name, title = "")`
 - `nmf.menu_item(menu, label, cmd = None, fn = None)`
@@ -195,10 +196,15 @@ The command function receives one `ctx` struct:
 Command-only helpers:
 
 - `nmf.run(command_id)` runs a built-in or `user.*` command and returns a bool.
-- `nmf.exec(command, args = [])` starts an external command and returns a bool.
+- `nmf.exec(command, args = [], edit = False)` starts an external command and returns a bool.
   `args` is passed as raw strings; use `ctx.current_file`,
   `ctx.selected_files`, `ctx.current_path`, and `ctx.current_name` instead of
   `{file}` placeholders.
+  When `edit` is true, nmf opens the command line in a one-line edit dialog.
+  In that mode, `command` may be empty so the dialog can be used as a command
+  prompt.
+  The call returns false immediately because the edited command runs later when
+  the dialog is accepted.
 - `nmf.load_directory(path)` loads a directory path.
 - `nmf.current_path()` returns the active directory path.
 - `nmf.current_sort()` returns the active file-list sort as a struct with

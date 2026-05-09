@@ -575,6 +575,7 @@ func (rt *Runtime) builtinExternalCommand(_ *starlark.Thread, fn *starlark.Built
 	var command string
 	extensionsValue := starlark.Value(starlark.None)
 	argsValue := starlark.Value(starlark.None)
+	edit := false
 	if err := starlark.UnpackArgs(
 		fn.Name(),
 		args,
@@ -583,6 +584,7 @@ func (rt *Runtime) builtinExternalCommand(_ *starlark.Thread, fn *starlark.Built
 		"cmd", &command,
 		"exts?", &extensionsValue,
 		"args?", &argsValue,
+		"edit?", &edit,
 	); err != nil {
 		return nil, err
 	}
@@ -597,7 +599,7 @@ func (rt *Runtime) builtinExternalCommand(_ *starlark.Thread, fn *starlark.Built
 	if strings.TrimSpace(name) == "" {
 		return nil, fmt.Errorf("external command name must not be empty")
 	}
-	if strings.TrimSpace(command) == "" {
+	if !edit && strings.TrimSpace(command) == "" {
 		return nil, fmt.Errorf("external command cmd must not be empty")
 	}
 	rt.cfg.UI.ExternalCommands = append(rt.cfg.UI.ExternalCommands, config.ExternalCommandEntry{
@@ -605,6 +607,7 @@ func (rt *Runtime) builtinExternalCommand(_ *starlark.Thread, fn *starlark.Built
 		Extensions: extensions,
 		Command:    command,
 		Args:       commandArgs,
+		Edit:       edit,
 	})
 	rt.saveMask.uiExternalCommands = true
 	return starlark.None, nil
@@ -817,14 +820,15 @@ func (rt *Runtime) builtinRun(thread *starlark.Thread, fn *starlark.Builtin, arg
 func (rt *Runtime) builtinExec(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var command string
 	argsValue := starlark.Value(starlark.None)
-	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "command", &command, "args?", &argsValue); err != nil {
+	edit := false
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "command", &command, "args?", &argsValue, "edit?", &edit); err != nil {
 		return nil, err
 	}
 	commandArgs, err := stringList(argsValue, "args")
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(command) == "" {
+	if !edit && strings.TrimSpace(command) == "" {
 		return nil, fmt.Errorf("exec command must not be empty")
 	}
 	ctx, err := commandContext(thread, fn.Name())
@@ -834,7 +838,7 @@ func (rt *Runtime) builtinExec(thread *starlark.Thread, fn *starlark.Builtin, ar
 	if ctx.RunExternalCommand == nil {
 		return starlark.False, nil
 	}
-	return starlark.Bool(ctx.RunExternalCommand(command, commandArgs)), nil
+	return starlark.Bool(ctx.RunExternalCommand(command, commandArgs, edit)), nil
 }
 
 func (rt *Runtime) builtinLoadDirectory(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

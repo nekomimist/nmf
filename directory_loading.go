@@ -80,15 +80,15 @@ func (fm *FileManager) cleanupOldCursorEntries() {
 	}
 }
 
-// navigateToPath handles path entry validation and navigation.
-func (fm *FileManager) navigateToPath(inputPath string) {
+// navigateToPath handles path edit validation and navigation.
+func (fm *FileManager) navigateToPath(inputPath string) bool {
 	// Trim whitespace from input
 	path := strings.TrimSpace(inputPath)
 
 	// Handle empty path - do nothing
 	if path == "" {
-		fm.pathEntry.SetText(fm.currentPath) // Reset to current path
-		return
+		fm.setPathDisplay(fm.currentPath)
+		return false
 	}
 
 	// Handle tilde expansion for home directory
@@ -96,8 +96,8 @@ func (fm *FileManager) navigateToPath(inputPath string) {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			debugPrint("FileManager: Error getting home directory: %v", err)
-			fm.pathEntry.SetText(fm.currentPath) // Reset to current path
-			return
+			fm.setPathDisplay(fm.currentPath)
+			return false
 		}
 		path = strings.Replace(path, "~", home, 1)
 	}
@@ -105,8 +105,8 @@ func (fm *FileManager) navigateToPath(inputPath string) {
 	resolvedPath, parsed, err := resolveDirectoryPath(path)
 	if err != nil {
 		debugPrint("FileManager: Invalid path '%s': %v", inputPath, err)
-		fm.pathEntry.SetText(fm.currentPath) // Reset to current path
-		return
+		fm.setPathDisplay(fm.currentPath)
+		return false
 	}
 
 	// Seed credential cache if URL contained creds.
@@ -123,6 +123,7 @@ func (fm *FileManager) navigateToPath(inputPath string) {
 
 	// Return focus to file list after successful navigation
 	fm.FocusFileList()
+	return true
 }
 
 // FocusFileList sets focus to the file list view.
@@ -166,7 +167,7 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 			// Revert to previous path on error and restart watcher
 			if previousPath != "" {
 				fm.currentPath = previousPath
-				fm.pathEntry.SetText(previousPath)
+				fm.setPathDisplay(previousPath)
 				if fm.dirWatcher != nil && fm.shouldWatchPath(previousPath) {
 					fm.dirWatcher.SetPollInterval(fm.pollIntervalForPath(previousPath))
 					fm.dirWatcher.Start()
@@ -224,7 +225,7 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 		}
 
 		fm.currentPath = path
-		fm.pathEntry.SetText(path)
+		fm.setPathDisplay(path)
 		fm.files = files
 		fm.originalFiles = make([]fileinfo.FileInfo, len(files))
 		copy(fm.originalFiles, files)

@@ -33,7 +33,7 @@ func (fm *FileManager) ShowExternalCommandMenu() {
 	for _, command := range commands {
 		entry := command
 		items = append(items, fyne.NewMenuItem(entry.Name, func() {
-			if fm.runExternalCommandTemplate(entry.Command, entry.Args, targets) {
+			if fm.runExternalCommandTemplate(entry.Command, entry.Args, targets, entry.Edit) {
 				fm.FocusFileList()
 			}
 		}))
@@ -94,7 +94,7 @@ func (fm *FileManager) externalCommandMenuPosition() fyne.Position {
 func (fm *FileManager) matchingExternalCommands(target string) []config.ExternalCommandEntry {
 	var matches []config.ExternalCommandEntry
 	for _, entry := range fm.config.UI.ExternalCommands {
-		if strings.TrimSpace(entry.Name) == "" || strings.TrimSpace(entry.Command) == "" {
+		if strings.TrimSpace(entry.Name) == "" || (!entry.Edit && strings.TrimSpace(entry.Command) == "") {
 			continue
 		}
 		if externalCommandMatches(target, entry.Extensions) {
@@ -120,12 +120,43 @@ func externalCommandMatches(target string, extensions []string) bool {
 	return false
 }
 
-func (fm *FileManager) RunExternalCommand(command string, args []string) bool {
-	return fm.runExternalCommand(command, args)
+func (fm *FileManager) RunExternalCommand(command string, args []string, edit bool) bool {
+	return fm.runExternalCommandMaybeEdit(command, args, edit)
 }
 
-func (fm *FileManager) runExternalCommandTemplate(command string, argTemplates []string, targets []string) bool {
-	return fm.runExternalCommand(command, expandExternalCommandArgs(argTemplates, targets, fm.currentPath))
+func (fm *FileManager) runExternalCommandTemplate(command string, argTemplates []string, targets []string, edit bool) bool {
+	return fm.runExternalCommandMaybeEdit(command, expandExternalCommandArgs(argTemplates, targets, fm.currentPath), edit)
+}
+
+func (fm *FileManager) runExternalCommandMaybeEdit(command string, args []string, edit bool) bool {
+	if !edit {
+		return fm.runExternalCommand(command, args)
+	}
+	line := buildExternalCommandLine(command, args)
+	dlg := ui.NewLineEditDialog(ui.LineEditDialogOptions{
+		Title:       "Edit Command",
+		Prompt:      "Command line:",
+		InitialText: line,
+		ConfirmText: "Run",
+		Width:       760,
+	}, fm.keyManager)
+	dlg.ShowDialog(fm.window, func(edited string) bool {
+		parsedCommand, parsedArgs, err := parseExternalCommandLine(edited)
+		if err != nil {
+			debugPrint("FileManager: command line parse failed err=%v", err)
+			ui.ShowCompactMessageDialog(fm.window, "Command parse failed", err.Error())
+			return false
+		}
+		if strings.TrimSpace(parsedCommand) == "" {
+			return false
+		}
+		if fm.runExternalCommand(parsedCommand, parsedArgs) {
+			fm.FocusFileList()
+			return true
+		}
+		return false
+	})
+	return false
 }
 
 func (fm *FileManager) runExternalCommand(command string, args []string) bool {

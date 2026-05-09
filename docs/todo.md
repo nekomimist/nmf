@@ -3,21 +3,35 @@
 ## 全ファイルマークできるコマンドがほしい
 - デフォルトキーバインドはC-Aで。
 
-## 実行前のコマンドライン編集
-- nmf.execおよびnmf.external_commandにオプションを追加して(edit = Trueみたいな？)、
-  一行の編集ダイヤログを出して、実際に実行する文字列を確認・編集できるようにする
-  (exec.Commandの引数はargs, ... だから1行に合成して、編集されて再度分解する？要検討)
-- ダイヤログでCancel/OKを選択させて、OKなら実行。
+## 絞り込み系のキーバインドを改善したい
+- Readlineほどのバインドは不要だが、History等の絞り込み系の欄もCtrl-HがBSになるくらいはほしい
 
-## 1行編集系のキーバインドを改善したい
-- pathEntryとか、Renameコマンドで出るダイヤログとかはreadline / Windowsっぽいの2拓くらいあってもいい
-- Historyとかの絞り込み系の欄もCtrl-HがBSになるくらいはほしい
+## KeyDown/KeyUp系キーバインドのrepeat適性を棚卸ししたい
+- Fyne/GLFWではキーリピートがKeyDownではなくTypedKey/TypedShortcut側へ流れる。
+- repeatしてほしい操作はtyped/TypedShortcutへ寄せ、長押しで増殖して困る操作はdown/upに残す。
+- History/Filter/DirectoryJump/CopyMoveなどの検索系でCtrl-HをBackspace相当にする余地がある。
 
 ## OK/Cancel的な二択ボタン
-- あまり統一感がないかもしれない。CancelIconとConfirmIcon をつけて、Confirmのほうのアイコン色を 
-  ThemeのPrimaryColorにした上でボタンサイズを揃えたほうがFyneのアプリっぽいかもしれない。(優先度低)
+- あまり統一感がないかもしれない。CancelIconとConfirmIcon をつけて、Confirmのほうのアイコン色を
+  ThemeのPrimaryColorにした上でボタンサイズを揃えたほうがFyneのアプリっぽいかもしれない。
+  (優先度低)
 
 # DONE 以下は一応終わったもの
+## 実行前のコマンドライン編集
+- nmf.execおよびnmf.external_commandにeditオプションを追加。
+- editがtrueのときは、一行編集ダイヤログで実行前のコマンドラインを確認・編集できる。
+- editがtrueのときは、編集して任意のコマンドを入れられるように空コマンドも許可する。
+- 内部的にはexec.Commandのcommand/argsを一度1行に合成し、編集後にシェル風の引用符・バックスラッシュ規則で再分解して実行する。
+
+## 1行編集のReadline系制御キーのリピートを効かせたい
+- Ctrl-Hなどの制御キーは単発では効くが、キーリピートが効かない問題に対応。
+- Fyne/driver側ではrepeatがKeyDownではなくTypedShortcut側へ流れるため、1行編集EntryでCtrl系CustomShortcutを処理する。
+
+## 1行編集ダイヤログを実装する
+- GNU readlineっぽいキーバインドの汎用1行編集ダイヤログを実装。
+- Renameコマンドの入力を汎用1行編集ダイヤログに載せ替え。
+- pathEntryの直接編集をやめ、編集操作で汎用1行編集ダイヤログを出すように変更。
+
 ## コンフィグ記述言語の導入
 - Starlarkの `init.star` を `config.json` の後に読む。
 - `config.json` の主なカスタマイズ項目を Starlark API から設定できる。

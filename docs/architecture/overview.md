@@ -20,7 +20,7 @@ This document describes runtime composition, package boundaries, and core state 
 3. Runtime method groups are split across focused files:
    - `directory_loading.go`: loading, busy state, watcher poll policy.
    - `list_controls.go`: sorting/filter/search/list cursor operations.
-   - `navigation_ui.go`: navigation dialogs and path entry operations.
+   - `navigation_ui.go`: navigation dialogs and path edit operations.
    - `jobs_ui.go`: job enqueue/indicator integration.
    - `window_lifecycle.go`: close/quit cleanup logic.
 

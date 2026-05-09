@@ -309,12 +309,24 @@ func (fm *FileManager) ShowSortDialog() {
 	sortDialog.Show(fm.window, handler)
 }
 
-// FocusPathEntry focuses the path entry widget.
+// FocusPathEntry opens the path edit dialog.
 func (fm *FileManager) FocusPathEntry() {
-	debugPrint("FileManager: Focusing path entry")
-	if fm.pathEntry != nil {
-		fm.window.Canvas().Focus(fm.pathEntry)
-		fm.pathEntry.FocusGained()
+	debugPrint("FileManager: Opening path edit dialog")
+	dlg := ui.NewLineEditDialog(ui.LineEditDialogOptions{
+		Title:       "Edit Path",
+		Prompt:      "Path:",
+		InitialText: fm.currentPath,
+		ConfirmText: "Open",
+		Width:       640,
+	}, fm.keyManager)
+	dlg.ShowDialog(fm.window, func(path string) bool {
+		return fm.navigateToPath(path)
+	})
+}
+
+func (fm *FileManager) setPathDisplay(path string) {
+	if fm.pathDisplay != nil {
+		fm.pathDisplay.SetText(path)
 	}
 }
 

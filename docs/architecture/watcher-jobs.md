@@ -72,9 +72,10 @@ Jobs:
   deletion automatically.
 - Copy/move name collisions are resolved at execution time, immediately before
   writing the destination path.
-- Existing files and symlinks are never overwritten by default. A collision can
-  be skipped, renamed, auto-suffixed as `name (1).ext`, or used to cancel the
-  running job.
+- Existing files and symlinks can be skipped, renamed, auto-suffixed as
+  `name (1).ext`, overwritten only when the source is clearly newer, overwritten
+  unconditionally, or used to cancel the running job. The interactive default is
+  "overwrite if newer"; non-interactive copy/move still auto-suffixes.
 - Same-name destination directories are merged recursively. File collisions
   inside the merge still use the collision resolver.
 - Copying an item to its own directory is allowed; the exact same destination

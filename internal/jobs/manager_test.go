@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"nmf/internal/fileinfo"
 )
@@ -618,6 +619,176 @@ func TestMoveCollisionRenameDoesNotOverwrite(t *testing.T) {
 	}
 	if got, err := os.ReadFile(renamed); err != nil || string(got) != "source" {
 		t.Fatalf("renamed destination wrong: got %q err=%v", got, err)
+	}
+}
+
+func TestCopyCollisionOverwriteIfNewerReplacesClearlyOlderDestination(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	src := filepath.Join(srcDir, "file.txt")
+	dst := filepath.Join(dstDir, "file.txt")
+	if err := os.WriteFile(src, []byte("source"), 0644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	if err := os.WriteFile(dst, []byte("existing"), 0644); err != nil {
+		t.Fatalf("write destination: %v", err)
+	}
+	base := time.Unix(1_700_000_000, 0)
+	if err := os.Chtimes(dst, base, base); err != nil {
+		t.Fatalf("set destination time: %v", err)
+	}
+	if err := os.Chtimes(src, base.Add(3*time.Second), base.Add(3*time.Second)); err != nil {
+		t.Fatalf("set source time: %v", err)
+	}
+
+	job := &Job{
+		Type: TypeCopy,
+		ctx:  context.Background(),
+		Resolver: func(context.Context, ConflictRequest) ConflictResolution {
+			return ConflictResolution{Action: ConflictOverwriteIfNewer}
+		},
+	}
+	if err := copyOrMovePath(job, src, dstDir); err != nil {
+		t.Fatalf("copy with overwrite-if-newer failed: %v", err)
+	}
+	if got, err := os.ReadFile(dst); err != nil || string(got) != "source" {
+		t.Fatalf("destination not overwritten: got %q err=%v", got, err)
+	}
+}
+
+func TestCopyCollisionOverwriteIfNewerSkipsWithinFATTolerance(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	src := filepath.Join(srcDir, "file.txt")
+	dst := filepath.Join(dstDir, "file.txt")
+	if err := os.WriteFile(src, []byte("source"), 0644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	if err := os.WriteFile(dst, []byte("existing"), 0644); err != nil {
+		t.Fatalf("write destination: %v", err)
+	}
+	base := time.Unix(1_700_000_000, 0)
+	if err := os.Chtimes(dst, base, base); err != nil {
+		t.Fatalf("set destination time: %v", err)
+	}
+	if err := os.Chtimes(src, base.Add(2*time.Second), base.Add(2*time.Second)); err != nil {
+		t.Fatalf("set source time: %v", err)
+	}
+
+	job := &Job{
+		Type: TypeCopy,
+		ctx:  context.Background(),
+		Resolver: func(context.Context, ConflictRequest) ConflictResolution {
+			return ConflictResolution{Action: ConflictOverwriteIfNewer}
+		},
+	}
+	if err := copyOrMovePath(job, src, dstDir); !errors.Is(err, errSkipped) {
+		t.Fatalf("expected skipped copy, got %v", err)
+	}
+	if got, err := os.ReadFile(dst); err != nil || string(got) != "existing" {
+		t.Fatalf("destination changed: got %q err=%v", got, err)
+	}
+}
+
+func TestMoveCollisionOverwriteReplacesDestinationAndRemovesSource(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	src := filepath.Join(srcDir, "file.txt")
+	dst := filepath.Join(dstDir, "file.txt")
+	if err := os.WriteFile(src, []byte("source"), 0644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	if err := os.WriteFile(dst, []byte("existing"), 0644); err != nil {
+		t.Fatalf("write destination: %v", err)
+	}
+
+	job := &Job{
+		Type: TypeMove,
+		ctx:  context.Background(),
+		Resolver: func(context.Context, ConflictRequest) ConflictResolution {
+			return ConflictResolution{Action: ConflictOverwrite}
+		},
+	}
+	if err := copyOrMovePath(job, src, dstDir); err != nil {
+		t.Fatalf("move with overwrite failed: %v", err)
+	}
+	if _, err := os.Stat(src); !os.IsNotExist(err) {
+		t.Fatalf("source should be removed after move, got %v", err)
+	}
+	if got, err := os.ReadFile(dst); err != nil || string(got) != "source" {
+		t.Fatalf("destination not overwritten: got %q err=%v", got, err)
+	}
+}
+
+func TestOverwriteIfNewerApplyToRemainingCollisions(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	base := time.Unix(1_700_000_000, 0)
+	for _, name := range []string{"a.txt", "b.txt"} {
+		src := filepath.Join(srcDir, name)
+		dst := filepath.Join(dstDir, name)
+		if err := os.WriteFile(src, []byte("source-"+name), 0644); err != nil {
+			t.Fatalf("write source %s: %v", name, err)
+		}
+		if err := os.WriteFile(dst, []byte("existing"), 0644); err != nil {
+			t.Fatalf("write destination %s: %v", name, err)
+		}
+		if err := os.Chtimes(dst, base, base); err != nil {
+			t.Fatalf("set destination time %s: %v", name, err)
+		}
+		if err := os.Chtimes(src, base.Add(3*time.Second), base.Add(3*time.Second)); err != nil {
+			t.Fatalf("set source time %s: %v", name, err)
+		}
+	}
+
+	var calls int
+	job := &Job{
+		Type: TypeCopy,
+		ctx:  context.Background(),
+		Resolver: func(context.Context, ConflictRequest) ConflictResolution {
+			calls++
+			return ConflictResolution{Action: ConflictOverwriteIfNewer, ApplyToRest: true}
+		},
+	}
+	for _, name := range []string{"a.txt", "b.txt"} {
+		if err := copyOrMovePath(job, filepath.Join(srcDir, name), dstDir); err != nil {
+			t.Fatalf("copy %s failed: %v", name, err)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("resolver calls: got %d want 1", calls)
+	}
+	for _, name := range []string{"a.txt", "b.txt"} {
+		if got, err := os.ReadFile(filepath.Join(dstDir, name)); err != nil || string(got) != "source-"+name {
+			t.Fatalf("destination %s not overwritten: got %q err=%v", name, got, err)
+		}
+	}
+}
+
+func TestOverwriteSkipsTypeMismatch(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	src := filepath.Join(srcDir, "item")
+	dst := filepath.Join(dstDir, "item")
+	if err := os.WriteFile(src, []byte("source"), 0644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	if err := os.Mkdir(dst, 0755); err != nil {
+		t.Fatalf("make destination directory: %v", err)
+	}
+
+	job := &Job{
+		Type: TypeCopy,
+		ctx:  context.Background(),
+		Resolver: func(context.Context, ConflictRequest) ConflictResolution {
+			return ConflictResolution{Action: ConflictOverwrite}
+		},
+	}
+	if err := copyOrMovePath(job, src, dstDir); !errors.Is(err, errSkipped) {
+		t.Fatalf("expected skipped copy, got %v", err)
+	}
+	if info, err := os.Stat(dst); err != nil || !info.IsDir() {
+		t.Fatalf("destination directory changed: info=%v err=%v", info, err)
 	}
 }
 

@@ -212,7 +212,8 @@ command menu.
         "name": "Open in editor",
         "extensions": ["go", "md"],
         "command": "vim",
-        "args": ["{file}"]
+        "args": ["{file}"],
+        "edit": true
       },
       {
         "name": "Compare selected",
@@ -228,9 +229,11 @@ command menu.
 - `name`: menu label.
 - `extensions`: optional case-insensitive extension list. Dots are optional;
   `*` matches all files. Empty list also matches all files.
-- `command`: executable name or path.
+- `command`: executable name or path. It may be empty when `edit` is true.
 - `args`: optional argument templates. If omitted, selected target paths are
   passed as arguments.
+- `edit`: optional boolean. When true, nmf shows the final command line in a
+  one-line edit dialog before running it.
 
 Supported argument placeholders:
 
@@ -239,3 +242,6 @@ Supported argument placeholders:
   its own argument.
 - `{dir}`: current directory.
 - `{name}`: base name of the first target.
+
+Edited command lines are split with shell-like quote and backslash handling, but
+are still executed directly without a shell.

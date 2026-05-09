@@ -632,7 +632,7 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 	}
 	base := baseName(src)
 	dst := joinPath(destDir, base)
-	dst, skipped, err := resolveDestinationConflict(j, execCtx, src, dst, fi)
+	dst, skipped, overwrite, err := resolveDestinationConflict(j, execCtx, src, dst, fi)
 	if err != nil {
 		return err
 	}
@@ -648,7 +648,16 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 		return wrapPath(src.displayPath(), err)
 	} else if isLink {
 		if j.Type == TypeMove {
-			if err := renamePath(execCtx, src, dst); err == nil {
+			if !overwrite {
+				if err := renamePath(execCtx, src, dst); err == nil {
+					dbg("job %d: rename link %s -> %s", j.ID, src.displayPath(), dst.displayPath())
+					return nil
+				} else {
+					dbg("job %d: rename link fallback %s -> %s: %v", j.ID, src.displayPath(), dst.displayPath(), err)
+				}
+			} else if err := removePath(execCtx, dst); err != nil {
+				return wrapPath(dst.displayPath(), err)
+			} else if err := renamePath(execCtx, src, dst); err == nil {
 				dbg("job %d: rename link %s -> %s", j.ID, src.displayPath(), dst.displayPath())
 				return nil
 			} else {
@@ -656,6 +665,11 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 			}
 		}
 		dbg("job %d: symlink %s -> %s", j.ID, dst.displayPath(), target)
+		if overwrite {
+			if err := removePath(execCtx, dst); err != nil && !os.IsNotExist(err) {
+				return wrapPath(dst.displayPath(), err)
+			}
+		}
 		if err := symlinkPath(execCtx, target, dst); err != nil {
 			return wrapPath(dst.displayPath(), err)
 		}
@@ -710,7 +724,7 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 
 	// regular file
 	dbg("job %d: file %s -> %s", j.ID, src.displayPath(), dst.displayPath())
-	if err := copyFileWithCancel(j, execCtx, src, dst, fi.Mode()); err != nil {
+	if err := copyFileWithCancel(j, execCtx, src, dst, fi.Mode(), overwrite); err != nil {
 		return err
 	}
 	if j.Type == TypeMove {
@@ -725,32 +739,32 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 	return nil
 }
 
-func resolveDestinationConflict(j *Job, execCtx *executionContext, src, dst executionPath, srcInfo os.FileInfo) (executionPath, bool, error) {
+func resolveDestinationConflict(j *Job, execCtx *executionContext, src, dst executionPath, srcInfo os.FileInfo) (executionPath, bool, bool, error) {
 	if sameExecutionPath(src, dst) {
 		if j.Type == TypeMove {
-			return dst, false, nil
+			return dst, false, false, nil
 		}
-		return askDestinationConflict(j, execCtx, src, dst, srcInfo)
+		return askDestinationConflict(j, execCtx, src, dst, srcInfo, srcInfo)
 	}
 
 	dstInfo, err := lstatPath(execCtx, dst)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return dst, false, nil
+			return dst, false, false, nil
 		}
-		return dst, false, wrapPath(dst.displayPath(), err)
+		return dst, false, false, wrapPath(dst.displayPath(), err)
 	}
 	if srcInfo.IsDir() && dstInfo.IsDir() {
-		return dst, false, nil
+		return dst, false, false, nil
 	}
-	return askDestinationConflict(j, execCtx, src, dst, srcInfo)
+	return askDestinationConflict(j, execCtx, src, dst, srcInfo, dstInfo)
 }
 
-func askDestinationConflict(j *Job, execCtx *executionContext, src, dst executionPath, srcInfo os.FileInfo) (executionPath, bool, error) {
+func askDestinationConflict(j *Job, execCtx *executionContext, src, dst executionPath, srcInfo, dstInfo os.FileInfo) (executionPath, bool, bool, error) {
 	for {
 		suggested, err := nextAvailablePath(execCtx, dst)
 		if err != nil {
-			return dst, false, err
+			return dst, false, false, err
 		}
 		var resolution ConflictResolution
 		switch j.conflictDefault {
@@ -758,16 +772,22 @@ func askDestinationConflict(j *Job, execCtx *executionContext, src, dst executio
 			resolution = ConflictResolution{Action: ConflictSkip}
 		case ConflictAutoSuffix:
 			resolution = ConflictResolution{Action: ConflictAutoSuffix}
+		case ConflictOverwriteIfNewer:
+			resolution = ConflictResolution{Action: ConflictOverwriteIfNewer}
+		case ConflictOverwrite:
+			resolution = ConflictResolution{Action: ConflictOverwrite}
 		default:
 			defaultAction := j.conflictDefault
 			if defaultAction == "" {
-				defaultAction = ConflictAutoSuffix
+				defaultAction = ConflictOverwriteIfNewer
 			}
 			resolution = resolveConflict(j, ConflictRequest{
 				JobID:          j.ID,
 				Type:           j.Type,
 				SourcePath:     src.displayPath(),
 				Destination:    dst.displayPath(),
+				SourceModified: srcInfo.ModTime(),
+				DestModified:   dstInfo.ModTime(),
 				SuggestedName:  baseName(suggested),
 				SuggestedPath:  suggested.displayPath(),
 				IsDir:          srcInfo.IsDir(),
@@ -781,9 +801,25 @@ func askDestinationConflict(j *Job, execCtx *executionContext, src, dst executio
 			if resolution.ApplyToRest {
 				j.conflictDefault = ConflictSkip
 			}
-			return dst, true, nil
+			return dst, true, false, nil
 		case ConflictCancelJob:
-			return dst, false, errCanceled
+			return dst, false, false, errCanceled
+		case ConflictOverwriteIfNewer:
+			if resolution.ApplyToRest {
+				j.conflictDefault = ConflictOverwriteIfNewer
+			}
+			if canOverwriteConflict(srcInfo, dstInfo) && sourceClearlyNewer(srcInfo, dstInfo) {
+				return dst, false, true, nil
+			}
+			return dst, true, false, nil
+		case ConflictOverwrite:
+			if resolution.ApplyToRest {
+				j.conflictDefault = ConflictOverwrite
+			}
+			if canOverwriteConflict(srcInfo, dstInfo) {
+				return dst, false, true, nil
+			}
+			return dst, true, false, nil
 		case ConflictRename:
 			if resolution.ApplyToRest {
 				j.conflictDefault = ConflictRename
@@ -791,29 +827,44 @@ func askDestinationConflict(j *Job, execCtx *executionContext, src, dst executio
 			name, err := fileinfo.ValidateRenameName(resolution.NewName)
 			if err != nil {
 				if j.Resolver == nil {
-					return dst, false, wrapPath(dst.displayPath(), err)
+					return dst, false, false, wrapPath(dst.displayPath(), err)
 				}
 				j.conflictDefault = ConflictRename
 				continue
 			}
 			renamed := joinPath(dirPath(dst), name)
 			if exists, err := pathExists(execCtx, renamed); err != nil {
-				return renamed, false, wrapPath(renamed.displayPath(), err)
+				return renamed, false, false, wrapPath(renamed.displayPath(), err)
 			} else if exists {
 				dst = renamed
 				j.conflictDefault = ConflictRename
 				continue
 			}
-			return renamed, false, nil
+			return renamed, false, false, nil
 		case ConflictAutoSuffix, "":
 			if resolution.ApplyToRest {
 				j.conflictDefault = ConflictAutoSuffix
 			}
-			return suggested, false, nil
+			return suggested, false, false, nil
 		default:
-			return dst, false, fmt.Errorf("unknown conflict action: %s", resolution.Action)
+			return dst, false, false, fmt.Errorf("unknown conflict action: %s", resolution.Action)
 		}
 	}
+}
+
+func canOverwriteConflict(srcInfo, dstInfo os.FileInfo) bool {
+	if srcInfo == nil || dstInfo == nil {
+		return false
+	}
+	if srcInfo.IsDir() || dstInfo.IsDir() {
+		return false
+	}
+	return srcInfo.Mode().Type() == dstInfo.Mode().Type()
+}
+
+func sourceClearlyNewer(srcInfo, dstInfo os.FileInfo) bool {
+	const fatTimestampResolution = 2 * time.Second
+	return srcInfo.ModTime().After(dstInfo.ModTime().Add(fatTimestampResolution))
 }
 
 func resolveConflict(j *Job, req ConflictRequest) ConflictResolution {
@@ -1170,7 +1221,7 @@ func openWritePath(execCtx *executionContext, p executionPath, mode os.FileMode)
 	return os.OpenFile(p.path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
 }
 
-func replacePath(execCtx *executionContext, tmp executionPath, dst executionPath) error {
+func replacePath(execCtx *executionContext, tmp executionPath, dst executionPath, overwrite bool) error {
 	if dst.backend == backendArchive {
 		return errors.New("archive paths are read-only")
 	}
@@ -1181,15 +1232,24 @@ func replacePath(execCtx *executionContext, tmp executionPath, dst executionPath
 		}
 		if err := ops.Rename(tmp.path, dst.path); err == nil {
 			return nil
-		} else {
+		} else if overwrite {
 			_ = ops.Remove(dst.path)
 			return ops.Rename(tmp.path, dst.path)
+		} else {
+			return err
 		}
 	}
-	return os.Rename(tmp.path, dst.path)
+	if err := os.Rename(tmp.path, dst.path); err == nil {
+		return nil
+	} else if overwrite {
+		_ = os.Remove(dst.path)
+		return os.Rename(tmp.path, dst.path)
+	} else {
+		return err
+	}
 }
 
-func copyFileWithCancel(j *Job, execCtx *executionContext, src, dst executionPath, mode os.FileMode) error {
+func copyFileWithCancel(j *Job, execCtx *executionContext, src, dst executionPath, mode os.FileMode, overwrite bool) error {
 	tmp := dst
 	tmp.path = dst.path + ".part"
 	tmp.raw = tmp.path
@@ -1246,7 +1306,7 @@ func copyFileWithCancel(j *Job, execCtx *executionContext, src, dst executionPat
 	}
 
 	dbg("job %d: rename %s -> %s", j.ID, tmp.displayPath(), dst.displayPath())
-	if err := replacePath(execCtx, tmp, dst); err != nil {
+	if err := replacePath(execCtx, tmp, dst, overwrite); err != nil {
 		_ = removePath(execCtx, tmp)
 		return wrapPath(dst.displayPath(), err)
 	}

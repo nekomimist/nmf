@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -50,12 +51,16 @@ func (d *ConflictDialog) ShowDialog(parent fyne.Window, callback func(jobs.Confl
 	source.Wrapping = fyne.TextWrapWord
 	dest := widget.NewLabel(middleEllipsizeFileName(d.req.Destination, conflictDisplayedPathMax))
 	dest.Wrapping = fyne.TextWrapWord
+	sourceModified := widget.NewLabel(formatConflictModified(d.req.SourceModified))
+	destModified := widget.NewLabel(formatConflictModified(d.req.DestModified))
 	suggested := d.req.SuggestedName
 	if strings.TrimSpace(suggested) == "" {
 		suggested = "auto name"
 	}
 
 	options := []string{
+		"Overwrite if newer (Alt+N)",
+		"Overwrite (Alt+O)",
 		fmt.Sprintf("Auto name (Alt+A): %s", suggested),
 		"Skip this item (Alt+S)",
 		"Rename to (Alt+R):",
@@ -67,10 +72,16 @@ func (d *ConflictDialog) ShowDialog(parent fyne.Window, callback func(jobs.Confl
 		}
 	})
 	switch d.req.DefaultAction {
-	case jobs.ConflictRename:
-		d.choice.SetSelected(options[2])
-	case jobs.ConflictSkip:
+	case jobs.ConflictOverwriteIfNewer:
+		d.choice.SetSelected(options[0])
+	case jobs.ConflictOverwrite:
 		d.choice.SetSelected(options[1])
+	case jobs.ConflictAutoSuffix:
+		d.choice.SetSelected(options[2])
+	case jobs.ConflictRename:
+		d.choice.SetSelected(options[4])
+	case jobs.ConflictSkip:
+		d.choice.SetSelected(options[3])
 	default:
 		d.choice.SetSelected(options[0])
 	}
@@ -89,7 +100,9 @@ func (d *ConflictDialog) ShowDialog(parent fyne.Window, callback func(jobs.Confl
 	content := container.NewVBox(
 		widget.NewLabel("A destination item with the same name already exists."),
 		container.NewBorder(nil, nil, widget.NewLabel("Source:"), nil, source),
+		container.NewBorder(nil, nil, widget.NewLabel("Modified:"), nil, sourceModified),
 		container.NewBorder(nil, nil, widget.NewLabel("Target:"), nil, dest),
+		container.NewBorder(nil, nil, widget.NewLabel("Modified:"), nil, destModified),
 		widget.NewLabel(""),
 		container.NewPadded(d.choice),
 		d.nameEntry,
@@ -132,6 +145,13 @@ func (d *ConflictDialog) ShowDialog(parent fyne.Window, callback func(jobs.Confl
 	d.focusCurrent()
 }
 
+func formatConflictModified(t time.Time) string {
+	if t.IsZero() {
+		return "-"
+	}
+	return t.Local().Format("2006-01-02 15:04:05")
+}
+
 // Continue accepts the current conflict choice.
 func (d *ConflictDialog) Continue() {
 	if d.closed {
@@ -147,6 +167,10 @@ func (d *ConflictDialog) Continue() {
 	}
 
 	switch {
+	case strings.HasPrefix(selected, "Overwrite if newer"):
+		res.Action = jobs.ConflictOverwriteIfNewer
+	case strings.HasPrefix(selected, "Overwrite"):
+		res.Action = jobs.ConflictOverwrite
 	case strings.HasPrefix(selected, "Rename"):
 		name := ""
 		if d.nameEntry != nil {
@@ -174,6 +198,16 @@ func (d *ConflictDialog) CancelJob() {
 		return
 	}
 	d.finish(jobs.ConflictResolution{Action: jobs.ConflictCancelJob})
+}
+
+// SelectOverwriteIfNewer selects conditional overwrite.
+func (d *ConflictDialog) SelectOverwriteIfNewer() {
+	d.selectChoiceByPrefix("Overwrite if newer")
+}
+
+// SelectOverwrite selects unconditional overwrite.
+func (d *ConflictDialog) SelectOverwrite() {
+	d.selectChoiceByPrefix("Overwrite")
 }
 
 // SelectAutoName selects automatic suffix naming.
@@ -242,13 +276,17 @@ func (d *ConflictDialog) registerShortcuts() {
 	}
 	c := d.parent.Canvas()
 	d.shortcuts = []*desktop.CustomShortcut{
+		{KeyName: fyne.KeyN, Modifier: fyne.KeyModifierAlt},
+		{KeyName: fyne.KeyO, Modifier: fyne.KeyModifierAlt},
 		{KeyName: fyne.KeyA, Modifier: fyne.KeyModifierAlt},
 		{KeyName: fyne.KeyR, Modifier: fyne.KeyModifierAlt},
 		{KeyName: fyne.KeyS, Modifier: fyne.KeyModifierAlt},
 	}
-	c.AddShortcut(d.shortcuts[0], func(fyne.Shortcut) { d.SelectAutoName() })
-	c.AddShortcut(d.shortcuts[1], func(fyne.Shortcut) { d.SelectRename() })
-	c.AddShortcut(d.shortcuts[2], func(fyne.Shortcut) { d.SelectSkip() })
+	c.AddShortcut(d.shortcuts[0], func(fyne.Shortcut) { d.SelectOverwriteIfNewer() })
+	c.AddShortcut(d.shortcuts[1], func(fyne.Shortcut) { d.SelectOverwrite() })
+	c.AddShortcut(d.shortcuts[2], func(fyne.Shortcut) { d.SelectAutoName() })
+	c.AddShortcut(d.shortcuts[3], func(fyne.Shortcut) { d.SelectRename() })
+	c.AddShortcut(d.shortcuts[4], func(fyne.Shortcut) { d.SelectSkip() })
 }
 
 func (d *ConflictDialog) unregisterShortcuts() {
