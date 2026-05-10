@@ -172,6 +172,8 @@ type mainScreenFakeFileManager struct {
 	cursorIndex            int
 	setCursorIndex         int
 	files                  []fileinfo.FileInfo
+	selectedFiles          map[string]bool
+	refreshFileListCount   int
 }
 
 func (f *mainScreenFakeFileManager) GetCurrentCursorIndex() int    { return f.cursorIndex }
@@ -185,13 +187,18 @@ func (f *mainScreenFakeFileManager) CurrentSort() config.SortConfig {
 }
 func (f *mainScreenFakeFileManager) ApplyTemporarySort(sortConfig config.SortConfig) {
 }
-func (f *mainScreenFakeFileManager) GetSelectedFiles() map[string]bool          { return nil }
-func (f *mainScreenFakeFileManager) SetFileSelected(path string, selected bool) {}
-func (f *mainScreenFakeFileManager) RefreshFileList()                           {}
-func (f *mainScreenFakeFileManager) SaveCursorPosition(dirPath string)          {}
-func (f *mainScreenFakeFileManager) OpenNewWindow()                             {}
-func (f *mainScreenFakeFileManager) ShowDirectoryTreeDialog()                   {}
-func (f *mainScreenFakeFileManager) ShowNavigationHistoryDialog()               {}
+func (f *mainScreenFakeFileManager) GetSelectedFiles() map[string]bool { return f.selectedFiles }
+func (f *mainScreenFakeFileManager) SetFileSelected(path string, selected bool) {
+	if f.selectedFiles == nil {
+		f.selectedFiles = make(map[string]bool)
+	}
+	f.selectedFiles[path] = selected
+}
+func (f *mainScreenFakeFileManager) RefreshFileList()                  { f.refreshFileListCount++ }
+func (f *mainScreenFakeFileManager) SaveCursorPosition(dirPath string) {}
+func (f *mainScreenFakeFileManager) OpenNewWindow()                    {}
+func (f *mainScreenFakeFileManager) ShowDirectoryTreeDialog()          {}
+func (f *mainScreenFakeFileManager) ShowNavigationHistoryDialog()      {}
 func (f *mainScreenFakeFileManager) ShowDirectoryJumpDialog() {
 	f.showDirectoryJumpCount++
 }
@@ -363,6 +370,33 @@ func TestMainScreenXShowsExternalCommandMenu(t *testing.T) {
 	}
 	if fm.showExternalMenuCount != 1 {
 		t.Fatalf("ShowExternalCommandMenu count = %d, want 1", fm.showExternalMenuCount)
+	}
+}
+
+func TestMainScreenCtrlAMarksAllSelectableFiles(t *testing.T) {
+	fm := &mainScreenFakeFileManager{
+		files: []fileinfo.FileInfo{
+			{Name: "..", Path: "/parent"},
+			{Name: "a.txt", Path: "/dir/a.txt"},
+			{Name: "gone.txt", Path: "/dir/gone.txt", Status: fileinfo.StatusDeleted},
+			{Name: "sub", Path: "/dir/sub", IsDir: true},
+		},
+	}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyA}, ModifierState{CtrlPressed: true})
+
+	if !handled {
+		t.Fatal("Ctrl+A should be handled")
+	}
+	if got := fm.selectedFiles; !got["/dir/a.txt"] || !got["/dir/sub"] {
+		t.Fatalf("selected files = %+v, want selectable files marked", got)
+	}
+	if fm.selectedFiles["/parent"] || fm.selectedFiles["/dir/gone.txt"] {
+		t.Fatalf("selected files = %+v, should skip parent and deleted entries", fm.selectedFiles)
+	}
+	if fm.refreshFileListCount != 1 {
+		t.Fatalf("RefreshFileList count = %d, want 1", fm.refreshFileListCount)
 	}
 }
 

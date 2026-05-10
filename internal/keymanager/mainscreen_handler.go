@@ -18,6 +18,7 @@ const (
 	CommandCursorLast          = "cursor.last"
 	CommandOpen                = "open"
 	CommandSelectToggle        = "selection.toggle"
+	CommandSelectAll           = "selection.markAll"
 	CommandParentDirectory     = "directory.parent"
 	CommandRefresh             = "directory.refresh"
 	CommandHome                = "directory.home"
@@ -245,6 +246,7 @@ func defaultMainScreenBindings() []config.KeyBindingEntry {
 		{Key: "S-Down", Command: CommandCursorPageDown, Event: keyEventTyped},
 		{Key: "Return", Command: CommandOpen, Event: keyEventTyped},
 		{Key: "Space", Command: CommandSelectToggle, Event: keyEventTyped},
+		{Key: "C-A", Command: CommandSelectAll, Event: keyEventDown},
 		{Key: "Backspace", Command: CommandParentDirectory, Event: keyEventTyped},
 		{Key: "S-Comma", Command: CommandCursorFirst, Event: keyEventTyped},
 		{Key: "Period", Command: CommandRefresh, Event: keyEventTyped},
@@ -282,6 +284,7 @@ func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
 		CommandCursorLast:          mh.cursorLast,
 		CommandOpen:                mh.openCurrent,
 		CommandSelectToggle:        mh.toggleSelection,
+		CommandSelectAll:           mh.selectAll,
 		CommandParentDirectory:     mh.parentDirectory,
 		CommandRefresh:             mh.refreshDirectory,
 		CommandHome:                mh.homeDirectory,
@@ -397,6 +400,20 @@ func (mh *MainScreenKeyHandler) toggleSelection(CommandContext) {
 	if currentIdx < len(files)-1 {
 		mh.fileManager.SetCursorByIndex(currentIdx + 1)
 		mh.fileManager.RefreshCursor()
+	}
+}
+
+func (mh *MainScreenKeyHandler) selectAll(CommandContext) {
+	selected := 0
+	for _, fileInfo := range mh.fileManager.GetFiles() {
+		if fileInfo.Name == ".." || fileInfo.Status == fileinfo.StatusDeleted {
+			continue
+		}
+		mh.fileManager.SetFileSelected(fileInfo.Path, true)
+		selected++
+	}
+	if selected > 0 {
+		mh.fileManager.RefreshFileList()
 	}
 }
 
