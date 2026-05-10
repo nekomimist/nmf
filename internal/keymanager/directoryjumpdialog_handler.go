@@ -59,6 +59,12 @@ func (h *DirectoryJumpDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers 
 	h.debugPrint("DirectoryJumpDialog: OnTypedKey %s", ev.Name)
 
 	switch ev.Name {
+	case fyne.KeyH:
+		if modifiers.CtrlPressed {
+			h.dialog.BackspaceSearch()
+			return true
+		}
+
 	case fyne.KeyUp:
 		if modifiers.ShiftPressed {
 			h.dialog.MoveToTop()

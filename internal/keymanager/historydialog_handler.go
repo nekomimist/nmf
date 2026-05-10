@@ -84,6 +84,12 @@ func (hh *HistoryDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modif
 	hh.debugPrint("HistoryDialog: OnTypedKey %s", ev.Name)
 
 	switch ev.Name {
+	case fyne.KeyH:
+		if modifiers.CtrlPressed {
+			hh.historyDialog.BackspaceSearch()
+			return true
+		}
+
 	case fyne.KeyUp:
 		if modifiers.ShiftPressed {
 			hh.historyDialog.MoveToTop()

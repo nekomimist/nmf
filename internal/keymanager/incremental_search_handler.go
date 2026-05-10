@@ -109,6 +109,7 @@ func (ish *IncrementalSearchKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers M
 		// Let OnTypedRune handle character input
 		return false
 	}
+	return false
 }
 
 // OnKeyUp handles key release events during incremental search
@@ -122,6 +123,12 @@ func (ish *IncrementalSearchKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers 
 	ish.debugPrint("IncrementalSearchKeyHandler: OnTypedKey %v", ev.Name)
 
 	switch ev.Name {
+	case fyne.KeyH:
+		if modifiers.CtrlPressed {
+			ish.searchInterface.RemoveLastSearchCharacter()
+			return true
+		}
+
 	case fyne.KeyEscape:
 		// Exit search mode
 		ish.searchInterface.HideIncrementalSearchOverlay()
@@ -144,6 +151,7 @@ func (ish *IncrementalSearchKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers 
 		// Let other events pass through
 		return false
 	}
+	return false
 }
 
 // OnTypedRune handles character input during incremental search

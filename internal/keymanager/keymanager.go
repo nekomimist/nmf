@@ -264,6 +264,20 @@ func (km *KeyManager) HandleTypedKey(ev *fyne.KeyEvent) {
 	modifiers := km.modifierState
 	km.mutex.RUnlock()
 
+	km.handleTypedKey(ev, modifiers)
+}
+
+// HandleShortcutKey routes a shortcut-style key event to the current handler.
+func (km *KeyManager) HandleShortcutKey(ev *fyne.KeyEvent, modifiers ModifierState) {
+	if km.shouldDrainKey(ev.Name) {
+		km.debugPrint("KeyManager: ShortcutKey drained key=%s", ev.Name)
+		return
+	}
+
+	km.handleTypedKey(ev, modifiers)
+}
+
+func (km *KeyManager) handleTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) {
 	currentHandler, beforeVersion := km.currentHandlerAndVersion()
 
 	if currentHandler != nil {

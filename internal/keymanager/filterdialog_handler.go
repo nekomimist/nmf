@@ -75,6 +75,12 @@ func (fh *FilterDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modifi
 	fh.debugPrint("FilterDialog: OnTypedKey %s", ev.Name)
 
 	switch ev.Name {
+	case fyne.KeyH:
+		if modifiers.CtrlPressed {
+			fh.filterDialog.BackspaceSearch()
+			return true
+		}
+
 	case fyne.KeyUp:
 		if modifiers.ShiftPressed {
 			fh.filterDialog.MoveToTop()

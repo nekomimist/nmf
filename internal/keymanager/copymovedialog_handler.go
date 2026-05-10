@@ -65,6 +65,12 @@ func (h *CopyMoveDialogKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers Modifier
 // OnTypedKey handles non-text keys
 func (h *CopyMoveDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	switch ev.Name {
+	case fyne.KeyH:
+		if modifiers.CtrlPressed {
+			h.dialog.BackspaceSearch()
+			return true
+		}
+
 	case fyne.KeyUp:
 		if modifiers.ShiftPressed {
 			h.dialog.MoveToTop()

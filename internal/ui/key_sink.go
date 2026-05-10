@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/keymanager"
@@ -61,6 +62,23 @@ func (k *KeySink) TypedRune(r rune) {
 	if k.km != nil {
 		k.km.HandleTypedRune(r)
 	}
+}
+
+// TypedShortcut forwards desktop shortcut repeats to KeyManager.
+func (k *KeySink) TypedShortcut(shortcut fyne.Shortcut) {
+	if k.km == nil {
+		return
+	}
+	s, ok := shortcut.(*desktop.CustomShortcut)
+	if !ok {
+		return
+	}
+	modifiers := keymanager.ModifierState{
+		ShiftPressed: s.Modifier&fyne.KeyModifierShift != 0,
+		CtrlPressed:  s.Modifier&fyne.KeyModifierControl != 0,
+		AltPressed:   s.Modifier&fyne.KeyModifierAlt != 0,
+	}
+	k.km.HandleShortcutKey(&fyne.KeyEvent{Name: s.KeyName}, modifiers)
 }
 
 // KeyDown forwards desktop key down events to KeyManager.
