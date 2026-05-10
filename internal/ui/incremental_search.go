@@ -9,7 +9,6 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
-	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
@@ -21,7 +20,7 @@ type IncrementalSearchOverlay struct {
 	matchedFiles   []fileinfo.FileInfo // Files matching the search
 	currentMatch   int                 // Index of current match in matchedFiles
 	container      *fyne.Container     // Main container for the overlay
-	searchLabel    *widget.Label       // Shows current search term and match info
+	searchLabel    *canvas.Text        // Shows current search term and match info
 	visible        bool                // Whether the overlay is currently visible
 	debugPrint     func(format string, args ...interface{})
 	keyManager     *keymanager.KeyManager                // Keyboard input manager
@@ -54,20 +53,19 @@ func NewIncrementalSearchOverlay(
 
 // createWidgets creates the UI widgets for the overlay
 func (iso *IncrementalSearchOverlay) createWidgets() {
-	// Create search label that shows current search term and match info
-	iso.searchLabel = widget.NewLabel("")
-	iso.searchLabel.TextStyle.Bold = true
-
 	// Create background rectangle with high contrast colors
 	background := canvas.NewRectangle(theme.BackgroundColor())
-	// Use inverted colors for high visibility
+	textColor := color.Color(color.White)
 	if isDarkTheme() {
 		background.FillColor = color.RGBA{220, 220, 220, 240} // Light background
-		iso.searchLabel.Importance = widget.HighImportance    // Dark text
+		textColor = color.Black
 	} else {
-		background.FillColor = color.RGBA{40, 40, 40, 240}   // Dark background
-		iso.searchLabel.Importance = widget.MediumImportance // Light text
+		background.FillColor = color.RGBA{40, 40, 40, 240} // Dark background
 	}
+
+	// Create search text with explicit contrast so theme primary/cursor colors cannot leak in.
+	iso.searchLabel = canvas.NewText("", textColor)
+	iso.searchLabel.TextStyle.Bold = true
 
 	// Add padding around the label
 	paddedLabel := container.NewPadded(iso.searchLabel)
@@ -278,20 +276,25 @@ func (iso *IncrementalSearchOverlay) updateSearch() {
 func (iso *IncrementalSearchOverlay) updateDisplay() {
 	if len(iso.matchedFiles) == 0 {
 		if iso.searchTerm == "" {
-			iso.searchLabel.SetText("🔍 Type to narrow down")
+			iso.setSearchText("🔍 Type to narrow down")
 		} else {
-			iso.searchLabel.SetText(fmt.Sprintf("🔍 Search: %s (no matches found)", iso.searchTerm))
+			iso.setSearchText(fmt.Sprintf("🔍 Search: %s (no matches found)", iso.searchTerm))
 		}
 	} else {
 		matchInfo := fmt.Sprintf("[%d/%d]", iso.currentMatch+1, len(iso.matchedFiles))
 		if iso.searchTerm == "" {
-			iso.searchLabel.SetText(fmt.Sprintf("🔍 Type to narrow down %s", matchInfo))
+			iso.setSearchText(fmt.Sprintf("🔍 Type to narrow down %s", matchInfo))
 		} else {
 			currentFileName := ""
 			if iso.currentMatch >= 0 && iso.currentMatch < len(iso.matchedFiles) {
 				currentFileName = fmt.Sprintf(" → %s", iso.matchedFiles[iso.currentMatch].Name)
 			}
-			iso.searchLabel.SetText(fmt.Sprintf("🔍 Search: %s %s%s", iso.searchTerm, matchInfo, currentFileName))
+			iso.setSearchText(fmt.Sprintf("🔍 Search: %s %s%s", iso.searchTerm, matchInfo, currentFileName))
 		}
 	}
+}
+
+func (iso *IncrementalSearchOverlay) setSearchText(text string) {
+	iso.searchLabel.Text = text
+	iso.searchLabel.Refresh()
 }
