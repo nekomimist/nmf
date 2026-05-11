@@ -7,8 +7,10 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
-	"fyne.io/fyne/v2/theme"
+	fynetheme "fyne.io/fyne/v2/theme"
 	"github.com/bmatcuk/doublestar/v4"
+
+	customtheme "nmf/internal/theme"
 )
 
 // FileType represents the type of file
@@ -42,14 +44,6 @@ type FileInfo struct {
 	Status   FileStatus // ファイルの現在のステータス
 }
 
-// FileColorConfig represents color settings for different file types
-type FileColorConfig struct {
-	Regular   [4]uint8 `json:"regular"`   // Regular files
-	Directory [4]uint8 `json:"directory"` // Directories
-	Symlink   [4]uint8 `json:"symlink"`   // Symbolic links
-	Hidden    [4]uint8 `json:"hidden"`    // Hidden files
-}
-
 // ListItem wraps FileInfo with index for rendering
 type ListItem struct {
 	Index    int
@@ -69,13 +63,13 @@ func DetermineFileType(path string, name string, isDir bool) FileType {
 func GetTextColor(fileType FileType, themeProvider ThemeColorProvider) color.RGBA {
 	switch fileType {
 	case FileTypeDirectory:
-		return themeProvider.GetCustomColor("fileDirectory")
+		return themeProvider.GetCustomColor(customtheme.ColorFileDirectory)
 	case FileTypeSymlink:
-		return themeProvider.GetCustomColor("fileSymlink")
+		return themeProvider.GetCustomColor(customtheme.ColorFileSymlink)
 	case FileTypeHidden:
-		return themeProvider.GetCustomColor("fileHidden")
+		return themeProvider.GetCustomColor(customtheme.ColorFileHidden)
 	default: // FileTypeRegular
-		return themeProvider.GetCustomColor("fileRegular")
+		return themeProvider.GetCustomColor(customtheme.ColorFileRegular)
 	}
 }
 
@@ -89,13 +83,13 @@ type ThemeColorProvider interface {
 func GetStatusBackgroundColor(status FileStatus, themeProvider ThemeColorProvider) *color.RGBA {
 	switch status {
 	case StatusAdded:
-		color := themeProvider.GetCustomColor("statusAdded")
+		color := themeProvider.GetCustomColor(customtheme.ColorStatusAdded)
 		return &color
 	case StatusDeleted:
-		color := themeProvider.GetCustomColor("statusDeleted")
+		color := themeProvider.GetCustomColor(customtheme.ColorStatusDeleted)
 		return &color
 	case StatusModified:
-		color := themeProvider.GetCustomColor("statusModified")
+		color := themeProvider.GetCustomColor(customtheme.ColorStatusModified)
 		return &color
 	default: // StatusNormal
 		return nil // No background
@@ -153,7 +147,7 @@ func (s *ColoredTextSegment) Visual() fyne.CanvasObject {
 	}
 
 	// Set appropriate text size from theme
-	text.TextSize = fyne.CurrentApp().Settings().Theme().Size(theme.SizeNameText)
+	text.TextSize = fyne.CurrentApp().Settings().Theme().Size(fynetheme.SizeNameText)
 	return text
 }
 

@@ -47,11 +47,6 @@ const (
 	FileSizeUnits = "KMGTPE"
 )
 
-// Default cursor color (still used in config defaults)
-var (
-	DefaultCursorColor = [4]uint8{255, 255, 255, 255} // White
-)
-
 // Theme constants
 const (
 	DefaultFontSize  = 14

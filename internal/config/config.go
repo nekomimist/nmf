@@ -32,10 +32,11 @@ type rawWindowConfig struct {
 }
 
 type rawThemeConfig struct {
-	Dark     *bool   `json:"dark"`
-	FontSize *int    `json:"fontSize"`
-	FontName *string `json:"fontName"`
-	FontPath *string `json:"fontPath"`
+	Dark     *bool                       `json:"dark"`
+	FontSize *int                        `json:"fontSize"`
+	FontName *string                     `json:"fontName"`
+	FontPath *string                     `json:"fontPath"`
+	Colors   map[string]ThemeColorConfig `json:"colors"`
 }
 
 type rawUIConfig struct {
@@ -93,10 +94,133 @@ type WindowConfig struct {
 
 // ThemeConfig represents theme-related settings
 type ThemeConfig struct {
-	Dark     bool   `json:"dark"`
-	FontSize int    `json:"fontSize"`
-	FontName string `json:"fontName"`
-	FontPath string `json:"fontPath"`
+	Dark     bool                        `json:"dark"`
+	FontSize int                         `json:"fontSize"`
+	FontName string                      `json:"fontName"`
+	FontPath string                      `json:"fontPath"`
+	Colors   map[string]ThemeColorConfig `json:"colors,omitempty"`
+}
+
+// ThemeColorValue is a color override expressed as either an RGBA tuple or a
+// named color resolved by the theme package.
+type ThemeColorValue struct {
+	RGBA   [4]uint8
+	Name   string
+	IsRGBA bool
+}
+
+// ThemeColorConfig stores common and variant-specific overrides for an app
+// color. Nil fields mean "use the built-in default".
+type ThemeColorConfig struct {
+	Value        *ThemeColorValue `json:"value,omitempty"`
+	Dark         *ThemeColorValue `json:"dark,omitempty"`
+	Light        *ThemeColorValue `json:"light,omitempty"`
+	DarkDefault  bool             `json:"-"`
+	LightDefault bool             `json:"-"`
+}
+
+// UnmarshalJSON accepts either a direct color value or an object with value,
+// dark, and light fields.
+func (c *ThemeColorConfig) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*c = ThemeColorConfig{}
+		return nil
+	}
+
+	var direct ThemeColorValue
+	if err := json.Unmarshal(data, &direct); err == nil {
+		*c = ThemeColorConfig{Value: &direct}
+		return nil
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("theme color must be a name, RGBA array, or object: %w", err)
+	}
+	var parsed ThemeColorConfig
+	if data, ok := raw["value"]; ok && string(data) != "null" {
+		var value ThemeColorValue
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		parsed.Value = &value
+	}
+	if data, ok := raw["dark"]; ok {
+		if string(data) == "null" {
+			parsed.DarkDefault = true
+		} else {
+			var value ThemeColorValue
+			if err := json.Unmarshal(data, &value); err != nil {
+				return err
+			}
+			parsed.Dark = &value
+		}
+	}
+	if data, ok := raw["light"]; ok {
+		if string(data) == "null" {
+			parsed.LightDefault = true
+		} else {
+			var value ThemeColorValue
+			if err := json.Unmarshal(data, &value); err != nil {
+				return err
+			}
+			parsed.Light = &value
+		}
+	}
+	*c = parsed
+	return nil
+}
+
+func (c ThemeColorConfig) MarshalJSON() ([]byte, error) {
+	raw := make(map[string]interface{})
+	if c.Value != nil {
+		raw["value"] = c.Value
+	}
+	if c.DarkDefault {
+		raw["dark"] = nil
+	} else if c.Dark != nil {
+		raw["dark"] = c.Dark
+	}
+	if c.LightDefault {
+		raw["light"] = nil
+	} else if c.Light != nil {
+		raw["light"] = c.Light
+	}
+	return json.Marshal(raw)
+}
+
+func (v *ThemeColorValue) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*v = ThemeColorValue{}
+		return nil
+	}
+
+	var name string
+	if err := json.Unmarshal(data, &name); err == nil {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return fmt.Errorf("color name must not be empty")
+		}
+		*v = ThemeColorValue{Name: name}
+		return nil
+	}
+
+	var rgba []uint8
+	if err := json.Unmarshal(data, &rgba); err != nil {
+		return fmt.Errorf("color value must be a name or RGBA array")
+	}
+	if len(rgba) != 4 {
+		return fmt.Errorf("RGBA color array must have 4 elements")
+	}
+	*v = ThemeColorValue{RGBA: [4]uint8{rgba[0], rgba[1], rgba[2], rgba[3]}, IsRGBA: true}
+	return nil
+}
+
+func (v ThemeColorValue) MarshalJSON() ([]byte, error) {
+	if v.IsRGBA {
+		return json.Marshal([]uint8{v.RGBA[0], v.RGBA[1], v.RGBA[2], v.RGBA[3]})
+	}
+	return json.Marshal(v.Name)
 }
 
 // UIConfig represents UI-related settings
@@ -424,6 +548,7 @@ func cloneConfig(cfg *Config) *Config {
 	}
 
 	copyConfig := *cfg
+	copyConfig.Theme = cloneThemeConfig(cfg.Theme)
 	copyConfig.UI = cloneUIConfig(cfg.UI)
 	return &copyConfig
 }
@@ -431,6 +556,37 @@ func cloneConfig(cfg *Config) *Config {
 // Clone returns a deep copy of cfg suitable for independent mutation.
 func Clone(cfg *Config) *Config {
 	return cloneConfig(cfg)
+}
+
+func cloneThemeConfig(src ThemeConfig) ThemeConfig {
+	clone := src
+	if src.Colors != nil {
+		clone.Colors = make(map[string]ThemeColorConfig, len(src.Colors))
+		for k, v := range src.Colors {
+			clone.Colors[k] = cloneThemeColorConfig(v)
+		}
+	}
+	return clone
+}
+
+func cloneThemeColorConfig(src ThemeColorConfig) ThemeColorConfig {
+	clone := ThemeColorConfig{
+		DarkDefault:  src.DarkDefault,
+		LightDefault: src.LightDefault,
+	}
+	if src.Value != nil {
+		value := *src.Value
+		clone.Value = &value
+	}
+	if src.Dark != nil {
+		dark := *src.Dark
+		clone.Dark = &dark
+	}
+	if src.Light != nil {
+		light := *src.Light
+		clone.Light = &light
+	}
+	return clone
 }
 
 func cloneUIConfig(src UIConfig) UIConfig {
@@ -639,6 +795,12 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) {
 	}
 	if fileConfig.Theme.FontPath != nil && *fileConfig.Theme.FontPath != "" {
 		defaultConfig.Theme.FontPath = *fileConfig.Theme.FontPath
+	}
+	if fileConfig.Theme.Colors != nil {
+		defaultConfig.Theme.Colors = make(map[string]ThemeColorConfig, len(fileConfig.Theme.Colors))
+		for k, v := range fileConfig.Theme.Colors {
+			defaultConfig.Theme.Colors[strings.TrimSpace(k)] = cloneThemeColorConfig(v)
+		}
 	}
 
 	// Merge UI config

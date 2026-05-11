@@ -72,7 +72,7 @@ User-facing `config.json` syntax and examples are documented in
 Top-level config sections:
 
 - `window`: `width`, `height`
-- `theme`: `dark`, `fontSize`, `fontName`, `fontPath`
+- `theme`: `dark`, `fontSize`, `fontName`, `fontPath`, `colors`
 - `ui`:
   - `showHiddenFiles`, `sort`, `itemSpacing`
   - `cursorStyle`

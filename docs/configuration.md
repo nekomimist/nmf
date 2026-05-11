@@ -26,7 +26,14 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
     "dark": true,
     "fontSize": 14,
     "fontName": "Noto Sans CJK JP",
-    "fontPath": ""
+    "fontPath": "",
+    "colors": {
+      "cursor": {
+        "dark": "foreground",
+        "light": [0, 0, 0, 255]
+      },
+      "selectionBackground": "selection"
+    }
   },
   "ui": {
     "showHiddenFiles": false,
@@ -74,6 +81,8 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
 - `fontSize`: base text size. `0` keeps the default.
 - `fontName`: preferred system font name. Empty uses the built-in fallback list.
 - `fontPath`: explicit font file path. Empty disables explicit file loading.
+- `colors`: optional app-specific color overrides. Values can be RGBA arrays,
+  Fyne theme color names, or Fyne primary color names.
 
 `ui`
 
@@ -85,6 +94,60 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
 - `cursorStyle.type`: one of `underline`, `border`, `background`, `icon`, or
   `font`.
 - `cursorStyle.thickness`: underline or border thickness.
+
+## Colors
+
+`theme.colors` customizes NMF-specific colors without replacing the whole Fyne
+theme. Missing values keep the built-in defaults.
+
+```json
+{
+  "theme": {
+    "colors": {
+      "fileRegular": "foreground",
+      "fileDirectory": [135, 206, 250, 255],
+      "cursor": {
+        "dark": "foreground",
+        "light": [0, 0, 0, 255]
+      }
+    }
+  }
+}
+```
+
+Configurable color names:
+
+- `fileRegular`, `fileDirectory`, `fileSymlink`, `fileHidden`
+- `statusAdded`, `statusDeleted`, `statusModified`
+- `selectionBackground`, `cursor`
+- `searchOverlayBackground`, `searchOverlayForeground`
+- `busyOverlayBackground`
+
+Color values:
+
+- RGBA array: `[r, g, b, a]`, each value from `0` to `255`.
+- Fyne theme color name: `background`, `foreground`, `primary`, `selection`,
+  `focus`, `overlayBackground`, and other `theme.ColorName*` string values.
+- Fyne primary color name: `red`, `orange`, `yellow`, `green`, `blue`,
+  `purple`, `brown`, or `gray`.
+
+Use an object when dark and light themes should differ:
+
+```json
+{
+  "theme": {
+    "colors": {
+      "cursor": {
+        "dark": "foreground",
+        "light": [0, 0, 0, 255]
+      }
+    }
+  }
+}
+```
+
+Set `dark` or `light` to `null` to force that variant to keep the built-in
+default even when `value` is set.
 
 ## Runtime State
 

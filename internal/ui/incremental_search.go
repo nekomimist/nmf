@@ -8,10 +8,10 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/theme"
 
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
+	customtheme "nmf/internal/theme"
 )
 
 // IncrementalSearchOverlay represents a lightweight search overlay
@@ -29,22 +29,25 @@ type IncrementalSearchOverlay struct {
 	allFiles       []fileinfo.FileInfo                   // All files in current directory
 	parent         fyne.Window                           // Parent window for positioning
 	closed         bool                                  // Prevent double-close
+	themeProvider  ThemeColorProvider
 }
 
 // NewIncrementalSearchOverlay creates a new incremental search overlay
 func NewIncrementalSearchOverlay(
 	files []fileinfo.FileInfo,
 	keyManager *keymanager.KeyManager,
+	themeProvider ThemeColorProvider,
 	debugPrint func(format string, args ...interface{}),
 ) *IncrementalSearchOverlay {
 	overlay := &IncrementalSearchOverlay{
-		searchTerm:   "",
-		allFiles:     files,
-		matchedFiles: make([]fileinfo.FileInfo, 0),
-		currentMatch: -1,
-		debugPrint:   debugPrint,
-		keyManager:   keyManager,
-		visible:      false,
+		searchTerm:    "",
+		allFiles:      files,
+		matchedFiles:  make([]fileinfo.FileInfo, 0),
+		currentMatch:  -1,
+		debugPrint:    debugPrint,
+		keyManager:    keyManager,
+		visible:       false,
+		themeProvider: themeProvider,
 	}
 
 	overlay.createWidgets()
@@ -53,15 +56,9 @@ func NewIncrementalSearchOverlay(
 
 // createWidgets creates the UI widgets for the overlay
 func (iso *IncrementalSearchOverlay) createWidgets() {
-	// Create background rectangle with high contrast colors
-	background := canvas.NewRectangle(theme.BackgroundColor())
-	textColor := color.Color(color.White)
-	if isDarkTheme() {
-		background.FillColor = color.RGBA{220, 220, 220, 240} // Light background
-		textColor = color.Black
-	} else {
-		background.FillColor = color.RGBA{40, 40, 40, 240} // Dark background
-	}
+	backgroundColor := iso.overlayColor(customtheme.ColorSearchOverlayBackground)
+	textColor := iso.overlayColor(customtheme.ColorSearchOverlayForeground)
+	background := canvas.NewRectangle(backgroundColor)
 
 	// Create search text with explicit contrast so theme primary/cursor colors cannot leak in.
 	iso.searchLabel = canvas.NewText("", textColor)
@@ -75,21 +72,11 @@ func (iso *IncrementalSearchOverlay) createWidgets() {
 	iso.container.Hide() // Initially hidden
 }
 
-// isDarkTheme attempts to detect if we're using a dark theme
-func isDarkTheme() bool {
-	// Simple heuristic: check if background is darker than foreground
-	bg := theme.BackgroundColor()
-	fg := theme.ForegroundColor()
-
-	// Convert to RGBA
-	bgRGBA := color.RGBAModel.Convert(bg).(color.RGBA)
-	fgRGBA := color.RGBAModel.Convert(fg).(color.RGBA)
-
-	// Calculate luminance (simplified)
-	bgLum := float64(bgRGBA.R) + float64(bgRGBA.G) + float64(bgRGBA.B)
-	fgLum := float64(fgRGBA.R) + float64(fgRGBA.G) + float64(fgRGBA.B)
-
-	return bgLum < fgLum
+func (iso *IncrementalSearchOverlay) overlayColor(name string) color.RGBA {
+	if iso.themeProvider == nil {
+		return color.RGBA{}
+	}
+	return iso.themeProvider.GetCustomColor(name)
 }
 
 // GetContainer returns the container widget for the overlay

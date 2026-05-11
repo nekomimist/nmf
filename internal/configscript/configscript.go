@@ -16,6 +16,7 @@ import (
 	"nmf/internal/config"
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
+	customtheme "nmf/internal/theme"
 )
 
 const (
@@ -272,6 +273,8 @@ func (rt *Runtime) predeclared() starlark.StringDict {
 		"nmf": starlarkstruct.FromStringDict(starlark.String("nmf"), starlark.StringDict{
 			"window":             starlark.NewBuiltin("nmf.window", rt.builtinWindow),
 			"theme":              starlark.NewBuiltin("nmf.theme", rt.builtinTheme),
+			"color":              starlark.NewBuiltin("nmf.color", rt.builtinColor),
+			"dark_theme":         starlark.NewBuiltin("nmf.dark_theme", rt.builtinDarkTheme),
 			"ui":                 starlark.NewBuiltin("nmf.ui", rt.builtinUI),
 			"sort":               starlark.NewBuiltin("nmf.sort", rt.builtinSort),
 			"cursor_style":       starlark.NewBuiltin("nmf.cursor_style", rt.builtinCursorStyle),
@@ -352,6 +355,74 @@ func (rt *Runtime) builtinTheme(_ *starlark.Thread, fn *starlark.Builtin, args s
 	rt.cfg.Theme.FontPath = fontPath
 	rt.saveMask.theme = true
 	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinColor(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if len(args) < 1 || len(args) > 2 {
+		return nil, fmt.Errorf("%s expects color name and optional value", fn.Name())
+	}
+	name, ok := starlark.AsString(args.Index(0))
+	if !ok || strings.TrimSpace(name) == "" {
+		return nil, fmt.Errorf("color name must be a non-empty string")
+	}
+	name = strings.TrimSpace(name)
+	if !customtheme.IsAppColorName(name) {
+		return nil, fmt.Errorf("unknown app color name: %s", name)
+	}
+
+	updates := map[string]starlark.Value{}
+	if len(args) == 2 {
+		updates["value"] = args.Index(1)
+	}
+	for _, kw := range kwargs {
+		key, ok := starlark.AsString(kw.Index(0))
+		if !ok {
+			return nil, fmt.Errorf("%s keyword name must be a string", fn.Name())
+		}
+		switch key {
+		case "value", "dark", "light":
+			if _, exists := updates[key]; exists {
+				return nil, fmt.Errorf("%s got duplicate argument %s", fn.Name(), key)
+			}
+			updates[key] = kw.Index(1)
+		default:
+			return nil, fmt.Errorf("%s got unexpected keyword argument %s", fn.Name(), key)
+		}
+	}
+
+	if len(updates) == 0 {
+		return starlark.None, nil
+	}
+	if rt.cfg.Theme.Colors == nil {
+		rt.cfg.Theme.Colors = make(map[string]config.ThemeColorConfig)
+	}
+	colorConfig := rt.cfg.Theme.Colors[name]
+	for key, value := range updates {
+		parsed, err := starlarkColorValue(value)
+		if err != nil {
+			return nil, fmt.Errorf("%s %s: %w", fn.Name(), key, err)
+		}
+		switch key {
+		case "value":
+			colorConfig.Value = parsed
+		case "dark":
+			colorConfig.Dark = parsed
+			colorConfig.DarkDefault = parsed == nil
+		case "light":
+			colorConfig.Light = parsed
+			colorConfig.LightDefault = parsed == nil
+		}
+	}
+	rt.cfg.Theme.Colors[name] = colorConfig
+	rt.saveMask.theme = true
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinDarkTheme(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs); err != nil {
+		return nil, err
+	}
+	return starlark.Bool(rt.cfg.Theme.Dark), nil
 }
 
 func (rt *Runtime) builtinUI(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -1051,6 +1122,44 @@ func stringList(value starlark.Value, name string) ([]string, error) {
 		result = append(result, s)
 	}
 	return result, nil
+}
+
+func starlarkColorValue(value starlark.Value) (*config.ThemeColorValue, error) {
+	if value == nil || value == starlark.None {
+		return nil, nil
+	}
+	if name, ok := starlark.AsString(value); ok {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return nil, fmt.Errorf("color name must not be empty")
+		}
+		return &config.ThemeColorValue{Name: name}, nil
+	}
+
+	iterable := starlark.Iterate(value)
+	if iterable == nil {
+		return nil, fmt.Errorf("color must be a name, RGBA list, RGBA tuple, or None")
+	}
+	defer iterable.Done()
+
+	var rgba [4]uint8
+	var item starlark.Value
+	i := 0
+	for iterable.Next(&item) {
+		if i >= len(rgba) {
+			return nil, fmt.Errorf("RGBA color must have exactly 4 values")
+		}
+		n, err := starlark.AsInt32(item)
+		if err != nil || n < 0 || n > 255 {
+			return nil, fmt.Errorf("RGBA values must be integers from 0 to 255")
+		}
+		rgba[i] = uint8(n)
+		i++
+	}
+	if i != len(rgba) {
+		return nil, fmt.Errorf("RGBA color must have exactly 4 values")
+	}
+	return &config.ThemeColorValue{RGBA: rgba, IsRGBA: true}, nil
 }
 
 func optionalString(value starlark.Value, name string) (string, bool, error) {

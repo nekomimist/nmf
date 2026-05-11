@@ -6,13 +6,27 @@ import (
 	"testing"
 
 	"nmf/internal/fileinfo"
+	customtheme "nmf/internal/theme"
 )
+
+type incrementalSearchTheme struct{}
+
+func (incrementalSearchTheme) GetCustomColor(colorType string) color.RGBA {
+	switch colorType {
+	case customtheme.ColorSearchOverlayBackground:
+		return color.RGBA{40, 40, 40, 240}
+	case customtheme.ColorSearchOverlayForeground:
+		return color.RGBA{255, 255, 255, 255}
+	default:
+		return color.RGBA{}
+	}
+}
 
 func TestIncrementalSearchShowUsesShortInitialPrompt(t *testing.T) {
 	overlay := NewIncrementalSearchOverlay([]fileinfo.FileInfo{
 		{Name: "alpha.txt"},
 		{Name: "beta.txt"},
-	}, nil, func(string, ...interface{}) {})
+	}, nil, incrementalSearchTheme{}, func(string, ...interface{}) {})
 
 	overlay.Show(nil)
 
@@ -32,7 +46,7 @@ func TestIncrementalSearchShowSelectsFirstFileWhenSearchIsEmpty(t *testing.T) {
 	overlay := NewIncrementalSearchOverlay([]fileinfo.FileInfo{
 		{Name: "alpha.txt"},
 		{Name: "beta.txt"},
-	}, nil, func(string, ...interface{}) {})
+	}, nil, incrementalSearchTheme{}, func(string, ...interface{}) {})
 
 	overlay.Show(nil)
 
@@ -49,7 +63,7 @@ func TestIncrementalSearchTypingUpdatesMatchDisplay(t *testing.T) {
 	overlay := NewIncrementalSearchOverlay([]fileinfo.FileInfo{
 		{Name: "alpha.txt"},
 		{Name: "beta.txt"},
-	}, nil, func(string, ...interface{}) {})
+	}, nil, incrementalSearchTheme{}, func(string, ...interface{}) {})
 
 	overlay.Show(nil)
 	overlay.AddCharacter('b')
@@ -65,13 +79,10 @@ func TestIncrementalSearchTypingUpdatesMatchDisplay(t *testing.T) {
 }
 
 func TestIncrementalSearchTextUsesExplicitContrastColor(t *testing.T) {
-	overlay := NewIncrementalSearchOverlay([]fileinfo.FileInfo{{Name: "alpha.txt"}}, nil, func(string, ...interface{}) {})
+	overlay := NewIncrementalSearchOverlay([]fileinfo.FileInfo{{Name: "alpha.txt"}}, nil, incrementalSearchTheme{}, func(string, ...interface{}) {})
 
 	got := color.RGBAModel.Convert(overlay.searchLabel.Color).(color.RGBA)
 	want := color.RGBA{255, 255, 255, 255}
-	if isDarkTheme() {
-		want = color.RGBA{0, 0, 0, 255}
-	}
 	if got != want {
 		t.Fatalf("search text color = %#v, want explicit contrast color %#v", got, want)
 	}

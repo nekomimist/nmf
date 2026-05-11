@@ -4,18 +4,18 @@
 - Fyne/GLFWではキーリピートがKeyDownではなくTypedKey/TypedShortcut側へ流れる。
 - repeatしてほしい操作はtyped/TypedShortcutへ寄せ、長押しで増殖して困る操作はdown/upに残す。
 
-## 内部で使っている色定数を設定可能にしたい
-- UI内で直接使っている色に名前をつけ、初期値は現在の内蔵値にする。
-- `config.json` と Starlark からカスタマイズできるようにする。
-- dark/lightで変わる色を個別設定できるようにするか、共通名に対してテーマ別の上書きを持たせるか検討する。
-- 既存の `internal/theme` の色スキームと、個別UIで直接指定している色を棚卸しする。
-
 ## OK/Cancel的な二択ボタン
 - あまり統一感がないかもしれない。CancelIconとConfirmIcon をつけて、Confirmのほうのアイコン色を
   ThemeのPrimaryColorにした上でボタンサイズを揃えたほうがFyneのアプリっぽいかもしれない。
   (優先度低)
 
 # DONE 以下は一応終わったもの
+## 内部で使っている色定数を設定可能にしたい
+- UI内で直接使っている色に名前をつけ、初期値は現在の内蔵値にした。
+- `config.json` の `theme.colors` と Starlark の `nmf.color()` からカスタマイズできるようにした。
+- 共通指定と dark/light 別指定に対応した。
+- Fyne Theme の `primary` と `focus` は標準Themeへ委譲する形に戻した。
+
 ## 全ファイルマークできるコマンドを追加
 - `selection.markAll` を追加。
 - デフォルトキーバインドはC-A。

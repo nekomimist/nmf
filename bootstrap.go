@@ -35,7 +35,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 	}
 
 	// Busy overlay (hidden by default)
-	fm.busyOverlay = ui.NewBusyOverlay()
+	fm.busyOverlay = ui.NewBusyOverlay(customTheme)
 	fm.busyDelay = 150 * time.Millisecond
 
 	// Initialize async icon service and subscribe for updates
@@ -63,7 +63,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 	}
 
 	// Create incremental search overlay
-	fm.searchOverlay = ui.NewIncrementalSearchOverlay([]fileinfo.FileInfo{}, fm.keyManager, debugPrint)
+	fm.searchOverlay = ui.NewIncrementalSearchOverlay([]fileinfo.FileInfo{}, fm.keyManager, customTheme, debugPrint)
 	fm.searchHandler = keymanager.NewIncrementalSearchKeyHandler(fm, debugPrint)
 
 	// Setup KeyManager with main screen handler

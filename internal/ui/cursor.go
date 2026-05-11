@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/container"
 
 	"nmf/internal/config"
+	customtheme "nmf/internal/theme"
 )
 
 // ThemeColorProvider provides custom theme colors
@@ -24,7 +25,7 @@ type CursorRenderer interface {
 type UnderlineCursorRenderer struct{}
 
 func (r *UnderlineCursorRenderer) RenderCursor(bounds fyne.Size, textBounds fyne.Position, config config.CursorStyleConfig, themeProvider ThemeColorProvider) fyne.CanvasObject {
-	cursorColor := themeProvider.GetCustomColor("cursor")
+	cursorColor := themeProvider.GetCustomColor(customtheme.ColorCursor)
 	underline := canvas.NewRectangle(cursorColor)
 
 	thickness := float32(config.Thickness)
@@ -43,7 +44,7 @@ func (r *UnderlineCursorRenderer) RenderCursor(bounds fyne.Size, textBounds fyne
 type BorderCursorRenderer struct{}
 
 func (r *BorderCursorRenderer) RenderCursor(bounds fyne.Size, textBounds fyne.Position, config config.CursorStyleConfig, themeProvider ThemeColorProvider) fyne.CanvasObject {
-	borderColor := themeProvider.GetCustomColor("cursor")
+	borderColor := themeProvider.GetCustomColor(customtheme.ColorCursor)
 
 	thickness := float32(config.Thickness)
 	if thickness <= 0 {
@@ -74,7 +75,7 @@ func (r *BorderCursorRenderer) RenderCursor(bounds fyne.Size, textBounds fyne.Po
 type BackgroundCursorRenderer struct{}
 
 func (r *BackgroundCursorRenderer) RenderCursor(bounds fyne.Size, textBounds fyne.Position, config config.CursorStyleConfig, themeProvider ThemeColorProvider) fyne.CanvasObject {
-	cursorColor := themeProvider.GetCustomColor("cursor")
+	cursorColor := themeProvider.GetCustomColor(customtheme.ColorCursor)
 	background := canvas.NewRectangle(cursorColor)
 
 	background.Resize(bounds)

@@ -1,12 +1,12 @@
 package ui
 
 import (
-	"image/color"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
+
+	customtheme "nmf/internal/theme"
 )
 
 // busyBlocker is a full-window widget that:
@@ -48,7 +48,7 @@ type BusyOverlay struct {
 	visible bool
 }
 
-func NewBusyOverlay() *BusyOverlay {
+func NewBusyOverlay(themeProvider ThemeColorProvider) *BusyOverlay {
 	spinner := widget.NewProgressBarInfinite()
 	spinner.Start()
 
@@ -56,7 +56,7 @@ func NewBusyOverlay() *BusyOverlay {
 	lbl.Alignment = fyne.TextAlignCenter
 
 	// Semi-transparent backdrop
-	bg := canvas.NewRectangle(color.NRGBA{R: 0, G: 0, B: 0, A: 96})
+	bg := canvas.NewRectangle(themeProvider.GetCustomColor(customtheme.ColorBusyOverlayBackground))
 
 	// Center panel
 	panel := container.NewVBox(spinner, lbl)

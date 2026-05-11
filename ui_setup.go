@@ -16,6 +16,7 @@ import (
 
 	"nmf/internal/fileinfo"
 	"nmf/internal/jobs"
+	customtheme "nmf/internal/theme"
 	"nmf/internal/ui"
 )
 
@@ -33,7 +34,7 @@ func (fm *FileManager) setupUI() {
 		func() fyne.CanvasObject {
 			// Create tappable icon (onTapped will be set in UpdateItem)
 			icon := ui.NewTappableIcon(theme.FolderIcon(), nil)
-			nameLabel := ui.NewFileNameLabel("filename", fm.customTheme.GetCustomColor("fileRegular"))
+			nameLabel := ui.NewFileNameLabel("filename", fm.customTheme.GetCustomColor(customtheme.ColorFileRegular))
 			info := widget.NewLabel("info")
 
 			// Size icon based on text height for consistency
@@ -163,7 +164,7 @@ func (fm *FileManager) setupUI() {
 
 			// Add selection background if selected (covers entire item)
 			if isSelected {
-				selectionColor := fm.customTheme.GetCustomColor("selectionBackground")
+				selectionColor := fm.customTheme.GetCustomColor(customtheme.ColorSelectionBackground)
 				selectionBG := canvas.NewRectangle(selectionColor)
 				selectionBG.Resize(obj.Size())
 				selectionBG.Move(fyne.NewPos(0, 0))

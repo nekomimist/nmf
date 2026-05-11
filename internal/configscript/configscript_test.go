@@ -19,6 +19,10 @@ func TestLoadAppliesStarlarkConfig(t *testing.T) {
 	src := `
 nmf.window(width = 1000, height = 720)
 nmf.theme(dark = False, font_size = 16, font_name = "Noto Sans")
+if nmf.dark_theme():
+    nmf.theme(font_name = "wrong")
+nmf.color("cursor", dark = [1, 2, 3, 4], light = "foreground")
+nmf.color("selectionBackground", value = "selection", dark = None)
 nmf.ui(show_hidden_files = True, item_spacing = 2)
 nmf.sort(by = "extension", order = "desc", directories_first = False)
 nmf.cursor_style(type = "border", thickness = 3)
@@ -59,6 +63,18 @@ nmf.command("user.parent", parent)
 	}
 	if cfg.Theme.Dark || cfg.Theme.FontSize != 16 || cfg.Theme.FontName != "Noto Sans" {
 		t.Fatalf("theme = %+v, want light 16 Noto Sans", cfg.Theme)
+	}
+	if got := cfg.Theme.Colors["cursor"].Dark.RGBA; got != [4]uint8{1, 2, 3, 4} {
+		t.Fatalf("cursor dark color = %+v, want RGBA override", got)
+	}
+	if got := cfg.Theme.Colors["cursor"].Light.Name; got != "foreground" {
+		t.Fatalf("cursor light color = %q, want foreground", got)
+	}
+	if !cfg.Theme.Colors["selectionBackground"].DarkDefault || cfg.Theme.Colors["selectionBackground"].Dark != nil {
+		t.Fatalf("selection dark color should be reset to default")
+	}
+	if got := cfg.Theme.Colors["selectionBackground"].Value.Name; got != "selection" {
+		t.Fatalf("selection common color = %q, want selection", got)
 	}
 	if !cfg.UI.ShowHiddenFiles || cfg.UI.ItemSpacing != 2 {
 		t.Fatalf("ui = %+v, want hidden=true spacing=2", cfg.UI)

@@ -42,6 +42,11 @@ nmf.theme(
     font_name = nmf.getenv("NMF_FONT", "Noto Sans CJK JP"),
 )
 
+if nmf.dark_theme():
+    nmf.color("cursor", value = "foreground")
+else:
+    nmf.color("cursor", value = [0, 0, 0, 255])
+
 nmf.ui(show_hidden_files = True, item_spacing = 2)
 nmf.sort(by = "extension", order = "asc", directories_first = True)
 nmf.cursor_style(type = "border", thickness = 2)
@@ -124,6 +129,7 @@ Scalar sections:
 
 - `nmf.window(width = int, height = int)`
 - `nmf.theme(dark = bool, font_size = int, font_name = str, font_path = str)`
+- `nmf.color(name, value = color|None, dark = color|None, light = color|None)`
 - `nmf.ui(show_hidden_files = bool, item_spacing = int)`
 - `nmf.sort(by = "name|size|modified|extension", order = "asc|desc",
   directories_first = bool, temporary = bool)`
@@ -157,12 +163,28 @@ Menu definitions are runtime-only and are not saved to `config.json`.
 
 Utility API:
 
+- `nmf.dark_theme()` returns `True` when the current effective theme is dark.
 - `nmf.getenv(name, default = None)` returns an environment variable value.
   If the variable is not set and no default is provided, it returns `None`.
 - `nmf.os()` returns the Go runtime OS name, such as `windows`, `linux`, or
   `darwin`.
 - `nmf.hostname()` returns the current host name, or an empty string if it
   cannot be read.
+
+Color API:
+
+- `nmf.color()` customizes NMF-specific colors such as `fileRegular`,
+  `fileDirectory`, `fileSymlink`, `fileHidden`, `statusAdded`,
+  `statusDeleted`, `statusModified`, `selectionBackground`, `cursor`,
+  `searchOverlayBackground`, `searchOverlayForeground`, and
+  `busyOverlayBackground`.
+- A color can be an RGBA list or tuple like `[255, 255, 255, 255]`, a Fyne
+  theme color name like `"foreground"` or `"selection"`, or a Fyne primary
+  color name like `"blue"` or `"green"`.
+- `value` applies to both dark and light themes. `dark` and `light` override
+  only that variant.
+- Passing `None` for `dark` or `light` keeps that variant on the built-in
+  default, even when a common `value` is set.
 
 ## Custom Commands
 

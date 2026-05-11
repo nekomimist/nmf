@@ -114,6 +114,11 @@ func TestMergeConfigs(t *testing.T) {
 	width := 1024
 	height := 768
 	thickness := 3
+	colors := map[string]ThemeColorConfig{
+		"cursor": {
+			Dark: &ThemeColorValue{RGBA: [4]uint8{1, 2, 3, 4}, IsRGBA: true},
+		},
+	}
 
 	fileConfig := &rawConfig{
 		Window: rawWindowConfig{
@@ -125,6 +130,7 @@ func TestMergeConfigs(t *testing.T) {
 			FontSize: &fontSize,
 			FontName: &fontName,
 			FontPath: &path,
+			Colors:   colors,
 		},
 		UI: rawUIConfig{
 			ShowHiddenFiles: &trueVal,
@@ -172,6 +178,9 @@ func TestMergeConfigs(t *testing.T) {
 	if defaultConfig.Theme.FontName != "Noto Sans CJK JP" {
 		t.Errorf("Expected merged font name 'Noto Sans CJK JP', got '%s'", defaultConfig.Theme.FontName)
 	}
+	if got := defaultConfig.Theme.Colors["cursor"].Dark.RGBA; got != [4]uint8{1, 2, 3, 4} {
+		t.Errorf("Expected merged cursor dark color, got %+v", got)
+	}
 	if defaultConfig.UI.ShowHiddenFiles != true {
 		t.Error("Expected merged ShowHiddenFiles to be true")
 	}
@@ -198,6 +207,47 @@ func TestMergeConfigs(t *testing.T) {
 	}
 	if len(defaultConfig.UI.ExternalCommands) != 1 || defaultConfig.UI.ExternalCommands[0].Command != "vim" {
 		t.Errorf("Expected external commands to be merged, got %+v", defaultConfig.UI.ExternalCommands)
+	}
+}
+
+func TestThemeColorConfigUnmarshal(t *testing.T) {
+	src := []byte(`{
+		"theme": {
+			"colors": {
+				"cursor": [1, 2, 3, 4],
+				"fileRegular": "foreground",
+				"selectionBackground": {
+					"dark": "selection",
+					"light": [5, 6, 7, 8]
+				},
+				"busyOverlayBackground": {
+					"value": [0, 0, 0, 96],
+					"dark": null
+				}
+			}
+		}
+	}`)
+	var raw rawConfig
+	if err := json.Unmarshal(src, &raw); err != nil {
+		t.Fatalf("Unmarshal failed: %v", err)
+	}
+	cfg := getDefaultConfig()
+	mergeConfigs(cfg, &raw)
+
+	if got := cfg.Theme.Colors["cursor"].Value.RGBA; got != [4]uint8{1, 2, 3, 4} {
+		t.Fatalf("cursor color = %+v, want RGBA override", got)
+	}
+	if got := cfg.Theme.Colors["fileRegular"].Value.Name; got != "foreground" {
+		t.Fatalf("fileRegular color = %q, want foreground", got)
+	}
+	if got := cfg.Theme.Colors["selectionBackground"].Dark.Name; got != "selection" {
+		t.Fatalf("selection dark = %q, want selection", got)
+	}
+	if got := cfg.Theme.Colors["selectionBackground"].Light.RGBA; got != [4]uint8{5, 6, 7, 8} {
+		t.Fatalf("selection light = %+v, want RGBA override", got)
+	}
+	if !cfg.Theme.Colors["busyOverlayBackground"].DarkDefault {
+		t.Fatal("busy overlay dark override should be explicit default")
 	}
 }
 

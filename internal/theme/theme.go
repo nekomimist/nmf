@@ -2,70 +2,107 @@ package theme
 
 import (
 	"image/color"
+	"strings"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/theme"
+	fynetheme "fyne.io/fyne/v2/theme"
 
 	"nmf/internal/config"
 )
 
-// CustomColorScheme defines custom colors for light and dark themes
-type CustomColorScheme struct {
-	// Status colors
-	StatusAdded    color.RGBA
-	StatusDeleted  color.RGBA
-	StatusModified color.RGBA
-
-	// UI colors
-	SelectionBackground color.RGBA
-	SearchOverlay       color.RGBA
-
-	// File type colors
-	FileRegular   color.RGBA
-	FileDirectory color.RGBA
-	FileSymlink   color.RGBA
-	FileHidden    color.RGBA
-
-	// Cursor color
-	Cursor color.RGBA
-
-	// Focus color
-	Focus color.RGBA
-}
+const (
+	ColorFileRegular             = "fileRegular"
+	ColorFileDirectory           = "fileDirectory"
+	ColorFileSymlink             = "fileSymlink"
+	ColorFileHidden              = "fileHidden"
+	ColorStatusAdded             = "statusAdded"
+	ColorStatusDeleted           = "statusDeleted"
+	ColorStatusModified          = "statusModified"
+	ColorSelectionBackground     = "selectionBackground"
+	ColorCursor                  = "cursor"
+	ColorSearchOverlayBackground = "searchOverlayBackground"
+	ColorSearchOverlayForeground = "searchOverlayForeground"
+	ColorBusyOverlayBackground   = "busyOverlayBackground"
+)
 
 var (
-	LightColorScheme = &CustomColorScheme{
-		StatusAdded:         color.RGBA{0, 150, 0, 80},     // Slightly darker green for light theme
-		StatusDeleted:       color.RGBA{100, 100, 100, 60}, // Slightly darker gray for light theme
-		StatusModified:      color.RGBA{200, 150, 0, 80},   // Slightly darker orange for light theme
-		SelectionBackground: color.RGBA{70, 120, 170, 100}, // Slightly darker blue for light theme
-		SearchOverlay:       color.RGBA{40, 40, 40, 240},   // Dark overlay for light theme
-		// File type colors for light theme
-		FileRegular:   color.RGBA{60, 60, 60, 255},    // Dark gray text for light theme
-		FileDirectory: color.RGBA{30, 100, 200, 255},  // Darker blue for light theme
-		FileSymlink:   color.RGBA{200, 100, 0, 255},   // Darker orange for light theme
-		FileHidden:    color.RGBA{120, 120, 120, 255}, // Medium gray for light theme
-		// Cursor color for light theme
-		Cursor: color.RGBA{0, 0, 0, 255}, // Black cursor for light theme
-		Focus:  color.RGBA{120, 175, 235, 255},
+	lightAppColorDefaults = map[string]color.RGBA{
+		ColorFileRegular:             {60, 60, 60, 255},
+		ColorFileDirectory:           {30, 100, 200, 255},
+		ColorFileSymlink:             {200, 100, 0, 255},
+		ColorFileHidden:              {120, 120, 120, 255},
+		ColorStatusAdded:             {0, 150, 0, 80},
+		ColorStatusDeleted:           {100, 100, 100, 60},
+		ColorStatusModified:          {200, 150, 0, 80},
+		ColorSelectionBackground:     {70, 120, 170, 100},
+		ColorCursor:                  {0, 0, 0, 255},
+		ColorSearchOverlayBackground: {40, 40, 40, 240},
+		ColorSearchOverlayForeground: {255, 255, 255, 255},
+		ColorBusyOverlayBackground:   {0, 0, 0, 96},
+	}
+	darkAppColorDefaults = map[string]color.RGBA{
+		ColorFileRegular:             {220, 220, 220, 255},
+		ColorFileDirectory:           {135, 206, 250, 255},
+		ColorFileSymlink:             {255, 165, 0, 255},
+		ColorFileHidden:              {105, 105, 105, 255},
+		ColorStatusAdded:             {0, 200, 0, 80},
+		ColorStatusDeleted:           {128, 128, 128, 60},
+		ColorStatusModified:          {255, 200, 0, 80},
+		ColorSelectionBackground:     {100, 150, 200, 100},
+		ColorCursor:                  {255, 255, 255, 255},
+		ColorSearchOverlayBackground: {220, 220, 220, 240},
+		ColorSearchOverlayForeground: {0, 0, 0, 255},
+		ColorBusyOverlayBackground:   {0, 0, 0, 96},
 	}
 
-	DarkColorScheme = &CustomColorScheme{
-		StatusAdded:         color.RGBA{0, 200, 0, 80}, // Current values for dark theme
-		StatusDeleted:       color.RGBA{128, 128, 128, 60},
-		StatusModified:      color.RGBA{255, 200, 0, 80},
-		SelectionBackground: color.RGBA{100, 150, 200, 100},
-		SearchOverlay:       color.RGBA{220, 220, 220, 240}, // Light overlay for dark theme
-		// File type colors for dark theme (current config defaults)
-		FileRegular:   color.RGBA{220, 220, 220, 255}, // Light gray text for dark theme
-		FileDirectory: color.RGBA{135, 206, 250, 255}, // Light sky blue for dark theme
-		FileSymlink:   color.RGBA{255, 165, 0, 255},   // Orange for dark theme
-		FileHidden:    color.RGBA{105, 105, 105, 255}, // Dim gray for dark theme
-		// Cursor color for dark theme (current config default)
-		Cursor: color.RGBA{255, 255, 255, 255}, // White cursor for dark theme
-		Focus:  color.RGBA{45, 95, 170, 255},
+	fyneColorNames = map[string]fyne.ThemeColorName{
+		"background":          fynetheme.ColorNameBackground,
+		"button":              fynetheme.ColorNameButton,
+		"disabledButton":      fynetheme.ColorNameDisabledButton,
+		"disabled":            fynetheme.ColorNameDisabled,
+		"error":               fynetheme.ColorNameError,
+		"focus":               fynetheme.ColorNameFocus,
+		"foreground":          fynetheme.ColorNameForeground,
+		"foregroundOnError":   fynetheme.ColorNameForegroundOnError,
+		"foregroundOnPrimary": fynetheme.ColorNameForegroundOnPrimary,
+		"foregroundOnSuccess": fynetheme.ColorNameForegroundOnSuccess,
+		"foregroundOnWarning": fynetheme.ColorNameForegroundOnWarning,
+		"headerBackground":    fynetheme.ColorNameHeaderBackground,
+		"hover":               fynetheme.ColorNameHover,
+		"hyperlink":           fynetheme.ColorNameHyperlink,
+		"inputBackground":     fynetheme.ColorNameInputBackground,
+		"inputBorder":         fynetheme.ColorNameInputBorder,
+		"menuBackground":      fynetheme.ColorNameMenuBackground,
+		"overlayBackground":   fynetheme.ColorNameOverlayBackground,
+		"placeholder":         fynetheme.ColorNamePlaceHolder,
+		"pressed":             fynetheme.ColorNamePressed,
+		"primary":             fynetheme.ColorNamePrimary,
+		"scrollBar":           fynetheme.ColorNameScrollBar,
+		"scrollBarBackground": fynetheme.ColorNameScrollBarBackground,
+		"selection":           fynetheme.ColorNameSelection,
+		"separator":           fynetheme.ColorNameSeparator,
+		"success":             fynetheme.ColorNameSuccess,
+		"shadow":              fynetheme.ColorNameShadow,
+		"warning":             fynetheme.ColorNameWarning,
+	}
+
+	primaryColorNames = map[string]bool{
+		fynetheme.ColorRed:    true,
+		fynetheme.ColorOrange: true,
+		fynetheme.ColorYellow: true,
+		fynetheme.ColorGreen:  true,
+		fynetheme.ColorBlue:   true,
+		fynetheme.ColorPurple: true,
+		fynetheme.ColorBrown:  true,
+		fynetheme.ColorGray:   true,
 	}
 )
+
+// IsAppColorName reports whether name is a configurable NMF UI color.
+func IsAppColorName(name string) bool {
+	_, ok := lightAppColorDefaults[name]
+	return ok
+}
 
 // CustomTheme implements fyne.Theme with configurable font settings
 type CustomTheme struct {
@@ -93,27 +130,18 @@ func (t *CustomTheme) loadCustomFont() {
 
 // Color methods from default theme
 func (t *CustomTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
-	if name == theme.ColorNameFocus {
-		return t.GetCustomColor("focus")
-	}
-	if name == theme.ColorNamePrimary {
-		if t.config.Theme.Dark {
-			return theme.DarkTheme().Color(theme.ColorNameForeground, variant)
-		}
-		return theme.LightTheme().Color(theme.ColorNameForeground, variant)
-	}
 	if t.config.Theme.Dark {
-		return theme.DarkTheme().Color(name, variant)
+		return fynetheme.DarkTheme().Color(name, variant)
 	}
-	return theme.LightTheme().Color(name, variant)
+	return fynetheme.LightTheme().Color(name, variant)
 }
 
 // Icon methods from default theme
 func (t *CustomTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
 	if t.config.Theme.Dark {
-		return theme.DarkTheme().Icon(name)
+		return fynetheme.DarkTheme().Icon(name)
 	}
-	return theme.LightTheme().Icon(name)
+	return fynetheme.LightTheme().Icon(name)
 }
 
 // Font method with custom font support
@@ -124,21 +152,21 @@ func (t *CustomTheme) Font(style fyne.TextStyle) fyne.Resource {
 	}
 
 	if t.config.Theme.Dark {
-		return theme.DarkTheme().Font(style)
+		return fynetheme.DarkTheme().Font(style)
 	}
-	return theme.LightTheme().Font(style)
+	return fynetheme.LightTheme().Font(style)
 }
 
 // Size method with custom font size and spacing support
 func (t *CustomTheme) Size(name fyne.ThemeSizeName) float32 {
-	if name == theme.SizeNameText && t.config.Theme.FontSize > 0 {
+	if name == fynetheme.SizeNameText && t.config.Theme.FontSize > 0 {
 		return float32(t.config.Theme.FontSize)
 	}
 
 	// Custom item spacing support with icon consideration
 	if t.config.UI.ItemSpacing > 0 {
 		switch name {
-		case theme.SizeNamePadding:
+		case fynetheme.SizeNamePadding:
 			// Ensure minimum padding for icons but allow small spacing
 			minPadding := float32(2) // Very minimal padding
 			requested := float32(t.config.UI.ItemSpacing)
@@ -146,49 +174,86 @@ func (t *CustomTheme) Size(name fyne.ThemeSizeName) float32 {
 				return minPadding
 			}
 			return requested
-		case theme.SizeNameInnerPadding:
+		case fynetheme.SizeNameInnerPadding:
 			return 0
 		}
 	}
 
 	if t.config.Theme.Dark {
-		return theme.DarkTheme().Size(name)
+		return fynetheme.DarkTheme().Size(name)
 	}
-	return theme.LightTheme().Size(name)
+	return fynetheme.LightTheme().Size(name)
 }
 
-// GetCustomColor returns custom colors based on the current theme (light/dark)
+// GetCustomColor returns app-specific colors based on the current theme.
 func (t *CustomTheme) GetCustomColor(colorType string) color.RGBA {
-	scheme := LightColorScheme
-	if t.config.Theme.Dark {
-		scheme = DarkColorScheme
-	}
+	return t.GetCustomColorForVariant(colorType, t.config.Theme.Dark)
+}
 
-	switch colorType {
-	case "statusAdded":
-		return scheme.StatusAdded
-	case "statusDeleted":
-		return scheme.StatusDeleted
-	case "statusModified":
-		return scheme.StatusModified
-	case "selectionBackground":
-		return scheme.SelectionBackground
-	case "searchOverlay":
-		return scheme.SearchOverlay
-	case "fileRegular":
-		return scheme.FileRegular
-	case "fileDirectory":
-		return scheme.FileDirectory
-	case "fileSymlink":
-		return scheme.FileSymlink
-	case "fileHidden":
-		return scheme.FileHidden
-	case "cursor":
-		return scheme.Cursor
-	case "focus":
-		return scheme.Focus
-	default:
-		// Return transparent color as fallback
+// GetCustomColorForVariant resolves an app-specific color for a theme variant.
+func (t *CustomTheme) GetCustomColorForVariant(colorType string, dark bool) color.RGBA {
+	defaults := lightAppColorDefaults
+	variant := fynetheme.VariantLight
+	if dark {
+		defaults = darkAppColorDefaults
+		variant = fynetheme.VariantDark
+	}
+	fallback, ok := defaults[colorType]
+	if !ok {
 		return color.RGBA{0, 0, 0, 0}
 	}
+	if t == nil || t.config == nil || t.config.Theme.Colors == nil {
+		return fallback
+	}
+	override, ok := t.config.Theme.Colors[colorType]
+	if !ok {
+		return fallback
+	}
+	value := override.Value
+	if dark {
+		if override.DarkDefault {
+			return fallback
+		}
+		if override.Dark != nil {
+			value = override.Dark
+		}
+	}
+	if !dark {
+		if override.LightDefault {
+			return fallback
+		}
+		if override.Light != nil {
+			value = override.Light
+		}
+	}
+	if value == nil {
+		return fallback
+	}
+	resolved, ok := t.resolveConfiguredColor(*value, variant)
+	if !ok {
+		t.debugPrint("Theme: Unknown color name=%s appColor=%s", value.Name, colorType)
+		return fallback
+	}
+	return resolved
+}
+
+func (t *CustomTheme) resolveConfiguredColor(value config.ThemeColorValue, variant fyne.ThemeVariant) (color.RGBA, bool) {
+	if value.IsRGBA {
+		return color.RGBA{value.RGBA[0], value.RGBA[1], value.RGBA[2], value.RGBA[3]}, true
+	}
+	name := strings.TrimSpace(value.Name)
+	if name == "" {
+		return color.RGBA{}, false
+	}
+	if colorName, ok := fyneColorNames[name]; ok {
+		base := fynetheme.LightTheme()
+		if variant == fynetheme.VariantDark {
+			base = fynetheme.DarkTheme()
+		}
+		return color.RGBAModel.Convert(base.Color(colorName, variant)).(color.RGBA), true
+	}
+	if primaryColorNames[name] {
+		return color.RGBAModel.Convert(fynetheme.PrimaryColorNamed(name)).(color.RGBA), true
+	}
+	return color.RGBA{}, false
 }
