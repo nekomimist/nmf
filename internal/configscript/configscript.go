@@ -1083,15 +1083,17 @@ func sortConfigValue(sortConfig config.SortConfig) starlark.Value {
 
 func displayInfoValue(info display.Info) starlark.Value {
 	return starlarkstruct.FromStringDict(starlark.String("display"), starlark.StringDict{
-		"available":    starlark.Bool(info.Available),
-		"name":         starlark.String(info.Name),
-		"width":        starlark.MakeInt(info.Width),
-		"height":       starlark.MakeInt(info.Height),
-		"work_width":   starlark.MakeInt(info.WorkWidth),
-		"work_height":  starlark.MakeInt(info.WorkHeight),
-		"pixel_width":  starlark.MakeInt(info.PixelWidth),
-		"pixel_height": starlark.MakeInt(info.PixelHeight),
-		"scale":        starlark.Float(info.Scale),
+		"available":     starlark.Bool(info.Available),
+		"name":          starlark.String(info.Name),
+		"width":         starlark.MakeInt(info.Width),
+		"height":        starlark.MakeInt(info.Height),
+		"work_width":    starlark.MakeInt(info.WorkWidth),
+		"work_height":   starlark.MakeInt(info.WorkHeight),
+		"pixel_width":   starlark.MakeInt(info.PixelWidth),
+		"pixel_height":  starlark.MakeInt(info.PixelHeight),
+		"scale":         starlark.Float(info.Scale),
+		"display_scale": starlark.Float(info.DisplayScale),
+		"user_scale":    starlark.Float(info.UserScale),
 	})
 }
 

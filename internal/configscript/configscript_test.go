@@ -116,8 +116,8 @@ func TestDisplayCanDriveStarlarkConfig(t *testing.T) {
 	src := `
 d = nmf.display()
 if d.available:
-    nmf.window(width = d.work_width - 200, height = d.work_height - 160)
-    nmf.theme(font_size = 18)
+    nmf.window(width = d.work_width - int(d.scale * 100), height = d.work_height - int(d.display_scale * 80))
+    nmf.theme(font_size = int(d.user_scale * 12))
 else:
     nmf.window(width = 800, height = 600)
     nmf.theme(font_size = 14)
@@ -128,15 +128,17 @@ else:
 
 	cfg := testConfig()
 	displayInfo := display.Info{
-		Available:   true,
-		Name:        "Primary",
-		Width:       2560,
-		Height:      1440,
-		WorkWidth:   2500,
-		WorkHeight:  1360,
-		PixelWidth:  2560,
-		PixelHeight: 1440,
-		Scale:       1.5,
+		Available:    true,
+		Name:         "Primary",
+		Width:        2560,
+		Height:       1440,
+		WorkWidth:    2500,
+		WorkHeight:   1360,
+		PixelWidth:   2560,
+		PixelHeight:  1440,
+		Scale:        3,
+		DisplayScale: 2,
+		UserScale:    1.5,
 	}
 	rt, err := LoadWithDisplay(path, cfg, displayInfo, func(string, ...interface{}) {})
 	if err != nil {
@@ -146,8 +148,8 @@ else:
 	if !rt.Loaded() {
 		t.Fatal("runtime should report loaded init.star")
 	}
-	if cfg.Window.Width != 2300 || cfg.Window.Height != 1200 {
-		t.Fatalf("window = %+v, want 2300x1200", cfg.Window)
+	if cfg.Window.Width != 2200 || cfg.Window.Height != 1200 {
+		t.Fatalf("window = %+v, want 2200x1200", cfg.Window)
 	}
 	if cfg.Theme.FontSize != 18 {
 		t.Fatalf("font size = %d, want 18", cfg.Theme.FontSize)

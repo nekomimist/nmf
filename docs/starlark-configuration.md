@@ -174,8 +174,9 @@ Utility API:
   If the variable is not set and no default is provided, it returns `None`.
 - `nmf.display()` returns primary display information captured during startup.
   Use `work_width` and `work_height` for `nmf.window()` sizing because they
-  describe the usable screen area in window coordinates. `pixel_width` and
-  `pixel_height` expose the physical pixel resolution for users that need it.
+  describe the usable screen area in Fyne window coordinates after display DPI
+  and `FYNE_SCALE` have been applied. `pixel_width` and `pixel_height` expose
+  the physical pixel resolution for users that need it.
 - `nmf.debug(value, ...)` writes values to NMF's debug log with the
   `ConfigScript:` prefix. It is visible only when debug logging is enabled,
   such as with `-d` or `-debug-log`.
@@ -192,7 +193,11 @@ Utility API:
 - `work_width`, `work_height`: usable display size in window coordinates,
   excluding task bars or system-reserved areas when reported by the OS.
 - `pixel_width`, `pixel_height`: physical display resolution in pixels.
-- `scale`: display content scale; `1.0` when unavailable or unscaled.
+- `scale`: effective Fyne scale used to convert between window coordinates and
+  physical pixels. It includes display DPI and `FYNE_SCALE`.
+- `display_scale`: display DPI scale before `FYNE_SCALE` is applied.
+- `user_scale`: user scale from `FYNE_SCALE`, or `1.0` when unset, `auto`, or
+  invalid.
 
 On unsupported platforms or when display probing fails, `available` is `False`
 and numeric fields are zero. Startup continues in that case.
