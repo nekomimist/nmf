@@ -14,6 +14,7 @@ import (
 	"go.starlark.net/syntax"
 
 	"nmf/internal/config"
+	"nmf/internal/display"
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 	customtheme "nmf/internal/theme"
@@ -37,6 +38,7 @@ type Runtime struct {
 
 	cfg        *config.Config
 	configDir  string
+	display    display.Info
 	debugPrint func(format string, args ...interface{})
 	loaded     bool
 	saveMask   saveMask
@@ -84,7 +86,12 @@ func ScriptPath(configPath string) string {
 
 // Load reads and executes init.star if it exists.
 func Load(path string, cfg *config.Config, debugPrint func(format string, args ...interface{})) (*Runtime, error) {
-	rt := newRuntime(path, cfg, debugPrint)
+	return LoadWithDisplay(path, cfg, display.Info{}, debugPrint)
+}
+
+// LoadWithDisplay reads and executes init.star with startup display information.
+func LoadWithDisplay(path string, cfg *config.Config, displayInfo display.Info, debugPrint func(format string, args ...interface{})) (*Runtime, error) {
+	rt := newRuntime(path, cfg, displayInfo, debugPrint)
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -103,7 +110,7 @@ func Load(path string, cfg *config.Config, debugPrint func(format string, args .
 	return rt, nil
 }
 
-func newRuntime(path string, cfg *config.Config, debugPrint func(format string, args ...interface{})) *Runtime {
+func newRuntime(path string, cfg *config.Config, displayInfo display.Info, debugPrint func(format string, args ...interface{})) *Runtime {
 	configDir := filepath.Dir(path)
 	if abs, err := filepath.Abs(configDir); err == nil {
 		configDir = abs
@@ -116,6 +123,7 @@ func newRuntime(path string, cfg *config.Config, debugPrint func(format string, 
 		Menus:       make(map[string]*Menu),
 		cfg:         cfg,
 		configDir:   configDir,
+		display:     displayInfo,
 		debugPrint:  debugPrint,
 		moduleCache: make(map[string]starlark.StringDict),
 		loading:     make(map[string]bool),
@@ -308,6 +316,8 @@ func (rt *Runtime) predeclared() starlark.StringDict {
 			"load_directory": starlark.NewBuiltin("nmf.load_directory", rt.builtinLoadDirectory),
 			"current_path":   starlark.NewBuiltin("nmf.current_path", rt.builtinCurrentPath),
 			"current_sort":   starlark.NewBuiltin("nmf.current_sort", rt.builtinCurrentSort),
+			"display":        starlark.NewBuiltin("nmf.display", rt.builtinDisplay),
+			"debug":          starlark.NewBuiltin("nmf.debug", rt.builtinDebug),
 			"getenv":         starlark.NewBuiltin("nmf.getenv", rt.builtinGetenv),
 			"os":             starlark.NewBuiltin("nmf.os", rt.builtinOS),
 			"hostname":       starlark.NewBuiltin("nmf.hostname", rt.builtinHostname),
@@ -956,6 +966,26 @@ func (rt *Runtime) builtinCurrentSort(thread *starlark.Thread, fn *starlark.Buil
 	return sortConfigValue(ctx.FileManager.CurrentSort()), nil
 }
 
+func (rt *Runtime) builtinDisplay(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs); err != nil {
+		return nil, err
+	}
+	return displayInfoValue(rt.display), nil
+}
+
+func (rt *Runtime) builtinDebug(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if len(kwargs) > 0 {
+		return nil, fmt.Errorf("%s does not accept keyword arguments", fn.Name())
+	}
+
+	parts := make([]string, args.Len())
+	for i := 0; i < args.Len(); i++ {
+		parts[i] = debugValueString(args.Index(i))
+	}
+	rt.debugPrint("ConfigScript: %s", strings.Join(parts, " "))
+	return starlark.None, nil
+}
+
 func (rt *Runtime) builtinGetenv(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var name string
 	defaultValue := starlark.Value(starlark.None)
@@ -1049,6 +1079,27 @@ func sortConfigValue(sortConfig config.SortConfig) starlark.Value {
 		"order":             starlark.String(sortConfig.SortOrder),
 		"directories_first": starlark.Bool(sortConfig.DirectoriesFirst),
 	})
+}
+
+func displayInfoValue(info display.Info) starlark.Value {
+	return starlarkstruct.FromStringDict(starlark.String("display"), starlark.StringDict{
+		"available":    starlark.Bool(info.Available),
+		"name":         starlark.String(info.Name),
+		"width":        starlark.MakeInt(info.Width),
+		"height":       starlark.MakeInt(info.Height),
+		"work_width":   starlark.MakeInt(info.WorkWidth),
+		"work_height":  starlark.MakeInt(info.WorkHeight),
+		"pixel_width":  starlark.MakeInt(info.PixelWidth),
+		"pixel_height": starlark.MakeInt(info.PixelHeight),
+		"scale":        starlark.Float(info.Scale),
+	})
+}
+
+func debugValueString(value starlark.Value) string {
+	if s, ok := starlark.AsString(value); ok {
+		return s
+	}
+	return value.String()
 }
 
 func (rt *Runtime) ensureMenu(name string) *Menu {

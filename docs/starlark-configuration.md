@@ -42,6 +42,12 @@ nmf.theme(
     font_name = nmf.getenv("NMF_FONT", "Noto Sans CJK JP"),
 )
 
+display = nmf.display()
+if display.available and display.work_height >= 1300:
+    nmf.debug("large display", display.work_width, display.work_height)
+    nmf.window(width = int(display.work_width * 0.65), height = int(display.work_height * 0.75))
+    nmf.theme(font_size = 18)
+
 if nmf.dark_theme():
     nmf.color("cursor", value = "foreground")
 else:
@@ -166,10 +172,30 @@ Utility API:
 - `nmf.dark_theme()` returns `True` when the current effective theme is dark.
 - `nmf.getenv(name, default = None)` returns an environment variable value.
   If the variable is not set and no default is provided, it returns `None`.
+- `nmf.display()` returns primary display information captured during startup.
+  Use `work_width` and `work_height` for `nmf.window()` sizing because they
+  describe the usable screen area in window coordinates. `pixel_width` and
+  `pixel_height` expose the physical pixel resolution for users that need it.
+- `nmf.debug(value, ...)` writes values to NMF's debug log with the
+  `ConfigScript:` prefix. It is visible only when debug logging is enabled,
+  such as with `-d` or `-debug-log`.
 - `nmf.os()` returns the Go runtime OS name, such as `windows`, `linux`, or
   `darwin`.
 - `nmf.hostname()` returns the current host name, or an empty string if it
   cannot be read.
+
+`nmf.display()` returns a struct with these fields:
+
+- `available`: `True` when display information was available.
+- `name`: the primary display name, or an empty string.
+- `width`, `height`: the primary display size in window coordinates.
+- `work_width`, `work_height`: usable display size in window coordinates,
+  excluding task bars or system-reserved areas when reported by the OS.
+- `pixel_width`, `pixel_height`: physical display resolution in pixels.
+- `scale`: display content scale; `1.0` when unavailable or unscaled.
+
+On unsupported platforms or when display probing fails, `available` is `False`
+and numeric fields are zero. Startup continues in that case.
 
 Color API:
 

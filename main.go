@@ -15,6 +15,7 @@ import (
 
 	"nmf/internal/config"
 	"nmf/internal/configscript"
+	"nmf/internal/display"
 	"nmf/internal/fileinfo"
 	"nmf/internal/jobs"
 	"nmf/internal/shellmenu"
@@ -123,7 +124,8 @@ func main() {
 		log.Fatalf("Error loading configuration: %v", err)
 	}
 	persistentConfig := config.Clone(cfg)
-	configScript, err := configscript.Load(configscript.ScriptPath(configManager.ConfigPath()), cfg, debugPrint)
+	displayInfo := display.Primary(debugPrint)
+	configScript, err := configscript.LoadWithDisplay(configscript.ScriptPath(configManager.ConfigPath()), cfg, displayInfo, debugPrint)
 	if err != nil {
 		log.Fatalf("Error loading Starlark configuration: %v", err)
 	}

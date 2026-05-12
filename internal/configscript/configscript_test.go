@@ -1,6 +1,7 @@
 package configscript
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"nmf/internal/config"
+	"nmf/internal/display"
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 )
@@ -105,6 +107,108 @@ nmf.command("user.parent", parent)
 	}
 	if _, ok := rt.Commands["user.parent"]; !ok {
 		t.Fatal("user.parent command was not registered")
+	}
+}
+
+func TestDisplayCanDriveStarlarkConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+d = nmf.display()
+if d.available:
+    nmf.window(width = d.work_width - 200, height = d.work_height - 160)
+    nmf.theme(font_size = 18)
+else:
+    nmf.window(width = 800, height = 600)
+    nmf.theme(font_size = 14)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	cfg := testConfig()
+	displayInfo := display.Info{
+		Available:   true,
+		Name:        "Primary",
+		Width:       2560,
+		Height:      1440,
+		WorkWidth:   2500,
+		WorkHeight:  1360,
+		PixelWidth:  2560,
+		PixelHeight: 1440,
+		Scale:       1.5,
+	}
+	rt, err := LoadWithDisplay(path, cfg, displayInfo, func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("LoadWithDisplay returned error: %v", err)
+	}
+
+	if !rt.Loaded() {
+		t.Fatal("runtime should report loaded init.star")
+	}
+	if cfg.Window.Width != 2300 || cfg.Window.Height != 1200 {
+		t.Fatalf("window = %+v, want 2300x1200", cfg.Window)
+	}
+	if cfg.Theme.FontSize != 18 {
+		t.Fatalf("font size = %d, want 18", cfg.Theme.FontSize)
+	}
+}
+
+func TestDisplayUnavailableIsSafeInStarlarkConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+d = nmf.display()
+if not d.available:
+    nmf.window(width = 900, height = 650)
+    nmf.theme(font_size = 14)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	cfg := testConfig()
+	rt, err := LoadWithDisplay(path, cfg, display.Info{}, func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("LoadWithDisplay returned error: %v", err)
+	}
+
+	if !rt.Loaded() {
+		t.Fatal("runtime should report loaded init.star")
+	}
+	if cfg.Window.Width != 900 || cfg.Window.Height != 650 {
+		t.Fatalf("window = %+v, want 900x650", cfg.Window)
+	}
+	if cfg.Theme.FontSize != 14 {
+		t.Fatalf("font size = %d, want 14", cfg.Theme.FontSize)
+	}
+}
+
+func TestDebugWritesToDebugLog(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+nmf.debug("display", 1200, True)
+nmf.debug("font_size=" + str(18))
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	var logs []string
+	if _, err := Load(path, testConfig(), func(format string, args ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}); err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	want := []string{
+		"ConfigScript: display 1200 True",
+		"ConfigScript: font_size=18",
+		"ConfigScript: loaded path=" + path + " commands=0",
+	}
+	if !reflect.DeepEqual(logs, want) {
+		t.Fatalf("logs = %#v, want %#v", logs, want)
 	}
 }
 
