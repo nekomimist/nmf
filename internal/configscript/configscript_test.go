@@ -571,6 +571,48 @@ nmf.command("user.show_tools", show_tools)
 	}
 }
 
+func TestCustomCommandDefersStarlarkMenuDisplay(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+nmf.menu("tools", title = "Tools")
+nmf.menu_item("tools", "Refresh", cmd = "directory.refresh")
+def show_tools(ctx):
+    nmf.show_menu("tools")
+nmf.command("user.show_tools", show_tools)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	fm := &configScriptFakeFileManager{}
+	var label string
+	var deferred func()
+	rt.Commands["user.show_tools"](keymanager.CommandContext{
+		FileManager: fm,
+		DeferTransition: func(gotLabel string, action func()) {
+			label = gotLabel
+			deferred = action
+		},
+	})
+
+	if fm.menuTitle != "" {
+		t.Fatalf("menu title before deferred action = %q, want empty", fm.menuTitle)
+	}
+	if label != "starlark.show_menu" || deferred == nil {
+		t.Fatalf("deferred transition = label %q action nil=%t, want starlark.show_menu action", label, deferred == nil)
+	}
+
+	deferred()
+	if fm.menuTitle != "Tools" {
+		t.Fatalf("menu title after deferred action = %q, want Tools", fm.menuTitle)
+	}
+}
+
 func TestShowMenuDisplaysInformationalItemForMissingMenu(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, FileName)
@@ -738,6 +780,60 @@ nmf.command("user.edit", edit)
 	})
 	if !gotEdit {
 		t.Fatal("exec edit = false, want true")
+	}
+}
+
+func TestCustomCommandDefersEditableExec(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def edit(ctx):
+    nmf.exec("vim", args = [ctx.current_file], edit = True)
+nmf.command("user.edit", edit)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	var label string
+	var deferred func()
+	var gotCommand string
+	var gotArgs []string
+	var gotEdit bool
+	rt.Commands["user.edit"](keymanager.CommandContext{
+		RunExternalCommand: func(command string, args []string, edit bool) bool {
+			gotCommand = command
+			gotArgs = args
+			gotEdit = edit
+			return false
+		},
+		DeferTransition: func(gotLabel string, action func()) {
+			label = gotLabel
+			deferred = action
+		},
+		FileManager: &configScriptFakeFileManager{
+			currentPath: "/tmp",
+			cursorIndex: 0,
+			files: []fileinfo.FileInfo{
+				{Name: "main.go", Path: "/tmp/main.go"},
+			},
+		},
+	})
+
+	if gotCommand != "" || gotEdit {
+		t.Fatalf("exec before deferred action = %q edit %t, want not run", gotCommand, gotEdit)
+	}
+	if label != "starlark.exec.edit" || deferred == nil {
+		t.Fatalf("deferred transition = label %q action nil=%t, want starlark.exec.edit action", label, deferred == nil)
+	}
+
+	deferred()
+	if gotCommand != "vim" || !reflect.DeepEqual(gotArgs, []string{"/tmp/main.go"}) || !gotEdit {
+		t.Fatalf("exec after deferred action = %q %#v edit %t, want vim current file edit=true", gotCommand, gotArgs, gotEdit)
 	}
 }
 

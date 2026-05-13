@@ -168,10 +168,11 @@ func (mh *MainScreenKeyHandler) executeBinding(event string, ev *fyne.KeyEvent, 
 			key = ev.Name
 		}
 		ctx := CommandContext{
-			Modifiers:   modifiers,
-			Key:         key,
-			Event:       event,
-			FileManager: mh.fileManager,
+			Modifiers:       modifiers,
+			Key:             key,
+			Event:           event,
+			FileManager:     mh.fileManager,
+			DeferTransition: mh.deferTransition,
 		}
 		ctx.RunCommand = func(command string) bool {
 			return mh.executeCommand(command, ctx)

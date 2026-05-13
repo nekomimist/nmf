@@ -254,6 +254,8 @@ Command-only helpers:
   `ctx.selected_files`, `ctx.current_path`, and `ctx.current_name` instead of
   `{file}` placeholders.
   When `edit` is true, nmf opens the command line in a one-line edit dialog.
+  When launched from a key binding, that dialog is opened after the triggering
+  keys are released so late key events do not leak into the editor.
   In that mode, `command` may be empty so the dialog can be used as a command
   prompt.
   The call returns false immediately because the edited command runs later when
@@ -266,7 +268,8 @@ Command-only helpers:
   changing configuration or saving to `config.json`. It can only be used while a
   custom command is running.
 - `nmf.show_menu(name)` displays a Starlark-defined menu. It can only be used
-  while a custom command is running.
+  while a custom command is running. When launched from a key binding, the menu
+  is shown after the triggering keys are released.
 
 Available built-in command IDs are listed in `docs/configuration.md`.
 

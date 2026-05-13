@@ -850,10 +850,13 @@ func (rt *Runtime) builtinShowMenu(thread *starlark.Thread, fn *starlark.Builtin
 
 	menu, ok := rt.Menus[name]
 	if !ok || len(menu.Items) == 0 {
-		ctx.FileManager.ShowCommandMenu(name, []keymanager.CommandMenuItem{{
-			Label:  fmt.Sprintf("Menu %q has no items.", name),
-			Action: func() {},
-		}})
+		show := func() {
+			ctx.FileManager.ShowCommandMenu(name, []keymanager.CommandMenuItem{{
+				Label:  fmt.Sprintf("Menu %q has no items.", name),
+				Action: func() {},
+			}})
+		}
+		deferCommandTransition(ctx, "starlark.show_menu", show)
 		return starlark.None, nil
 	}
 
@@ -879,7 +882,10 @@ func (rt *Runtime) builtinShowMenu(thread *starlark.Thread, fn *starlark.Builtin
 			},
 		})
 	}
-	ctx.FileManager.ShowCommandMenu(menu.Title, items)
+	show := func() {
+		ctx.FileManager.ShowCommandMenu(menu.Title, items)
+	}
+	deferCommandTransition(ctx, "starlark.show_menu", show)
 	return starlark.None, nil
 }
 
@@ -919,7 +925,21 @@ func (rt *Runtime) builtinExec(thread *starlark.Thread, fn *starlark.Builtin, ar
 	if ctx.RunExternalCommand == nil {
 		return starlark.False, nil
 	}
+	if edit && ctx.DeferTransition != nil {
+		ctx.DeferTransition("starlark.exec.edit", func() {
+			ctx.RunExternalCommand(command, commandArgs, edit)
+		})
+		return starlark.False, nil
+	}
 	return starlark.Bool(ctx.RunExternalCommand(command, commandArgs, edit)), nil
+}
+
+func deferCommandTransition(ctx keymanager.CommandContext, label string, action func()) {
+	if ctx.DeferTransition != nil {
+		ctx.DeferTransition(label, action)
+		return
+	}
+	action()
 }
 
 func (rt *Runtime) builtinLoadDirectory(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

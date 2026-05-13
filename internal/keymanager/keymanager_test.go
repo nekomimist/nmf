@@ -634,6 +634,37 @@ func TestMainScreenDefersRunCommandTransition(t *testing.T) {
 	}
 }
 
+func TestMainScreenProvidesTransitionGateToExtraCommand(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandlerWithCommands(
+		fm,
+		func(string, ...interface{}) {},
+		[]config.KeyBindingEntry{{Key: "X", Command: "user.dialog"}},
+		CommandRegistry{
+			"user.dialog": func(ctx CommandContext) {
+				ctx.DeferTransition("user.dialog", func() {
+					ctx.FileManager.ShowNavigationHistoryDialog()
+				})
+			},
+		},
+	)
+	handler.SetTransitionGate(km.DeferUntilKeysReleased)
+	km.PushHandler(handler)
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyX})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyX})
+
+	if fm.showHistoryCount != 0 {
+		t.Fatalf("ShowNavigationHistoryDialog count = %d before key release, want 0", fm.showHistoryCount)
+	}
+
+	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyX})
+	if fm.showHistoryCount != 1 {
+		t.Fatalf("ShowNavigationHistoryDialog count = %d after release, want 1", fm.showHistoryCount)
+	}
+}
+
 func TestMainScreenDoesNotDeferNonTransitionCommand(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	fm := &mainScreenFakeFileManager{
