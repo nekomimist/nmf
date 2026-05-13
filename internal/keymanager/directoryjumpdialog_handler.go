@@ -25,17 +25,15 @@ type DirectoryJumpDialogInterface interface {
 
 // DirectoryJumpDialogKeyHandler handles keyboard events for the directory jump dialog.
 type DirectoryJumpDialogKeyHandler struct {
-	dialog       DirectoryJumpDialogInterface
-	debugPrint   func(format string, args ...interface{})
-	skipNextRune bool
+	dialog     DirectoryJumpDialogInterface
+	debugPrint func(format string, args ...interface{})
 }
 
 // NewDirectoryJumpDialogKeyHandler creates a new directory jump dialog key handler.
 func NewDirectoryJumpDialogKeyHandler(d DirectoryJumpDialogInterface, debugPrint func(format string, args ...interface{})) *DirectoryJumpDialogKeyHandler {
 	return &DirectoryJumpDialogKeyHandler{
-		dialog:       d,
-		debugPrint:   debugPrint,
-		skipNextRune: true,
+		dialog:     d,
+		debugPrint: debugPrint,
 	}
 }
 
@@ -103,11 +101,6 @@ func (h *DirectoryJumpDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers 
 
 // OnTypedRune handles text input to update the search field.
 func (h *DirectoryJumpDialogKeyHandler) OnTypedRune(r rune, modifiers ModifierState) bool {
-	if h.skipNextRune {
-		// Swallow the Shift+J rune that opened the dialog.
-		h.skipNextRune = false
-		return true
-	}
 	if modifiers.AltPressed {
 		return true
 	}

@@ -101,4 +101,7 @@ When directory loading enters busy mode:
 
 - Avoid attaching ad-hoc key handling directly to arbitrary widgets when a `KeyManager` handler should own behavior.
 - Keep handler push/pop balanced across success, cancel, and error close paths.
+- Do not add per-dialog "skip first typed rune" guards for opener keys. Input-owner
+  transitions must rely on the central `KeyManager` transition gate so the next
+  real typed character is accepted by the new owner.
 - For list cursor UX, unselect default list selection and keep a single visual cursor model.

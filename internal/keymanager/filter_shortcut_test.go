@@ -10,6 +10,7 @@ import (
 
 type fakeFilterSearchDialog struct {
 	backspace int
+	search    string
 }
 
 func (f *fakeFilterSearchDialog) MoveUp()                       {}
@@ -17,7 +18,7 @@ func (f *fakeFilterSearchDialog) MoveDown()                     {}
 func (f *fakeFilterSearchDialog) MoveToTop()                    {}
 func (f *fakeFilterSearchDialog) MoveToBottom()                 {}
 func (f *fakeFilterSearchDialog) ClearSearch()                  {}
-func (f *fakeFilterSearchDialog) AppendToSearch(char string)    {}
+func (f *fakeFilterSearchDialog) AppendToSearch(char string)    { f.search += char }
 func (f *fakeFilterSearchDialog) BackspaceSearch()              { f.backspace++ }
 func (f *fakeFilterSearchDialog) GetSearchText() string         { return "" }
 func (f *fakeFilterSearchDialog) IsSearchFocused() bool         { return false }
@@ -59,6 +60,34 @@ func TestFilteringDialogsTreatCtrlHAsBackspace(t *testing.T) {
 			}
 			if dialog.backspace != 1 {
 				t.Fatalf("BackspaceSearch count = %d, want 1", dialog.backspace)
+			}
+		})
+	}
+}
+
+func TestFilteringDialogsAcceptFirstTypedRune(t *testing.T) {
+	tests := []struct {
+		name    string
+		handler func(*fakeFilterSearchDialog) KeyHandler
+	}{
+		{name: "directory jump", handler: func(d *fakeFilterSearchDialog) KeyHandler {
+			return NewDirectoryJumpDialogKeyHandler(d, func(string, ...interface{}) {})
+		}},
+		{name: "copy move", handler: func(d *fakeFilterSearchDialog) KeyHandler {
+			return NewCopyMoveDialogKeyHandler(d, func(string, ...interface{}) {})
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dialog := &fakeFilterSearchDialog{}
+			handler := tt.handler(dialog)
+
+			if !handler.OnTypedRune('w', ModifierState{}) {
+				t.Fatal("first typed rune should be handled")
+			}
+			if dialog.search != "w" {
+				t.Fatalf("search = %q, want %q", dialog.search, "w")
 			}
 		})
 	}

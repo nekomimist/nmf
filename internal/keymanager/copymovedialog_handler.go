@@ -32,14 +32,13 @@ type CopyMoveDialogInterface interface {
 
 // CopyMoveDialogKeyHandler handles keyboard events for the copy/move dialog
 type CopyMoveDialogKeyHandler struct {
-	dialog       CopyMoveDialogInterface
-	debugPrint   func(format string, args ...interface{})
-	skipNextRune bool // swallow the triggering 'c'/'m' rune injected after opening
+	dialog     CopyMoveDialogInterface
+	debugPrint func(format string, args ...interface{})
 }
 
 // NewCopyMoveDialogKeyHandler creates a new copy/move dialog key handler
 func NewCopyMoveDialogKeyHandler(d CopyMoveDialogInterface, debugPrint func(format string, args ...interface{})) *CopyMoveDialogKeyHandler {
-	return &CopyMoveDialogKeyHandler{dialog: d, debugPrint: debugPrint, skipNextRune: true}
+	return &CopyMoveDialogKeyHandler{dialog: d, debugPrint: debugPrint}
 }
 
 // GetName returns the handler name
@@ -109,11 +108,6 @@ func (h *CopyMoveDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modif
 
 // OnTypedRune handles text input to update search
 func (h *CopyMoveDialogKeyHandler) OnTypedRune(r rune, modifiers ModifierState) bool {
-	if h.skipNextRune {
-		// Swallow the first printable rune (the 'c'/'m' that opened the dialog)
-		h.skipNextRune = false
-		return true
-	}
 	if unicode.IsPrint(r) && !unicode.IsControl(r) {
 		h.dialog.AppendToSearch(string(r))
 		return true
