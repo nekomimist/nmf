@@ -65,20 +65,23 @@ func TestFilteringDialogsTreatCtrlHAsBackspace(t *testing.T) {
 }
 
 type fakeIncrementalSearch struct {
-	removed int
+	removed      int
+	hidden       int
+	accepted     int
+	cursorSet    int
+	currentMatch *fileinfo.FileInfo
 }
 
 func (f *fakeIncrementalSearch) ShowIncrementalSearchOverlay()             {}
-func (f *fakeIncrementalSearch) HideIncrementalSearchOverlay()             {}
+func (f *fakeIncrementalSearch) HideIncrementalSearchOverlay()             { f.hidden++ }
+func (f *fakeIncrementalSearch) AcceptIncrementalSearchOverlay()           { f.accepted++ }
 func (f *fakeIncrementalSearch) IsIncrementalSearchVisible() bool          { return true }
 func (f *fakeIncrementalSearch) AddSearchCharacter(char rune)              {}
 func (f *fakeIncrementalSearch) RemoveLastSearchCharacter()                { f.removed++ }
 func (f *fakeIncrementalSearch) NextSearchMatch()                          {}
 func (f *fakeIncrementalSearch) PreviousSearchMatch()                      {}
-func (f *fakeIncrementalSearch) SelectCurrentSearchMatch()                 {}
-func (f *fakeIncrementalSearch) GetCurrentSearchMatch() *fileinfo.FileInfo { return nil }
-func (f *fakeIncrementalSearch) OpenFile(file *fileinfo.FileInfo)          {}
-func (f *fakeIncrementalSearch) SetCursorToFile(file *fileinfo.FileInfo)   {}
+func (f *fakeIncrementalSearch) GetCurrentSearchMatch() *fileinfo.FileInfo { return f.currentMatch }
+func (f *fakeIncrementalSearch) SetCursorToFile(file *fileinfo.FileInfo)   { f.cursorSet++ }
 
 func TestIncrementalSearchTreatsCtrlHAsBackspace(t *testing.T) {
 	search := &fakeIncrementalSearch{}
@@ -89,5 +92,59 @@ func TestIncrementalSearchTreatsCtrlHAsBackspace(t *testing.T) {
 	}
 	if search.removed != 1 {
 		t.Fatalf("RemoveLastSearchCharacter count = %d, want 1", search.removed)
+	}
+}
+
+func TestIncrementalSearchDefersAcceptUntilKeysReleased(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	search := &fakeIncrementalSearch{}
+	handler := NewIncrementalSearchKeyHandler(search, func(string, ...interface{}) {})
+	handler.SetTransitionGate(km.DeferUntilKeysReleased)
+	km.PushHandler(handler)
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	if search.accepted != 0 {
+		t.Fatalf("AcceptIncrementalSearchOverlay count = %d before key release, want 0", search.accepted)
+	}
+
+	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	if search.accepted != 1 {
+		t.Fatalf("AcceptIncrementalSearchOverlay count = %d after release and late typed key, want 1", search.accepted)
+	}
+}
+
+func TestIncrementalSearchDirectoryAcceptDoesNotLeakReturnToMain(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	search := &fakeIncrementalSearch{
+		currentMatch: &fileinfo.FileInfo{Name: "dir", Path: "/tmp/dir", IsDir: true},
+	}
+	main := &recordingHandler{}
+	handler := NewIncrementalSearchKeyHandler(search, func(string, ...interface{}) {})
+	handler.SetTransitionGate(km.DeferUntilKeysReleased)
+	km.PushHandler(main)
+	km.PushHandler(handler)
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	if search.cursorSet != 0 || search.accepted != 0 {
+		t.Fatalf("search accepted before key release: cursorSet=%d accepted=%d", search.cursorSet, search.accepted)
+	}
+	if len(main.typedKeys) != 0 {
+		t.Fatalf("Return leaked to main while search pending: %v", main.typedKeys)
+	}
+
+	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	if search.cursorSet != 1 || search.accepted != 1 || search.hidden != 0 {
+		t.Fatalf("search accept after release = cursorSet=%d accepted=%d hidden=%d, want 1/1/0", search.cursorSet, search.accepted, search.hidden)
+	}
+	if len(main.typedKeys) != 0 {
+		t.Fatalf("late Return leaked to main after search exit: %v", main.typedKeys)
 	}
 }

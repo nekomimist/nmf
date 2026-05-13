@@ -22,6 +22,7 @@ func (noopHandler) GetName() string                                   { return "
 
 type recordingHandler struct {
 	typedKeys []fyne.KeyName
+	runes     []rune
 }
 
 func (h *recordingHandler) OnKeyDown(_ *fyne.KeyEvent, _ ModifierState) bool { return false }
@@ -30,40 +31,55 @@ func (h *recordingHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState) bool {
 	h.typedKeys = append(h.typedKeys, ev.Name)
 	return true
 }
-func (h *recordingHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
-func (h *recordingHandler) GetName() string                          { return "recording" }
+func (h *recordingHandler) OnTypedRune(r rune, _ ModifierState) bool {
+	h.runes = append(h.runes, r)
+	return true
+}
+func (h *recordingHandler) GetName() string { return "recording" }
 
-type popOnKeyDownHandler struct {
+type deferPopOnKeyDownHandler struct {
 	km *KeyManager
 }
 
-func (h *popOnKeyDownHandler) OnKeyDown(ev *fyne.KeyEvent, _ ModifierState) bool {
+func (h *deferPopOnKeyDownHandler) OnKeyDown(ev *fyne.KeyEvent, _ ModifierState) bool {
 	if ev.Name == fyne.KeyReturn || ev.Name == fyne.KeyEnter {
-		h.km.PopHandler()
+		h.km.DeferUntilKeysReleased("test.pop", func() {
+			h.km.PopHandler()
+		})
 		return true
 	}
 	return false
 }
-func (h *popOnKeyDownHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool    { return false }
-func (h *popOnKeyDownHandler) OnTypedKey(_ *fyne.KeyEvent, _ ModifierState) bool { return false }
-func (h *popOnKeyDownHandler) OnTypedRune(_ rune, _ ModifierState) bool          { return false }
-func (h *popOnKeyDownHandler) GetName() string                                   { return "popOnKeyDown" }
+func (h *deferPopOnKeyDownHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool {
+	return false
+}
+func (h *deferPopOnKeyDownHandler) OnTypedKey(_ *fyne.KeyEvent, _ ModifierState) bool {
+	return false
+}
+func (h *deferPopOnKeyDownHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
+func (h *deferPopOnKeyDownHandler) GetName() string                          { return "deferPopOnKeyDown" }
 
-type popOnTypedKeyHandler struct {
+type deferPushOnTypedKeyHandler struct {
 	km *KeyManager
 }
 
-func (h *popOnTypedKeyHandler) OnKeyDown(_ *fyne.KeyEvent, _ ModifierState) bool { return false }
-func (h *popOnTypedKeyHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool   { return false }
-func (h *popOnTypedKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState) bool {
-	if ev.Name == fyne.KeyReturn || ev.Name == fyne.KeyEnter {
-		h.km.PopHandler()
+func (h *deferPushOnTypedKeyHandler) OnKeyDown(_ *fyne.KeyEvent, _ ModifierState) bool {
+	return false
+}
+func (h *deferPushOnTypedKeyHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool {
+	return false
+}
+func (h *deferPushOnTypedKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState) bool {
+	if ev.Name == fyne.KeyL {
+		h.km.DeferUntilKeysReleased("test.push", func() {
+			h.km.PushHandler(&recordingHandler{})
+		})
 		return true
 	}
 	return false
 }
-func (h *popOnTypedKeyHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
-func (h *popOnTypedKeyHandler) GetName() string                          { return "popOnTypedKey" }
+func (h *deferPushOnTypedKeyHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
+func (h *deferPushOnTypedKeyHandler) GetName() string                          { return "deferPushOnTypedKey" }
 
 type transientStackChangeOnTypedKeyHandler struct {
 	km        *KeyManager
@@ -104,33 +120,55 @@ func TestKeyManagerTracksAltModifier(t *testing.T) {
 	}
 }
 
-func TestKeyManagerDrainsTypedKeyAfterKeyDownPop(t *testing.T) {
+func TestKeyManagerDefersTransitionUntilKeysReleased(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	main := &recordingHandler{}
 	km.PushHandler(main)
-	km.PushHandler(&popOnKeyDownHandler{km: km})
+	km.PushHandler(&deferPopOnKeyDownHandler{km: km})
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyEnter})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
 
 	if len(main.typedKeys) != 0 {
-		t.Fatalf("typed keys leaked to main while Enter was held: %v", main.typedKeys)
+		t.Fatalf("typed keys leaked to main while transition was pending: %v", main.typedKeys)
 	}
 
 	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyReturn})
-	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
 
-	if len(main.typedKeys) != 1 || main.typedKeys[0] != fyne.KeyReturn {
-		t.Fatalf("typed keys after drain clear = %v, want [Return]", main.typedKeys)
+	if got := km.GetCurrentHandler(); got != main {
+		t.Fatalf("current handler = %T, want main handler", got)
 	}
 }
 
-func TestKeyManagerDrainsRepeatedTypedKeyAfterTypedKeyPop(t *testing.T) {
+func TestKeyManagerSuppressesLateTypedKeyAfterDeferredTransition(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	main := &recordingHandler{}
 	km.PushHandler(main)
-	km.PushHandler(&popOnTypedKeyHandler{km: km})
+	km.PushHandler(&deferPopOnKeyDownHandler{km: km})
 
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyEnter})
+	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	if len(main.typedKeys) != 0 {
+		t.Fatalf("typed keys leaked to main after Enter key up: %v", main.typedKeys)
+	}
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	if len(main.typedKeys) != 1 || main.typedKeys[0] != fyne.KeyReturn {
+		t.Fatalf("next typed key = %v, want [Return]", main.typedKeys)
+	}
+}
+
+func TestKeyManagerGatesRepeatedTypedKeyDuringDeferredTransition(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	main := &recordingHandler{}
+	km.PushHandler(main)
+	km.PushHandler(&deferPopOnKeyDownHandler{km: km})
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
 
@@ -139,10 +177,84 @@ func TestKeyManagerDrainsRepeatedTypedKeyAfterTypedKeyPop(t *testing.T) {
 	}
 
 	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
 
 	if len(main.typedKeys) != 1 || main.typedKeys[0] != fyne.KeyReturn {
-		t.Fatalf("typed keys after drain clear = %v, want [Return]", main.typedKeys)
+		t.Fatalf("typed keys after transition = %v, want [Return]", main.typedKeys)
+	}
+}
+
+func TestKeyManagerGatesTypedRuneBeforeDeferredTransition(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	km.PushHandler(&deferPushOnTypedKeyHandler{km: km})
+
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyL})
+	km.HandleTypedRune('L')
+
+	current := km.GetCurrentHandler()
+	if _, ok := current.(*deferPushOnTypedKeyHandler); !ok {
+		t.Fatalf("current handler = %T, want deferred source handler", current)
+	}
+
+	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyL})
+	current = km.GetCurrentHandler()
+	main, ok := current.(*recordingHandler)
+	if !ok {
+		t.Fatalf("current handler = %T, want *recordingHandler", current)
+	}
+
+	if len(main.runes) != 0 {
+		t.Fatalf("typed rune leaked to pushed handler: %q", string(main.runes))
+	}
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyX})
+	km.HandleTypedRune('x')
+
+	if len(main.runes) != 1 || main.runes[0] != 'x' {
+		t.Fatalf("next rune = %q, want x", string(main.runes))
+	}
+}
+
+func TestKeyManagerSuppressesLateTypedRuneAfterDeferredTransition(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	km.PushHandler(&deferPushOnTypedKeyHandler{km: km})
+
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyL})
+	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyL})
+	km.HandleTypedRune('L')
+
+	current := km.GetCurrentHandler()
+	main, ok := current.(*recordingHandler)
+	if !ok {
+		t.Fatalf("current handler = %T, want *recordingHandler", current)
+	}
+
+	if len(main.runes) != 0 {
+		t.Fatalf("late typed rune leaked to pushed handler: %q", string(main.runes))
+	}
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyX})
+	km.HandleTypedRune('x')
+
+	if len(main.runes) != 1 || main.runes[0] != 'x' {
+		t.Fatalf("runes after suppress clear = %q, want x", string(main.runes))
+	}
+}
+
+func TestKeyManagerPopClearsModifiers(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	km.PushHandler(noopHandler{})
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
+	if !km.GetModifierState().CtrlPressed {
+		t.Fatal("CtrlPressed should be true after Ctrl key down")
+	}
+
+	km.PopHandler()
+
+	if km.GetModifierState().CtrlPressed {
+		t.Fatal("CtrlPressed should be false after PopHandler")
 	}
 }
 
@@ -162,6 +274,8 @@ func TestKeyManagerDoesNotDrainAfterTransientStackChange(t *testing.T) {
 
 type mainScreenFakeFileManager struct {
 	showJobsCount          int
+	showHistoryCount       int
+	showSearchCount        int
 	showDirectoryJumpCount int
 	showRenameCount        int
 	showDeleteCount        int
@@ -169,6 +283,7 @@ type mainScreenFakeFileManager struct {
 	showExternalMenuCount  int
 	showSortCount          int
 	deletePermanent        bool
+	focusPathCount         int
 	cursorIndex            int
 	setCursorIndex         int
 	files                  []fileinfo.FileInfo
@@ -198,17 +313,17 @@ func (f *mainScreenFakeFileManager) RefreshFileList()                  { f.refre
 func (f *mainScreenFakeFileManager) SaveCursorPosition(dirPath string) {}
 func (f *mainScreenFakeFileManager) OpenNewWindow()                    {}
 func (f *mainScreenFakeFileManager) ShowDirectoryTreeDialog()          {}
-func (f *mainScreenFakeFileManager) ShowNavigationHistoryDialog()      {}
+func (f *mainScreenFakeFileManager) ShowNavigationHistoryDialog()      { f.showHistoryCount++ }
 func (f *mainScreenFakeFileManager) ShowDirectoryJumpDialog() {
 	f.showDirectoryJumpCount++
 }
 func (f *mainScreenFakeFileManager) ShowFilterDialog()                {}
 func (f *mainScreenFakeFileManager) ClearFilter()                     {}
 func (f *mainScreenFakeFileManager) ToggleFilter()                    {}
-func (f *mainScreenFakeFileManager) ShowIncrementalSearchDialog()     {}
+func (f *mainScreenFakeFileManager) ShowIncrementalSearchDialog()     { f.showSearchCount++ }
 func (f *mainScreenFakeFileManager) ShowSortDialog()                  { f.showSortCount++ }
 func (f *mainScreenFakeFileManager) ShowJobsDialog()                  { f.showJobsCount++ }
-func (f *mainScreenFakeFileManager) FocusPathEntry()                  {}
+func (f *mainScreenFakeFileManager) FocusPathEntry()                  { f.focusPathCount++ }
 func (f *mainScreenFakeFileManager) QuitApplication()                 {}
 func (f *mainScreenFakeFileManager) OpenFile(file *fileinfo.FileInfo) {}
 func (f *mainScreenFakeFileManager) ShowCopyDialog()                  {}
@@ -459,6 +574,82 @@ func TestMainScreenConfiguredBindingCanUseExtraCommand(t *testing.T) {
 	}
 	if got.FileManager != fm {
 		t.Fatal("context should carry file manager")
+	}
+}
+
+func TestMainScreenDefersInputTransitionUntilKeysReleased(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+		{Key: "S-L", Command: CommandHistoryShow, Event: keyEventTyped},
+	})
+	handler.SetTransitionGate(km.DeferUntilKeysReleased)
+	km.PushHandler(handler)
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyL})
+	km.HandleTypedRune('L')
+
+	if fm.showHistoryCount != 0 {
+		t.Fatalf("ShowNavigationHistoryDialog count = %d before key release, want 0", fm.showHistoryCount)
+	}
+
+	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyL})
+	if fm.showHistoryCount != 0 {
+		t.Fatalf("ShowNavigationHistoryDialog count = %d before all keys release, want 0", fm.showHistoryCount)
+	}
+
+	km.HandleKeyUp(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
+	if fm.showHistoryCount != 1 {
+		t.Fatalf("ShowNavigationHistoryDialog count = %d after release, want 1", fm.showHistoryCount)
+	}
+}
+
+func TestMainScreenDefersRunCommandTransition(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandlerWithCommands(
+		fm,
+		func(string, ...interface{}) {},
+		[]config.KeyBindingEntry{{Key: "X", Command: "user.history"}},
+		CommandRegistry{
+			"user.history": func(ctx CommandContext) {
+				ctx.RunCommand(CommandHistoryShow)
+			},
+		},
+	)
+	handler.SetTransitionGate(km.DeferUntilKeysReleased)
+	km.PushHandler(handler)
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyX})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyX})
+
+	if fm.showHistoryCount != 0 {
+		t.Fatalf("ShowNavigationHistoryDialog count = %d before key release, want 0", fm.showHistoryCount)
+	}
+
+	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyX})
+	if fm.showHistoryCount != 1 {
+		t.Fatalf("ShowNavigationHistoryDialog count = %d after release, want 1", fm.showHistoryCount)
+	}
+}
+
+func TestMainScreenDoesNotDeferNonTransitionCommand(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	fm := &mainScreenFakeFileManager{
+		files: []fileinfo.FileInfo{
+			{Name: "a.txt", Path: "/dir/a.txt"},
+		},
+	}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler.SetTransitionGate(km.DeferUntilKeysReleased)
+	km.PushHandler(handler)
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyA})
+
+	if fm.refreshFileListCount != 1 {
+		t.Fatalf("RefreshFileList count = %d, want immediate select-all", fm.refreshFileListCount)
 	}
 }
 

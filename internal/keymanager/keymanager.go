@@ -1,7 +1,6 @@
 package keymanager
 
 import (
-	"reflect"
 	"sync"
 
 	"fyne.io/fyne/v2"
@@ -40,7 +39,15 @@ type KeyManager struct {
 	mutex         sync.RWMutex
 	debugPrint    func(format string, args ...interface{})
 	stackVersion  uint64
-	drainingKeys  map[fyne.KeyName]struct{}
+	pressedKeys   map[fyne.KeyName]struct{}
+	pending       []pendingTransition
+	suppressTyped map[fyne.KeyName]struct{}
+	suppressRune  bool
+}
+
+type pendingTransition struct {
+	label  string
+	action func()
 }
 
 // NewKeyManager creates a new KeyManager instance
@@ -77,6 +84,7 @@ func (km *KeyManager) PopHandler() KeyHandler {
 	// Remove it from the slice
 	km.handlers = km.handlers[:len(km.handlers)-1]
 	km.stackVersion++
+	km.modifierState = ModifierState{}
 
 	km.debugPrint("KeyManager: pop %s stack=%d", handler.GetName(), len(km.handlers))
 	return handler
@@ -104,25 +112,6 @@ func (km *KeyManager) currentHandlerAndVersion() (KeyHandler, uint64) {
 	return km.handlers[len(km.handlers)-1], km.stackVersion
 }
 
-func (km *KeyManager) currentVersion() uint64 {
-	km.mutex.RLock()
-	defer km.mutex.RUnlock()
-	return km.stackVersion
-}
-
-func sameHandler(a, b KeyHandler) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	if reflect.TypeOf(a) != reflect.TypeOf(b) {
-		return false
-	}
-	if !reflect.TypeOf(a).Comparable() {
-		return false
-	}
-	return a == b
-}
-
 func normalizeDrainKey(name fyne.KeyName) fyne.KeyName {
 	switch name {
 	case fyne.KeyEnter:
@@ -132,47 +121,106 @@ func normalizeDrainKey(name fyne.KeyName) fyne.KeyName {
 	}
 }
 
-func (km *KeyManager) isDrainingKeyLocked(name fyne.KeyName) bool {
-	if km.drainingKeys == nil {
+func (km *KeyManager) recordKeyDownLocked(ev *fyne.KeyEvent) {
+	if ev == nil || ev.Name == "" {
+		return
+	}
+	if km.pressedKeys == nil {
+		km.pressedKeys = make(map[fyne.KeyName]struct{})
+	}
+	keyName := normalizeDrainKey(ev.Name)
+	km.pressedKeys[keyName] = struct{}{}
+	km.suppressRune = false
+	if km.suppressTyped != nil {
+		delete(km.suppressTyped, keyName)
+		if len(km.suppressTyped) == 0 {
+			km.suppressTyped = nil
+		}
+	}
+}
+
+func (km *KeyManager) recordKeyUpLocked(ev *fyne.KeyEvent) {
+	if ev == nil || ev.Name == "" || km.pressedKeys == nil {
+		return
+	}
+	keyName := normalizeDrainKey(ev.Name)
+	if len(km.pending) > 0 {
+		if km.suppressTyped == nil {
+			km.suppressTyped = make(map[fyne.KeyName]struct{})
+		}
+		km.suppressTyped[keyName] = struct{}{}
+	}
+	delete(km.pressedKeys, keyName)
+	if len(km.pressedKeys) == 0 {
+		km.pressedKeys = nil
+	}
+}
+
+func (km *KeyManager) hasPendingTransitionLocked() bool {
+	return len(km.pending) > 0
+}
+
+func (km *KeyManager) flushPendingTransitionsLocked() []pendingTransition {
+	if len(km.pressedKeys) > 0 || len(km.pending) == 0 {
+		return nil
+	}
+	pending := km.pending
+	km.pending = nil
+	km.modifierState = ModifierState{}
+	km.suppressRune = true
+	return pending
+}
+
+func (km *KeyManager) shouldSuppressTypedKeyLocked(ev *fyne.KeyEvent) bool {
+	if ev == nil || ev.Name == "" || km.suppressTyped == nil {
 		return false
 	}
-	_, ok := km.drainingKeys[normalizeDrainKey(name)]
-	return ok
+	keyName := normalizeDrainKey(ev.Name)
+	if _, ok := km.suppressTyped[keyName]; !ok {
+		return false
+	}
+	delete(km.suppressTyped, keyName)
+	if len(km.suppressTyped) == 0 {
+		km.suppressTyped = nil
+	}
+	return true
 }
 
-func (km *KeyManager) shouldDrainKey(name fyne.KeyName) bool {
-	km.mutex.RLock()
-	defer km.mutex.RUnlock()
-	return km.isDrainingKeyLocked(name)
+func (km *KeyManager) shouldSuppressRuneLocked() bool {
+	if !km.suppressRune {
+		return false
+	}
+	km.suppressRune = false
+	return true
 }
 
-func (km *KeyManager) markDrainKey(ev *fyne.KeyEvent) {
-	if ev == nil || ev.Name == "" {
+func (km *KeyManager) runPendingTransitions(pending []pendingTransition) {
+	for _, transition := range pending {
+		km.debugPrint("KeyManager: transition run label=%s", transition.label)
+		transition.action()
+	}
+}
+
+// DeferUntilKeysReleased runs action after all currently pressed keys are released.
+func (km *KeyManager) DeferUntilKeysReleased(label string, action func()) {
+	if action == nil {
 		return
 	}
 
 	km.mutex.Lock()
-	defer km.mutex.Unlock()
+	if len(km.pressedKeys) == 0 {
+		km.modifierState = ModifierState{}
+		km.mutex.Unlock()
+		km.debugPrint("KeyManager: transition run label=%s", label)
+		action()
+		return
+	}
 
-	if km.drainingKeys == nil {
-		km.drainingKeys = make(map[fyne.KeyName]struct{})
-	}
-	keyName := normalizeDrainKey(ev.Name)
-	km.drainingKeys[keyName] = struct{}{}
-	km.debugPrint("KeyManager: drain start key=%s", keyName)
-}
+	km.pending = append(km.pending, pendingTransition{label: label, action: action})
+	pressed := len(km.pressedKeys)
+	km.mutex.Unlock()
 
-func (km *KeyManager) clearDrainKeyLocked(name fyne.KeyName) bool {
-	if km.drainingKeys == nil {
-		return false
-	}
-	keyName := normalizeDrainKey(name)
-	if _, ok := km.drainingKeys[keyName]; !ok {
-		return false
-	}
-	delete(km.drainingKeys, keyName)
-	km.debugPrint("KeyManager: drain end key=%s", keyName)
-	return true
+	km.debugPrint("KeyManager: transition defer label=%s pressed=%d", label, pressed)
 }
 
 // updateModifierState updates the modifier key state based on key events
@@ -206,23 +254,20 @@ func (km *KeyManager) HandleKeyDown(ev *fyne.KeyEvent) {
 	km.mutex.Lock()
 	// Update modifier state first
 	modifierHandled := km.updateModifierState(ev, true)
+	km.recordKeyDownLocked(ev)
 	modifiers := km.modifierState
-	draining := km.isDrainingKeyLocked(ev.Name)
+	pending := km.hasPendingTransitionLocked()
 	km.mutex.Unlock()
 
-	if draining {
-		km.debugPrint("KeyManager: KeyDown drained key=%s mod=%t", ev.Name, modifierHandled)
+	if pending {
+		km.debugPrint("KeyManager: KeyDown gated key=%s mod=%t", ev.Name, modifierHandled)
 		return
 	}
 
-	currentHandler, beforeVersion := km.currentHandlerAndVersion()
+	currentHandler, _ := km.currentHandlerAndVersion()
 
 	if currentHandler != nil {
 		handled := currentHandler.OnKeyDown(ev, modifiers)
-		afterHandler, afterVersion := km.currentHandlerAndVersion()
-		if afterVersion != beforeVersion && !sameHandler(currentHandler, afterHandler) {
-			km.markDrainKey(ev)
-		}
 		km.debugPrint("KeyManager: KeyDown %s handled=%t mod=%t", currentHandler.GetName(), handled, modifierHandled)
 	} else {
 		km.debugPrint("KeyManager: KeyDown no handler")
@@ -234,12 +279,15 @@ func (km *KeyManager) HandleKeyUp(ev *fyne.KeyEvent) {
 	km.mutex.Lock()
 	// Update modifier state first
 	modifierHandled := km.updateModifierState(ev, false)
+	km.recordKeyUpLocked(ev)
 	modifiers := km.modifierState
-	drained := km.clearDrainKeyLocked(ev.Name)
+	pending := km.hasPendingTransitionLocked()
+	pendingTransitions := km.flushPendingTransitionsLocked()
 	km.mutex.Unlock()
 
-	if drained {
-		km.debugPrint("KeyManager: KeyUp drained key=%s mod=%t", ev.Name, modifierHandled)
+	if pending {
+		km.debugPrint("KeyManager: KeyUp gated key=%s mod=%t", ev.Name, modifierHandled)
+		km.runPendingTransitions(pendingTransitions)
 		return
 	}
 
@@ -255,22 +303,41 @@ func (km *KeyManager) HandleKeyUp(ev *fyne.KeyEvent) {
 
 // HandleTypedKey routes typed key events to the current top handler
 func (km *KeyManager) HandleTypedKey(ev *fyne.KeyEvent) {
-	if km.shouldDrainKey(ev.Name) {
-		km.debugPrint("KeyManager: TypedKey drained key=%s", ev.Name)
+	km.mutex.Lock()
+	suppressed := km.shouldSuppressTypedKeyLocked(ev)
+	if suppressed {
+		km.mutex.Unlock()
+		km.debugPrint("KeyManager: TypedKey suppressed key=%s", ev.Name)
 		return
 	}
-
-	km.mutex.RLock()
+	km.recordKeyDownLocked(ev)
+	pending := km.hasPendingTransitionLocked()
 	modifiers := km.modifierState
-	km.mutex.RUnlock()
+	km.mutex.Unlock()
+
+	if pending {
+		km.debugPrint("KeyManager: TypedKey gated key=%s", ev.Name)
+		return
+	}
 
 	km.handleTypedKey(ev, modifiers)
 }
 
 // HandleShortcutKey routes a shortcut-style key event to the current handler.
 func (km *KeyManager) HandleShortcutKey(ev *fyne.KeyEvent, modifiers ModifierState) {
-	if km.shouldDrainKey(ev.Name) {
-		km.debugPrint("KeyManager: ShortcutKey drained key=%s", ev.Name)
+	km.mutex.Lock()
+	suppressed := km.shouldSuppressTypedKeyLocked(ev)
+	if suppressed {
+		km.mutex.Unlock()
+		km.debugPrint("KeyManager: ShortcutKey suppressed key=%s", ev.Name)
+		return
+	}
+	km.recordKeyDownLocked(ev)
+	pending := km.hasPendingTransitionLocked()
+	km.mutex.Unlock()
+
+	if pending {
+		km.debugPrint("KeyManager: ShortcutKey gated key=%s", ev.Name)
 		return
 	}
 
@@ -278,14 +345,10 @@ func (km *KeyManager) HandleShortcutKey(ev *fyne.KeyEvent, modifiers ModifierSta
 }
 
 func (km *KeyManager) handleTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) {
-	currentHandler, beforeVersion := km.currentHandlerAndVersion()
+	currentHandler, _ := km.currentHandlerAndVersion()
 
 	if currentHandler != nil {
 		handled := currentHandler.OnTypedKey(ev, modifiers)
-		afterHandler, afterVersion := km.currentHandlerAndVersion()
-		if afterVersion != beforeVersion && !sameHandler(currentHandler, afterHandler) {
-			km.markDrainKey(ev)
-		}
 		km.debugPrint("KeyManager: TypedKey %s handled=%t", currentHandler.GetName(), handled)
 	} else {
 		km.debugPrint("KeyManager: TypedKey no handler")
@@ -294,10 +357,24 @@ func (km *KeyManager) handleTypedKey(ev *fyne.KeyEvent, modifiers ModifierState)
 
 // HandleTypedRune routes typed rune events to the current top handler
 func (km *KeyManager) HandleTypedRune(r rune) {
-	km.mutex.RLock()
+	km.mutex.Lock()
+	pending := km.hasPendingTransitionLocked()
+	suppressed := km.shouldSuppressRuneLocked()
 	modifiers := km.modifierState
-	currentHandler := km.GetCurrentHandler()
-	km.mutex.RUnlock()
+	var currentHandler KeyHandler
+	if len(km.handlers) > 0 {
+		currentHandler = km.handlers[len(km.handlers)-1]
+	}
+	km.mutex.Unlock()
+
+	if suppressed {
+		km.debugPrint("KeyManager: TypedRune suppressed rune=%q", r)
+		return
+	}
+	if pending {
+		km.debugPrint("KeyManager: TypedRune gated rune=%q", r)
+		return
+	}
 
 	if currentHandler != nil {
 		handled := currentHandler.OnTypedRune(r, modifiers)

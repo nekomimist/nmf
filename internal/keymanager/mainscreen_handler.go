@@ -101,6 +101,7 @@ type MainScreenKeyHandler struct {
 	bindings        []keyBinding
 	runningCommands map[string]int
 	runningDepth    int
+	deferTransition func(label string, action func())
 }
 
 // NewMainScreenKeyHandler creates a new main screen key handler.
@@ -132,6 +133,11 @@ func NewMainScreenKeyHandlerWithCommands(fm FileManagerInterface, debugPrint fun
 }
 
 func (mh *MainScreenKeyHandler) GetName() string { return "MainScreen" }
+
+// SetTransitionGate configures delayed execution for commands that change input owner.
+func (mh *MainScreenKeyHandler) SetTransitionGate(deferTransition func(label string, action func())) {
+	mh.deferTransition = deferTransition
+}
 
 func (mh *MainScreenKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	return mh.executeBinding(keyEventDown, ev, modifiers)
@@ -194,19 +200,53 @@ func (mh *MainScreenKeyHandler) executeCommand(commandID string, ctx CommandCont
 		return false
 	}
 
-	mh.debugPrint("MainScreen: command=%s key=%s event=%s", commandID, ctx.Key, ctx.Event)
-	mh.runningDepth++
-	mh.runningCommands[commandID]++
-	defer func() {
-		mh.runningDepth--
-		mh.runningCommands[commandID]--
-		if mh.runningCommands[commandID] == 0 {
-			delete(mh.runningCommands, commandID)
-		}
-	}()
+	run := func() {
+		mh.debugPrint("MainScreen: command=%s key=%s event=%s", commandID, ctx.Key, ctx.Event)
+		mh.runningDepth++
+		mh.runningCommands[commandID]++
+		defer func() {
+			mh.runningDepth--
+			mh.runningCommands[commandID]--
+			if mh.runningCommands[commandID] == 0 {
+				delete(mh.runningCommands, commandID)
+			}
+		}()
 
-	command(ctx)
+		command(ctx)
+	}
+
+	if mh.shouldDeferCommand(commandID) && mh.deferTransition != nil {
+		mh.deferTransition(commandID, run)
+		return true
+	}
+
+	run()
 	return true
+}
+
+func (mh *MainScreenKeyHandler) shouldDeferCommand(commandID string) bool {
+	switch commandID {
+	case CommandWindowNew,
+		CommandTreeShow,
+		CommandHistoryShow,
+		CommandDirectoryJumpShow,
+		CommandFilterShow,
+		CommandSearchShow,
+		CommandSortShow,
+		CommandJobsShow,
+		CommandPathFocus,
+		CommandQuit,
+		CommandCopyShow,
+		CommandMoveShow,
+		CommandRenameShow,
+		CommandDeleteTrash,
+		CommandDeletePermanent,
+		CommandExplorerContextShow,
+		CommandExternalCommandMenu:
+		return true
+	default:
+		return false
+	}
 }
 
 func (mh *MainScreenKeyHandler) buildBindings(configured []config.KeyBindingEntry) []keyBinding {

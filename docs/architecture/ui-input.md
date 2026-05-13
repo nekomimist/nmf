@@ -22,6 +22,18 @@ Core model:
 
 Modifier keys (`Shift`, `Ctrl`, `Alt`) are tracked centrally in `KeyManager` and passed to handlers.
 
+Input-owner transitions:
+
+- Commands that open a dialog/menu, enter an input mode, or create a new window
+  are deferred until all currently pressed keys have been released.
+- While such a transition is pending, `KeyManager` consumes typed key/rune
+  events and only uses key-up events to update pressed-key state.
+- This keeps the triggering key from leaking into the newly opened input owner
+  (for example a history filter field) and prevents late `Return` typed events
+  from falling through to the main file list.
+- Cursor movement, selection, refresh, and other non-input-owner state changes
+  remain immediate so key repeat behavior stays responsive.
+
 Main-screen configurable bindings:
 
 - Configured under `ui.keyBindings` in `config.json`.

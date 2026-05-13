@@ -23,12 +23,11 @@ type IncrementalSearchOverlay struct {
 	searchLabel    *canvas.Text        // Shows current search term and match info
 	visible        bool                // Whether the overlay is currently visible
 	debugPrint     func(format string, args ...interface{})
-	keyManager     *keymanager.KeyManager                // Keyboard input manager
-	callback       func(selectedFile *fileinfo.FileInfo) // Callback for file selection
-	cancelCallback func()                                // Callback for cancellation
-	allFiles       []fileinfo.FileInfo                   // All files in current directory
-	parent         fyne.Window                           // Parent window for positioning
-	closed         bool                                  // Prevent double-close
+	keyManager     *keymanager.KeyManager // Keyboard input manager
+	cancelCallback func()                 // Callback for cancellation
+	allFiles       []fileinfo.FileInfo    // All files in current directory
+	parent         fyne.Window            // Parent window for positioning
+	closed         bool                   // Prevent double-close
 	themeProvider  ThemeColorProvider
 }
 
@@ -84,11 +83,6 @@ func (iso *IncrementalSearchOverlay) GetContainer() *fyne.Container {
 	return iso.container
 }
 
-// SetCallback sets the callback function for file selection
-func (iso *IncrementalSearchOverlay) SetCallback(callback func(selectedFile *fileinfo.FileInfo)) {
-	iso.callback = callback
-}
-
 // SetCancelCallback sets the callback function for cancellation
 func (iso *IncrementalSearchOverlay) SetCancelCallback(callback func()) {
 	iso.cancelCallback = callback
@@ -122,6 +116,15 @@ func (iso *IncrementalSearchOverlay) Show(parent fyne.Window) {
 
 // Hide hides the overlay and exits search mode
 func (iso *IncrementalSearchOverlay) Hide() {
+	iso.hide(true)
+}
+
+// HideAccepted hides the overlay after a successful search selection.
+func (iso *IncrementalSearchOverlay) HideAccepted() {
+	iso.hide(false)
+}
+
+func (iso *IncrementalSearchOverlay) hide(cancel bool) {
 	if !iso.visible || iso.closed {
 		return
 	}
@@ -130,8 +133,8 @@ func (iso *IncrementalSearchOverlay) Hide() {
 	iso.closed = true
 	iso.container.Hide()
 
-	// Call cancel callback if set
-	if iso.cancelCallback != nil {
+	// Call cancel callback if this was an explicit cancellation.
+	if cancel && iso.cancelCallback != nil {
 		iso.cancelCallback()
 	}
 
@@ -188,25 +191,6 @@ func (iso *IncrementalSearchOverlay) PreviousMatch() {
 	iso.currentMatch = (iso.currentMatch - 1 + len(iso.matchedFiles)) % len(iso.matchedFiles)
 	iso.updateDisplay()
 	iso.debugPrint("IncrementalSearchOverlay: Previous match, index: %d", iso.currentMatch)
-}
-
-// SelectCurrentMatch selects the currently highlighted match
-func (iso *IncrementalSearchOverlay) SelectCurrentMatch() {
-	if !iso.visible || iso.currentMatch < 0 || iso.currentMatch >= len(iso.matchedFiles) {
-		return
-	}
-
-	selectedFile := &iso.matchedFiles[iso.currentMatch]
-
-	// Hide overlay first
-	iso.Hide()
-
-	// Call callback if set
-	if iso.callback != nil {
-		iso.callback(selectedFile)
-	}
-
-	iso.debugPrint("IncrementalSearchOverlay: Selected match: %s", selectedFile.Name)
 }
 
 // GetCurrentMatch returns the currently selected file, or nil if none

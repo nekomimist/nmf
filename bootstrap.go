@@ -65,6 +65,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 	// Create incremental search overlay
 	fm.searchOverlay = ui.NewIncrementalSearchOverlay([]fileinfo.FileInfo{}, fm.keyManager, customTheme, debugPrint)
 	fm.searchHandler = keymanager.NewIncrementalSearchKeyHandler(fm, debugPrint)
+	fm.searchHandler.SetTransitionGate(fm.keyManager.DeferUntilKeysReleased)
 
 	// Setup KeyManager with main screen handler
 	var scriptCommands keymanager.CommandRegistry
@@ -72,6 +73,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 		scriptCommands = configScript.Commands
 	}
 	mainHandler := keymanager.NewMainScreenKeyHandlerWithCommands(fm, debugPrint, config.UI.KeyBindings, scriptCommands)
+	mainHandler.SetTransitionGate(fm.keyManager.DeferUntilKeysReleased)
 	fm.keyManager.PushHandler(mainHandler)
 
 	fm.setupUI()

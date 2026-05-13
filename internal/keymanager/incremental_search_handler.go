@@ -13,6 +13,7 @@ type IncrementalSearchInterface interface {
 	// Search overlay management
 	ShowIncrementalSearchOverlay()
 	HideIncrementalSearchOverlay()
+	AcceptIncrementalSearchOverlay()
 	IsIncrementalSearchVisible() bool
 
 	// Search operations
@@ -20,11 +21,9 @@ type IncrementalSearchInterface interface {
 	RemoveLastSearchCharacter()
 	NextSearchMatch()
 	PreviousSearchMatch()
-	SelectCurrentSearchMatch()
 	GetCurrentSearchMatch() *fileinfo.FileInfo
 
 	// File operations
-	OpenFile(file *fileinfo.FileInfo)
 	SetCursorToFile(file *fileinfo.FileInfo)
 }
 
@@ -32,6 +31,7 @@ type IncrementalSearchInterface interface {
 type IncrementalSearchKeyHandler struct {
 	searchInterface IncrementalSearchInterface
 	debugPrint      func(format string, args ...interface{})
+	deferTransition func(label string, action func())
 }
 
 // NewIncrementalSearchKeyHandler creates a new incremental search key handler
@@ -50,6 +50,35 @@ func (ish *IncrementalSearchKeyHandler) GetName() string {
 	return "IncrementalSearch"
 }
 
+// SetTransitionGate configures delayed execution for exiting search mode.
+func (ish *IncrementalSearchKeyHandler) SetTransitionGate(deferTransition func(label string, action func())) {
+	ish.deferTransition = deferTransition
+}
+
+func (ish *IncrementalSearchKeyHandler) deferUntilKeysReleased(label string, action func()) {
+	if ish.deferTransition != nil {
+		ish.deferTransition(label, action)
+		return
+	}
+	action()
+}
+
+func (ish *IncrementalSearchKeyHandler) cancelSearch() {
+	ish.deferUntilKeysReleased("search.cancel", func() {
+		ish.searchInterface.HideIncrementalSearchOverlay()
+	})
+}
+
+func (ish *IncrementalSearchKeyHandler) acceptCurrentMatch() {
+	currentMatch := ish.searchInterface.GetCurrentSearchMatch()
+	ish.deferUntilKeysReleased("search.accept", func() {
+		if currentMatch != nil {
+			ish.searchInterface.SetCursorToFile(currentMatch)
+		}
+		ish.searchInterface.AcceptIncrementalSearchOverlay()
+	})
+}
+
 // OnKeyDown handles key press events during incremental search
 func (ish *IncrementalSearchKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	ish.debugPrint("IncrementalSearchKeyHandler: OnKeyDown %v", ev.Name)
@@ -57,22 +86,12 @@ func (ish *IncrementalSearchKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers M
 	switch ev.Name {
 	case fyne.KeyEscape:
 		// Exit search mode
-		ish.searchInterface.HideIncrementalSearchOverlay()
+		ish.cancelSearch()
 		return true
 
 	case fyne.KeyReturn, fyne.KeyEnter:
 		// Select current match and exit search mode
-		currentMatch := ish.searchInterface.GetCurrentSearchMatch()
-		if currentMatch != nil {
-			// For directories, navigate into them
-			// For files, just set cursor to them
-			if currentMatch.IsDir {
-				ish.searchInterface.OpenFile(currentMatch)
-			} else {
-				ish.searchInterface.SetCursorToFile(currentMatch)
-			}
-		}
-		ish.searchInterface.HideIncrementalSearchOverlay()
+		ish.acceptCurrentMatch()
 		return true
 
 	case fyne.KeyBackspace:
@@ -131,20 +150,12 @@ func (ish *IncrementalSearchKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers 
 
 	case fyne.KeyEscape:
 		// Exit search mode
-		ish.searchInterface.HideIncrementalSearchOverlay()
+		ish.cancelSearch()
 		return true
 
 	case fyne.KeyReturn, fyne.KeyEnter:
 		// Select current match and exit search mode
-		currentMatch := ish.searchInterface.GetCurrentSearchMatch()
-		if currentMatch != nil {
-			if currentMatch.IsDir {
-				ish.searchInterface.OpenFile(currentMatch)
-			} else {
-				ish.searchInterface.SetCursorToFile(currentMatch)
-			}
-		}
-		ish.searchInterface.HideIncrementalSearchOverlay()
+		ish.acceptCurrentMatch()
 		return true
 
 	default:

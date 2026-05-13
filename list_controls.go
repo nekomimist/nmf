@@ -233,24 +233,7 @@ func (fm *FileManager) ShowIncrementalSearchDialog() {
 	// Update overlay with current files
 	fm.searchOverlay.UpdateFiles(fm.files)
 
-	// Set up callbacks
-	fm.searchOverlay.SetCallback(func(selectedFile *fileinfo.FileInfo) {
-		// Navigate to selected file/directory
-		if selectedFile.IsDir {
-			// For directories, navigate into them
-			targetPath := fileinfo.JoinPath(fm.currentPath, selectedFile.Name)
-			debugPrint("FileManager: Incremental search navigating to directory %s", targetPath)
-			fm.LoadDirectory(targetPath)
-		} else {
-			// For files, set cursor to them
-			fm.SetCursorToFile(selectedFile)
-		}
-
-		// Pop the search handler and refocus main view
-		fm.keyManager.PopHandler()
-		fm.FocusFileList()
-	})
-
+	// Set up cancellation callback. Accept is handled by IncrementalSearchKeyHandler.
 	fm.searchOverlay.SetCancelCallback(func() {
 		debugPrint("FileManager: Incremental search cancelled")
 		// Pop the search handler and refocus main view
@@ -342,6 +325,15 @@ func (fm *FileManager) HideIncrementalSearchOverlay() {
 	}
 }
 
+// AcceptIncrementalSearchOverlay hides the search overlay after accepting a match.
+func (fm *FileManager) AcceptIncrementalSearchOverlay() {
+	if fm.searchOverlay != nil {
+		fm.searchOverlay.HideAccepted()
+	}
+	fm.keyManager.PopHandler()
+	fm.FocusFileList()
+}
+
 // IsIncrementalSearchVisible returns whether the search overlay is visible.
 func (fm *FileManager) IsIncrementalSearchVisible() bool {
 	return fm.searchOverlay != nil && fm.searchOverlay.IsVisible()
@@ -392,13 +384,6 @@ func (fm *FileManager) PreviousSearchMatch() {
 		if currentMatch != nil {
 			fm.SetCursorToFile(currentMatch)
 		}
-	}
-}
-
-// SelectCurrentSearchMatch selects the current search match.
-func (fm *FileManager) SelectCurrentSearchMatch() {
-	if fm.searchOverlay != nil {
-		fm.searchOverlay.SelectCurrentMatch()
 	}
 }
 
