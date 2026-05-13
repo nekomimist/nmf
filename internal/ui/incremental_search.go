@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
@@ -21,6 +22,7 @@ type IncrementalSearchOverlay struct {
 	currentMatch   int                 // Index of current match in matchedFiles
 	container      *fyne.Container     // Main container for the overlay
 	searchLabel    *canvas.Text        // Shows current search term and match info
+	searchText     *shrinkingTextLabel // Keeps long match names from expanding the window
 	visible        bool                // Whether the overlay is currently visible
 	debugPrint     func(format string, args ...interface{})
 	keyManager     *keymanager.KeyManager // Keyboard input manager
@@ -62,9 +64,10 @@ func (iso *IncrementalSearchOverlay) createWidgets() {
 	// Create search text with explicit contrast so theme primary/cursor colors cannot leak in.
 	iso.searchLabel = canvas.NewText("", textColor)
 	iso.searchLabel.TextStyle.Bold = true
+	iso.searchText = newShrinkingTextLabel(iso.searchLabel)
 
 	// Add padding around the label
-	paddedLabel := container.NewPadded(iso.searchLabel)
+	paddedLabel := container.NewPadded(iso.searchText)
 
 	// Stack background and label
 	iso.container = container.NewMax(background, paddedLabel)
@@ -266,6 +269,82 @@ func (iso *IncrementalSearchOverlay) updateDisplay() {
 }
 
 func (iso *IncrementalSearchOverlay) setSearchText(text string) {
-	iso.searchLabel.Text = text
-	iso.searchLabel.Refresh()
+	iso.searchText.SetText(text)
 }
+
+type shrinkingTextLabel struct {
+	widget.BaseWidget
+	text     *canvas.Text
+	fullText string
+}
+
+func newShrinkingTextLabel(text *canvas.Text) *shrinkingTextLabel {
+	label := &shrinkingTextLabel{
+		text:     text,
+		fullText: text.Text,
+	}
+	label.ExtendBaseWidget(label)
+	return label
+}
+
+func (l *shrinkingTextLabel) SetText(text string) {
+	l.fullText = text
+	l.text.Text = text
+	l.Refresh()
+}
+
+func (l *shrinkingTextLabel) displayText(width float32) string {
+	if width <= 0 {
+		return l.fullText
+	}
+	if textWidth(l.fullText, l.text.TextSize, l.text.TextStyle) <= width {
+		return l.fullText
+	}
+
+	const ellipsis = "..."
+	if textWidth(ellipsis, l.text.TextSize, l.text.TextStyle) > width {
+		return ""
+	}
+
+	runes := []rune(l.fullText)
+	for keep := len(runes) - 1; keep > 0; keep-- {
+		prefix := keep / 2
+		suffix := keep - prefix
+		candidate := string(runes[:prefix]) + ellipsis + string(runes[len(runes)-suffix:])
+		if textWidth(candidate, l.text.TextSize, l.text.TextStyle) <= width {
+			return candidate
+		}
+	}
+	return ellipsis
+}
+
+func (l *shrinkingTextLabel) CreateRenderer() fyne.WidgetRenderer {
+	return &shrinkingTextLabelRenderer{label: l}
+}
+
+type shrinkingTextLabelRenderer struct {
+	label *shrinkingTextLabel
+}
+
+func (r *shrinkingTextLabelRenderer) Layout(size fyne.Size) {
+	r.label.text.Text = r.label.displayText(size.Width)
+	textSize := r.label.text.MinSize()
+	r.label.text.Move(fyne.NewPos(0, (size.Height-textSize.Height)/2))
+	r.label.text.Resize(fyne.NewSize(size.Width, textSize.Height))
+}
+
+func (r *shrinkingTextLabelRenderer) MinSize() fyne.Size {
+	textSize := fyne.MeasureText("M", r.label.text.TextSize, r.label.text.TextStyle)
+	return fyne.NewSize(0, textSize.Height)
+}
+
+func (r *shrinkingTextLabelRenderer) Refresh() {
+	r.Layout(r.label.Size())
+	canvas.Refresh(r.label)
+}
+
+func (r *shrinkingTextLabelRenderer) Objects() []fyne.CanvasObject {
+	return []fyne.CanvasObject{r.label.text}
+}
+
+func (r *shrinkingTextLabelRenderer) Destroy() {}

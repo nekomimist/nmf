@@ -78,6 +78,21 @@ func TestIncrementalSearchTypingUpdatesMatchDisplay(t *testing.T) {
 	}
 }
 
+func TestIncrementalSearchLongMatchDoesNotExpandOverlayMinSize(t *testing.T) {
+	overlay := NewIncrementalSearchOverlay([]fileinfo.FileInfo{
+		{Name: strings.Repeat("long-name-", 80) + ".txt"},
+	}, nil, incrementalSearchTheme{}, func(string, ...interface{}) {})
+
+	before := overlay.GetContainer().MinSize().Width
+	overlay.Show(nil)
+	overlay.AddCharacter('l')
+	after := overlay.GetContainer().MinSize().Width
+
+	if after > before {
+		t.Fatalf("overlay min width grew from %.2f to %.2f for long match name", before, after)
+	}
+}
+
 func TestIncrementalSearchTextUsesExplicitContrastColor(t *testing.T) {
 	overlay := NewIncrementalSearchOverlay([]fileinfo.FileInfo{{Name: "alpha.txt"}}, nil, incrementalSearchTheme{}, func(string, ...interface{}) {})
 
