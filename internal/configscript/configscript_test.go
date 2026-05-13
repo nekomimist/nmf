@@ -1222,7 +1222,7 @@ func (f *configScriptFakeFileManager) ToggleFilter()                     {}
 func (f *configScriptFakeFileManager) ShowIncrementalSearchDialog()      {}
 func (f *configScriptFakeFileManager) ShowSortDialog()                   {}
 func (f *configScriptFakeFileManager) ShowJobsDialog()                   {}
-func (f *configScriptFakeFileManager) FocusPathEntry()                   {}
+func (f *configScriptFakeFileManager) ShowPathEditDialog()               {}
 func (f *configScriptFakeFileManager) QuitApplication()                  {}
 func (f *configScriptFakeFileManager) OpenFile(file *fileinfo.FileInfo)  {}
 func (f *configScriptFakeFileManager) ShowCopyDialog()                   {}

@@ -323,7 +323,7 @@ func (f *mainScreenFakeFileManager) ToggleFilter()                    {}
 func (f *mainScreenFakeFileManager) ShowIncrementalSearchDialog()     { f.showSearchCount++ }
 func (f *mainScreenFakeFileManager) ShowSortDialog()                  { f.showSortCount++ }
 func (f *mainScreenFakeFileManager) ShowJobsDialog()                  { f.showJobsCount++ }
-func (f *mainScreenFakeFileManager) FocusPathEntry()                  { f.focusPathCount++ }
+func (f *mainScreenFakeFileManager) ShowPathEditDialog()              { f.focusPathCount++ }
 func (f *mainScreenFakeFileManager) QuitApplication()                 {}
 func (f *mainScreenFakeFileManager) OpenFile(file *fileinfo.FileInfo) {}
 func (f *mainScreenFakeFileManager) ShowCopyDialog()                  {}

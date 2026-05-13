@@ -252,7 +252,7 @@ Available main-screen commands:
 - `tree.show`, `history.show`, `directoryJump.show`
 - `filter.show`, `filter.clear`, `filter.toggle`
 - `search.show`, `sort.show`, `jobs.show`
-- `path.focus`, `app.quit`
+- `path.edit`, `app.quit`
 - `copy.show`, `move.show`, `rename.show`
 - `delete.trash`, `delete.permanent`
 - `explorerContext.show`

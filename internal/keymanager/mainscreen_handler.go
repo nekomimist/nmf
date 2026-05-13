@@ -32,7 +32,7 @@ const (
 	CommandSearchShow          = "search.show"
 	CommandSortShow            = "sort.show"
 	CommandJobsShow            = "jobs.show"
-	CommandPathFocus           = "path.focus"
+	CommandPathEdit            = "path.edit"
 	CommandQuit                = "app.quit"
 	CommandCopyShow            = "copy.show"
 	CommandMoveShow            = "move.show"
@@ -76,7 +76,7 @@ type FileManagerInterface interface {
 	ShowIncrementalSearchDialog()
 	ShowSortDialog()
 	ShowJobsDialog()
-	FocusPathEntry()
+	ShowPathEditDialog()
 	QuitApplication()
 
 	OpenFile(file *fileinfo.FileInfo)
@@ -235,7 +235,7 @@ func (mh *MainScreenKeyHandler) shouldDeferCommand(commandID string) bool {
 		CommandSearchShow,
 		CommandSortShow,
 		CommandJobsShow,
-		CommandPathFocus,
+		CommandPathEdit,
 		CommandQuit,
 		CommandCopyShow,
 		CommandMoveShow,
@@ -307,7 +307,7 @@ func defaultMainScreenBindings() []config.KeyBindingEntry {
 		{Key: "C-F", Command: CommandFilterShow, Event: keyEventDown},
 		{Key: "C-S", Command: CommandSearchShow, Event: keyEventDown},
 		{Key: "S-S", Command: CommandSortShow, Event: keyEventTyped},
-		{Key: "C-L", Command: CommandPathFocus, Event: keyEventDown},
+		{Key: "C-L", Command: CommandPathEdit, Event: keyEventDown},
 		{Key: "S-J", Command: CommandJobsShow, Event: keyEventTyped},
 		{Key: "J", Command: CommandDirectoryJumpShow, Event: keyEventTyped},
 		{Key: "Delete", Command: CommandDeleteTrash, Event: keyEventTyped},
@@ -339,7 +339,7 @@ func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
 		CommandSearchShow:          func(CommandContext) { mh.fileManager.ShowIncrementalSearchDialog() },
 		CommandSortShow:            func(CommandContext) { mh.fileManager.ShowSortDialog() },
 		CommandJobsShow:            func(CommandContext) { mh.fileManager.ShowJobsDialog() },
-		CommandPathFocus:           func(CommandContext) { mh.fileManager.FocusPathEntry() },
+		CommandPathEdit:            func(CommandContext) { mh.fileManager.ShowPathEditDialog() },
 		CommandQuit:                func(CommandContext) { mh.fileManager.QuitApplication() },
 		CommandCopyShow:            func(CommandContext) { mh.fileManager.ShowCopyDialog() },
 		CommandMoveShow:            func(CommandContext) { mh.fileManager.ShowMoveDialog() },

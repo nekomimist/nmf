@@ -292,8 +292,8 @@ func (fm *FileManager) ShowSortDialog() {
 	sortDialog.Show(fm.window, handler)
 }
 
-// FocusPathEntry opens the path edit dialog.
-func (fm *FileManager) FocusPathEntry() {
+// ShowPathEditDialog opens the path edit dialog.
+func (fm *FileManager) ShowPathEditDialog() {
 	debugPrint("FileManager: Opening path edit dialog")
 	dlg := ui.NewLineEditDialog(ui.LineEditDialogOptions{
 		Title:       "Edit Path",
