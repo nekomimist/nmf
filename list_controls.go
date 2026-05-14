@@ -67,6 +67,9 @@ func (fm *FileManager) RefreshFileList() {
 // CurrentSort returns the sort configuration currently used for the visible list.
 func (fm *FileManager) CurrentSort() config.SortConfig {
 	if fm.activeSort.SortBy == "" || fm.activeSort.SortOrder == "" {
+		if fm.config == nil {
+			return config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}
+		}
 		return fm.config.UI.Sort
 	}
 	return fm.activeSort

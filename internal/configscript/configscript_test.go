@@ -1148,6 +1148,213 @@ nmf.command("user.create", create)
 	}
 }
 
+func TestCustomCommandCanSetClipboard(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def copy_current(ctx):
+    nmf.clipboard(ctx.current_path + "\n" + ctx.current_name)
+nmf.command("user.copy_current", copy_current)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	var got string
+	rt.Commands["user.copy_current"](keymanager.CommandContext{
+		FileManager: &configScriptFakeFileManager{
+			currentPath: "/tmp/work",
+			cursorIndex: 0,
+			files: []fileinfo.FileInfo{
+				{Name: "main.go", Path: "/tmp/work/main.go"},
+			},
+		},
+		SetClipboard: func(text string) bool {
+			got = text
+			return true
+		},
+	})
+
+	if got != "/tmp/work\nmain.go" {
+		t.Fatalf("clipboard text = %q, want current path and name", got)
+	}
+}
+
+func TestClipboardReturnsFalseWithoutWriter(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def copy_text(ctx):
+    if nmf.clipboard("hello"):
+        nmf.run("directory.refresh")
+nmf.command("user.copy_text", copy_text)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	var ran string
+	rt.Commands["user.copy_text"](keymanager.CommandContext{
+		RunCommand: func(command string) bool {
+			ran = command
+			return true
+		},
+	})
+	if ran != "" {
+		t.Fatalf("ran command = %q, want none", ran)
+	}
+}
+
+func TestClipboardRequiresCommandContext(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	if err := os.WriteFile(path, []byte(`nmf.clipboard("hello")`), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	if _, err := Load(path, testConfig(), func(string, ...interface{}) {}); err == nil {
+		t.Fatal("Load should reject nmf.clipboard outside a command")
+	}
+}
+
+func TestClipboardRejectsNonString(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def copy_text(ctx):
+    nmf.clipboard(1)
+nmf.command("user.copy_text", copy_text)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	var logs []string
+	rt.debugPrint = func(format string, args ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}
+	rt.Commands["user.copy_text"](keymanager.CommandContext{
+		SetClipboard: func(text string) bool { return true },
+	})
+	if len(logs) == 0 {
+		t.Fatal("command should log clipboard argument failure")
+	}
+}
+
+func TestCustomCommandCanSaveClipboardTextFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def save(ctx):
+    if nmf.save_clipboard("clip.txt"):
+        nmf.run("directory.refresh")
+nmf.command("user.save", save)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	fm := &configScriptFakeFileManager{clipboardFileResult: true}
+	var ran string
+	rt.Commands["user.save"](keymanager.CommandContext{
+		FileManager: fm,
+		RunCommand: func(command string) bool {
+			ran = command
+			return true
+		},
+	})
+
+	if fm.clipboardFileName != "clip.txt" {
+		t.Fatalf("clipboard file name = %q, want clip.txt", fm.clipboardFileName)
+	}
+	if ran != "directory.refresh" {
+		t.Fatalf("ran command = %q, want directory.refresh", ran)
+	}
+}
+
+func TestSaveClipboardReturnsFalseWithoutFileManager(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def save(ctx):
+    if nmf.save_clipboard("clip.txt"):
+        nmf.run("directory.refresh")
+nmf.command("user.save", save)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	var ran string
+	rt.Commands["user.save"](keymanager.CommandContext{
+		RunCommand: func(command string) bool {
+			ran = command
+			return true
+		},
+	})
+	if ran != "" {
+		t.Fatalf("ran command = %q, want none", ran)
+	}
+}
+
+func TestSaveClipboardRequiresCommandContext(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	if err := os.WriteFile(path, []byte(`nmf.save_clipboard("clip.txt")`), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	if _, err := Load(path, testConfig(), func(string, ...interface{}) {}); err == nil {
+		t.Fatal("Load should reject nmf.save_clipboard outside a command")
+	}
+}
+
+func TestSaveClipboardRequiresNameWhenNotEditing(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def save(ctx):
+    nmf.save_clipboard()
+nmf.command("user.save", save)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	var logs []string
+	rt.debugPrint = func(format string, args ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}
+	rt.Commands["user.save"](keymanager.CommandContext{FileManager: &configScriptFakeFileManager{}})
+	if len(logs) == 0 {
+		t.Fatal("command should log save_clipboard argument failure")
+	}
+}
+
 func TestCustomCommandDefersEditableMkdir(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, FileName)
@@ -1185,6 +1392,46 @@ nmf.command("user.create", create)
 	deferred()
 	if fm.showCreateDirCount != 1 {
 		t.Fatalf("ShowCreateDirectoryDialog count after deferred action = %d, want 1", fm.showCreateDirCount)
+	}
+}
+
+func TestCustomCommandDefersEditableSaveClipboard(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def save(ctx):
+    nmf.save_clipboard(edit = True)
+nmf.command("user.save", save)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	fm := &configScriptFakeFileManager{}
+	var label string
+	var deferred func()
+	rt.Commands["user.save"](keymanager.CommandContext{
+		FileManager: fm,
+		DeferTransition: func(gotLabel string, action func()) {
+			label = gotLabel
+			deferred = action
+		},
+	})
+
+	if fm.showClipboardFileCount != 0 {
+		t.Fatalf("ShowClipboardTextFileDialog count before deferred action = %d, want 0", fm.showClipboardFileCount)
+	}
+	if label != "starlark.save_clipboard.edit" || deferred == nil {
+		t.Fatalf("deferred transition = label %q action nil=%t, want starlark.save_clipboard.edit action", label, deferred == nil)
+	}
+
+	deferred()
+	if fm.showClipboardFileCount != 1 {
+		t.Fatalf("ShowClipboardTextFileDialog count after deferred action = %d, want 1", fm.showClipboardFileCount)
 	}
 }
 
@@ -1340,18 +1587,21 @@ func testConfig() *config.Config {
 }
 
 type configScriptFakeFileManager struct {
-	currentPath          string
-	cursorIndex          int
-	files                []fileinfo.FileInfo
-	selectedFiles        map[string]bool
-	currentSort          config.SortConfig
-	temporarySort        config.SortConfig
-	temporarySortApplied bool
-	createDirName        string
-	createDirResult      bool
-	showCreateDirCount   int
-	menuTitle            string
-	menuItems            []keymanager.CommandMenuItem
+	currentPath            string
+	cursorIndex            int
+	files                  []fileinfo.FileInfo
+	selectedFiles          map[string]bool
+	currentSort            config.SortConfig
+	temporarySort          config.SortConfig
+	temporarySortApplied   bool
+	createDirName          string
+	createDirResult        bool
+	showCreateDirCount     int
+	clipboardFileName      string
+	clipboardFileResult    bool
+	showClipboardFileCount int
+	menuTitle              string
+	menuItems              []keymanager.CommandMenuItem
 }
 
 func (f *configScriptFakeFileManager) GetCurrentCursorIndex() int    { return f.cursorIndex }
@@ -1395,6 +1645,11 @@ func (f *configScriptFakeFileManager) ShowCreateDirectoryDialog()        { f.sho
 func (f *configScriptFakeFileManager) CreateDirectory(name string) bool {
 	f.createDirName = name
 	return f.createDirResult
+}
+func (f *configScriptFakeFileManager) ShowClipboardTextFileDialog() { f.showClipboardFileCount++ }
+func (f *configScriptFakeFileManager) CreateClipboardTextFile(name string) bool {
+	f.clipboardFileName = name
+	return f.clipboardFileResult
 }
 func (f *configScriptFakeFileManager) QuitApplication()                 {}
 func (f *configScriptFakeFileManager) OpenFile(file *fileinfo.FileInfo) {}

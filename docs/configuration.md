@@ -249,6 +249,7 @@ Available main-screen commands:
 - `cursor.first`, `cursor.last`
 - `open`, `selection.toggle`, `selection.markAll`
 - `directory.parent`, `directory.refresh`, `directory.home`, `directory.create`
+- `clipboard.createTextFile`
 - `window.new`
 - `tree.show`, `history.show`, `directoryJump.show`
 - `filter.show`, `filter.clear`, `filter.toggle`

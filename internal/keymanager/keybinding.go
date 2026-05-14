@@ -23,6 +23,7 @@ type CommandContext struct {
 	RunCommand  func(command string) bool
 
 	RunExternalCommand func(command string, args []string, edit bool, cwd string) bool
+	SetClipboard       func(text string) bool
 	DeferTransition    func(label string, action func())
 }
 

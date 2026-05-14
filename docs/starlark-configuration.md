@@ -91,6 +91,16 @@ def create_directory(ctx):
 
 nmf.key("K", fn = create_directory)
 
+def copy_selected(ctx):
+    nmf.clipboard("\n".join(ctx.selected_files))
+
+nmf.key("C-Y", fn = copy_selected, event = "down")
+
+def save_clipboard(ctx):
+    nmf.save_clipboard(edit = True)
+
+nmf.key("P", fn = save_clipboard)
+
 def open_media(ctx):
     if ctx.current_name.endswith(".mp4"):
         nmf.exec("mpv", args = [ctx.current_file])
@@ -255,6 +265,14 @@ The command function receives one `ctx` struct:
 Command-only helpers:
 
 - `nmf.run(command_id)` runs a built-in or `user.*` command and returns a bool.
+- `nmf.clipboard(text)` writes a string to the system clipboard and returns a
+  bool. Use `ctx.current_path`, `ctx.current_file`, `ctx.current_name`, and
+  `ctx.selected_files` to build values for key bindings or menu items.
+- `nmf.save_clipboard(name = "", edit = False)` creates a text file in the
+  current directory from the system clipboard text and returns a bool. With
+  `edit = False`, `name` is required and existing files are rejected. With
+  `edit = True`, nmf opens the same one-line file name dialog as the built-in
+  key binding and returns `False`.
 - `nmf.exec(command, args = [], edit = False, cwd = "")` starts an external command and returns a bool.
   `args` is passed as raw strings; use `ctx.current_file`,
   `ctx.selected_files`, `ctx.current_path`, and `ctx.current_name` instead of

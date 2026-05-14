@@ -280,6 +280,11 @@ type mainScreenFakeFileManager struct {
 	showCreateDirCount     int
 	createDirName          string
 	createDirResult        bool
+	showClipboardFileCount int
+	clipboardFileName      string
+	clipboardFileResult    bool
+	clipboardText          string
+	clipboardResult        bool
 	showRenameCount        int
 	showDeleteCount        int
 	showExplorerMenuCount  int
@@ -331,6 +336,15 @@ func (f *mainScreenFakeFileManager) ShowCreateDirectoryDialog()   { f.showCreate
 func (f *mainScreenFakeFileManager) CreateDirectory(name string) bool {
 	f.createDirName = name
 	return f.createDirResult
+}
+func (f *mainScreenFakeFileManager) ShowClipboardTextFileDialog() { f.showClipboardFileCount++ }
+func (f *mainScreenFakeFileManager) CreateClipboardTextFile(name string) bool {
+	f.clipboardFileName = name
+	return f.clipboardFileResult
+}
+func (f *mainScreenFakeFileManager) SetClipboardText(text string) bool {
+	f.clipboardText = text
+	return f.clipboardResult
 }
 func (f *mainScreenFakeFileManager) QuitApplication()                 {}
 func (f *mainScreenFakeFileManager) OpenFile(file *fileinfo.FileInfo) {}
@@ -391,6 +405,20 @@ func TestMainScreenKShowsCreateDirectoryDialog(t *testing.T) {
 	}
 	if fm.showCreateDirCount != 1 {
 		t.Fatalf("ShowCreateDirectoryDialog count = %d, want 1", fm.showCreateDirCount)
+	}
+}
+
+func TestMainScreenPShowsClipboardTextFileDialog(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyP}, ModifierState{})
+
+	if !handled {
+		t.Fatal("P should be handled")
+	}
+	if fm.showClipboardFileCount != 1 {
+		t.Fatalf("ShowClipboardTextFileDialog count = %d, want 1", fm.showClipboardFileCount)
 	}
 }
 
@@ -684,6 +712,31 @@ func TestMainScreenProvidesTransitionGateToExtraCommand(t *testing.T) {
 	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyX})
 	if fm.showHistoryCount != 1 {
 		t.Fatalf("ShowNavigationHistoryDialog count = %d after release, want 1", fm.showHistoryCount)
+	}
+}
+
+func TestMainScreenProvidesClipboardWriterToExtraCommand(t *testing.T) {
+	fm := &mainScreenFakeFileManager{clipboardResult: true}
+	handler := NewMainScreenKeyHandlerWithCommands(
+		fm,
+		func(string, ...interface{}) {},
+		[]config.KeyBindingEntry{{Key: "X", Command: "user.copy"}},
+		CommandRegistry{
+			"user.copy": func(ctx CommandContext) {
+				if ctx.SetClipboard != nil {
+					ctx.SetClipboard("hello")
+				}
+			},
+		},
+	)
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{})
+
+	if !handled {
+		t.Fatal("configured extra command should be handled")
+	}
+	if fm.clipboardText != "hello" {
+		t.Fatalf("clipboard text = %q, want hello", fm.clipboardText)
 	}
 }
 

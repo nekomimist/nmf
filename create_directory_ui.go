@@ -26,17 +26,17 @@ func (fm *FileManager) CreateDirectory(name string) bool {
 		return false
 	}
 
-	fm.applyCreatedDirectoryToList(newPath)
+	fm.applyCreatedPathToList(newPath, true)
 	debugPrint("FileManager: Created directory %s", newPath)
 	fm.FocusFileList()
 	return true
 }
 
-func (fm *FileManager) applyCreatedDirectoryToList(path string) {
+func (fm *FileManager) applyCreatedPathToList(path string, isDir bool) {
 	name := fileinfo.BaseName(path)
 	info, err := fileinfo.StatPortable(path)
 	if err != nil {
-		debugPrint("FileManager: Created directory stat failed path=%s err=%v", path, err)
+		debugPrint("FileManager: Created path stat failed path=%s err=%v", path, err)
 		fm.LoadDirectory(fm.currentPath)
 		return
 	}
@@ -44,15 +44,19 @@ func (fm *FileManager) applyCreatedDirectoryToList(path string) {
 	created := fileinfo.FileInfo{
 		Name:     name,
 		Path:     path,
-		IsDir:    true,
-		Size:     0,
+		IsDir:    isDir,
+		Size:     info.Size(),
 		Modified: info.ModTime(),
-		FileType: fileinfo.FileTypeDirectory,
+		FileType: fileinfo.DetermineFileType(path, name, isDir),
 		Status:   fileinfo.StatusNormal,
+	}
+	if isDir {
+		created.Size = 0
+		created.FileType = fileinfo.FileTypeDirectory
 	}
 
 	fm.mu.Lock()
-	fm.originalFiles = upsertCreatedDirectory(fm.originalFiles, created)
+	fm.originalFiles = upsertFileInfo(fm.originalFiles, created)
 	if fm.currentFilter != nil && fm.currentFilter.Pattern != "" {
 		filtered, err := fileinfo.FilterFiles(fm.originalFiles, fm.currentFilter.Pattern)
 		if err != nil {
@@ -70,9 +74,13 @@ func (fm *FileManager) applyCreatedDirectoryToList(path string) {
 	if fm.GetCurrentCursorIndex() < 0 && len(fm.files) > 0 {
 		fm.SetCursorByIndex(0)
 	}
-	fm.rebuildFileBinding()
-	fm.fileList.Refresh()
-	fm.RefreshCursor()
+	if fm.fileBinding != nil {
+		fm.rebuildFileBinding()
+	}
+	if fm.fileList != nil {
+		fm.fileList.Refresh()
+		fm.RefreshCursor()
+	}
 	fm.updateStatusBar()
 	fm.mu.Unlock()
 
@@ -81,7 +89,7 @@ func (fm *FileManager) applyCreatedDirectoryToList(path string) {
 	}
 }
 
-func upsertCreatedDirectory(files []fileinfo.FileInfo, created fileinfo.FileInfo) []fileinfo.FileInfo {
+func upsertFileInfo(files []fileinfo.FileInfo, created fileinfo.FileInfo) []fileinfo.FileInfo {
 	for i := range files {
 		if files[i].Path == created.Path {
 			files[i] = created

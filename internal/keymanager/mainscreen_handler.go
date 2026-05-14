@@ -23,6 +23,7 @@ const (
 	CommandRefresh             = "directory.refresh"
 	CommandHome                = "directory.home"
 	CommandDirectoryCreate     = "directory.create"
+	CommandClipboardTextFile   = "clipboard.createTextFile"
 	CommandWindowNew           = "window.new"
 	CommandTreeShow            = "tree.show"
 	CommandHistoryShow         = "history.show"
@@ -80,6 +81,8 @@ type FileManagerInterface interface {
 	ShowPathEditDialog()
 	ShowCreateDirectoryDialog()
 	CreateDirectory(name string) bool
+	ShowClipboardTextFileDialog()
+	CreateClipboardTextFile(name string) bool
 	QuitApplication()
 
 	OpenFile(file *fileinfo.FileInfo)
@@ -94,6 +97,10 @@ type FileManagerInterface interface {
 
 type externalCommandRunner interface {
 	RunExternalCommand(command string, args []string, edit bool, cwd string) bool
+}
+
+type clipboardWriter interface {
+	SetClipboardText(text string) bool
 }
 
 // MainScreenKeyHandler handles keyboard events for the main file list screen.
@@ -183,6 +190,9 @@ func (mh *MainScreenKeyHandler) executeBinding(event string, ev *fyne.KeyEvent, 
 		if runner, ok := mh.fileManager.(externalCommandRunner); ok {
 			ctx.RunExternalCommand = runner.RunExternalCommand
 		}
+		if writer, ok := mh.fileManager.(clipboardWriter); ok {
+			ctx.SetClipboard = writer.SetClipboardText
+		}
 		mh.executeCommand(binding.command, ctx)
 		return true
 	}
@@ -240,6 +250,7 @@ func (mh *MainScreenKeyHandler) shouldDeferCommand(commandID string) bool {
 		CommandJobsShow,
 		CommandPathEdit,
 		CommandDirectoryCreate,
+		CommandClipboardTextFile,
 		CommandQuit,
 		CommandCopyShow,
 		CommandMoveShow,
@@ -298,6 +309,7 @@ func defaultMainScreenBindings() []config.KeyBindingEntry {
 		{Key: "S-Period", Command: CommandCursorLast, Event: keyEventTyped},
 		{Key: "S-Backtick", Command: CommandHome, Event: keyEventTyped},
 		{Key: "K", Command: CommandDirectoryCreate, Event: keyEventTyped},
+		{Key: "P", Command: CommandClipboardTextFile, Event: keyEventTyped},
 		{Key: "F2", Command: CommandRenameShow, Event: keyEventTyped},
 		{Key: "R", Command: CommandRenameShow, Event: keyEventUp},
 		{Key: "Tab", Command: CommandExplorerContextShow, Event: keyEventTyped},
@@ -346,6 +358,7 @@ func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
 		CommandJobsShow:            func(CommandContext) { mh.fileManager.ShowJobsDialog() },
 		CommandPathEdit:            func(CommandContext) { mh.fileManager.ShowPathEditDialog() },
 		CommandDirectoryCreate:     func(CommandContext) { mh.fileManager.ShowCreateDirectoryDialog() },
+		CommandClipboardTextFile:   func(CommandContext) { mh.fileManager.ShowClipboardTextFileDialog() },
 		CommandQuit:                func(CommandContext) { mh.fileManager.QuitApplication() },
 		CommandCopyShow:            func(CommandContext) { mh.fileManager.ShowCopyDialog() },
 		CommandMoveShow:            func(CommandContext) { mh.fileManager.ShowMoveDialog() },
