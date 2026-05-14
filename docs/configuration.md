@@ -62,7 +62,8 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
         "name": "Open in Vim",
         "extensions": ["go", "md"],
         "command": "vim",
-        "args": ["{file}"]
+        "args": ["{file}"],
+        "cwd": "{dir}"
       }
     ]
   }
@@ -295,6 +296,10 @@ command menu.
 - `command`: executable name or path. It may be empty when `edit` is true.
 - `args`: optional argument templates. If omitted, selected target paths are
   passed as arguments.
+- `cwd`: optional working directory. It supports `{file}`, `{dir}`, and
+  `{name}` placeholders. If omitted, nmf preserves the existing process working
+  directory behavior. Virtual paths such as archives and direct SMB providers
+  are ignored.
 - `edit`: optional boolean. When true, nmf shows the final command line in a
   one-line edit dialog before running it.
 

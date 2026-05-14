@@ -33,7 +33,7 @@ func (fm *FileManager) ShowExternalCommandMenu() {
 	for _, command := range commands {
 		entry := command
 		items = append(items, fyne.NewMenuItem(entry.Name, func() {
-			if fm.runExternalCommandTemplate(entry.Command, entry.Args, targets, entry.Edit) {
+			if fm.runExternalCommandTemplate(entry.Command, entry.Args, entry.Cwd, targets, entry.Edit) {
 				fm.FocusFileList()
 			}
 		}))
@@ -120,17 +120,22 @@ func externalCommandMatches(target string, extensions []string) bool {
 	return false
 }
 
-func (fm *FileManager) RunExternalCommand(command string, args []string, edit bool) bool {
-	return fm.runExternalCommandMaybeEdit(command, args, edit)
+func (fm *FileManager) RunExternalCommand(command string, args []string, edit bool, cwd string) bool {
+	return fm.runExternalCommandMaybeEdit(command, args, edit, cwd)
 }
 
-func (fm *FileManager) runExternalCommandTemplate(command string, argTemplates []string, targets []string, edit bool) bool {
-	return fm.runExternalCommandMaybeEdit(command, expandExternalCommandArgs(argTemplates, targets, fm.currentPath), edit)
+func (fm *FileManager) runExternalCommandTemplate(command string, argTemplates []string, cwdTemplate string, targets []string, edit bool) bool {
+	return fm.runExternalCommandMaybeEdit(
+		command,
+		expandExternalCommandArgs(argTemplates, targets, fm.currentPath),
+		edit,
+		expandExternalCommandCwd(cwdTemplate, targets, fm.currentPath),
+	)
 }
 
-func (fm *FileManager) runExternalCommandMaybeEdit(command string, args []string, edit bool) bool {
+func (fm *FileManager) runExternalCommandMaybeEdit(command string, args []string, edit bool, cwd string) bool {
 	if !edit {
-		return fm.runExternalCommand(command, args)
+		return fm.runExternalCommand(command, args, cwd)
 	}
 	line := buildExternalCommandLine(command, args)
 	dlg := ui.NewLineEditDialog(ui.LineEditDialogOptions{
@@ -150,7 +155,7 @@ func (fm *FileManager) runExternalCommandMaybeEdit(command string, args []string
 		if strings.TrimSpace(parsedCommand) == "" {
 			return false
 		}
-		if fm.runExternalCommand(parsedCommand, parsedArgs) {
+		if fm.runExternalCommand(parsedCommand, parsedArgs, cwd) {
 			fm.FocusFileList()
 			return true
 		}
@@ -159,15 +164,26 @@ func (fm *FileManager) runExternalCommandMaybeEdit(command string, args []string
 	return false
 }
 
-func (fm *FileManager) runExternalCommand(command string, args []string) bool {
+func (fm *FileManager) runExternalCommand(command string, args []string, cwd string) bool {
 	cmd := exec.Command(command, args...)
+	if dir := fm.resolveExternalCommandCwd(cwd); dir != "" {
+		cmd.Dir = dir
+	}
 	if err := cmd.Start(); err != nil {
 		debugPrint("FileManager: external command failed command=%s err=%v", command, err)
 		ui.ShowCompactMessageDialog(fm.window, "Command failed", err.Error())
 		return false
 	}
-	debugPrint("FileManager: external command started command=%s pid=%d", command, cmd.Process.Pid)
+	debugPrint("FileManager: external command started command=%s pid=%d cwd=%s", command, cmd.Process.Pid, cmd.Dir)
 	return true
+}
+
+func (fm *FileManager) resolveExternalCommandCwd(cwd string) string {
+	dir, ignored := externalCommandWorkingDirectory(cwd)
+	if ignored {
+		debugPrint("FileManager: external command cwd ignored cwd=%s", cwd)
+	}
+	return dir
 }
 
 func expandExternalCommandArgs(templates []string, targets []string, dir string) []string {
@@ -208,6 +224,54 @@ func expandExternalCommandArgs(templates []string, targets []string, dir string)
 		args = append(args, arg)
 	}
 	return args
+}
+
+func expandExternalCommandCwd(template string, targets []string, dir string) string {
+	cwd := strings.TrimSpace(template)
+	if cwd == "" {
+		return ""
+	}
+	commandDir := fileinfo.CommandArgumentPath(dir)
+	first := ""
+	name := ""
+	if len(targets) > 0 {
+		first = fileinfo.CommandArgumentPath(targets[0])
+		name = fileinfo.BaseName(targets[0])
+	}
+	cwd = strings.ReplaceAll(cwd, "{file}", first)
+	cwd = strings.ReplaceAll(cwd, "{dir}", commandDir)
+	cwd = strings.ReplaceAll(cwd, "{name}", name)
+	return cwd
+}
+
+func externalCommandWorkingDirectory(cwd string) (string, bool) {
+	trimmed := strings.TrimSpace(cwd)
+	if trimmed == "" {
+		return "", false
+	}
+	if fileinfo.IsArchivePath(trimmed) {
+		return "", true
+	}
+	_, parsed, err := fileinfo.ResolveRead(trimmed)
+	if err != nil {
+		if fileinfo.IsSMBDisplay(trimmed) {
+			return "", true
+		}
+		return fileinfo.CommandArgumentPath(trimmed), false
+	}
+	if parsed.Scheme == fileinfo.SchemeArchive {
+		return "", true
+	}
+	if parsed.Scheme == fileinfo.SchemeSMB && parsed.Provider != "local" {
+		return "", true
+	}
+	if parsed.Provider == "local" && parsed.Native != "" {
+		return parsed.Native, false
+	}
+	if parsed.Scheme == fileinfo.SchemeFile && parsed.Native != "" {
+		return parsed.Native, false
+	}
+	return "", true
 }
 
 func externalCommandArgumentPath(displayPath string) string {

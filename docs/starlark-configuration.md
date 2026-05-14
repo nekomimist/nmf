@@ -70,6 +70,7 @@ nmf.external_command(
     exts = ["go", "md"],
     cmd = "vim",
     args = ["{file}"],
+    cwd = "{dir}",
     edit = True,
 )
 
@@ -81,7 +82,7 @@ nmf.command("user.open_parent_and_refresh", open_parent_and_refresh)
 nmf.key("C-P", "user.open_parent_and_refresh", event = "down")
 
 def edit_current(ctx):
-    nmf.exec("vim", args = [ctx.current_file])
+    nmf.exec("vim", args = [ctx.current_file], cwd = ctx.current_path)
 
 nmf.key("E", fn = edit_current)
 
@@ -157,7 +158,7 @@ List sections:
 - `nmf.key(key, cmd = None, fn = None, event = "")`
 - `nmf.unkey(key, event = "")`
 - `nmf.clear_keys()`
-- `nmf.external_command(name, cmd, exts = [], args = [], edit = False)`
+- `nmf.external_command(name, cmd, exts = [], args = [], cwd = "", edit = False)`
 - `nmf.clear_external_commands()`
 - `nmf.menu(name, title = "")`
 - `nmf.menu_item(menu, label, cmd = None, fn = None)`
@@ -254,10 +255,13 @@ The command function receives one `ctx` struct:
 Command-only helpers:
 
 - `nmf.run(command_id)` runs a built-in or `user.*` command and returns a bool.
-- `nmf.exec(command, args = [], edit = False)` starts an external command and returns a bool.
+- `nmf.exec(command, args = [], edit = False, cwd = "")` starts an external command and returns a bool.
   `args` is passed as raw strings; use `ctx.current_file`,
   `ctx.selected_files`, `ctx.current_path`, and `ctx.current_name` instead of
   `{file}` placeholders.
+  `cwd` is an optional working directory. If it is empty, nmf preserves the
+  existing process working directory behavior. If it points to a virtual path
+  such as an archive or direct SMB provider, it is ignored.
   When `edit` is true, nmf opens the command line in a one-line edit dialog.
   When launched from a key binding, that dialog is opened after the triggering
   keys are released so late key events do not leak into the editor.

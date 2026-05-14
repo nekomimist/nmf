@@ -1,7 +1,9 @@
 package main
 
 import (
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 
 	"nmf/internal/config"
@@ -76,5 +78,66 @@ func TestExpandExternalCommandArgsWithoutTargets(t *testing.T) {
 
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("expandExternalCommandArgs() = %#v, want %#v", got, want)
+	}
+}
+
+func TestExpandExternalCommandCwd(t *testing.T) {
+	got := expandExternalCommandCwd(
+		"{dir}/sub-{name}",
+		[]string{"/tmp/work/a.txt"},
+		"/tmp/work",
+	)
+	want := filepath.Join("/tmp/work", "sub-a.txt")
+
+	if got != want {
+		t.Fatalf("expandExternalCommandCwd() = %q, want %q", got, want)
+	}
+}
+
+func TestExpandExternalCommandCwdDoesNotExpandFiles(t *testing.T) {
+	got := expandExternalCommandCwd("{files}", []string{"/tmp/a.txt"}, "/tmp")
+
+	if got != "{files}" {
+		t.Fatalf("expandExternalCommandCwd() = %q, want literal {files}", got)
+	}
+}
+
+func TestExternalCommandWorkingDirectoryLocalPath(t *testing.T) {
+	dir := t.TempDir()
+
+	got, ignored := externalCommandWorkingDirectory(dir)
+
+	if ignored {
+		t.Fatal("local cwd should not be ignored")
+	}
+	if got != dir {
+		t.Fatalf("externalCommandWorkingDirectory() = %q, want %q", got, dir)
+	}
+}
+
+func TestExternalCommandWorkingDirectoryEmpty(t *testing.T) {
+	got, ignored := externalCommandWorkingDirectory("  ")
+
+	if got != "" || ignored {
+		t.Fatalf("externalCommandWorkingDirectory() = %q ignored=%t, want empty false", got, ignored)
+	}
+}
+
+func TestExternalCommandWorkingDirectoryIgnoresArchivePath(t *testing.T) {
+	got, ignored := externalCommandWorkingDirectory("/tmp/archive.zip!/docs")
+
+	if got != "" || !ignored {
+		t.Fatalf("externalCommandWorkingDirectory() = %q ignored=%t, want empty true", got, ignored)
+	}
+}
+
+func TestExternalCommandWorkingDirectoryIgnoresDirectSMBPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows resolves smb:// paths to local UNC paths")
+	}
+	got, ignored := externalCommandWorkingDirectory("smb://host/share/docs")
+
+	if got != "" || !ignored {
+		t.Fatalf("externalCommandWorkingDirectory() = %q ignored=%t, want empty true", got, ignored)
 	}
 }

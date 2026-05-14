@@ -22,7 +22,7 @@ type CommandContext struct {
 	FileManager FileManagerInterface
 	RunCommand  func(command string) bool
 
-	RunExternalCommand func(command string, args []string, edit bool) bool
+	RunExternalCommand func(command string, args []string, edit bool, cwd string) bool
 	DeferTransition    func(label string, action func())
 }
 

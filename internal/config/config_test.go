@@ -155,7 +155,7 @@ func TestMergeConfigs(t *testing.T) {
 				{Key: "X", Command: "jobs.show"},
 			},
 			ExternalCommands: []ExternalCommandEntry{
-				{Name: "Open in editor", Extensions: []string{".go"}, Command: "vim", Args: []string{"{file}"}},
+				{Name: "Open in editor", Extensions: []string{".go"}, Command: "vim", Args: []string{"{file}"}, Cwd: "{dir}"},
 			},
 		},
 	}
@@ -205,7 +205,7 @@ func TestMergeConfigs(t *testing.T) {
 	if len(defaultConfig.UI.KeyBindings) != 1 || defaultConfig.UI.KeyBindings[0].Key != "X" {
 		t.Errorf("Expected key bindings to be merged, got %+v", defaultConfig.UI.KeyBindings)
 	}
-	if len(defaultConfig.UI.ExternalCommands) != 1 || defaultConfig.UI.ExternalCommands[0].Command != "vim" {
+	if len(defaultConfig.UI.ExternalCommands) != 1 || defaultConfig.UI.ExternalCommands[0].Command != "vim" || defaultConfig.UI.ExternalCommands[0].Cwd != "{dir}" {
 		t.Errorf("Expected external commands to be merged, got %+v", defaultConfig.UI.ExternalCommands)
 	}
 }
@@ -460,5 +460,27 @@ func TestCloneConfigDeepCopiesDirectoryJumps(t *testing.T) {
 
 	if cfg.UI.DirectoryJumps.Entries[0].Directory != "/projects" {
 		t.Errorf("Expected original directory jump to remain unchanged, got %q", cfg.UI.DirectoryJumps.Entries[0].Directory)
+	}
+}
+
+func TestCloneConfigDeepCopiesExternalCommands(t *testing.T) {
+	cfg := getDefaultConfig()
+	cfg.UI.ExternalCommands = []ExternalCommandEntry{
+		{Name: "Open", Extensions: []string{"go"}, Command: "vim", Args: []string{"{file}"}, Cwd: "{dir}"},
+	}
+
+	clone := cloneConfig(cfg)
+	clone.UI.ExternalCommands[0].Extensions[0] = "md"
+	clone.UI.ExternalCommands[0].Args[0] = "{name}"
+	clone.UI.ExternalCommands[0].Cwd = "/tmp"
+
+	if cfg.UI.ExternalCommands[0].Extensions[0] != "go" {
+		t.Errorf("Expected original extension to remain unchanged, got %q", cfg.UI.ExternalCommands[0].Extensions[0])
+	}
+	if cfg.UI.ExternalCommands[0].Args[0] != "{file}" {
+		t.Errorf("Expected original arg to remain unchanged, got %q", cfg.UI.ExternalCommands[0].Args[0])
+	}
+	if cfg.UI.ExternalCommands[0].Cwd != "{dir}" {
+		t.Errorf("Expected original cwd to remain unchanged, got %q", cfg.UI.ExternalCommands[0].Cwd)
 	}
 }

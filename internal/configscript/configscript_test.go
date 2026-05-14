@@ -41,6 +41,7 @@ nmf.external_command(
     exts = ["go", "md"],
     cmd = "vim",
     args = ["{file}"],
+    cwd = "{dir}",
     edit = True,
 )
 def parent(ctx):
@@ -102,7 +103,7 @@ nmf.command("user.parent", parent)
 	if len(cfg.UI.KeyBindings) != 1 || cfg.UI.KeyBindings[0].Command != "user.parent" {
 		t.Fatalf("key bindings = %+v, want user.parent", cfg.UI.KeyBindings)
 	}
-	if len(cfg.UI.ExternalCommands) != 1 || cfg.UI.ExternalCommands[0].Command != "vim" || !cfg.UI.ExternalCommands[0].Edit {
+	if len(cfg.UI.ExternalCommands) != 1 || cfg.UI.ExternalCommands[0].Command != "vim" || cfg.UI.ExternalCommands[0].Cwd != "{dir}" || !cfg.UI.ExternalCommands[0].Edit {
 		t.Fatalf("external commands = %+v, want vim", cfg.UI.ExternalCommands)
 	}
 	if _, ok := rt.Commands["user.parent"]; !ok {
@@ -328,7 +329,7 @@ nmf.key("C-E", fn = edit, event = "down")
 				{Name: "main.go", Path: "/tmp/main.go"},
 			},
 		},
-		RunExternalCommand: func(command string, args []string, edit bool) bool {
+		RunExternalCommand: func(command string, args []string, edit bool, cwd string) bool {
 			gotCommand = command
 			gotArgs = args
 			return true
@@ -539,7 +540,7 @@ nmf.command("user.show_tools", show_tools)
 			ran = command
 			return true
 		},
-		RunExternalCommand: func(command string, args []string, edit bool) bool {
+		RunExternalCommand: func(command string, args []string, edit bool, cwd string) bool {
 			gotCommand = command
 			gotArgs = args
 			gotEdit = edit
@@ -714,16 +715,18 @@ nmf.command("user.edit", edit)
 	var gotCommand string
 	var gotArgs []string
 	var gotEdit bool
+	var gotCwd string
 	var ran string
 	rt.Commands["user.edit"](keymanager.CommandContext{
 		RunCommand: func(command string) bool {
 			ran = command
 			return true
 		},
-		RunExternalCommand: func(command string, args []string, edit bool) bool {
+		RunExternalCommand: func(command string, args []string, edit bool, cwd string) bool {
 			gotCommand = command
 			gotArgs = args
 			gotEdit = edit
+			gotCwd = cwd
 			return true
 		},
 		FileManager: &configScriptFakeFileManager{
@@ -743,8 +746,46 @@ nmf.command("user.edit", edit)
 	if gotEdit {
 		t.Fatal("exec edit = true, want false")
 	}
+	if gotCwd != "" {
+		t.Fatalf("exec cwd = %q, want empty", gotCwd)
+	}
 	if ran != "directory.refresh" {
 		t.Fatalf("ran command = %q, want directory.refresh", ran)
+	}
+}
+
+func TestCustomCommandCanExecExternalCommandWithCwd(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def edit(ctx):
+    nmf.exec("vim", args = [ctx.current_file], cwd = ctx.current_path)
+nmf.command("user.edit", edit)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	var gotCwd string
+	rt.Commands["user.edit"](keymanager.CommandContext{
+		RunExternalCommand: func(command string, args []string, edit bool, cwd string) bool {
+			gotCwd = cwd
+			return true
+		},
+		FileManager: &configScriptFakeFileManager{
+			currentPath: "/tmp",
+			cursorIndex: 0,
+			files: []fileinfo.FileInfo{
+				{Name: "main.go", Path: "/tmp/main.go"},
+			},
+		},
+	})
+	if gotCwd != "/tmp" {
+		t.Fatalf("exec cwd = %q, want /tmp", gotCwd)
 	}
 }
 
@@ -766,7 +807,7 @@ nmf.command("user.edit", edit)
 
 	var gotEdit bool
 	rt.Commands["user.edit"](keymanager.CommandContext{
-		RunExternalCommand: func(command string, args []string, edit bool) bool {
+		RunExternalCommand: func(command string, args []string, edit bool, cwd string) bool {
 			gotEdit = edit
 			return false
 		},
@@ -804,11 +845,13 @@ nmf.command("user.edit", edit)
 	var gotCommand string
 	var gotArgs []string
 	var gotEdit bool
+	var gotCwd string
 	rt.Commands["user.edit"](keymanager.CommandContext{
-		RunExternalCommand: func(command string, args []string, edit bool) bool {
+		RunExternalCommand: func(command string, args []string, edit bool, cwd string) bool {
 			gotCommand = command
 			gotArgs = args
 			gotEdit = edit
+			gotCwd = cwd
 			return false
 		},
 		DeferTransition: func(gotLabel string, action func()) {
@@ -832,8 +875,50 @@ nmf.command("user.edit", edit)
 	}
 
 	deferred()
-	if gotCommand != "vim" || !reflect.DeepEqual(gotArgs, []string{"/tmp/main.go"}) || !gotEdit {
-		t.Fatalf("exec after deferred action = %q %#v edit %t, want vim current file edit=true", gotCommand, gotArgs, gotEdit)
+	if gotCommand != "vim" || !reflect.DeepEqual(gotArgs, []string{"/tmp/main.go"}) || !gotEdit || gotCwd != "" {
+		t.Fatalf("exec after deferred action = %q %#v edit %t cwd %q, want vim current file edit=true cwd empty", gotCommand, gotArgs, gotEdit, gotCwd)
+	}
+}
+
+func TestCustomCommandDefersEditableExecWithCwd(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def edit(ctx):
+    nmf.exec("vim", edit = True, cwd = ctx.current_path)
+nmf.command("user.edit", edit)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	var deferred func()
+	var gotCwd string
+	rt.Commands["user.edit"](keymanager.CommandContext{
+		RunExternalCommand: func(command string, args []string, edit bool, cwd string) bool {
+			gotCwd = cwd
+			return false
+		},
+		DeferTransition: func(gotLabel string, action func()) {
+			deferred = action
+		},
+		FileManager: &configScriptFakeFileManager{currentPath: "/tmp"},
+	})
+
+	if gotCwd != "" {
+		t.Fatalf("exec cwd before deferred action = %q, want empty", gotCwd)
+	}
+	if deferred == nil {
+		t.Fatal("deferred action is nil")
+	}
+
+	deferred()
+	if gotCwd != "/tmp" {
+		t.Fatalf("exec cwd after deferred action = %q, want /tmp", gotCwd)
 	}
 }
 
@@ -856,7 +941,7 @@ nmf.command("user.edit", edit)
 	var gotCommand string
 	var gotEdit bool
 	rt.Commands["user.edit"](keymanager.CommandContext{
-		RunExternalCommand: func(command string, args []string, edit bool) bool {
+		RunExternalCommand: func(command string, args []string, edit bool, cwd string) bool {
 			gotCommand = command
 			gotEdit = edit
 			return false
@@ -874,6 +959,7 @@ func TestExternalCommandAllowsEmptyCommandWithEdit(t *testing.T) {
 nmf.external_command(
     name = "Prompt",
     cmd = "",
+    cwd = "{dir}",
     edit = True,
 )
 `
@@ -884,7 +970,7 @@ nmf.external_command(
 	if _, err := Load(path, cfg, func(string, ...interface{}) {}); err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
-	if len(cfg.UI.ExternalCommands) != 1 || cfg.UI.ExternalCommands[0].Command != "" || !cfg.UI.ExternalCommands[0].Edit {
+	if len(cfg.UI.ExternalCommands) != 1 || cfg.UI.ExternalCommands[0].Command != "" || cfg.UI.ExternalCommands[0].Cwd != "{dir}" || !cfg.UI.ExternalCommands[0].Edit {
 		t.Fatalf("external commands = %+v, want empty editable command", cfg.UI.ExternalCommands)
 	}
 }
@@ -907,7 +993,7 @@ nmf.command("user.edit", edit)
 
 	var gotArgs []string
 	rt.Commands["user.edit"](keymanager.CommandContext{
-		RunExternalCommand: func(command string, args []string, edit bool) bool {
+		RunExternalCommand: func(command string, args []string, edit bool, cwd string) bool {
 			gotArgs = args
 			return true
 		},
@@ -949,7 +1035,7 @@ nmf.command("user.inspect", inspect)
 				"/tmp/work/deleted.txt": true,
 			},
 		},
-		RunExternalCommand: func(command string, args []string, edit bool) bool {
+		RunExternalCommand: func(command string, args []string, edit bool, cwd string) bool {
 			gotArgs = args
 			return true
 		},
@@ -1114,6 +1200,10 @@ func TestExecRejectsInvalidArguments(t *testing.T) {
 		{
 			name: "non string arg",
 			src:  `nmf.exec("vim", args = [1])`,
+		},
+		{
+			name: "non string cwd",
+			src:  `nmf.exec("vim", cwd = 1)`,
 		},
 	}
 

@@ -655,6 +655,7 @@ func (rt *Runtime) builtinClearKeys(_ *starlark.Thread, _ *starlark.Builtin, arg
 func (rt *Runtime) builtinExternalCommand(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var name string
 	var command string
+	var cwd string
 	extensionsValue := starlark.Value(starlark.None)
 	argsValue := starlark.Value(starlark.None)
 	edit := false
@@ -666,6 +667,7 @@ func (rt *Runtime) builtinExternalCommand(_ *starlark.Thread, fn *starlark.Built
 		"cmd", &command,
 		"exts?", &extensionsValue,
 		"args?", &argsValue,
+		"cwd?", &cwd,
 		"edit?", &edit,
 	); err != nil {
 		return nil, err
@@ -689,6 +691,7 @@ func (rt *Runtime) builtinExternalCommand(_ *starlark.Thread, fn *starlark.Built
 		Extensions: extensions,
 		Command:    command,
 		Args:       commandArgs,
+		Cwd:        cwd,
 		Edit:       edit,
 	})
 	rt.saveMask.uiExternalCommands = true
@@ -907,9 +910,10 @@ func (rt *Runtime) builtinRun(thread *starlark.Thread, fn *starlark.Builtin, arg
 
 func (rt *Runtime) builtinExec(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var command string
+	var cwd string
 	argsValue := starlark.Value(starlark.None)
 	edit := false
-	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "command", &command, "args?", &argsValue, "edit?", &edit); err != nil {
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "command", &command, "args?", &argsValue, "edit?", &edit, "cwd?", &cwd); err != nil {
 		return nil, err
 	}
 	commandArgs, err := stringList(argsValue, "args")
@@ -928,11 +932,11 @@ func (rt *Runtime) builtinExec(thread *starlark.Thread, fn *starlark.Builtin, ar
 	}
 	if edit && ctx.DeferTransition != nil {
 		ctx.DeferTransition("starlark.exec.edit", func() {
-			ctx.RunExternalCommand(command, commandArgs, edit)
+			ctx.RunExternalCommand(command, commandArgs, edit, cwd)
 		})
 		return starlark.False, nil
 	}
-	return starlark.Bool(ctx.RunExternalCommand(command, commandArgs, edit)), nil
+	return starlark.Bool(ctx.RunExternalCommand(command, commandArgs, edit, cwd)), nil
 }
 
 func (rt *Runtime) builtinMkdir(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
