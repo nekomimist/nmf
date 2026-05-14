@@ -247,7 +247,7 @@ Available main-screen commands:
 - `cursor.up`, `cursor.down`, `cursor.pageUp`, `cursor.pageDown`
 - `cursor.first`, `cursor.last`
 - `open`, `selection.toggle`, `selection.markAll`
-- `directory.parent`, `directory.refresh`, `directory.home`
+- `directory.parent`, `directory.refresh`, `directory.home`, `directory.create`
 - `window.new`
 - `tree.show`, `history.show`, `directoryJump.show`
 - `filter.show`, `filter.clear`, `filter.toggle`

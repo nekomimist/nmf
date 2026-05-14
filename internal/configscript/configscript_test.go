@@ -1027,6 +1027,81 @@ nmf.command("user.edit", edit)
 	}
 }
 
+func TestCustomCommandCanCreateDirectory(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def create(ctx):
+    if nmf.mkdir("new-dir"):
+        nmf.run("directory.refresh")
+nmf.command("user.create", create)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	fm := &configScriptFakeFileManager{createDirResult: true}
+	var ran string
+	rt.Commands["user.create"](keymanager.CommandContext{
+		FileManager: fm,
+		RunCommand: func(command string) bool {
+			ran = command
+			return true
+		},
+	})
+
+	if fm.createDirName != "new-dir" {
+		t.Fatalf("created directory name = %q, want new-dir", fm.createDirName)
+	}
+	if ran != "directory.refresh" {
+		t.Fatalf("ran command = %q, want directory.refresh", ran)
+	}
+}
+
+func TestCustomCommandDefersEditableMkdir(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def create(ctx):
+    nmf.mkdir(edit = True)
+nmf.command("user.create", create)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	fm := &configScriptFakeFileManager{}
+	var label string
+	var deferred func()
+	rt.Commands["user.create"](keymanager.CommandContext{
+		FileManager: fm,
+		DeferTransition: func(gotLabel string, action func()) {
+			label = gotLabel
+			deferred = action
+		},
+	})
+
+	if fm.showCreateDirCount != 0 {
+		t.Fatalf("ShowCreateDirectoryDialog count before deferred action = %d, want 0", fm.showCreateDirCount)
+	}
+	if label != "starlark.mkdir.edit" || deferred == nil {
+		t.Fatalf("deferred transition = label %q action nil=%t, want starlark.mkdir.edit action", label, deferred == nil)
+	}
+
+	deferred()
+	if fm.showCreateDirCount != 1 {
+		t.Fatalf("ShowCreateDirectoryDialog count after deferred action = %d, want 1", fm.showCreateDirCount)
+	}
+}
+
 func TestExecRejectsInvalidArguments(t *testing.T) {
 	tests := []struct {
 		name string
@@ -1182,6 +1257,9 @@ type configScriptFakeFileManager struct {
 	currentSort          config.SortConfig
 	temporarySort        config.SortConfig
 	temporarySortApplied bool
+	createDirName        string
+	createDirResult      bool
+	showCreateDirCount   int
 	menuTitle            string
 	menuItems            []keymanager.CommandMenuItem
 }
@@ -1223,14 +1301,19 @@ func (f *configScriptFakeFileManager) ShowIncrementalSearchDialog()      {}
 func (f *configScriptFakeFileManager) ShowSortDialog()                   {}
 func (f *configScriptFakeFileManager) ShowJobsDialog()                   {}
 func (f *configScriptFakeFileManager) ShowPathEditDialog()               {}
-func (f *configScriptFakeFileManager) QuitApplication()                  {}
-func (f *configScriptFakeFileManager) OpenFile(file *fileinfo.FileInfo)  {}
-func (f *configScriptFakeFileManager) ShowCopyDialog()                   {}
-func (f *configScriptFakeFileManager) ShowMoveDialog()                   {}
-func (f *configScriptFakeFileManager) ShowRenameDialog()                 {}
-func (f *configScriptFakeFileManager) ShowDeleteDialog(permanent bool)   {}
-func (f *configScriptFakeFileManager) ShowExplorerContextMenu()          {}
-func (f *configScriptFakeFileManager) ShowExternalCommandMenu()          {}
+func (f *configScriptFakeFileManager) ShowCreateDirectoryDialog()        { f.showCreateDirCount++ }
+func (f *configScriptFakeFileManager) CreateDirectory(name string) bool {
+	f.createDirName = name
+	return f.createDirResult
+}
+func (f *configScriptFakeFileManager) QuitApplication()                 {}
+func (f *configScriptFakeFileManager) OpenFile(file *fileinfo.FileInfo) {}
+func (f *configScriptFakeFileManager) ShowCopyDialog()                  {}
+func (f *configScriptFakeFileManager) ShowMoveDialog()                  {}
+func (f *configScriptFakeFileManager) ShowRenameDialog()                {}
+func (f *configScriptFakeFileManager) ShowDeleteDialog(permanent bool)  {}
+func (f *configScriptFakeFileManager) ShowExplorerContextMenu()         {}
+func (f *configScriptFakeFileManager) ShowExternalCommandMenu()         {}
 func (f *configScriptFakeFileManager) ShowCommandMenu(title string, items []keymanager.CommandMenuItem) {
 	f.menuTitle = title
 	f.menuItems = items

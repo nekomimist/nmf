@@ -277,6 +277,9 @@ type mainScreenFakeFileManager struct {
 	showHistoryCount       int
 	showSearchCount        int
 	showDirectoryJumpCount int
+	showCreateDirCount     int
+	createDirName          string
+	createDirResult        bool
 	showRenameCount        int
 	showDeleteCount        int
 	showExplorerMenuCount  int
@@ -317,13 +320,18 @@ func (f *mainScreenFakeFileManager) ShowNavigationHistoryDialog()      { f.showH
 func (f *mainScreenFakeFileManager) ShowDirectoryJumpDialog() {
 	f.showDirectoryJumpCount++
 }
-func (f *mainScreenFakeFileManager) ShowFilterDialog()                {}
-func (f *mainScreenFakeFileManager) ClearFilter()                     {}
-func (f *mainScreenFakeFileManager) ToggleFilter()                    {}
-func (f *mainScreenFakeFileManager) ShowIncrementalSearchDialog()     { f.showSearchCount++ }
-func (f *mainScreenFakeFileManager) ShowSortDialog()                  { f.showSortCount++ }
-func (f *mainScreenFakeFileManager) ShowJobsDialog()                  { f.showJobsCount++ }
-func (f *mainScreenFakeFileManager) ShowPathEditDialog()              { f.focusPathCount++ }
+func (f *mainScreenFakeFileManager) ShowFilterDialog()            {}
+func (f *mainScreenFakeFileManager) ClearFilter()                 {}
+func (f *mainScreenFakeFileManager) ToggleFilter()                {}
+func (f *mainScreenFakeFileManager) ShowIncrementalSearchDialog() { f.showSearchCount++ }
+func (f *mainScreenFakeFileManager) ShowSortDialog()              { f.showSortCount++ }
+func (f *mainScreenFakeFileManager) ShowJobsDialog()              { f.showJobsCount++ }
+func (f *mainScreenFakeFileManager) ShowPathEditDialog()          { f.focusPathCount++ }
+func (f *mainScreenFakeFileManager) ShowCreateDirectoryDialog()   { f.showCreateDirCount++ }
+func (f *mainScreenFakeFileManager) CreateDirectory(name string) bool {
+	f.createDirName = name
+	return f.createDirResult
+}
 func (f *mainScreenFakeFileManager) QuitApplication()                 {}
 func (f *mainScreenFakeFileManager) OpenFile(file *fileinfo.FileInfo) {}
 func (f *mainScreenFakeFileManager) ShowCopyDialog()                  {}
@@ -369,6 +377,20 @@ func TestMainScreenShiftJShowsJobsDialog(t *testing.T) {
 	}
 	if fm.showDirectoryJumpCount != 0 {
 		t.Fatalf("ShowDirectoryJumpDialog count = %d, want 0", fm.showDirectoryJumpCount)
+	}
+}
+
+func TestMainScreenKShowsCreateDirectoryDialog(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyK}, ModifierState{})
+
+	if !handled {
+		t.Fatal("K should be handled")
+	}
+	if fm.showCreateDirCount != 1 {
+		t.Fatalf("ShowCreateDirectoryDialog count = %d, want 1", fm.showCreateDirCount)
 	}
 }
 

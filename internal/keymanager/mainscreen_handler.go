@@ -22,6 +22,7 @@ const (
 	CommandParentDirectory     = "directory.parent"
 	CommandRefresh             = "directory.refresh"
 	CommandHome                = "directory.home"
+	CommandDirectoryCreate     = "directory.create"
 	CommandWindowNew           = "window.new"
 	CommandTreeShow            = "tree.show"
 	CommandHistoryShow         = "history.show"
@@ -77,6 +78,8 @@ type FileManagerInterface interface {
 	ShowSortDialog()
 	ShowJobsDialog()
 	ShowPathEditDialog()
+	ShowCreateDirectoryDialog()
+	CreateDirectory(name string) bool
 	QuitApplication()
 
 	OpenFile(file *fileinfo.FileInfo)
@@ -236,6 +239,7 @@ func (mh *MainScreenKeyHandler) shouldDeferCommand(commandID string) bool {
 		CommandSortShow,
 		CommandJobsShow,
 		CommandPathEdit,
+		CommandDirectoryCreate,
 		CommandQuit,
 		CommandCopyShow,
 		CommandMoveShow,
@@ -293,6 +297,7 @@ func defaultMainScreenBindings() []config.KeyBindingEntry {
 		{Key: "Period", Command: CommandRefresh, Event: keyEventTyped},
 		{Key: "S-Period", Command: CommandCursorLast, Event: keyEventTyped},
 		{Key: "S-Backtick", Command: CommandHome, Event: keyEventTyped},
+		{Key: "K", Command: CommandDirectoryCreate, Event: keyEventTyped},
 		{Key: "F2", Command: CommandRenameShow, Event: keyEventTyped},
 		{Key: "R", Command: CommandRenameShow, Event: keyEventUp},
 		{Key: "Tab", Command: CommandExplorerContextShow, Event: keyEventTyped},
@@ -340,6 +345,7 @@ func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
 		CommandSortShow:            func(CommandContext) { mh.fileManager.ShowSortDialog() },
 		CommandJobsShow:            func(CommandContext) { mh.fileManager.ShowJobsDialog() },
 		CommandPathEdit:            func(CommandContext) { mh.fileManager.ShowPathEditDialog() },
+		CommandDirectoryCreate:     func(CommandContext) { mh.fileManager.ShowCreateDirectoryDialog() },
 		CommandQuit:                func(CommandContext) { mh.fileManager.QuitApplication() },
 		CommandCopyShow:            func(CommandContext) { mh.fileManager.ShowCopyDialog() },
 		CommandMoveShow:            func(CommandContext) { mh.fileManager.ShowMoveDialog() },

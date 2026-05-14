@@ -85,6 +85,11 @@ def edit_current(ctx):
 
 nmf.key("E", fn = edit_current)
 
+def create_directory(ctx):
+    nmf.mkdir(edit = True)
+
+nmf.key("K", fn = create_directory)
+
 def open_media(ctx):
     if ctx.current_name.endswith(".mp4"):
         nmf.exec("mpv", args = [ctx.current_file])
@@ -260,6 +265,12 @@ Command-only helpers:
   prompt.
   The call returns false immediately because the edited command runs later when
   the dialog is accepted.
+- `nmf.mkdir(name = "", edit = False)` creates a directory in the active
+  directory and returns a bool. The name must be a single path segment. When
+  `edit` is true, nmf opens a one-line edit dialog and returns false
+  immediately because creation happens later when the dialog is accepted. When
+  launched from a key binding, the dialog is opened after the triggering keys
+  are released.
 - `nmf.load_directory(path)` loads a directory path.
 - `nmf.current_path()` returns the active directory path.
 - `nmf.current_sort()` returns the active file-list sort as a struct with

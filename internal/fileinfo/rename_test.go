@@ -109,3 +109,43 @@ func TestRenamePortableSameNameNoop(t *testing.T) {
 		t.Fatalf("newPath = %q, want %q", newPath, oldPath)
 	}
 }
+
+func TestCreateDirectoryPortable(t *testing.T) {
+	dir := t.TempDir()
+
+	newPath, err := CreateDirectoryPortable(dir, "new-dir")
+	if err != nil {
+		t.Fatalf("CreateDirectoryPortable returned error: %v", err)
+	}
+	if newPath != filepath.Join(dir, "new-dir") {
+		t.Fatalf("newPath = %q, want %q", newPath, filepath.Join(dir, "new-dir"))
+	}
+	if info, err := os.Stat(newPath); err != nil || !info.IsDir() {
+		t.Fatalf("created directory missing or not directory: info=%v err=%v", info, err)
+	}
+}
+
+func TestCreateDirectoryPortableRejectsInvalidNames(t *testing.T) {
+	dir := t.TempDir()
+	tests := []string{"", ".", "..", "dir/file", `dir\file`, "bad\x00name"}
+
+	for _, name := range tests {
+		t.Run(name, func(t *testing.T) {
+			if _, err := CreateDirectoryPortable(dir, name); err == nil {
+				t.Fatal("CreateDirectoryPortable returned nil error")
+			}
+		})
+	}
+}
+
+func TestCreateDirectoryPortableRejectsExistingTarget(t *testing.T) {
+	dir := t.TempDir()
+	existingPath := filepath.Join(dir, "existing")
+	if err := os.Mkdir(existingPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := CreateDirectoryPortable(dir, "existing"); err == nil {
+		t.Fatal("CreateDirectoryPortable returned nil error for existing target")
+	}
+}

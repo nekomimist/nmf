@@ -313,6 +313,7 @@ func (rt *Runtime) predeclared() starlark.StringDict {
 			"show_menu":      starlark.NewBuiltin("nmf.show_menu", rt.builtinShowMenu),
 			"run":            starlark.NewBuiltin("nmf.run", rt.builtinRun),
 			"exec":           starlark.NewBuiltin("nmf.exec", rt.builtinExec),
+			"mkdir":          starlark.NewBuiltin("nmf.mkdir", rt.builtinMkdir),
 			"load_directory": starlark.NewBuiltin("nmf.load_directory", rt.builtinLoadDirectory),
 			"current_path":   starlark.NewBuiltin("nmf.current_path", rt.builtinCurrentPath),
 			"current_sort":   starlark.NewBuiltin("nmf.current_sort", rt.builtinCurrentSort),
@@ -932,6 +933,32 @@ func (rt *Runtime) builtinExec(thread *starlark.Thread, fn *starlark.Builtin, ar
 		return starlark.False, nil
 	}
 	return starlark.Bool(ctx.RunExternalCommand(command, commandArgs, edit)), nil
+}
+
+func (rt *Runtime) builtinMkdir(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var name string
+	edit := false
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "name?", &name, "edit?", &edit); err != nil {
+		return nil, err
+	}
+	if !edit && strings.TrimSpace(name) == "" {
+		return nil, fmt.Errorf("mkdir name must not be empty")
+	}
+	ctx, err := commandContext(thread, fn.Name())
+	if err != nil {
+		return nil, err
+	}
+	if ctx.FileManager == nil {
+		return starlark.False, nil
+	}
+	if edit {
+		show := func() {
+			ctx.FileManager.ShowCreateDirectoryDialog()
+		}
+		deferCommandTransition(ctx, "starlark.mkdir.edit", show)
+		return starlark.False, nil
+	}
+	return starlark.Bool(ctx.FileManager.CreateDirectory(name)), nil
 }
 
 func deferCommandTransition(ctx keymanager.CommandContext, label string, action func()) {
