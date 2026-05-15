@@ -292,6 +292,9 @@ type mainScreenFakeFileManager struct {
 	showSortCount          int
 	deletePermanent        bool
 	focusPathCount         int
+	currentPath            string
+	loadDirectoryPath      string
+	saveCursorPath         string
 	cursorIndex            int
 	setCursorIndex         int
 	files                  []fileinfo.FileInfo
@@ -302,8 +305,8 @@ type mainScreenFakeFileManager struct {
 func (f *mainScreenFakeFileManager) GetCurrentCursorIndex() int    { return f.cursorIndex }
 func (f *mainScreenFakeFileManager) SetCursorByIndex(index int)    { f.setCursorIndex = index }
 func (f *mainScreenFakeFileManager) RefreshCursor()                {}
-func (f *mainScreenFakeFileManager) LoadDirectory(path string)     {}
-func (f *mainScreenFakeFileManager) GetCurrentPath() string        { return "" }
+func (f *mainScreenFakeFileManager) LoadDirectory(path string)     { f.loadDirectoryPath = path }
+func (f *mainScreenFakeFileManager) GetCurrentPath() string        { return f.currentPath }
 func (f *mainScreenFakeFileManager) GetFiles() []fileinfo.FileInfo { return f.files }
 func (f *mainScreenFakeFileManager) CurrentSort() config.SortConfig {
 	return config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}
@@ -318,7 +321,7 @@ func (f *mainScreenFakeFileManager) SetFileSelected(path string, selected bool) 
 	f.selectedFiles[path] = selected
 }
 func (f *mainScreenFakeFileManager) RefreshFileList()                  { f.refreshFileListCount++ }
-func (f *mainScreenFakeFileManager) SaveCursorPosition(dirPath string) {}
+func (f *mainScreenFakeFileManager) SaveCursorPosition(dirPath string) { f.saveCursorPath = dirPath }
 func (f *mainScreenFakeFileManager) OpenNewWindow()                    {}
 func (f *mainScreenFakeFileManager) ShowDirectoryTreeDialog()          {}
 func (f *mainScreenFakeFileManager) ShowNavigationHistoryDialog()      { f.showHistoryCount++ }
@@ -473,6 +476,23 @@ func TestMainScreenTabShowsExplorerContextMenu(t *testing.T) {
 	}
 	if fm.showExplorerMenuCount != 1 {
 		t.Fatalf("ShowExplorerContextMenu count = %d, want 1", fm.showExplorerMenuCount)
+	}
+}
+
+func TestMainScreenPeriodRefreshesCurrentDirectory(t *testing.T) {
+	fm := &mainScreenFakeFileManager{currentPath: "/tmp/nmf"}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyPeriod}, ModifierState{})
+
+	if !handled {
+		t.Fatal("Period should be handled")
+	}
+	if fm.saveCursorPath != "/tmp/nmf" {
+		t.Fatalf("SaveCursorPosition path = %q, want /tmp/nmf", fm.saveCursorPath)
+	}
+	if fm.loadDirectoryPath != "/tmp/nmf" {
+		t.Fatalf("LoadDirectory path = %q, want /tmp/nmf", fm.loadDirectoryPath)
 	}
 }
 
