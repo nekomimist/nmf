@@ -73,6 +73,16 @@ Required sequence for keyboard-driven dialogs:
 
 This pattern is used in history/filter/tree/directory-jump/copy-move/jobs/quit dialogs.
 
+Filter-style text input:
+
+- Dialogs that edit search text through key handlers remove the last UTF-8 rune
+  for Backspace and `Ctrl-H`; they must not trim by byte.
+- Navigation History and Incremental Search build matchers through
+  `internal/search`, which provides substring matching with optional embedded
+  migemo expansion.
+- Directory Jump keeps shortcut-prefix matching separate from migemo so its
+  unique-match auto-jump behavior stays deterministic.
+
 Line edit dialogs:
 
 - `F2` or `R` opens a single-item rename dialog for the cursor row only.

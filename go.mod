@@ -6,8 +6,10 @@ require (
 	fyne.io/fyne/v2 v2.7.3
 	github.com/99designs/keyring v1.2.2
 	github.com/bmatcuk/doublestar/v4 v4.10.0
+	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20260406072232-3ac4aa2bb164
 	github.com/go-text/typesetting v0.3.4
 	github.com/hirochachacha/go-smb2 v1.1.0
+	github.com/koron/gomigemo v1.0.3
 	github.com/mholt/archives v0.1.5
 	go.starlark.net v0.0.0-20260326113308-fadfc96def35
 	golang.org/x/sys v0.43.0
@@ -34,7 +36,6 @@ require (
 	github.com/fyne-io/oksvg v0.2.0 // indirect
 	github.com/geoffgarside/ber v1.2.0 // indirect
 	github.com/go-gl/gl v0.0.0-20260331235117-4566fea9a276 // indirect
-	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20260406072232-3ac4aa2bb164 // indirect
 	github.com/go-text/render v0.2.1 // indirect
 	github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
@@ -46,6 +47,8 @@ require (
 	github.com/jsummers/gobmp v0.0.0-20230614200233-a9de23ed2e25 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
+	github.com/koron-go/skkdict v1.0.1 // indirect
+	github.com/koron/gelatin v0.0.0-20160729020448-88d6a03ce765 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mikelolasagasti/xz v1.0.1 // indirect
 	github.com/minio/minlz v1.0.1 // indirect

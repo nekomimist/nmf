@@ -53,6 +53,7 @@ func (fm *FileManager) ShowNavigationHistoryDialog() {
 		fm.config.UI.NavigationHistory.LastUsed,
 		fm.keyManager,
 		debugPrint,
+		fm.searchMatchers,
 	)
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
 		debugPrint("FileManager: Directory selected from history dialog: %s", selectedPath)

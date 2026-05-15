@@ -446,7 +446,7 @@ func (fd *FilterDialog) BackspaceSearch() {
 	if fd.searchEntry != nil {
 		current := fd.searchEntry.Text
 		if len(current) > 0 {
-			newText := current[:len(current)-1]
+			newText := trimLastRune(current)
 			fd.searchEntry.SetText(newText)
 			fd.debugPrint("FilterDialog: Backspaced search, now: '%s'", newText)
 		}

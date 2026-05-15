@@ -78,6 +78,20 @@ func TestIncrementalSearchTypingUpdatesMatchDisplay(t *testing.T) {
 	}
 }
 
+func TestIncrementalSearchBackspaceRemovesUTF8Rune(t *testing.T) {
+	overlay := NewIncrementalSearchOverlay([]fileinfo.FileInfo{{Name: "日本語.txt"}}, nil, incrementalSearchTheme{}, func(string, ...interface{}) {})
+
+	overlay.Show(nil)
+	overlay.AddCharacter('日')
+	overlay.AddCharacter('本')
+	overlay.AddCharacter('語')
+	overlay.RemoveLastCharacter()
+
+	if got := overlay.GetSearchTerm(); got != "日本" {
+		t.Fatalf("search term got %q, want %q", got, "日本")
+	}
+}
+
 func TestIncrementalSearchLongMatchDoesNotExpandOverlayMinSize(t *testing.T) {
 	overlay := NewIncrementalSearchOverlay([]fileinfo.FileInfo{
 		{Name: strings.Repeat("long-name-", 80) + ".txt"},

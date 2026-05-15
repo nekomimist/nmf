@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -12,6 +11,7 @@ import (
 
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
+	"nmf/internal/search"
 )
 
 // CustomSearchEntry is a custom entry that redirects focus to KeySink
@@ -59,6 +59,7 @@ type NavigationHistoryDialog struct {
 	parent        fyne.Window            // Parent window for focus management
 	closed        bool                   // Prevent double-close/pop
 	sink          *KeySink               // Key capturing wrapper
+	matchers      *search.Provider
 }
 
 // NewNavigationHistoryDialog creates a new navigation history dialog
@@ -67,12 +68,16 @@ func NewNavigationHistoryDialog(
 	lastUsed map[string]time.Time,
 	keyManager *keymanager.KeyManager,
 	debugPrint func(format string, args ...interface{}),
+	matchers ...*search.Provider,
 ) *NavigationHistoryDialog {
 	dialog := &NavigationHistoryDialog{
 		allPaths:   paths,
 		lastUsed:   lastUsed,
 		debugPrint: debugPrint,
 		keyManager: keyManager,
+	}
+	if len(matchers) > 0 {
+		dialog.matchers = matchers[0]
 	}
 
 	dialog.createWidgets()
@@ -137,11 +142,11 @@ func (nhd *NavigationHistoryDialog) updateFilteredPaths(query string) {
 	if query == "" {
 		nhd.filteredPaths = nhd.allPaths
 	} else {
-		query = strings.ToLower(query)
+		matcher := nhd.matchers.Build(query)
 		nhd.filteredPaths = []string{}
 
 		for _, path := range nhd.allPaths {
-			if strings.Contains(strings.ToLower(path), query) {
+			if matcher.Match(path) {
 				nhd.filteredPaths = append(nhd.filteredPaths, path)
 			}
 		}
@@ -435,7 +440,7 @@ func (nhd *NavigationHistoryDialog) BackspaceSearch() {
 	if nhd.searchEntry != nil {
 		current := nhd.searchEntry.Text
 		if len(current) > 0 {
-			newText := current[:len(current)-1]
+			newText := trimLastRune(current)
 			nhd.searchEntry.SetText(newText)
 			nhd.debugPrint("HistoryDialog: Backspaced search, now: '%s'", newText)
 		}

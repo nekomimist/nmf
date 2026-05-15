@@ -262,7 +262,7 @@ func (d *CopyMoveDialog) BackspaceSearch() {
 	if d.searchEntry != nil {
 		t := d.searchEntry.Text
 		if len(t) > 0 {
-			d.searchEntry.SetText(t[:len(t)-1])
+			d.searchEntry.SetText(trimLastRune(t))
 		}
 	}
 }

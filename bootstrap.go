@@ -12,6 +12,7 @@ import (
 	"nmf/internal/configscript"
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
+	"nmf/internal/search"
 	"nmf/internal/secret"
 	customtheme "nmf/internal/theme"
 	"nmf/internal/ui"
@@ -32,6 +33,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 		customTheme:    customTheme,
 		cursorRenderer: ui.NewCursorRenderer(config.UI.CursorStyle),
 		keyManager:     keymanager.NewKeyManager(debugPrint),
+		searchMatchers: search.NewProvider(debugPrint),
 	}
 
 	// Busy overlay (hidden by default)
@@ -63,7 +65,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 	}
 
 	// Create incremental search overlay
-	fm.searchOverlay = ui.NewIncrementalSearchOverlay([]fileinfo.FileInfo{}, fm.keyManager, customTheme, debugPrint)
+	fm.searchOverlay = ui.NewIncrementalSearchOverlay([]fileinfo.FileInfo{}, fm.keyManager, customTheme, debugPrint, fm.searchMatchers)
 	fm.searchHandler = keymanager.NewIncrementalSearchKeyHandler(fm, debugPrint)
 	fm.searchHandler.SetTransitionGate(fm.keyManager.DeferUntilKeysReleased)
 

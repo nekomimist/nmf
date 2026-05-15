@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"image/color"
-	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -12,6 +11,7 @@ import (
 
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
+	"nmf/internal/search"
 	customtheme "nmf/internal/theme"
 )
 
@@ -31,6 +31,7 @@ type IncrementalSearchOverlay struct {
 	parent         fyne.Window            // Parent window for positioning
 	closed         bool                   // Prevent double-close
 	themeProvider  ThemeColorProvider
+	matchers       *search.Provider
 }
 
 // NewIncrementalSearchOverlay creates a new incremental search overlay
@@ -39,6 +40,7 @@ func NewIncrementalSearchOverlay(
 	keyManager *keymanager.KeyManager,
 	themeProvider ThemeColorProvider,
 	debugPrint func(format string, args ...interface{}),
+	matchers ...*search.Provider,
 ) *IncrementalSearchOverlay {
 	overlay := &IncrementalSearchOverlay{
 		searchTerm:    "",
@@ -49,6 +51,9 @@ func NewIncrementalSearchOverlay(
 		keyManager:    keyManager,
 		visible:       false,
 		themeProvider: themeProvider,
+	}
+	if len(matchers) > 0 {
+		overlay.matchers = matchers[0]
 	}
 
 	overlay.createWidgets()
@@ -169,7 +174,7 @@ func (iso *IncrementalSearchOverlay) RemoveLastCharacter() {
 		return
 	}
 
-	iso.searchTerm = iso.searchTerm[:len(iso.searchTerm)-1]
+	iso.searchTerm = trimLastRune(iso.searchTerm)
 	iso.updateSearch()
 	iso.debugPrint("IncrementalSearchOverlay: Removed last char, term: '%s'", iso.searchTerm)
 }
@@ -228,9 +233,9 @@ func (iso *IncrementalSearchOverlay) updateSearch() {
 		}
 	} else {
 		// Find files that match the search term (case-insensitive matching)
-		searchLower := strings.ToLower(iso.searchTerm)
+		matcher := iso.matchers.Build(iso.searchTerm)
 		for _, file := range iso.allFiles {
-			if strings.Index(strings.ToLower(file.Name), searchLower) != -1 {
+			if matcher.Match(file.Name) {
 				iso.matchedFiles = append(iso.matchedFiles, file)
 			}
 		}

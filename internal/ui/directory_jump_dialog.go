@@ -313,12 +313,12 @@ func (d *DirectoryJumpDialog) AppendToSearch(char string) {
 	}
 }
 
-// BackspaceSearch removes the last byte from search text.
+// BackspaceSearch removes the last character from search text.
 func (d *DirectoryJumpDialog) BackspaceSearch() {
 	if d.searchEntry != nil {
 		current := d.searchEntry.Text
 		if len(current) > 0 {
-			d.searchEntry.SetText(current[:len(current)-1])
+			d.searchEntry.SetText(trimLastRune(current))
 			d.debugPrint("DirectoryJumpDialog: backspace search=%s", d.searchEntry.Text)
 		}
 	}

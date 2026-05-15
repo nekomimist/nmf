@@ -172,6 +172,16 @@ If manually editing them, preserve their JSON shape:
 - `fileFilter.entries` and `fileFilter.current` use `pattern`, `lastUsed`, and
   `useCount`.
 
+## Search Matching
+
+Navigation History and Incremental Search use case-insensitive substring
+matching plus migemo expansion for Japanese names. Migemo uses the embedded
+dictionary and is enabled automatically when it loads; if it is unavailable, the
+app falls back to substring matching.
+
+Directory Jump is intentionally separate: it filters only by configured shortcut
+prefix and does not use migemo.
+
 ## Directory Jumps
 
 `ui.directoryJumps.entries` is a list of jump targets.

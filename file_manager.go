@@ -12,6 +12,7 @@ import (
 	"nmf/internal/configscript"
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
+	"nmf/internal/search"
 	customtheme "nmf/internal/theme"
 	"nmf/internal/ui"
 	"nmf/internal/watcher"
@@ -45,6 +46,7 @@ type FileManager struct {
 	currentFilter  *config.FilterEntry                     // Currently applied filter
 	searchOverlay  *ui.IncrementalSearchOverlay            // Incremental search overlay
 	searchHandler  *keymanager.IncrementalSearchKeyHandler // Search key handler
+	searchMatchers *search.Provider                        // Shared search matcher provider
 	iconSvc        *fileinfo.IconService                   // Async icon service
 	// Busy state while loading directories
 	busyOverlay *ui.BusyOverlay

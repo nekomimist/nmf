@@ -128,7 +128,6 @@ func (ish *IncrementalSearchKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers M
 		// Let OnTypedRune handle character input
 		return false
 	}
-	return false
 }
 
 // OnKeyUp handles key release events during incremental search

@@ -146,6 +146,12 @@ github.com/klauspost/compress v1.18.0/go.mod h1:2Pp+KzxcywXVXMr50+X0Q/Lsb43OQHYW
 github.com/klauspost/cpuid v1.2.0/go.mod h1:Pj4uuM528wm8OyEC2QMXAi2YiTZ96dNQPGgoMS4s3ek=
 github.com/klauspost/pgzip v1.2.6 h1:8RXeL5crjEUFnR2/Sn6GJNWtSQ3Dk8pq4CL3jvdDyjU=
 github.com/klauspost/pgzip v1.2.6/go.mod h1:Ch1tH69qFZu15pkjo5kYi6mth2Zzwzt50oCQKQE9RUs=
+github.com/koron-go/skkdict v1.0.1 h1:iT3eAp/weiAl46+Kfitt2WMmJfeZBiwjK32kFlF3vTo=
+github.com/koron-go/skkdict v1.0.1/go.mod h1:Pd4MKJybKeA6yzuUNfXqV5+8SBSb3PEvowZ3orQfC4M=
+github.com/koron/gelatin v0.0.0-20160729020448-88d6a03ce765 h1:/k2Hth0PQq47SNc2pvOnwEQbjtu7HgtQu8TFXKhABKE=
+github.com/koron/gelatin v0.0.0-20160729020448-88d6a03ce765/go.mod h1:TJD1ti844npsMLPGgPPLa1Ozaz0W36N9EL6dQmTZ0kU=
+github.com/koron/gomigemo v1.0.3 h1:WON7xWt6kGD8A7nCAJRoYJ9Aedhx28L+axYd/Yf4r5o=
+github.com/koron/gomigemo v1.0.3/go.mod h1:hj0HHXJB1V6sO4DswURzC6kfrIrQLXuRfpTzNsW8wpU=
 github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
