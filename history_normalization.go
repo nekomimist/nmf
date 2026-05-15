@@ -1,0 +1,67 @@
+package main
+
+import (
+	"time"
+
+	"nmf/internal/config"
+	"nmf/internal/fileinfo"
+)
+
+func canonicalNavigationHistoryPath(p string) string {
+	resolved, parsed, err := fileinfo.CanonicalDisplayPath(p)
+	if err != nil {
+		return p
+	}
+	if parsed.Scheme == fileinfo.SchemeArchive && parsed.Display != "" {
+		return parsed.Display
+	}
+	return resolved
+}
+
+func normalizeNavigationHistory(cfg *config.Config) bool {
+	if cfg == nil {
+		return false
+	}
+	entries := cfg.UI.NavigationHistory.Entries
+	lastUsed := cfg.UI.NavigationHistory.LastUsed
+	normalized := make([]string, 0, len(entries))
+	seen := make(map[string]bool, len(entries))
+	normalizedLastUsed := make(map[string]timeValue, len(lastUsed))
+	changed := false
+
+	for _, entry := range entries {
+		canonical := canonicalNavigationHistoryPath(entry)
+		if canonical != entry {
+			changed = true
+		}
+		when := lastUsed[entry]
+		if previous, ok := normalizedLastUsed[canonical]; !ok || when.After(previous.Time) {
+			normalizedLastUsed[canonical] = timeValue{Time: when}
+		}
+		if seen[canonical] {
+			changed = true
+			continue
+		}
+		seen[canonical] = true
+		normalized = append(normalized, canonical)
+	}
+
+	if len(normalized) != len(entries) {
+		changed = true
+	}
+	if !changed {
+		return false
+	}
+
+	newLastUsed := make(map[string]time.Time, len(normalizedLastUsed))
+	for path, when := range normalizedLastUsed {
+		newLastUsed[path] = when.Time
+	}
+	cfg.UI.NavigationHistory.Entries = normalized
+	cfg.UI.NavigationHistory.LastUsed = newLastUsed
+	return true
+}
+
+type timeValue struct {
+	Time time.Time
+}

@@ -178,8 +178,7 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 	searchSection := container.NewBorder(nil, nil, searchLabel, nil, nhd.searchEntry)
 
 	// Create scrollable list container
-	listScroll := container.NewScroll(dialogListThemeOverride(nhd.historyList))
-	listScroll.SetMinSize(fyne.NewSize(600, 400))
+	listScroll := newScrollableDialogList(nhd.historyList, dialogTextWidth(nhd.allPaths, 600), 600, 400)
 
 	// Create empty state message
 	emptyLabel := widget.NewLabel("No matching paths found")

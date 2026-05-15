@@ -22,7 +22,9 @@ behavior and the supported platform surface for those integrations.
 
 SMB display paths are canonicalized as `smb://host/share/...` in the UI and
 history. Windows UNC input such as `\\server\share\path` is normalized into
-that display form, but Windows I/O resolves it back to native UNC access.
+that display form, but Windows I/O resolves it back to native UNC access. WSL
+aliases such as `\\wsl$`, `//wsl$/`, and `smb://wsl$/` are recorded as
+`smb://wsl.localhost/...`.
 
 Detailed provider selection and job behavior lives in `vfs-smb.md`.
 

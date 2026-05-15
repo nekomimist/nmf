@@ -134,6 +134,8 @@ func (fm *FileManager) FocusFileList() {
 }
 
 func (fm *FileManager) LoadDirectory(path string) {
+	path = canonicalNavigationHistoryPath(path)
+
 	// Save current cursor position before changing directory
 	// Skip saving if already saved manually (e.g., during refresh)
 	if fm.currentPath != "" && fm.currentPath != path {
@@ -218,7 +220,7 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 
 		// Add previous path to navigation history before changing directory
 		if previousPath != "" && previousPath != path {
-			fm.config.AddToNavigationHistory(previousPath)
+			fm.config.AddToNavigationHistory(canonicalNavigationHistoryPath(previousPath))
 			if err := fm.configManager.SaveAsync(fm.config); err != nil {
 				debugPrint("FileManager: Error saving navigation history: %v", err)
 			}

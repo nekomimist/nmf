@@ -28,6 +28,11 @@ func (fm *FileManager) ShowDirectoryTreeDialog() {
 
 // ShowNavigationHistoryDialog shows the navigation history dialog.
 func (fm *FileManager) ShowNavigationHistoryDialog() {
+	if normalizeNavigationHistory(fm.config) {
+		if err := fm.configManager.SaveAsync(fm.config); err != nil {
+			debugPrint("FileManager: Error saving normalized navigation history: %v", err)
+		}
+	}
 	historyPaths := fm.config.GetNavigationHistory()
 
 	// Add current path to the beginning of history list

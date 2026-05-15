@@ -2,9 +2,52 @@ package fileinfo
 
 import (
 	"fmt"
+	"path"
 	"path/filepath"
 	"strings"
 )
+
+// CanonicalDisplayPath normalizes a path string for UI display and durable
+// runtime state without requiring the target to be accessible.
+func CanonicalDisplayPath(input string) (string, Parsed, error) {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return "", Parsed{}, fmt.Errorf("path is empty")
+	}
+
+	if isUNC(trimmed) {
+		parsed := parseUNC(trimmed)
+		parsed.Raw = input
+		return parsed.Display, parsed, nil
+	}
+
+	if isSMBURL(trimmed) || strings.HasPrefix(trimmed, "//") {
+		host, share, segments, user, pass, domain := parseSMBURL(trimmed)
+		if host == "" || share == "" {
+			return "", Parsed{Raw: input, Scheme: SchemeSMB, Display: canonicalizeSMB(trimmed), Provider: "smb"}, fmt.Errorf("invalid smb path: %s", input)
+		}
+		display := smbDisplayPath(host, share, segments)
+		native := "/"
+		if len(segments) > 0 {
+			native = "/" + path.Join(segments...)
+		}
+		return display, Parsed{
+			Scheme:   SchemeSMB,
+			Host:     host,
+			Share:    share,
+			Segments: segments,
+			Raw:      input,
+			Display:  display,
+			Native:   native,
+			Provider: "smb",
+			User:     user,
+			Password: pass,
+			Domain:   domain,
+		}, nil
+	}
+
+	return ResolvePathDisplay(trimmed)
+}
 
 // ResolvePathDisplay resolves user input to a canonical display/navigation path.
 // SMB inputs are returned as canonical smb:// paths. Local inputs are returned as absolute paths.

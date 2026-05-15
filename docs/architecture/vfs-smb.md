@@ -6,7 +6,8 @@ Two forms are used throughout the app:
 
 - Display/canonical path:
   - Local: absolute filesystem path
-  - SMB: canonical `smb://host/share/...`
+  - SMB: canonical `smb://host/share/...`; host names are lower-cased, and
+    WSL's `wsl$` host alias is normalized to `wsl.localhost`
   - Archive: `outer.zip!/inner/path`
 - Native/provider path:
   - OS/provider-specific path used for I/O (`Parsed.Native`)
@@ -15,6 +16,8 @@ Two forms are used throughout the app:
 Resolver entrypoints:
 
 - `ResolvePathDisplay`: normalize user input for UI/display.
+- `CanonicalDisplayPath`: normalize user input for display/history without
+  requiring accessibility.
 - `ResolveDirectoryPath`: normalize + require directory semantics (SMB allowed without stat check).
 - `ResolveAccessibleDirectoryPath`: normalize + require accessible/stat'able directory.
 - `ResolveRead`: select provider and return parsed/native path.

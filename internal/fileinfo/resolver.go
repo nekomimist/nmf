@@ -71,6 +71,13 @@ func ResolveRead(input string) (VFS, Parsed, error) {
 			p.Provider = "local"
 			return LocalFS{}, p, nil
 		}
+		if strings.HasPrefix(raw, "//") {
+			unc := smbURLToUNC(raw)
+			p := parseUNC(unc)
+			p.Raw = input
+			p.Provider = "local"
+			return LocalFS{}, p, nil
+		}
 		if isSMBURL(raw) {
 			unc := smbURLToUNC(raw)
 			p := parseUNC(unc)
@@ -185,6 +192,8 @@ func smbURLToUNC(u string) string {
 	s := strings.TrimSpace(u)
 	if strings.HasPrefix(strings.ToLower(s), "smb://") {
 		s = s[len("smb://"):]
+	} else {
+		s = strings.TrimPrefix(s, "//")
 	}
 	// find authority and path
 	hostAndPath := s
@@ -196,7 +205,7 @@ func smbURLToUNC(u string) string {
 	if len(parts) == 0 || parts[0] == "" {
 		return "\\\\" // invalid, best effort
 	}
-	host := parts[0]
+	host := canonicalSMBHost(parts[0])
 	rest := parts[1:]
 	b := strings.Builder{}
 	b.WriteString("\\\\")
@@ -224,7 +233,7 @@ func parseUNC(unc string) Parsed {
 	share := ""
 	segments := []string{}
 	if len(seg) > 0 {
-		host = seg[0]
+		host = canonicalSMBHost(seg[0])
 	}
 	if len(seg) > 1 {
 		share = seg[1]
@@ -232,10 +241,7 @@ func parseUNC(unc string) Parsed {
 	if len(seg) > 2 {
 		segments = seg[2:]
 	}
-	display := "smb://" + path.Join(host, share)
-	if len(segments) > 0 {
-		display += "/" + path.Join(segments...)
-	}
+	display := smbDisplayPath(host, share, segments)
 	return Parsed{
 		Scheme:   SchemeSMB,
 		Host:     host,
@@ -254,7 +260,27 @@ func canonicalizeSMB(url string) string {
 	if !strings.HasPrefix(strings.ToLower(s), "smb://") {
 		s = "smb://" + strings.TrimPrefix(s, "//")
 	}
-	return s
+	host, share, segments, _, _, _ := parseSMBURL(s)
+	if host == "" || share == "" {
+		return s
+	}
+	return smbDisplayPath(host, share, segments)
+}
+
+func canonicalSMBHost(host string) string {
+	host = strings.TrimSpace(host)
+	if strings.EqualFold(host, "wsl$") {
+		return "wsl.localhost"
+	}
+	return strings.ToLower(host)
+}
+
+func smbDisplayPath(host, share string, segments []string) string {
+	display := "smb://" + path.Join(canonicalSMBHost(host), share)
+	if len(segments) > 0 {
+		display += "/" + path.Join(segments...)
+	}
+	return display
 }
 
 func errUnsupportedSMB() error {
@@ -296,7 +322,7 @@ func parseSMBURL(u string) (host, share string, segments []string, user, pass, d
 	if len(parts) < 2 {
 		return "", "", nil, "", "", ""
 	}
-	host = parts[0]
+	host = canonicalSMBHost(parts[0])
 	share = parts[1]
 	if len(parts) > 2 {
 		segments = parts[2:]

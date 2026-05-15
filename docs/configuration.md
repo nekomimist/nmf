@@ -171,6 +171,8 @@ If manually editing them, preserve their JSON shape:
 - history timestamps use Go's JSON `time.Time` format.
 - `fileFilter.entries` and `fileFilter.current` use `pattern`, `lastUsed`, and
   `useCount`.
+- navigation history paths are normalized when recorded or shown; SMB/UNC forms
+  are stored as canonical `smb://host/share/...` paths.
 
 ## Search Matching
 

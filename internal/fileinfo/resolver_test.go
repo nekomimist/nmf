@@ -45,6 +45,29 @@ func TestUNCConversionRoundTripDisplay(t *testing.T) {
 	}
 }
 
+func TestCanonicalDisplayPathNormalizesSMBForms(t *testing.T) {
+	tests := []string{
+		`\\wsl$\Ubuntu\home\neko`,
+		`\\wsl.localhost\Ubuntu\home\neko`,
+		"//wsl$/Ubuntu/home/neko",
+		"//wsl.localhost/Ubuntu/home/neko",
+		"smb://wsl$/Ubuntu/home/neko",
+	}
+
+	for _, input := range tests {
+		got, parsed, err := CanonicalDisplayPath(input)
+		if err != nil {
+			t.Fatalf("CanonicalDisplayPath(%q) error: %v", input, err)
+		}
+		if parsed.Scheme != SchemeSMB {
+			t.Fatalf("CanonicalDisplayPath(%q) scheme = %q, want smb", input, parsed.Scheme)
+		}
+		if got != "smb://wsl.localhost/Ubuntu/home/neko" {
+			t.Fatalf("CanonicalDisplayPath(%q) = %q, want canonical WSL path", input, got)
+		}
+	}
+}
+
 func TestParseUNCWithSingleBackslashSeparators(t *testing.T) {
 	p := parseUNC("\\\\naja.local\\neko\\a")
 	if p.Host != "naja.local" || p.Share != "neko" {
@@ -70,7 +93,7 @@ func TestParseExtendedUNC(t *testing.T) {
 
 func TestCanonicalizeSMB(t *testing.T) {
 	got := canonicalizeSMB("//SERVER/share\\a\\b")
-	if got != "smb://SERVER/share/a/b" {
+	if got != "smb://server/share/a/b" {
 		t.Fatalf("canonicalize got %q", got)
 	}
 }

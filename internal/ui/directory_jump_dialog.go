@@ -157,6 +157,18 @@ func directoryJumpShortcutCellSize() fyne.Size {
 	return fyne.NewSize(textSize*6+padding*2, textSize+innerPadding*2)
 }
 
+func directoryJumpListWidth(entries []config.DirectoryJumpEntry, minimum float32) float32 {
+	paths := make([]string, len(entries))
+	for i, entry := range entries {
+		paths[i] = entry.Directory
+	}
+	width := dialogTextWidth(paths, minimum) + directoryJumpShortcutCellSize().Width
+	if width < minimum {
+		return minimum
+	}
+	return width
+}
+
 func (d *DirectoryJumpDialog) updateFilteredEntries(query string) {
 	d.filteredEntries = filterDirectoryJumpEntries(d.allEntries, query)
 
@@ -185,8 +197,7 @@ func (d *DirectoryJumpDialog) ShowDialog(parent fyne.Window, callback func(strin
 	searchLabel := widget.NewLabel("Filter:")
 	searchSection := container.NewBorder(nil, nil, searchLabel, nil, d.searchEntry)
 
-	listScroll := container.NewScroll(dialogListThemeOverride(d.jumpList))
-	listScroll.SetMinSize(fyne.NewSize(600, 400))
+	listScroll := newScrollableDialogList(d.jumpList, directoryJumpListWidth(d.allEntries, 600), 600, 400)
 
 	emptyLabel := widget.NewLabel("No matching shortcuts found")
 	emptyLabel.Alignment = fyne.TextAlignCenter
