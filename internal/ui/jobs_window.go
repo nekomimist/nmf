@@ -74,7 +74,7 @@ func NewJobsWindow(app fyne.App, debugPrint func(format string, args ...interfac
 	header := widget.NewLabel("Job Queue")
 	header.TextStyle.Bold = true
 	jd.list.Resize(fyne.NewSize(680, 320))
-	split := container.NewVSplit(jd.list, container.NewVScroll(jd.details))
+	split := container.NewVSplit(dialogListThemeOverride(jd.list), container.NewVScroll(jd.details))
 	split.Offset = 0.7
 	// Fix size by wrapping in WithoutLayout and explicitly resizing
 	fixed := container.NewWithoutLayout(split)

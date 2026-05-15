@@ -25,6 +25,9 @@ if nmf.dark_theme():
     nmf.theme(font_name = "wrong")
 nmf.color("cursor", dark = [1, 2, 3, 4], light = "foreground")
 nmf.color("selectionBackground", value = "selection", dark = None)
+nmf.color("lineEditCursor", value = "primary")
+nmf.color("lineEditSelection", value = [5, 6, 7, 8])
+nmf.color("dialogListCursor", value = "selection")
 nmf.ui(show_hidden_files = True, item_spacing = 2)
 nmf.sort(by = "extension", order = "desc", directories_first = False)
 nmf.cursor_style(type = "border", thickness = 3)
@@ -78,6 +81,15 @@ nmf.command("user.parent", parent)
 	}
 	if got := cfg.Theme.Colors["selectionBackground"].Value.Name; got != "selection" {
 		t.Fatalf("selection common color = %q, want selection", got)
+	}
+	if got := cfg.Theme.Colors["lineEditCursor"].Value.Name; got != "primary" {
+		t.Fatalf("line edit cursor color = %q, want primary", got)
+	}
+	if got := cfg.Theme.Colors["lineEditSelection"].Value.RGBA; got != [4]uint8{5, 6, 7, 8} {
+		t.Fatalf("line edit selection color = %+v, want RGBA override", got)
+	}
+	if got := cfg.Theme.Colors["dialogListCursor"].Value.Name; got != "selection" {
+		t.Fatalf("dialog list cursor color = %q, want selection", got)
 	}
 	if !cfg.UI.ShowHiddenFiles || cfg.UI.ItemSpacing != 2 {
 		t.Fatalf("ui = %+v, want hidden=true spacing=2", cfg.UI)

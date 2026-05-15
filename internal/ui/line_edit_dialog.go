@@ -1,15 +1,19 @@
 package ui
 
 import (
+	"image/color"
 	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
+	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/keymanager"
+	customtheme "nmf/internal/theme"
 )
 
 const (
@@ -79,7 +83,7 @@ func (d *LineEditDialog) ShowDialog(parent fyne.Window, onAccept func(string) bo
 	if d.opts.Prompt != "" {
 		content.Add(widget.NewLabel(d.opts.Prompt))
 	}
-	content.Add(d.entry)
+	content.Add(lineEditThemeOverride(d.entry))
 	content.Add(container.NewGridWithColumns(
 		2,
 		widget.NewButton("Cancel", d.CancelDialog),
@@ -194,6 +198,8 @@ func (d *LineEditDialog) entryIsFocused() bool {
 type LineEditEntry struct {
 	TabEntry
 	onCancel func()
+	focused  bool
+	disabled bool
 }
 
 // NewLineEditEntry creates an entry for LineEditDialog.
@@ -215,8 +221,34 @@ func (e *LineEditEntry) TypedKey(ev *fyne.KeyEvent) {
 	e.TabEntry.TypedKey(ev)
 }
 
+func (e *LineEditEntry) FocusGained() {
+	e.focused = true
+	e.TabEntry.FocusGained()
+}
+
 func (e *LineEditEntry) FocusLost() {
+	e.focused = false
 	e.TabEntry.FocusLost()
+}
+
+func (e *LineEditEntry) Disable() {
+	e.disabled = true
+	e.TabEntry.Disable()
+}
+
+func (e *LineEditEntry) Enable() {
+	e.disabled = false
+	e.TabEntry.Enable()
+}
+
+func (e *LineEditEntry) CreateRenderer() fyne.WidgetRenderer {
+	caret := canvas.NewRectangle(color.Transparent)
+	caret.Hide()
+	return &lineEditEntryRenderer{
+		entry: e,
+		base:  e.TabEntry.CreateRenderer(),
+		caret: caret,
+	}
 }
 
 func (e *LineEditEntry) KeyDown(ev *fyne.KeyEvent) {
@@ -355,4 +387,89 @@ func (e *LineEditEntry) setCursor(pos int) {
 	e.CursorRow = 0
 	e.CursorColumn = pos
 	e.Refresh()
+}
+
+type lineEditEntryRenderer struct {
+	entry *LineEditEntry
+	base  fyne.WidgetRenderer
+	caret *canvas.Rectangle
+}
+
+func (r *lineEditEntryRenderer) Destroy() {
+	r.base.Destroy()
+}
+
+func (r *lineEditEntryRenderer) Layout(size fyne.Size) {
+	r.base.Layout(size)
+	r.updateCaret()
+}
+
+func (r *lineEditEntryRenderer) MinSize() fyne.Size {
+	return r.base.MinSize()
+}
+
+func (r *lineEditEntryRenderer) Objects() []fyne.CanvasObject {
+	return append(r.base.Objects(), r.caret)
+}
+
+func (r *lineEditEntryRenderer) Refresh() {
+	r.base.Refresh()
+	r.restoreFocusedBorderColor()
+	r.updateCaret()
+}
+
+func (r *lineEditEntryRenderer) restoreFocusedBorderColor() {
+	if r.entry == nil || !r.entry.focused || r.entry.disabled {
+		return
+	}
+	border := r.borderRectangle()
+	if border == nil {
+		return
+	}
+	border.StrokeColor = currentAppThemeColor(fynetheme.ColorNamePrimary)
+	border.Refresh()
+}
+
+func (r *lineEditEntryRenderer) borderRectangle() *canvas.Rectangle {
+	for _, obj := range r.base.Objects() {
+		rect, ok := obj.(*canvas.Rectangle)
+		if ok && rect.StrokeWidth > 0 {
+			return rect
+		}
+	}
+	return nil
+}
+
+func (r *lineEditEntryRenderer) updateCaret() {
+	if r.entry == nil || r.caret == nil || !r.entry.focused || r.entry.disabled {
+		r.caret.Hide()
+		return
+	}
+
+	th := r.entry.Theme()
+	inputBorder := th.Size(fynetheme.SizeNameInputBorder)
+	textSize := th.Size(fynetheme.SizeNameText)
+	lineHeight := fyne.MeasureText("M", textSize, r.entry.TextStyle).Height
+	pos := r.entry.CursorPosition().Add(fyne.NewPos(0, inputBorder))
+
+	r.caret.FillColor = currentLineEditColor(customtheme.ColorLineEditCursor)
+	r.caret.Resize(fyne.NewSize(inputBorder, lineHeight))
+	r.caret.Move(pos)
+	r.caret.Show()
+	r.caret.Refresh()
+}
+
+func currentAppThemeColor(name fyne.ThemeColorName) color.Color {
+	if fyne.CurrentApp() == nil || fyne.CurrentApp().Settings().Theme() == nil {
+		return fynetheme.Color(name)
+	}
+	return fyne.CurrentApp().Settings().Theme().Color(name, fyne.CurrentApp().Settings().ThemeVariant())
+}
+
+func currentLineEditColor(name string) color.Color {
+	themeProvider := currentThemeColorProvider()
+	if themeProvider == nil {
+		return currentAppThemeColor(fynetheme.ColorNamePrimary)
+	}
+	return themeProvider.GetCustomColor(name)
 }

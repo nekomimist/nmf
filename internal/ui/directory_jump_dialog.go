@@ -185,7 +185,7 @@ func (d *DirectoryJumpDialog) ShowDialog(parent fyne.Window, callback func(strin
 	searchLabel := widget.NewLabel("Filter:")
 	searchSection := container.NewBorder(nil, nil, searchLabel, nil, d.searchEntry)
 
-	listScroll := container.NewScroll(d.jumpList)
+	listScroll := container.NewScroll(dialogListThemeOverride(d.jumpList))
 	listScroll.SetMinSize(fyne.NewSize(600, 400))
 
 	emptyLabel := widget.NewLabel("No matching shortcuts found")

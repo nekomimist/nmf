@@ -73,3 +73,80 @@ func TestCustomThemeAppColorOverrides(t *testing.T) {
 		t.Fatalf("light cursor = %#v, want foreground %#v", got, want)
 	}
 }
+
+func TestCustomThemeFyneBackedAppColorDefaults(t *testing.T) {
+	cfg := &config.Config{Theme: config.ThemeConfig{Dark: false}}
+	customTheme := NewCustomTheme(cfg, func(string, ...interface{}) {})
+
+	tests := []struct {
+		name  string
+		color string
+		want  color.Color
+	}{
+		{name: "line edit cursor", color: ColorLineEditCursor, want: theme.LightTheme().Color(theme.ColorNamePrimary, theme.VariantLight)},
+		{name: "line edit selection", color: ColorLineEditSelection, want: theme.LightTheme().Color(theme.ColorNameSelection, theme.VariantLight)},
+		{name: "dialog list cursor", color: ColorDialogListCursor, want: theme.LightTheme().Color(theme.ColorNameSelection, theme.VariantLight)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := color.RGBAModel.Convert(customTheme.GetCustomColor(tt.color))
+			want := color.RGBAModel.Convert(tt.want)
+			if got != want {
+				t.Fatalf("%s = %#v, want %#v", tt.color, got, want)
+			}
+			if !IsAppColorName(tt.color) {
+				t.Fatalf("%s should be an app color name", tt.color)
+			}
+		})
+	}
+}
+
+func TestCustomThemeFyneBackedAppColorOverrides(t *testing.T) {
+	cfg := &config.Config{
+		Theme: config.ThemeConfig{
+			Colors: map[string]config.ThemeColorConfig{
+				ColorDialogListCursor: {
+					Value: &config.ThemeColorValue{RGBA: [4]uint8{9, 8, 7, 6}, IsRGBA: true},
+				},
+			},
+		},
+	}
+	customTheme := NewCustomTheme(cfg, func(string, ...interface{}) {})
+
+	if got, want := customTheme.GetCustomColor(ColorDialogListCursor), (color.RGBA{9, 8, 7, 6}); got != want {
+		t.Fatalf("dialog list cursor = %#v, want %#v", got, want)
+	}
+}
+
+func TestScopedOverrideThemes(t *testing.T) {
+	cfg := &config.Config{
+		Theme: config.ThemeConfig{
+			Colors: map[string]config.ThemeColorConfig{
+				ColorLineEditCursor: {
+					Value: &config.ThemeColorValue{RGBA: [4]uint8{1, 2, 3, 4}, IsRGBA: true},
+				},
+				ColorLineEditSelection: {
+					Value: &config.ThemeColorValue{RGBA: [4]uint8{5, 6, 7, 8}, IsRGBA: true},
+				},
+				ColorDialogListCursor: {
+					Value: &config.ThemeColorValue{RGBA: [4]uint8{9, 10, 11, 12}, IsRGBA: true},
+				},
+			},
+		},
+	}
+	customTheme := NewCustomTheme(cfg, func(string, ...interface{}) {})
+
+	lineEditTheme := NewLineEditOverrideTheme(theme.LightTheme(), customTheme)
+	if got, want := lineEditTheme.Color(theme.ColorNamePrimary, theme.VariantLight), (color.RGBA{1, 2, 3, 4}); got != want {
+		t.Fatalf("line edit primary = %#v, want %#v", got, want)
+	}
+	if got, want := lineEditTheme.Color(theme.ColorNameSelection, theme.VariantLight), (color.RGBA{5, 6, 7, 8}); got != want {
+		t.Fatalf("line edit selection = %#v, want %#v", got, want)
+	}
+
+	listTheme := NewDialogListOverrideTheme(theme.LightTheme(), customTheme)
+	if got, want := listTheme.Color(theme.ColorNameSelection, theme.VariantLight), (color.RGBA{9, 10, 11, 12}); got != want {
+		t.Fatalf("dialog list selection = %#v, want %#v", got, want)
+	}
+}

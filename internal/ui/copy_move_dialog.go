@@ -131,7 +131,7 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(dest strin
 	// Destination search + list (fixed size like history dialog)
 	searchLabel := widget.NewLabel("Destination:")
 	searchSection := container.NewBorder(nil, nil, searchLabel, nil, d.searchEntry)
-	destScroll := container.NewScroll(d.destList)
+	destScroll := container.NewScroll(dialogListThemeOverride(d.destList))
 	destScroll.SetMinSize(fyne.NewSize(600, 260))
 	empty := widget.NewLabel("No matching destinations")
 	empty.Alignment = fyne.TextAlignCenter

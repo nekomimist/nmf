@@ -223,8 +223,12 @@ Color API:
 - `nmf.color()` customizes NMF-specific colors such as `fileRegular`,
   `fileDirectory`, `fileSymlink`, `fileHidden`, `statusAdded`,
   `statusDeleted`, `statusModified`, `selectionBackground`, `cursor`,
+  `lineEditCursor`, `lineEditSelection`, `dialogListCursor`,
   `searchOverlayBackground`, `searchOverlayForeground`, and
   `busyOverlayBackground`.
+- `lineEditCursor` and `lineEditSelection` apply only to one-line edit dialogs.
+  `dialogListCursor` applies to Navigation History, Directory Jump, Filter,
+  Copy/Move, and Jobs list cursor rows.
 - A color can be an RGBA list or tuple like `[255, 255, 255, 255]`, a Fyne
   theme color name like `"foreground"` or `"selection"`, or a Fyne primary
   color name like `"blue"` or `"green"`.

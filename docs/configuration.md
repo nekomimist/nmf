@@ -110,7 +110,10 @@ theme. Missing values keep the built-in defaults.
       "cursor": {
         "dark": "foreground",
         "light": [0, 0, 0, 255]
-      }
+      },
+      "lineEditCursor": "foreground",
+      "lineEditSelection": "selection",
+      "dialogListCursor": [80, 120, 180, 140]
     }
   }
 }
@@ -121,8 +124,13 @@ Configurable color names:
 - `fileRegular`, `fileDirectory`, `fileSymlink`, `fileHidden`
 - `statusAdded`, `statusDeleted`, `statusModified`
 - `selectionBackground`, `cursor`
+- `lineEditCursor`, `lineEditSelection`, `dialogListCursor`
 - `searchOverlayBackground`, `searchOverlayForeground`
 - `busyOverlayBackground`
+
+`lineEditCursor` and `lineEditSelection` apply only to one-line edit dialogs.
+`dialogListCursor` applies to keyboard cursor rows in Navigation History,
+Directory Jump, Filter, Copy/Move, and Jobs lists.
 
 Color values:
 

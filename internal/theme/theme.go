@@ -20,12 +20,21 @@ const (
 	ColorStatusModified          = "statusModified"
 	ColorSelectionBackground     = "selectionBackground"
 	ColorCursor                  = "cursor"
+	ColorLineEditCursor          = "lineEditCursor"
+	ColorLineEditSelection       = "lineEditSelection"
+	ColorDialogListCursor        = "dialogListCursor"
 	ColorSearchOverlayBackground = "searchOverlayBackground"
 	ColorSearchOverlayForeground = "searchOverlayForeground"
 	ColorBusyOverlayBackground   = "busyOverlayBackground"
 )
 
 var (
+	fyneAppColorDefaults = map[string]fyne.ThemeColorName{
+		ColorLineEditCursor:    fynetheme.ColorNamePrimary,
+		ColorLineEditSelection: fynetheme.ColorNameSelection,
+		ColorDialogListCursor:  fynetheme.ColorNameSelection,
+	}
+
 	lightAppColorDefaults = map[string]color.RGBA{
 		ColorFileRegular:             {60, 60, 60, 255},
 		ColorFileDirectory:           {30, 100, 200, 255},
@@ -100,7 +109,10 @@ var (
 
 // IsAppColorName reports whether name is a configurable NMF UI color.
 func IsAppColorName(name string) bool {
-	_, ok := lightAppColorDefaults[name]
+	if _, ok := lightAppColorDefaults[name]; ok {
+		return true
+	}
+	_, ok := fyneAppColorDefaults[name]
 	return ok
 }
 
@@ -194,13 +206,19 @@ func (t *CustomTheme) GetCustomColor(colorType string) color.RGBA {
 func (t *CustomTheme) GetCustomColorForVariant(colorType string, dark bool) color.RGBA {
 	defaults := lightAppColorDefaults
 	variant := fynetheme.VariantLight
+	base := fynetheme.LightTheme()
 	if dark {
 		defaults = darkAppColorDefaults
 		variant = fynetheme.VariantDark
+		base = fynetheme.DarkTheme()
 	}
 	fallback, ok := defaults[colorType]
 	if !ok {
-		return color.RGBA{0, 0, 0, 0}
+		fyneColorName, ok := fyneAppColorDefaults[colorType]
+		if !ok {
+			return color.RGBA{0, 0, 0, 0}
+		}
+		fallback = color.RGBAModel.Convert(base.Color(fyneColorName, variant)).(color.RGBA)
 	}
 	if t == nil || t.config == nil || t.config.Theme.Colors == nil {
 		return fallback
@@ -256,4 +274,54 @@ func (t *CustomTheme) resolveConfiguredColor(value config.ThemeColorValue, varia
 		return color.RGBAModel.Convert(fynetheme.PrimaryColorNamed(name)).(color.RGBA), true
 	}
 	return color.RGBA{}, false
+}
+
+// NewLineEditOverrideTheme returns a scoped theme for line edit dialogs.
+func NewLineEditOverrideTheme(base fyne.Theme, themeProvider interface {
+	GetCustomColor(string) color.RGBA
+}) fyne.Theme {
+	return newColorOverrideTheme(base, map[fyne.ThemeColorName]color.Color{
+		fynetheme.ColorNamePrimary:   themeProvider.GetCustomColor(ColorLineEditCursor),
+		fynetheme.ColorNameSelection: themeProvider.GetCustomColor(ColorLineEditSelection),
+	})
+}
+
+// NewDialogListOverrideTheme returns a scoped theme for dialog cursor lists.
+func NewDialogListOverrideTheme(base fyne.Theme, themeProvider interface {
+	GetCustomColor(string) color.RGBA
+}) fyne.Theme {
+	return newColorOverrideTheme(base, map[fyne.ThemeColorName]color.Color{
+		fynetheme.ColorNameSelection: themeProvider.GetCustomColor(ColorDialogListCursor),
+	})
+}
+
+func newColorOverrideTheme(base fyne.Theme, colors map[fyne.ThemeColorName]color.Color) fyne.Theme {
+	if base == nil {
+		base = fynetheme.DefaultTheme()
+	}
+	return &colorOverrideTheme{base: base, colors: colors}
+}
+
+type colorOverrideTheme struct {
+	base   fyne.Theme
+	colors map[fyne.ThemeColorName]color.Color
+}
+
+func (t *colorOverrideTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
+	if c, ok := t.colors[name]; ok {
+		return c
+	}
+	return t.base.Color(name, variant)
+}
+
+func (t *colorOverrideTheme) Font(style fyne.TextStyle) fyne.Resource {
+	return t.base.Font(style)
+}
+
+func (t *colorOverrideTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
+	return t.base.Icon(name)
+}
+
+func (t *colorOverrideTheme) Size(name fyne.ThemeSizeName) float32 {
+	return t.base.Size(name)
 }
