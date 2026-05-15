@@ -17,8 +17,12 @@ import (
 )
 
 const (
-	lineEditDialogWidth  float32 = 520
-	lineEditDialogHeight float32 = 150
+	lineEditDialogWidth                  float32 = 520
+	lineEditDialogHeight                 float32 = 160
+	lineEditEntryHorizontalInset         float32 = 4
+	lineEditEntryVerticalInset           float32 = 3
+	lineEditEntryTrailingCaretClearance  float32 = 2
+	lineEditEntryMinimumCaretStrokeWidth float32 = 1
 )
 
 // LineEditDialogOptions configures a single-line edit dialog.
@@ -401,11 +405,16 @@ func (r *lineEditEntryRenderer) Destroy() {
 
 func (r *lineEditEntryRenderer) Layout(size fyne.Size) {
 	r.base.Layout(size)
+	r.applyContentInset()
 	r.updateCaret()
 }
 
 func (r *lineEditEntryRenderer) MinSize() fyne.Size {
-	return r.base.MinSize()
+	min := r.base.MinSize()
+	return fyne.NewSize(
+		min.Width+lineEditEntryHorizontalInset*2,
+		min.Height+lineEditEntryVerticalInset*2,
+	)
 }
 
 func (r *lineEditEntryRenderer) Objects() []fyne.CanvasObject {
@@ -440,6 +449,35 @@ func (r *lineEditEntryRenderer) borderRectangle() *canvas.Rectangle {
 	return nil
 }
 
+func (r *lineEditEntryRenderer) contentObject() fyne.CanvasObject {
+	for _, obj := range r.base.Objects() {
+		if _, ok := obj.(*canvas.Rectangle); ok {
+			continue
+		}
+		return obj
+	}
+	return nil
+}
+
+func (r *lineEditEntryRenderer) applyContentInset() {
+	content := r.contentObject()
+	if content == nil {
+		return
+	}
+	content.Move(content.Position().Add(fyne.NewPos(lineEditEntryHorizontalInset, lineEditEntryVerticalInset)))
+	size := content.Size().Subtract(fyne.NewSize(
+		lineEditEntryHorizontalInset*2,
+		lineEditEntryVerticalInset*2,
+	))
+	if size.Width < 0 {
+		size.Width = 0
+	}
+	if size.Height < 0 {
+		size.Height = 0
+	}
+	content.Resize(size)
+}
+
 func (r *lineEditEntryRenderer) updateCaret() {
 	if r.entry == nil || r.caret == nil || !r.entry.focused || r.entry.disabled {
 		r.caret.Hide()
@@ -450,10 +488,24 @@ func (r *lineEditEntryRenderer) updateCaret() {
 	inputBorder := th.Size(fynetheme.SizeNameInputBorder)
 	textSize := th.Size(fynetheme.SizeNameText)
 	lineHeight := fyne.MeasureText("M", textSize, r.entry.TextStyle).Height
-	pos := r.entry.CursorPosition().Add(fyne.NewPos(0, inputBorder))
+	caretWidth := inputBorder
+	if caretWidth < lineEditEntryMinimumCaretStrokeWidth {
+		caretWidth = lineEditEntryMinimumCaretStrokeWidth
+	}
+	pos := r.entry.CursorPosition()
+	if content := r.contentObject(); content != nil {
+		pos = pos.Add(content.Position())
+	}
+	maxX := r.entry.Size().Width - lineEditEntryHorizontalInset - caretWidth - lineEditEntryTrailingCaretClearance
+	if pos.X > maxX {
+		pos.X = maxX
+	}
+	if pos.X < lineEditEntryHorizontalInset {
+		pos.X = lineEditEntryHorizontalInset
+	}
 
 	r.caret.FillColor = currentLineEditColor(customtheme.ColorLineEditCursor)
-	r.caret.Resize(fyne.NewSize(inputBorder, lineHeight))
+	r.caret.Resize(fyne.NewSize(caretWidth, lineHeight))
 	r.caret.Move(pos)
 	r.caret.Show()
 	r.caret.Refresh()

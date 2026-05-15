@@ -255,3 +255,38 @@ func TestLineEditEntryCursorColorDoesNotRecolorFocusedBorder(t *testing.T) {
 		t.Fatalf("line edit caret color = %#v, want cursor color %#v", caret, cursor)
 	}
 }
+
+func TestLineEditEntryRendererAddsContentInsetAndClampsCaret(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	entry := NewLineEditEntry(nil)
+	entry.SetText("drag_source_state_windows.go!!!0000IIIIaaaaaaaaaaaaaaaa")
+	entry.MoveCursorEnd()
+
+	w := test.NewWindow(lineEditThemeOverride(entry))
+	defer w.Close()
+	w.Canvas().Focus(entry)
+
+	renderer := test.WidgetRenderer(entry).(*lineEditEntryRenderer)
+	size := fyne.NewSize(220, renderer.MinSize().Height)
+	entry.Resize(size)
+	renderer.Layout(size)
+
+	content := renderer.contentObject()
+	if content == nil {
+		t.Fatal("line edit content object was not found")
+	}
+	if content.Position().X < lineEditEntryHorizontalInset {
+		t.Fatalf("content x inset = %f, want at least %f", content.Position().X, lineEditEntryHorizontalInset)
+	}
+	if content.Position().Y < lineEditEntryVerticalInset {
+		t.Fatalf("content y inset = %f, want at least %f", content.Position().Y, lineEditEntryVerticalInset)
+	}
+
+	caretRight := renderer.caret.Position().X + renderer.caret.Size().Width
+	maxRight := size.Width - lineEditEntryHorizontalInset
+	if caretRight > maxRight {
+		t.Fatalf("caret right edge = %f, want at most %f", caretRight, maxRight)
+	}
+}
