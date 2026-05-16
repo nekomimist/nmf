@@ -16,6 +16,7 @@ behavior and the supported platform surface for those integrations.
 | Dragging files from NMF to another app | Supported through Windows Shell `IDataObject` and `DoDragDrop` | Not implemented |
 | Explorer/shell context menu | Supported through Windows Shell context menu APIs | Not implemented |
 | New File Manager placement beside source window | Supported through Win32 `HWND` positioning | Uses the window manager's default placement |
+| File Manager focus switching with Left/Right | Uses Win32 `HWND` window positions | Uses creation order on X11; unsupported on Wayland because the compositor controls focus activation |
 | Native file icons | Uses Windows shell icons through the icon service | Uses theme/generic icons |
 
 ## SMB and UNC Paths
@@ -98,6 +99,22 @@ context menu integration.
   `window_position_windows.go`.
 - Other platforms intentionally use default window-manager placement through
   `window_position_other.go`.
+
+## Window Focus Switching
+
+The main screen binds `Left` and `Right` to switch between File Manager windows
+inside the same NMF process.
+
+- Windows chooses the nearest File Manager window to the left or right using
+  Win32 window rectangles.
+- X11/other non-Wayland desktops use File Manager creation order.
+- Wayland does not allow an application to focus an existing top-level window
+  programmatically without compositor-mediated user activation, and Fyne's GLFW
+  driver intentionally leaves `RequestFocus` as a no-op on Wayland. NMF logs the
+  selected target but does not attempt a misleading focus request there.
+- Manual verification so far covers Windows. Linux X11 and XWayland behavior
+  still needs confirmation on a desktop that can run the X11 build, because the
+  current Linux test environment is WSLg/Wayland-only.
 
 ## Adding Platform Integrations
 

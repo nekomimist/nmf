@@ -85,7 +85,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 	fm.dirWatcher.Start()
 
 	// Register window in global registry
-	windowRegistry.Store(fm.window, fm)
+	registerFileManagerWindow(fm)
 	atomic.AddInt32(&windowCount, 1)
 
 	// Set window close handler

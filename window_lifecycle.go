@@ -11,7 +11,7 @@ import (
 // closeWindow handles window closing logic.
 func (fm *FileManager) closeWindow() {
 	// Remove from registry
-	windowRegistry.Delete(fm.window)
+	unregisterFileManagerWindow(fm)
 	remaining := atomic.AddInt32(&windowCount, -1)
 
 	debugPrint("WindowLifecycle: Window closed, remaining windows: %d", remaining)

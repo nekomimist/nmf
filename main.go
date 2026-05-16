@@ -29,6 +29,8 @@ var debugMode bool
 var (
 	windowRegistry sync.Map // map[fyne.Window]*FileManager
 	windowCount    int32    // atomic counter for window count
+	windowOrderMu  sync.Mutex
+	windowOrder    []*FileManager
 )
 
 // debugPrint prints debug messages only when debug mode is enabled

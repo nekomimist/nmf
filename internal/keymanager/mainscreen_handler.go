@@ -25,6 +25,8 @@ const (
 	CommandDirectoryCreate     = "directory.create"
 	CommandClipboardTextFile   = "clipboard.createTextFile"
 	CommandWindowNew           = "window.new"
+	CommandWindowFocusLeft     = "window.focusLeft"
+	CommandWindowFocusRight    = "window.focusRight"
 	CommandTreeShow            = "tree.show"
 	CommandHistoryShow         = "history.show"
 	CommandDirectoryJumpShow   = "directoryJump.show"
@@ -67,6 +69,8 @@ type FileManagerInterface interface {
 	SaveCursorPosition(dirPath string)
 
 	OpenNewWindow()
+	FocusWindowLeft()
+	FocusWindowRight()
 	ShowDirectoryTreeDialog()
 	ShowNavigationHistoryDialog()
 	ShowDirectoryJumpDialog()
@@ -241,6 +245,8 @@ func (mh *MainScreenKeyHandler) executeCommand(commandID string, ctx CommandCont
 func (mh *MainScreenKeyHandler) shouldDeferCommand(commandID string) bool {
 	switch commandID {
 	case CommandWindowNew,
+		CommandWindowFocusLeft,
+		CommandWindowFocusRight,
 		CommandTreeShow,
 		CommandHistoryShow,
 		CommandDirectoryJumpShow,
@@ -312,6 +318,8 @@ func defaultMainScreenBindings() []config.KeyBindingEntry {
 		{Key: "P", Command: CommandClipboardTextFile, Event: keyEventTyped},
 		{Key: "F2", Command: CommandRenameShow, Event: keyEventTyped},
 		{Key: "R", Command: CommandRenameShow, Event: keyEventUp},
+		{Key: "Left", Command: CommandWindowFocusLeft, Event: keyEventDown},
+		{Key: "Right", Command: CommandWindowFocusRight, Event: keyEventDown},
 		{Key: "Tab", Command: CommandExplorerContextShow, Event: keyEventTyped},
 		{Key: "F3", Command: CommandFilterToggle, Event: keyEventTyped},
 		{Key: "Q", Command: CommandQuit, Event: keyEventTyped},
@@ -347,6 +355,8 @@ func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
 		CommandRefresh:             mh.refreshDirectory,
 		CommandHome:                mh.homeDirectory,
 		CommandWindowNew:           func(CommandContext) { mh.fileManager.OpenNewWindow() },
+		CommandWindowFocusLeft:     func(CommandContext) { mh.fileManager.FocusWindowLeft() },
+		CommandWindowFocusRight:    func(CommandContext) { mh.fileManager.FocusWindowRight() },
 		CommandTreeShow:            func(CommandContext) { mh.fileManager.ShowDirectoryTreeDialog() },
 		CommandHistoryShow:         func(CommandContext) { mh.fileManager.ShowNavigationHistoryDialog() },
 		CommandDirectoryJumpShow:   func(CommandContext) { mh.fileManager.ShowDirectoryJumpDialog() },

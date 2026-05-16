@@ -1643,6 +1643,8 @@ func (f *configScriptFakeFileManager) SetFileSelected(path string, selected bool
 func (f *configScriptFakeFileManager) RefreshFileList()                  {}
 func (f *configScriptFakeFileManager) SaveCursorPosition(dirPath string) {}
 func (f *configScriptFakeFileManager) OpenNewWindow()                    {}
+func (f *configScriptFakeFileManager) FocusWindowLeft()                  {}
+func (f *configScriptFakeFileManager) FocusWindowRight()                 {}
 func (f *configScriptFakeFileManager) ShowDirectoryTreeDialog()          {}
 func (f *configScriptFakeFileManager) ShowNavigationHistoryDialog()      {}
 func (f *configScriptFakeFileManager) ShowDirectoryJumpDialog()          {}

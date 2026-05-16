@@ -277,6 +277,8 @@ type mainScreenFakeFileManager struct {
 	showHistoryCount       int
 	showSearchCount        int
 	showDirectoryJumpCount int
+	focusWindowLeftCount   int
+	focusWindowRightCount  int
 	showCreateDirCount     int
 	createDirName          string
 	createDirResult        bool
@@ -323,6 +325,8 @@ func (f *mainScreenFakeFileManager) SetFileSelected(path string, selected bool) 
 func (f *mainScreenFakeFileManager) RefreshFileList()                  { f.refreshFileListCount++ }
 func (f *mainScreenFakeFileManager) SaveCursorPosition(dirPath string) { f.saveCursorPath = dirPath }
 func (f *mainScreenFakeFileManager) OpenNewWindow()                    {}
+func (f *mainScreenFakeFileManager) FocusWindowLeft()                  { f.focusWindowLeftCount++ }
+func (f *mainScreenFakeFileManager) FocusWindowRight()                 { f.focusWindowRightCount++ }
 func (f *mainScreenFakeFileManager) ShowDirectoryTreeDialog()          {}
 func (f *mainScreenFakeFileManager) ShowNavigationHistoryDialog()      { f.showHistoryCount++ }
 func (f *mainScreenFakeFileManager) ShowDirectoryJumpDialog() {
@@ -377,6 +381,40 @@ func TestMainScreenJShowsDirectoryJumpDialog(t *testing.T) {
 	}
 	if fm.showJobsCount != 0 {
 		t.Fatalf("ShowJobsDialog count = %d, want 0", fm.showJobsCount)
+	}
+}
+
+func TestMainScreenLeftFocusesLeftWindow(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyLeft}, ModifierState{})
+
+	if !handled {
+		t.Fatal("Left should be handled")
+	}
+	if fm.focusWindowLeftCount != 1 {
+		t.Fatalf("FocusWindowLeft count = %d, want 1", fm.focusWindowLeftCount)
+	}
+	if fm.focusWindowRightCount != 0 {
+		t.Fatalf("FocusWindowRight count = %d, want 0", fm.focusWindowRightCount)
+	}
+}
+
+func TestMainScreenRightFocusesRightWindow(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyRight}, ModifierState{})
+
+	if !handled {
+		t.Fatal("Right should be handled")
+	}
+	if fm.focusWindowRightCount != 1 {
+		t.Fatalf("FocusWindowRight count = %d, want 1", fm.focusWindowRightCount)
+	}
+	if fm.focusWindowLeftCount != 0 {
+		t.Fatalf("FocusWindowLeft count = %d, want 0", fm.focusWindowLeftCount)
 	}
 }
 
