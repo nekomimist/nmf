@@ -45,6 +45,7 @@ const (
 	CommandDeletePermanent     = "delete.permanent"
 	CommandExplorerContextShow = "explorerContext.show"
 	CommandExternalCommandMenu = "externalCommand.menu"
+	CommandViewerShow          = "viewer.show"
 	CommandNoop                = "noop"
 )
 
@@ -98,6 +99,7 @@ type FileManagerInterface interface {
 	ShowDeleteDialog(permanent bool)
 	ShowExplorerContextMenu()
 	ShowExternalCommandMenu()
+	ShowFileViewer()
 	ShowCommandMenu(title string, items []CommandMenuItem)
 }
 
@@ -266,7 +268,8 @@ func (mh *MainScreenKeyHandler) shouldDeferCommand(commandID string) bool {
 		CommandDeleteTrash,
 		CommandDeletePermanent,
 		CommandExplorerContextShow,
-		CommandExternalCommandMenu:
+		CommandExternalCommandMenu,
+		CommandViewerShow:
 		return true
 	default:
 		return false
@@ -328,6 +331,7 @@ func defaultMainScreenBindings() []config.KeyBindingEntry {
 		{Key: "C", Command: CommandCopyShow, Event: keyEventTyped},
 		{Key: "M", Command: CommandMoveShow, Event: keyEventTyped},
 		{Key: "X", Command: CommandExternalCommandMenu, Event: keyEventTyped},
+		{Key: "V", Command: CommandViewerShow, Event: keyEventTyped},
 		{Key: "C-N", Command: CommandWindowNew, Event: keyEventDown},
 		{Key: "C-T", Command: CommandTreeShow, Event: keyEventDown},
 		{Key: "C-H", Command: CommandHistoryShow, Event: keyEventDown},
@@ -379,6 +383,7 @@ func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
 		CommandDeletePermanent:     func(CommandContext) { mh.fileManager.ShowDeleteDialog(true) },
 		CommandExplorerContextShow: func(CommandContext) { mh.fileManager.ShowExplorerContextMenu() },
 		CommandExternalCommandMenu: func(CommandContext) { mh.fileManager.ShowExternalCommandMenu() },
+		CommandViewerShow:          func(CommandContext) { mh.fileManager.ShowFileViewer() },
 		CommandNoop:                func(CommandContext) {},
 	}
 }

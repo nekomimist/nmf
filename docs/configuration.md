@@ -279,6 +279,7 @@ Available main-screen commands:
 - `delete.trash`, `delete.permanent`
 - `explorerContext.show`
 - `externalCommand.menu`
+- `viewer.show`
 - `noop`
 
 Starlark `init.star` can register additional command IDs with the `user.`

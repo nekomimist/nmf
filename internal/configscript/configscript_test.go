@@ -1790,6 +1790,7 @@ func (f *configScriptFakeFileManager) ShowRenameDialog()                {}
 func (f *configScriptFakeFileManager) ShowDeleteDialog(permanent bool)  {}
 func (f *configScriptFakeFileManager) ShowExplorerContextMenu()         {}
 func (f *configScriptFakeFileManager) ShowExternalCommandMenu()         {}
+func (f *configScriptFakeFileManager) ShowFileViewer()                  {}
 func (f *configScriptFakeFileManager) ShowCommandMenu(title string, items []keymanager.CommandMenuItem) {
 	f.menuTitle = title
 	f.menuItems = items

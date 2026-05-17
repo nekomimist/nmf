@@ -294,6 +294,7 @@ type mainScreenFakeFileManager struct {
 	showDeleteCount        int
 	showExplorerMenuCount  int
 	showExternalMenuCount  int
+	showViewerCount        int
 	showSortCount          int
 	deletePermanent        bool
 	focusPathCount         int
@@ -387,6 +388,7 @@ func (f *mainScreenFakeFileManager) ShowDeleteDialog(permanent bool) {
 }
 func (f *mainScreenFakeFileManager) ShowExplorerContextMenu() { f.showExplorerMenuCount++ }
 func (f *mainScreenFakeFileManager) ShowExternalCommandMenu() { f.showExternalMenuCount++ }
+func (f *mainScreenFakeFileManager) ShowFileViewer()          { f.showViewerCount++ }
 func (f *mainScreenFakeFileManager) ShowCommandMenu(title string, items []CommandMenuItem) {
 }
 
@@ -616,6 +618,20 @@ func TestMainScreenXShowsExternalCommandMenu(t *testing.T) {
 	}
 	if fm.showExternalMenuCount != 1 {
 		t.Fatalf("ShowExternalCommandMenu count = %d, want 1", fm.showExternalMenuCount)
+	}
+}
+
+func TestMainScreenVShowsFileViewer(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyV}, ModifierState{})
+
+	if !handled {
+		t.Fatal("V should be handled")
+	}
+	if fm.showViewerCount != 1 {
+		t.Fatalf("ShowFileViewer count = %d, want 1", fm.showViewerCount)
 	}
 }
 
