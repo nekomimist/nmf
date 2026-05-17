@@ -26,6 +26,6 @@ func (fm *FileManager) ShowFileViewer() {
 		return
 	}
 
-	dialog := ui.NewFileViewerDialog(preview)
+	dialog := ui.NewFileViewerDialog(preview, fm.keyManager)
 	dialog.ShowDialog(fm.window)
 }

@@ -10,10 +10,17 @@ import (
 type ReadOnlyEntry struct {
 	widget.Entry
 	onCancel func()
+	onKey    func(*fyne.KeyEvent) bool
+	onRune   func(rune) bool
+	onScroll func(float32) bool
 }
 
-func NewReadOnlyEntry(text string, onCancel func()) *ReadOnlyEntry {
+func NewReadOnlyEntry(text string, onCancel func(), onKey func(*fyne.KeyEvent) bool, onRune ...func(rune) bool) *ReadOnlyEntry {
 	e := &ReadOnlyEntry{onCancel: onCancel}
+	e.onKey = onKey
+	if len(onRune) > 0 {
+		e.onRune = onRune[0]
+	}
 	e.MultiLine = true
 	e.Wrapping = fyne.TextWrapOff
 	e.Scroll = fyne.ScrollBoth
@@ -23,11 +30,27 @@ func NewReadOnlyEntry(text string, onCancel func()) *ReadOnlyEntry {
 	return e
 }
 
+func (e *ReadOnlyEntry) SetScrollHandler(onScroll func(float32) bool) {
+	e.onScroll = onScroll
+}
+
+func (e *ReadOnlyEntry) Scrolled(ev *fyne.ScrollEvent) {
+	if e.onScroll != nil && e.onScroll(ev.Scrolled.DY) {
+		return
+	}
+}
+
 func (e *ReadOnlyEntry) TypedRune(r rune) {
+	if e.onRune != nil {
+		e.onRune(r)
+	}
 }
 
 func (e *ReadOnlyEntry) TypedKey(ev *fyne.KeyEvent) {
 	if ev == nil {
+		return
+	}
+	if e.onKey != nil && e.onKey(ev) {
 		return
 	}
 	switch ev.Name {

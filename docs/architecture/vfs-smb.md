@@ -84,6 +84,21 @@ Main-list Enter delegates to `fileinfo.OpenWithDefaultApp`.
 When Enter is pressed on a supported archive file, the UI navigates to
 `archive-file!/` instead of launching the archive externally.
 
+## Built-in Preview Viewer
+
+Main-list `V` opens the selected file with the internal viewer instead of the
+platform default application.
+
+- Reads go through `ResolveRead` and the selected provider's `VFS.Open`, so
+  local, mounted/direct SMB, and archive entry previews share the same path
+  model.
+- The viewer reads only the first 1 MiB and reports truncation in the dialog
+  status.
+- Text decoding prefers UTF-8, handles UTF-8/UTF-16 BOMs, and falls back across
+  Shift_JIS, EUC-JP, and UTF-16 candidates before displaying replacement text.
+- Text and Markdown tabs operate on decoded text; the hex tab operates on the
+  original bytes that were read.
+
 ## Jobs and SMB Execution Paths
 
 `internal/jobs` resolves each source/destination into an execution backend:

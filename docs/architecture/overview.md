@@ -21,6 +21,7 @@ This document describes runtime composition, package boundaries, and core state 
    - `directory_loading.go`: loading, busy state, watcher poll policy.
    - `list_controls.go`: sorting/filter/search/list cursor operations.
    - `navigation_ui.go`: navigation dialogs and path edit operations.
+   - `viewer_ui.go`: built-in text/Markdown/hex preview dialog entrypoint.
    - `jobs_ui.go`: job enqueue/indicator integration.
    - `window_lifecycle.go`: close/quit cleanup logic.
 
@@ -55,7 +56,8 @@ menus and outbound file dragging, are summarized in `platform-behavior.md`.
 
 - `internal/config`: configuration schema and async persistence.
 - `internal/configscript`: optional Starlark overlay configuration and custom command registration.
-- `internal/fileinfo`: path resolver, VFS abstraction, platform file openers, SMB support, icon service.
+- `internal/fileinfo`: path resolver, VFS abstraction, platform file openers,
+  bounded preview loading, SMB support, icon service.
 - `internal/watcher`: polling watcher with run-generation lifecycle protection.
 - `internal/jobs`: copy/move queue manager and background worker.
 - `internal/keymanager`: stacked key handlers and modifier state.

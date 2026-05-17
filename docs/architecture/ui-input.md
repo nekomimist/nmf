@@ -73,6 +73,18 @@ Required sequence for keyboard-driven dialogs:
 
 This pattern is used in history/filter/tree/directory-jump/copy-move/jobs/quit dialogs.
 
+Built-in file viewer:
+
+- `viewer.show` opens the selected file with the internal viewer and pushes
+  `FileViewerKeyHandler` while the dialog is open.
+- The handler owns less-like navigation keys (`j/k`, `f/b`, `g/G`, `n/N`,
+  `/`, `:`, `q`) so keys do not fall through to the main file list if focus
+  moves to non-text parts of the dialog.
+- Text and hex panes use `ReadOnlyEntry`, which preserves selection and copy
+  behavior while suppressing edits. Search and line inputs are normal entries;
+  submitted searches return focus to the active viewer pane regardless of
+  match result.
+
 Filter-style text input:
 
 - Dialogs that edit search text through key handlers remove the last UTF-8 rune

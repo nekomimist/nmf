@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/fileinfo"
+	"nmf/internal/keymanager"
 )
 
 const (
@@ -24,6 +25,7 @@ const (
 
 type FileViewerDialog struct {
 	preview *fileinfo.PreviewFile
+	km      *keymanager.KeyManager
 	parent  fyne.Window
 	dialog  dialog.Dialog
 
@@ -32,17 +34,24 @@ type FileViewerDialog struct {
 	search    *widget.Entry
 	jump      *widget.Entry
 	status    *widget.Label
+	lineLabel *widget.Label
 	tabs      *container.AppTabs
 
 	activeName string
 	lastQuery  string
 	lastIndex  int
 	closed     bool
+	handlerSet bool
 }
 
-func NewFileViewerDialog(preview *fileinfo.PreviewFile) *FileViewerDialog {
+func NewFileViewerDialog(preview *fileinfo.PreviewFile, km ...*keymanager.KeyManager) *FileViewerDialog {
+	var keyManager *keymanager.KeyManager
+	if len(km) > 0 {
+		keyManager = km[0]
+	}
 	return &FileViewerDialog{
 		preview:    preview,
+		km:         keyManager,
 		activeName: "Text",
 		lastIndex:  -1,
 	}
@@ -50,8 +59,12 @@ func NewFileViewerDialog(preview *fileinfo.PreviewFile) *FileViewerDialog {
 
 func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	d.parent = parent
-	d.textEntry = NewReadOnlyEntry(d.preview.Text, d.CancelDialog)
-	d.hexEntry = NewReadOnlyEntry(fileinfo.FormatHexDump(d.preview.Data), d.CancelDialog)
+	d.textEntry = NewReadOnlyEntry(d.preview.Text, d.CancelDialog, d.handleEntryKey, d.handleEntryRune)
+	d.hexEntry = NewReadOnlyEntry(fileinfo.FormatHexDump(d.preview.Data), d.CancelDialog, d.handleEntryKey, d.handleEntryRune)
+	d.textEntry.OnCursorChanged = d.updateLineDisplay
+	d.hexEntry.OnCursorChanged = d.updateLineDisplay
+	d.textEntry.SetScrollHandler(d.handleEntryScroll)
+	d.hexEntry.SetScrollHandler(d.handleEntryScroll)
 	d.search = widget.NewEntry()
 	d.search.SetPlaceHolder("Search")
 	d.search.OnSubmitted = func(_ string) { d.findNext() }
@@ -60,6 +73,8 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	d.jump.OnSubmitted = func(_ string) { d.jumpToLine() }
 	d.status = widget.NewLabel(d.statusText())
 	d.status.Truncation = fyne.TextTruncateClip
+	d.lineLabel = widget.NewLabel("")
+	d.lineLabel.TextStyle = fyne.TextStyle{Monospace: true}
 
 	d.tabs = container.NewAppTabs(
 		container.NewTabItem("Text", d.textEntry),
@@ -69,6 +84,7 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	d.tabs.OnSelected = func(item *container.TabItem) {
 		d.activeName = item.Text
 		d.lastIndex = -1
+		d.updateLineDisplay()
 	}
 	if d.preview.Binary {
 		d.tabs.SelectIndex(2)
@@ -91,12 +107,16 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	))
 
 	content := container.NewBorder(
-		container.NewVBox(widget.NewLabel(filepath.Base(d.preview.Path)), d.status, toolbar),
+		container.NewVBox(widget.NewLabel(filepath.Base(d.preview.Path)), d.status, container.NewBorder(nil, nil, nil, d.lineLabel, toolbar)),
 		nil,
 		nil,
 		nil,
 		d.tabs,
 	)
+	if d.km != nil {
+		d.km.PushHandler(keymanager.NewFileViewerKeyHandler(d))
+		d.handlerSet = true
+	}
 
 	d.dialog = dialog.NewCustomWithoutButtons("Viewer", content, parent)
 	d.dialog.SetOnClosed(func() {
@@ -104,6 +124,7 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	})
 	d.dialog.Show()
 	d.dialog.Resize(fileViewerDialogSize(parent))
+	d.updateLineDisplay()
 	d.focusActiveEntry()
 }
 
@@ -157,12 +178,20 @@ func (d *FileViewerDialog) CancelDialog() {
 		return
 	}
 	d.closed = true
+	if d.handlerSet && d.km != nil {
+		d.km.PopHandler()
+		d.handlerSet = false
+	}
 	if d.dialog != nil {
 		d.dialog.Hide()
 	}
 	if d.parent != nil {
 		d.parent.Canvas().Unfocus()
 	}
+}
+
+func (d *FileViewerDialog) CloseViewer() {
+	d.CancelDialog()
 }
 
 func (d *FileViewerDialog) activeEntry() *ReadOnlyEntry {
@@ -182,6 +211,70 @@ func (d *FileViewerDialog) focusActiveEntry() {
 	if entry != nil {
 		d.parent.Canvas().Focus(entry)
 	}
+}
+
+func (d *FileViewerDialog) handleEntryKey(ev *fyne.KeyEvent) bool {
+	if ev == nil {
+		return false
+	}
+	switch ev.Name {
+	case fyne.KeyEscape:
+		d.CloseViewer()
+	case fyne.KeySpace:
+		d.ViewerPageDown()
+	case fyne.KeyPageDown:
+		d.ViewerPageDown()
+	case fyne.KeyPageUp:
+		d.ViewerPageUp()
+	case fyne.KeyHome:
+		d.ViewerHome()
+	case fyne.KeyEnd:
+		d.ViewerEnd()
+	default:
+		return false
+	}
+	return true
+}
+
+func (d *FileViewerDialog) handleEntryRune(r rune) bool {
+	switch r {
+	case 'q':
+		d.CloseViewer()
+	case 'j':
+		d.ViewerLineDown()
+	case 'k':
+		d.ViewerLineUp()
+	case 'f':
+		d.ViewerPageDown()
+	case 'b':
+		d.ViewerPageUp()
+	case 'g':
+		d.ViewerHome()
+	case 'G':
+		d.ViewerEnd()
+	case 'n':
+		d.ViewerSearchNext()
+	case 'N':
+		d.ViewerSearchPrevious()
+	case '/':
+		d.ViewerFocusSearch()
+	case ':':
+		d.ViewerFocusLine()
+	default:
+		return false
+	}
+	return true
+}
+
+func (d *FileViewerDialog) handleEntryScroll(deltaY float32) bool {
+	if deltaY < 0 {
+		d.ViewerLineDown()
+	} else if deltaY > 0 {
+		d.ViewerLineUp()
+	} else {
+		return false
+	}
+	return true
 }
 
 func (d *FileViewerDialog) copySelection() {
@@ -255,12 +348,13 @@ func (d *FileViewerDialog) find(direction int) {
 		}
 	}
 	if next < 0 {
-		d.status.SetText(d.statusText() + "  search=no-match")
+		d.setStatusSuffix("search=no-match")
+		d.focusActiveEntry()
 		return
 	}
 	d.lastIndex = next
 	d.moveEntryToByteOffset(entry, next)
-	d.status.SetText(d.statusText() + fmt.Sprintf("  search=%d", next))
+	d.setStatusSuffix(fmt.Sprintf("search=%d", next))
 	d.focusActiveEntry()
 }
 
@@ -284,7 +378,8 @@ func (d *FileViewerDialog) jumpToLine() {
 	entry.CursorRow = line - 1
 	entry.CursorColumn = 0
 	entry.Refresh()
-	d.status.SetText(d.statusText() + fmt.Sprintf("  line=%d", line))
+	d.updateLineDisplay()
+	d.setStatusSuffix(fmt.Sprintf("line=%d", line))
 	d.focusActiveEntry()
 }
 
@@ -299,6 +394,7 @@ func (d *FileViewerDialog) moveEntryToByteOffset(entry *ReadOnlyEntry, offset in
 	entry.CursorRow = row
 	entry.CursorColumn = col
 	entry.Refresh()
+	d.updateLineDisplay()
 }
 
 func rowColForPrefix(text string) (int, int) {
@@ -313,4 +409,121 @@ func rowColForPrefix(text string) (int, int) {
 		col++
 	}
 	return row, col
+}
+
+func (d *FileViewerDialog) ViewerLineDown() {
+	d.moveCursorRows(1)
+}
+
+func (d *FileViewerDialog) ViewerLineUp() {
+	d.moveCursorRows(-1)
+}
+
+func (d *FileViewerDialog) ViewerPageDown() {
+	d.moveCursorRows(20)
+}
+
+func (d *FileViewerDialog) ViewerPageUp() {
+	d.moveCursorRows(-20)
+}
+
+func (d *FileViewerDialog) ViewerHome() {
+	entry := d.activeEntry()
+	if entry == nil {
+		return
+	}
+	entry.CursorRow = 0
+	entry.CursorColumn = 0
+	entry.Refresh()
+	d.updateLineDisplay()
+	d.focusActiveEntry()
+}
+
+func (d *FileViewerDialog) ViewerEnd() {
+	entry := d.activeEntry()
+	if entry == nil {
+		return
+	}
+	entry.CursorRow = lineCount(entry.Text) - 1
+	if entry.CursorRow < 0 {
+		entry.CursorRow = 0
+	}
+	entry.CursorColumn = 0
+	entry.Refresh()
+	d.updateLineDisplay()
+	d.focusActiveEntry()
+}
+
+func (d *FileViewerDialog) ViewerSearchNext() {
+	d.findNext()
+}
+
+func (d *FileViewerDialog) ViewerSearchPrevious() {
+	d.findPrevious()
+}
+
+func (d *FileViewerDialog) ViewerFocusSearch() {
+	if d.parent != nil && d.search != nil {
+		d.parent.Canvas().Focus(d.search)
+	}
+}
+
+func (d *FileViewerDialog) ViewerFocusLine() {
+	if d.parent != nil && d.jump != nil {
+		d.parent.Canvas().Focus(d.jump)
+	}
+}
+
+func (d *FileViewerDialog) moveCursorRows(delta int) {
+	entry := d.activeEntry()
+	if entry == nil {
+		return
+	}
+	maxRow := lineCount(entry.Text) - 1
+	next := entry.CursorRow + delta
+	if next < 0 {
+		next = 0
+	}
+	if next > maxRow {
+		next = maxRow
+	}
+	entry.CursorRow = next
+	entry.CursorColumn = 0
+	entry.Refresh()
+	d.updateLineDisplay()
+	d.focusActiveEntry()
+}
+
+func (d *FileViewerDialog) updateLineDisplay() {
+	if d.lineLabel == nil {
+		return
+	}
+	entry := d.activeEntry()
+	if entry == nil {
+		d.lineLabel.SetText("")
+		return
+	}
+	line := entry.CursorRow + 1
+	total := lineCount(entry.Text)
+	if total < 1 {
+		total = 1
+	}
+	if line < 1 {
+		line = 1
+	}
+	if line > total {
+		line = total
+	}
+	d.lineLabel.SetText(fmt.Sprintf("line=%d/%d", line, total))
+}
+
+func (d *FileViewerDialog) setStatusSuffix(suffix string) {
+	d.status.SetText(d.statusText() + "  " + suffix)
+}
+
+func lineCount(text string) int {
+	if text == "" {
+		return 1
+	}
+	return 1 + strings.Count(text, "\n")
 }
