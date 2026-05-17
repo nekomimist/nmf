@@ -201,22 +201,10 @@ func normalizeComparablePath(p string) string {
 
 // collectTargets returns display names of targets based on selection or cursor
 func (fm *FileManager) collectTargets() []string {
-	// Gather selected files
-	var selected []string
-	for p, sel := range fm.selectedFiles {
-		if !sel {
-			continue
-		}
-		// Find matching file to ensure it still exists in list and to skip parent/invalid
-		for _, fi := range fm.files {
-			if fi.Path == p {
-				if fi.Name == ".." || fi.Status == fileinfo.StatusDeleted {
-					continue
-				}
-				selected = append(selected, fi.Name)
-				break
-			}
-		}
+	selectedFiles := fm.selectedFileInfos()
+	selected := make([]string, len(selectedFiles))
+	for i, fi := range selectedFiles {
+		selected[i] = fi.Name
 	}
 	if len(selected) > 0 {
 		return selected
@@ -234,20 +222,10 @@ func (fm *FileManager) collectTargets() []string {
 
 // collectTargetPaths returns absolute/native source file paths
 func (fm *FileManager) collectTargetPaths() []string {
-	var selected []string
-	for p, sel := range fm.selectedFiles {
-		if !sel {
-			continue
-		}
-		for _, fi := range fm.files {
-			if fi.Path == p {
-				if fi.Name == ".." || fi.Status == fileinfo.StatusDeleted {
-					continue
-				}
-				selected = append(selected, fi.Path)
-				break
-			}
-		}
+	selectedFiles := fm.selectedFileInfos()
+	selected := make([]string, len(selectedFiles))
+	for i, fi := range selectedFiles {
+		selected[i] = fi.Path
 	}
 	if len(selected) > 0 {
 		return selected

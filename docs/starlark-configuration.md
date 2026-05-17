@@ -265,6 +265,8 @@ The command function receives one `ctx` struct:
 - `ctx.current_name`: base name of the first target, or empty
 - `ctx.selected_files`: target paths in external-command argument form. Selected
   files are used when present; otherwise the cursor item is used.
+- `ctx.all_selected_files`: marked files from all open file manager windows in
+  external-command argument form, without cursor fallback.
 
 Command-only helpers:
 

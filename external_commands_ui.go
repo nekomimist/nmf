@@ -127,7 +127,7 @@ func (fm *FileManager) RunExternalCommand(command string, args []string, edit bo
 func (fm *FileManager) runExternalCommandTemplate(command string, argTemplates []string, cwdTemplate string, targets []string, edit bool) bool {
 	return fm.runExternalCommandMaybeEdit(
 		command,
-		expandExternalCommandArgs(argTemplates, targets, fm.currentPath),
+		expandExternalCommandArgs(argTemplates, targets, fm.collectAllSelectedTargetPaths(), fm.currentPath),
 		edit,
 		expandExternalCommandCwd(cwdTemplate, targets, fm.currentPath),
 	)
@@ -186,10 +186,14 @@ func (fm *FileManager) resolveExternalCommandCwd(cwd string) string {
 	return dir
 }
 
-func expandExternalCommandArgs(templates []string, targets []string, dir string) []string {
+func expandExternalCommandArgs(templates []string, targets []string, allSelectedTargets []string, dir string) []string {
 	commandTargets := make([]string, len(targets))
 	for i, target := range targets {
 		commandTargets[i] = fileinfo.CommandArgumentPath(target)
+	}
+	commandAllSelectedTargets := make([]string, len(allSelectedTargets))
+	for i, target := range allSelectedTargets {
+		commandAllSelectedTargets[i] = fileinfo.CommandArgumentPath(target)
 	}
 	commandDir := fileinfo.CommandArgumentPath(dir)
 
@@ -215,6 +219,16 @@ func expandExternalCommandArgs(templates []string, targets []string, dir string)
 		if strings.Contains(template, "{files}") {
 			for _, target := range commandTargets {
 				args = append(args, strings.ReplaceAll(template, "{files}", target))
+			}
+			continue
+		}
+		if template == "{all_files}" {
+			args = append(args, commandAllSelectedTargets...)
+			continue
+		}
+		if strings.Contains(template, "{all_files}") {
+			for _, target := range commandAllSelectedTargets {
+				args = append(args, strings.ReplaceAll(template, "{all_files}", target))
 			}
 			continue
 		}

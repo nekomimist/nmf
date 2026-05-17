@@ -301,6 +301,7 @@ type mainScreenFakeFileManager struct {
 	setCursorIndex         int
 	files                  []fileinfo.FileInfo
 	selectedFiles          map[string]bool
+	allSelectedFiles       []fileinfo.FileInfo
 	refreshFileListCount   int
 }
 
@@ -316,6 +317,20 @@ func (f *mainScreenFakeFileManager) CurrentSort() config.SortConfig {
 func (f *mainScreenFakeFileManager) ApplyTemporarySort(sortConfig config.SortConfig) {
 }
 func (f *mainScreenFakeFileManager) GetSelectedFiles() map[string]bool { return f.selectedFiles }
+func (f *mainScreenFakeFileManager) GetAllSelectedFiles() []fileinfo.FileInfo {
+	if f.allSelectedFiles != nil {
+		return f.allSelectedFiles
+	}
+	files := f.GetFiles()
+	selected := f.GetSelectedFiles()
+	targets := make([]fileinfo.FileInfo, 0, len(selected))
+	for _, fi := range files {
+		if selected[fi.Path] {
+			targets = append(targets, fi)
+		}
+	}
+	return targets
+}
 func (f *mainScreenFakeFileManager) SetFileSelected(path string, selected bool) {
 	if f.selectedFiles == nil {
 		f.selectedFiles = make(map[string]bool)

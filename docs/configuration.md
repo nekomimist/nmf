@@ -329,6 +329,8 @@ Supported argument placeholders:
 - `{file}`: first target path.
 - `{files}`: all target paths. If used as the whole argument, each file becomes
   its own argument.
+- `{all_files}`: marked files from all open file manager windows, without cursor
+  fallback. If used as the whole argument, each file becomes its own argument.
 - `{dir}`: current directory.
 - `{name}`: base name of the first target.
 

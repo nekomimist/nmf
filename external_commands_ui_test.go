@@ -59,6 +59,7 @@ func TestExpandExternalCommandArgs(t *testing.T) {
 	got := expandExternalCommandArgs(
 		[]string{"--dir", "{dir}", "--name={name}", "{files}"},
 		[]string{"/tmp/a.txt", "/tmp/b.txt"},
+		[]string{"/tmp/a.txt", "/tmp/b.txt"},
 		"/tmp",
 	)
 	want := []string{"--dir", "/tmp", "--name=a.txt", "/tmp/a.txt", "/tmp/b.txt"}
@@ -72,9 +73,24 @@ func TestExpandExternalCommandArgsWithoutTargets(t *testing.T) {
 	got := expandExternalCommandArgs(
 		[]string{"--dir", "{dir}", "--file={file}", "--name={name}"},
 		nil,
+		nil,
 		"/tmp",
 	)
 	want := []string{"--dir", "/tmp", "--file=", "--name="}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expandExternalCommandArgs() = %#v, want %#v", got, want)
+	}
+}
+
+func TestExpandExternalCommandArgsAllFiles(t *testing.T) {
+	got := expandExternalCommandArgs(
+		[]string{"--current", "{files}", "--all", "{all_files}"},
+		[]string{"/tmp/current/a.txt"},
+		[]string{"/tmp/left/a.txt", "/tmp/right/b.txt"},
+		"/tmp/current",
+	)
+	want := []string{"--current", "/tmp/current/a.txt", "--all", "/tmp/left/a.txt", "/tmp/right/b.txt"}
 
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("expandExternalCommandArgs() = %#v, want %#v", got, want)

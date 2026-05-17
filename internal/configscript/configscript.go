@@ -1163,6 +1163,13 @@ func commandContextValue(ctx keymanager.CommandContext) starlark.Value {
 			values[i] = starlark.String(path)
 		}
 		fields["selected_files"] = starlark.NewList(values)
+
+		allSelectedFiles := commandContextAllSelectedFiles(ctx.FileManager)
+		allSelectedValues := make([]starlark.Value, len(allSelectedFiles))
+		for i, path := range allSelectedFiles {
+			allSelectedValues[i] = starlark.String(path)
+		}
+		fields["all_selected_files"] = starlark.NewList(allSelectedValues)
 	}
 	return starlarkstruct.FromStringDict(starlark.String("ctx"), fields)
 }
@@ -1229,7 +1236,7 @@ func commandContextTargetPaths(fm keymanager.FileManagerInterface) []fileinfo.Fi
 	selected := fm.GetSelectedFiles()
 	targets := make([]fileinfo.FileInfo, 0, len(selected))
 	for _, fi := range files {
-		if !selected[fi.Path] || !isCommandContextTarget(fi) {
+		if !selected[fi.Path] || !isTargetFileInfo(fi) {
 			continue
 		}
 		targets = append(targets, fi)
@@ -1239,13 +1246,25 @@ func commandContextTargetPaths(fm keymanager.FileManagerInterface) []fileinfo.Fi
 	}
 
 	idx := fm.GetCurrentCursorIndex()
-	if idx >= 0 && idx < len(files) && isCommandContextTarget(files[idx]) {
+	if idx >= 0 && idx < len(files) && isTargetFileInfo(files[idx]) {
 		return []fileinfo.FileInfo{files[idx]}
 	}
 	return nil
 }
 
-func isCommandContextTarget(fi fileinfo.FileInfo) bool {
+func commandContextAllSelectedFiles(fm keymanager.FileManagerInterface) []string {
+	files := fm.GetAllSelectedFiles()
+	paths := make([]string, 0, len(files))
+	for _, fi := range files {
+		if !isTargetFileInfo(fi) {
+			continue
+		}
+		paths = append(paths, fileinfo.CommandArgumentPath(fi.Path))
+	}
+	return paths
+}
+
+func isTargetFileInfo(fi fileinfo.FileInfo) bool {
 	return fi.Name != ".." && fi.Status != fileinfo.StatusDeleted
 }
 

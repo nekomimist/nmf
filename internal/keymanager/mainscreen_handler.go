@@ -63,6 +63,7 @@ type FileManagerInterface interface {
 	ApplyTemporarySort(sortConfig config.SortConfig)
 
 	GetSelectedFiles() map[string]bool
+	GetAllSelectedFiles() []fileinfo.FileInfo
 	SetFileSelected(path string, selected bool)
 	RefreshFileList()
 

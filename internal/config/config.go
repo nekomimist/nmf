@@ -302,7 +302,7 @@ type ExternalCommandEntry struct {
 	Name       string   `json:"name"`                 // Menu label
 	Extensions []string `json:"extensions,omitempty"` // Case-insensitive, with or without dot; "*" matches all files
 	Command    string   `json:"command"`              // Executable path or command name
-	Args       []string `json:"args,omitempty"`       // Supports {file}, {files}, {dir}, {name}
+	Args       []string `json:"args,omitempty"`       // Supports {file}, {files}, {all_files}, {dir}, {name}
 	Cwd        string   `json:"cwd,omitempty"`        // Optional working directory; supports {file}, {dir}, {name}
 	Edit       bool     `json:"edit,omitempty"`       // Confirm and edit the final command line before running
 }

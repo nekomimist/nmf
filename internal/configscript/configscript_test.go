@@ -1020,7 +1020,7 @@ func TestCommandContextUsesExternalCommandTargets(t *testing.T) {
 	path := filepath.Join(dir, FileName)
 	src := `
 def inspect(ctx):
-    nmf.exec("inspect", args = [ctx.current_path, ctx.current_file, ctx.current_name] + ctx.selected_files)
+    nmf.exec("inspect", args = [ctx.current_path, ctx.current_file, ctx.current_name] + ctx.selected_files + ctx.all_selected_files)
 nmf.command("user.inspect", inspect)
 `
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
@@ -1046,6 +1046,11 @@ nmf.command("user.inspect", inspect)
 				"/tmp/work/notes.md":    true,
 				"/tmp/work/deleted.txt": true,
 			},
+			allSelectedFiles: []fileinfo.FileInfo{
+				{Name: "other.txt", Path: "/tmp/other/other.txt"},
+				{Name: "..", Path: "/tmp"},
+				{Name: "deleted.txt", Path: "/tmp/other/deleted.txt", Status: fileinfo.StatusDeleted},
+			},
 		},
 		RunExternalCommand: func(command string, args []string, edit bool, cwd string) bool {
 			gotArgs = args
@@ -1053,7 +1058,7 @@ nmf.command("user.inspect", inspect)
 		},
 	})
 
-	want := []string{"/tmp/work", "/tmp/work/notes.md", "notes.md", "/tmp/work/notes.md"}
+	want := []string{"/tmp/work", "/tmp/work/notes.md", "notes.md", "/tmp/work/notes.md", "/tmp/other/other.txt"}
 	if !reflect.DeepEqual(gotArgs, want) {
 		t.Fatalf("exec args = %#v, want %#v", gotArgs, want)
 	}
@@ -1603,6 +1608,7 @@ type configScriptFakeFileManager struct {
 	cursorIndex            int
 	files                  []fileinfo.FileInfo
 	selectedFiles          map[string]bool
+	allSelectedFiles       []fileinfo.FileInfo
 	currentSort            config.SortConfig
 	temporarySort          config.SortConfig
 	temporarySortApplied   bool
@@ -1634,6 +1640,20 @@ func (f *configScriptFakeFileManager) ApplyTemporarySort(sortConfig config.SortC
 	f.temporarySortApplied = true
 }
 func (f *configScriptFakeFileManager) GetSelectedFiles() map[string]bool { return f.selectedFiles }
+func (f *configScriptFakeFileManager) GetAllSelectedFiles() []fileinfo.FileInfo {
+	if f.allSelectedFiles != nil {
+		return f.allSelectedFiles
+	}
+	files := f.GetFiles()
+	selected := f.GetSelectedFiles()
+	targets := make([]fileinfo.FileInfo, 0, len(selected))
+	for _, fi := range files {
+		if selected[fi.Path] {
+			targets = append(targets, fi)
+		}
+	}
+	return targets
+}
 func (f *configScriptFakeFileManager) SetFileSelected(path string, selected bool) {
 	if f.selectedFiles == nil {
 		f.selectedFiles = make(map[string]bool)
