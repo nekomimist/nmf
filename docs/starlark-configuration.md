@@ -271,6 +271,10 @@ The command function receives one `ctx` struct:
 Command-only helpers:
 
 - `nmf.run(command_id)` runs a built-in or `user.*` command and returns a bool.
+- `nmf.message(message, title = "Message")` displays an OK dialog and returns
+  a bool. It can only be used while a custom command is running. When launched
+  from a key binding, the dialog is opened after the triggering keys are
+  released.
 - `nmf.clipboard(text)` writes a string to the system clipboard and returns a
   bool. Use `ctx.current_path`, `ctx.current_file`, `ctx.current_name`, and
   `ctx.selected_files` to build values for key bindings or menu items.

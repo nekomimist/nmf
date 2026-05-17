@@ -312,6 +312,7 @@ func (rt *Runtime) predeclared() starlark.StringDict {
 			"clear_menu":     starlark.NewBuiltin("nmf.clear_menu", rt.builtinClearMenu),
 			"show_menu":      starlark.NewBuiltin("nmf.show_menu", rt.builtinShowMenu),
 			"run":            starlark.NewBuiltin("nmf.run", rt.builtinRun),
+			"message":        starlark.NewBuiltin("nmf.message", rt.builtinMessage),
 			"exec":           starlark.NewBuiltin("nmf.exec", rt.builtinExec),
 			"mkdir":          starlark.NewBuiltin("nmf.mkdir", rt.builtinMkdir),
 			"clipboard":      starlark.NewBuiltin("nmf.clipboard", rt.builtinClipboard),
@@ -908,6 +909,26 @@ func (rt *Runtime) builtinRun(thread *starlark.Thread, fn *starlark.Builtin, arg
 		return starlark.False, nil
 	}
 	return starlark.Bool(ctx.RunCommand(command)), nil
+}
+
+func (rt *Runtime) builtinMessage(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var message string
+	title := "Message"
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "message", &message, "title?", &title); err != nil {
+		return nil, err
+	}
+	ctx, err := commandContext(thread, fn.Name())
+	if err != nil {
+		return nil, err
+	}
+	if ctx.FileManager == nil {
+		return starlark.False, nil
+	}
+	show := func() {
+		ctx.FileManager.ShowMessageDialog(title, message)
+	}
+	deferCommandTransition(ctx, "starlark.message", show)
+	return starlark.True, nil
 }
 
 func (rt *Runtime) builtinExec(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

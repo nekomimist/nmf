@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -1101,6 +1102,94 @@ func TestCommandContextTargetsEmptyWhenNoTarget(t *testing.T) {
 	}
 }
 
+func TestCustomCommandCanShowMessage(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def warn(ctx):
+    if nmf.message("Select at least two files.", title = "Compare"):
+        nmf.run("directory.refresh")
+nmf.command("user.warn", warn)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	fm := &configScriptFakeFileManager{}
+	var ran string
+	rt.Commands["user.warn"](keymanager.CommandContext{
+		FileManager: fm,
+		RunCommand: func(command string) bool {
+			ran = command
+			return true
+		},
+	})
+
+	if fm.showMessageCount != 1 || fm.messageTitle != "Compare" || fm.messageText != "Select at least two files." {
+		t.Fatalf("message = count %d title %q text %q, want Compare warning", fm.showMessageCount, fm.messageTitle, fm.messageText)
+	}
+	if ran != "directory.refresh" {
+		t.Fatalf("ran command = %q, want directory.refresh", ran)
+	}
+}
+
+func TestCustomCommandDefersStarlarkMessageDisplay(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def warn(ctx):
+    nmf.message("Need two files")
+nmf.command("user.warn", warn)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	fm := &configScriptFakeFileManager{}
+	var label string
+	var deferred func()
+	rt.Commands["user.warn"](keymanager.CommandContext{
+		FileManager: fm,
+		DeferTransition: func(l string, action func()) {
+			label = l
+			deferred = action
+		},
+	})
+
+	if label != "starlark.message" || deferred == nil {
+		t.Fatalf("deferred transition = label %q action nil=%t, want starlark.message action", label, deferred == nil)
+	}
+	if fm.showMessageCount != 0 {
+		t.Fatalf("message shown before deferred action count = %d, want 0", fm.showMessageCount)
+	}
+	deferred()
+	if fm.showMessageCount != 1 || fm.messageTitle != "Message" || fm.messageText != "Need two files" {
+		t.Fatalf("message = count %d title %q text %q, want default-title message", fm.showMessageCount, fm.messageTitle, fm.messageText)
+	}
+}
+
+func TestMessageRequiresCommandContext(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `nmf.message("hello")`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	_, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err == nil || !strings.Contains(err.Error(), "nmf.message can only be used while a custom command is running") {
+		t.Fatalf("Load error = %v, want command-context error", err)
+	}
+}
+
 func TestCustomCommandExecReturnsFalseWithoutRunner(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, FileName)
@@ -1618,6 +1707,9 @@ type configScriptFakeFileManager struct {
 	clipboardFileName      string
 	clipboardFileResult    bool
 	showClipboardFileCount int
+	messageTitle           string
+	messageText            string
+	showMessageCount       int
 	menuTitle              string
 	menuItems              []keymanager.CommandMenuItem
 }
@@ -1684,6 +1776,11 @@ func (f *configScriptFakeFileManager) ShowClipboardTextFileDialog() { f.showClip
 func (f *configScriptFakeFileManager) CreateClipboardTextFile(name string) bool {
 	f.clipboardFileName = name
 	return f.clipboardFileResult
+}
+func (f *configScriptFakeFileManager) ShowMessageDialog(title string, message string) {
+	f.messageTitle = title
+	f.messageText = message
+	f.showMessageCount++
 }
 func (f *configScriptFakeFileManager) QuitApplication()                 {}
 func (f *configScriptFakeFileManager) OpenFile(file *fileinfo.FileInfo) {}

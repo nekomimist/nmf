@@ -285,6 +285,9 @@ type mainScreenFakeFileManager struct {
 	showClipboardFileCount int
 	clipboardFileName      string
 	clipboardFileResult    bool
+	messageTitle           string
+	messageText            string
+	showMessageCount       int
 	clipboardText          string
 	clipboardResult        bool
 	showRenameCount        int
@@ -363,6 +366,11 @@ func (f *mainScreenFakeFileManager) ShowClipboardTextFileDialog() { f.showClipbo
 func (f *mainScreenFakeFileManager) CreateClipboardTextFile(name string) bool {
 	f.clipboardFileName = name
 	return f.clipboardFileResult
+}
+func (f *mainScreenFakeFileManager) ShowMessageDialog(title string, message string) {
+	f.messageTitle = title
+	f.messageText = message
+	f.showMessageCount++
 }
 func (f *mainScreenFakeFileManager) SetClipboardText(text string) bool {
 	f.clipboardText = text

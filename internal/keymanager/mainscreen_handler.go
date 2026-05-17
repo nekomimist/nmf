@@ -88,6 +88,7 @@ type FileManagerInterface interface {
 	CreateDirectory(name string) bool
 	ShowClipboardTextFileDialog()
 	CreateClipboardTextFile(name string) bool
+	ShowMessageDialog(title string, message string)
 	QuitApplication()
 
 	OpenFile(file *fileinfo.FileInfo)
