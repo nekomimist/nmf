@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -21,6 +22,8 @@ const (
 	fileViewerMinHeight   float32 = 760
 	fileViewerSearchWidth float32 = 260
 	fileViewerLineWidth   float32 = 90
+	fileViewerTextLimit   int     = 64 << 10
+	fileViewerHexLimit    int     = 64 << 10
 )
 
 type FileViewerDialog struct {
@@ -59,8 +62,8 @@ func NewFileViewerDialog(preview *fileinfo.PreviewFile, km ...*keymanager.KeyMan
 
 func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	d.parent = parent
-	d.textEntry = NewReadOnlyEntry(d.preview.Text, d.CancelDialog, d.handleEntryKey, d.handleEntryRune)
-	d.hexEntry = NewReadOnlyEntry(fileinfo.FormatHexDump(d.preview.Data), d.CancelDialog, d.handleEntryKey, d.handleEntryRune)
+	d.textEntry = NewReadOnlyEntry(viewerText(d.preview), d.CancelDialog, d.handleEntryKey, d.handleEntryRune)
+	d.hexEntry = NewReadOnlyEntry(viewerHex(d.preview), d.CancelDialog, d.handleEntryKey, d.handleEntryRune)
 	d.textEntry.OnCursorChanged = d.updateLineDisplay
 	d.hexEntry.OnCursorChanged = d.updateLineDisplay
 	d.textEntry.SetScrollHandler(d.handleEntryScroll)
@@ -151,9 +154,58 @@ func fileViewerDialogSize(parent fyne.Window) fyne.Size {
 }
 
 func (d *FileViewerDialog) markdownView() fyne.CanvasObject {
-	rich := widget.NewRichTextFromMarkdown(d.preview.Text)
+	if d.preview.Binary {
+		return widget.NewLabel("Binary file: markdown preview disabled. Use the Hex tab.")
+	}
+	rich := widget.NewRichTextFromMarkdown(viewerText(d.preview))
 	rich.Wrapping = fyne.TextWrapWord
 	return rich
+}
+
+func viewerText(preview *fileinfo.PreviewFile) string {
+	if preview == nil {
+		return ""
+	}
+	if preview.Binary {
+		return "Binary file: text preview disabled. Use the Hex tab."
+	}
+	text, truncated := truncateUTF8Bytes(preview.Text, fileViewerTextLimit)
+	if truncated {
+		text += fmt.Sprintf("\n\n[viewer text truncated at %s]", fileinfo.FormatFileSize(int64(fileViewerTextLimit)))
+	}
+	return text
+}
+
+func viewerHex(preview *fileinfo.PreviewFile) string {
+	if preview == nil {
+		return ""
+	}
+	data := preview.Data
+	truncated := false
+	if len(data) > fileViewerHexLimit {
+		data = data[:fileViewerHexLimit]
+		truncated = true
+	}
+	text := fileinfo.FormatHexDump(data)
+	if truncated {
+		text += fmt.Sprintf("\n[viewer hex truncated at %s of %s read]\n",
+			fileinfo.FormatFileSize(int64(fileViewerHexLimit)),
+			fileinfo.FormatFileSize(int64(len(preview.Data))))
+	}
+	return text
+}
+
+func truncateUTF8Bytes(text string, limit int) (string, bool) {
+	if limit < 0 {
+		limit = 0
+	}
+	if len(text) <= limit {
+		return text, false
+	}
+	for limit > 0 && !utf8.ValidString(text[:limit]) {
+		limit--
+	}
+	return text[:limit], true
 }
 
 func (d *FileViewerDialog) statusText() string {
