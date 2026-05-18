@@ -10,9 +10,12 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
+	"nmf/internal/fileinfo"
 	"nmf/internal/jobs"
 	"nmf/internal/keymanager"
 )
+
+const completedJobTargetLimit = 10
 
 // JobsWindow shows the global background job queue and allows cancel.
 type JobsWindow struct {
@@ -57,6 +60,7 @@ func NewJobsWindow(app fyne.App, debugPrint func(format string, args ...interfac
 		} else {
 			jd.selectedID = 0
 		}
+		jd.acknowledgeSelectedFailure()
 		jd.updateDetails()
 		// keep focus on sink for key flow
 		if jd.window != nil && jd.sink != nil {
@@ -73,15 +77,12 @@ func NewJobsWindow(app fyne.App, debugPrint func(format string, args ...interfac
 	// header and layout
 	header := widget.NewLabel("Job Queue")
 	header.TextStyle.Bold = true
-	jd.list.Resize(fyne.NewSize(680, 320))
-	split := container.NewVSplit(dialogListThemeOverride(jd.list), container.NewVScroll(jd.details))
-	split.Offset = 0.7
-	// Fix size by wrapping in WithoutLayout and explicitly resizing
-	fixed := container.NewWithoutLayout(split)
-	fixed.Resize(fyne.NewSize(720, 420))
-	split.Resize(fyne.NewSize(720, 420))
+	detailsScroll := container.NewVScroll(jd.details)
+	detailsScroll.SetMinSize(fyne.NewSize(680, 140))
+	split := container.NewVSplit(dialogListThemeOverride(jd.list), detailsScroll)
+	split.Offset = 0.5
 	bottom := container.NewHBox(layout.NewSpacer(), cancelBtn, closeBtn)
-	content := container.NewBorder(container.NewVBox(header), bottom, nil, nil, fixed)
+	content := container.NewBorder(container.NewVBox(header), bottom, nil, nil, split)
 
 	handler := keymanager.NewJobsDialogKeyHandler(jd, jd.debugPrint)
 	jd.km.PushHandler(handler)
@@ -201,8 +202,40 @@ func (jd *JobsWindow) updateDetails() {
 		} else if it.Error != "" {
 			fmt.Fprintf(b, "Error: %s\n", it.Error)
 		}
+	} else if it.Status == jobs.StatusCompleted {
+		writeCompletedTargets(b, it.Sources)
 	}
 	jd.details.SetText(b.String())
+}
+
+func (jd *JobsWindow) acknowledgeSelectedFailure() {
+	if jd.selectedIdx < 0 || jd.selectedIdx >= len(jd.items) {
+		return
+	}
+	it := jd.items[jd.selectedIdx]
+	if it.Status != jobs.StatusFailed || it.FailureAcknowledged {
+		return
+	}
+	if jobs.GetManager().AcknowledgeFailure(it.ID) {
+		jd.items[jd.selectedIdx].FailureAcknowledged = true
+	}
+}
+
+func writeCompletedTargets(b *strings.Builder, sources []string) {
+	if len(sources) == 0 {
+		return
+	}
+	fmt.Fprintln(b, "Targets:")
+	limit := len(sources)
+	if limit > completedJobTargetLimit {
+		limit = completedJobTargetLimit
+	}
+	for _, src := range sources[:limit] {
+		fmt.Fprintf(b, "  - %s\n", fileinfo.BaseName(src))
+	}
+	if more := len(sources) - limit; more > 0 {
+		fmt.Fprintf(b, "  ... and %d more\n", more)
+	}
 }
 
 // Interface methods for key handler

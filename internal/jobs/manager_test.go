@@ -68,6 +68,28 @@ func TestSubscribeNilCallbackReturnsNoopUnsubscribe(t *testing.T) {
 	m.notify()
 }
 
+func TestAcknowledgeFailureMarksOnlyFailedJobs(t *testing.T) {
+	failed := &Job{ID: 1, Status: StatusFailed}
+	completed := &Job{ID: 2, Status: StatusCompleted}
+	m := &Manager{history: []*Job{failed, completed}}
+
+	if !m.AcknowledgeFailure(failed.ID) {
+		t.Fatal("AcknowledgeFailure should report a failed job state change")
+	}
+	if !failed.Snapshot().FailureAcknowledged {
+		t.Fatal("failed job should be acknowledged")
+	}
+	if m.AcknowledgeFailure(failed.ID) {
+		t.Fatal("AcknowledgeFailure should not report a second state change")
+	}
+	if m.AcknowledgeFailure(completed.ID) {
+		t.Fatal("AcknowledgeFailure should ignore completed jobs")
+	}
+	if completed.Snapshot().FailureAcknowledged {
+		t.Fatal("completed job should not be acknowledged")
+	}
+}
+
 func TestResolveExecutionPath_Empty(t *testing.T) {
 	if _, err := resolveExecutionPath("   "); err == nil {
 		t.Fatalf("expected error for empty path")

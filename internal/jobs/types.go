@@ -46,17 +46,18 @@ type Job struct {
 	conflictDefault ConflictAction
 
 	// state
-	mu            sync.RWMutex
-	Status        Status
-	TotalFiles    int
-	DoneFiles     int
-	CurrentSource string
-	Message       string
-	Error         string
-	Failures      []JobFailure
-	EnqueuedAt    time.Time
-	StartedAt     time.Time
-	CompletedAt   time.Time
+	mu                  sync.RWMutex
+	Status              Status
+	TotalFiles          int
+	DoneFiles           int
+	CurrentSource       string
+	Message             string
+	Error               string
+	Failures            []JobFailure
+	FailureAcknowledged bool
+	EnqueuedAt          time.Time
+	StartedAt           time.Time
+	CompletedAt         time.Time
 
 	// cancellation
 	ctx    context.Context
@@ -106,41 +107,43 @@ func (j *Job) Snapshot() JobSnapshot {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	return JobSnapshot{
-		ID:            j.ID,
-		Type:          j.Type,
-		Status:        j.Status,
-		TotalFiles:    j.TotalFiles,
-		DoneFiles:     j.DoneFiles,
-		CurrentSource: j.CurrentSource,
-		Message:       j.Message,
-		Error:         j.Error,
-		DestDir:       j.DestDir,
-		DeleteMode:    j.DeleteMode,
-		EnqueuedAt:    j.EnqueuedAt,
-		StartedAt:     j.StartedAt,
-		CompletedAt:   j.CompletedAt,
-		Sources:       append([]string(nil), j.Sources...),
-		Failures:      append([]JobFailure(nil), j.Failures...),
+		ID:                  j.ID,
+		Type:                j.Type,
+		Status:              j.Status,
+		TotalFiles:          j.TotalFiles,
+		DoneFiles:           j.DoneFiles,
+		CurrentSource:       j.CurrentSource,
+		Message:             j.Message,
+		Error:               j.Error,
+		DestDir:             j.DestDir,
+		DeleteMode:          j.DeleteMode,
+		FailureAcknowledged: j.FailureAcknowledged,
+		EnqueuedAt:          j.EnqueuedAt,
+		StartedAt:           j.StartedAt,
+		CompletedAt:         j.CompletedAt,
+		Sources:             append([]string(nil), j.Sources...),
+		Failures:            append([]JobFailure(nil), j.Failures...),
 	}
 }
 
 // JobSnapshot is a read-only view for UI.
 type JobSnapshot struct {
-	ID            int64
-	Type          Type
-	Status        Status
-	Sources       []string
-	DestDir       string
-	DeleteMode    DeleteMode
-	TotalFiles    int
-	DoneFiles     int
-	CurrentSource string
-	Message       string
-	Error         string
-	Failures      []JobFailure
-	EnqueuedAt    time.Time
-	StartedAt     time.Time
-	CompletedAt   time.Time
+	ID                  int64
+	Type                Type
+	Status              Status
+	Sources             []string
+	DestDir             string
+	DeleteMode          DeleteMode
+	TotalFiles          int
+	DoneFiles           int
+	CurrentSource       string
+	Message             string
+	Error               string
+	Failures            []JobFailure
+	FailureAcknowledged bool
+	EnqueuedAt          time.Time
+	StartedAt           time.Time
+	CompletedAt         time.Time
 }
 
 // JobFailure records a single failing path and error message.

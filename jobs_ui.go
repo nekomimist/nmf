@@ -24,7 +24,9 @@ func (fm *FileManager) onJobsUpdated() {
 	for _, s := range snaps {
 		switch s.Status {
 		case jobs.StatusFailed:
-			hasError = true
+			if !s.FailureAcknowledged {
+				hasError = true
+			}
 		case jobs.StatusPending:
 			hasPending = true
 		case jobs.StatusRunning:

@@ -223,6 +223,44 @@ func (m *Manager) List() []JobSnapshot {
 	return out
 }
 
+// AcknowledgeFailure marks a failed job as seen by the user.
+func (m *Manager) AcknowledgeFailure(id int64) bool {
+	if id == 0 {
+		return false
+	}
+
+	var changed bool
+	m.mu.Lock()
+	for _, j := range m.allJobsLocked() {
+		if j.ID != id {
+			continue
+		}
+		j.mu.Lock()
+		if j.Status == StatusFailed && !j.FailureAcknowledged {
+			j.FailureAcknowledged = true
+			changed = true
+		}
+		j.mu.Unlock()
+		break
+	}
+	m.mu.Unlock()
+
+	if changed {
+		m.notify()
+	}
+	return changed
+}
+
+func (m *Manager) allJobsLocked() []*Job {
+	out := make([]*Job, 0, len(m.queue)+len(m.history)+1)
+	if m.current != nil {
+		out = append(out, m.current)
+	}
+	out = append(out, m.queue...)
+	out = append(out, m.history...)
+	return out
+}
+
 func (m *Manager) worker() {
 	for {
 		m.mu.Lock()

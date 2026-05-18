@@ -60,6 +60,9 @@ Jobs:
 - Pending jobs can be canceled and removed from queue.
 - Running job cancellation signals context and transitions to `StatusCanceled`.
 - First failed path ends that job as `StatusFailed` with failure details recorded.
+- Failed jobs remain visible in history; selecting a failed job in the Jobs
+  window marks that failure as acknowledged so main-window Jobs indicators stop
+  error blinking for that job.
 - Delete jobs support two modes:
   - `trash`: move each top-level source to the OS trash/recycle bin.
   - `permanent`: recursively remove each top-level source after UI confirmation.
