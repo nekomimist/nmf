@@ -10,6 +10,8 @@ import (
 
 // closeWindow handles window closing logic.
 func (fm *FileManager) closeWindow() {
+	recordReopenPath(fm.currentPath)
+
 	// Remove from registry
 	unregisterFileManagerWindow(fm)
 	remaining := atomic.AddInt32(&windowCount, -1)

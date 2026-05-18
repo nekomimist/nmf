@@ -31,6 +31,7 @@ var (
 	windowCount    int32    // atomic counter for window count
 	windowOrderMu  sync.Mutex
 	windowOrder    []*FileManager
+	reopenPaths    []string
 )
 
 // debugPrint prints debug messages only when debug mode is enabled

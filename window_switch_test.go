@@ -94,3 +94,26 @@ func TestSelectWindowByOrderDoesNotWrap(t *testing.T) {
 		t.Fatalf("right edge order selection = %d, %t, want no selection", index, ok)
 	}
 }
+
+func TestReopenPathQueueUsesClosedPathsInOrder(t *testing.T) {
+	resetFileManagerWindowTestRegistry(t)
+
+	recordReopenPath("/first")
+	recordReopenPath("")
+	recordReopenPath("/second")
+
+	path, ok := nextReopenPath()
+	if !ok || path != "/first" {
+		t.Fatalf("first reopen path = %q, %t, want /first, true", path, ok)
+	}
+
+	path, ok = nextReopenPath()
+	if !ok || path != "/second" {
+		t.Fatalf("second reopen path = %q, %t, want /second, true", path, ok)
+	}
+
+	path, ok = nextReopenPath()
+	if ok || path != "" {
+		t.Fatalf("empty reopen path = %q, %t, want empty, false", path, ok)
+	}
+}

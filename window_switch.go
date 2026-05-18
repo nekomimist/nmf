@@ -54,6 +54,28 @@ func unregisterFileManagerWindow(fm *FileManager) {
 	}
 }
 
+func recordReopenPath(path string) {
+	if path == "" {
+		return
+	}
+
+	windowOrderMu.Lock()
+	defer windowOrderMu.Unlock()
+	reopenPaths = append(reopenPaths, path)
+}
+
+func nextReopenPath() (string, bool) {
+	windowOrderMu.Lock()
+	defer windowOrderMu.Unlock()
+	if len(reopenPaths) == 0 {
+		return "", false
+	}
+
+	path := reopenPaths[0]
+	reopenPaths = append(reopenPaths[:0], reopenPaths[1:]...)
+	return path, true
+}
+
 func snapshotFileManagerWindows() []*FileManager {
 	windowOrderMu.Lock()
 	defer windowOrderMu.Unlock()

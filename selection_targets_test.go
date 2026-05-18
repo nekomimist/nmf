@@ -48,10 +48,12 @@ func resetFileManagerWindowTestRegistry(t *testing.T) {
 
 	windowOrderMu.Lock()
 	windowOrder = nil
+	reopenPaths = nil
 	windowOrderMu.Unlock()
 	t.Cleanup(func() {
 		windowOrderMu.Lock()
 		windowOrder = nil
+		reopenPaths = nil
 		windowOrderMu.Unlock()
 	})
 }

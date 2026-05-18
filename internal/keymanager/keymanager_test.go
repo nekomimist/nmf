@@ -277,6 +277,7 @@ type mainScreenFakeFileManager struct {
 	showHistoryCount       int
 	showSearchCount        int
 	showDirectoryJumpCount int
+	reopenClosedCount      int
 	focusWindowLeftCount   int
 	focusWindowRightCount  int
 	showCreateDirCount     int
@@ -344,6 +345,7 @@ func (f *mainScreenFakeFileManager) SetFileSelected(path string, selected bool) 
 func (f *mainScreenFakeFileManager) RefreshFileList()                  { f.refreshFileListCount++ }
 func (f *mainScreenFakeFileManager) SaveCursorPosition(dirPath string) { f.saveCursorPath = dirPath }
 func (f *mainScreenFakeFileManager) OpenNewWindow()                    {}
+func (f *mainScreenFakeFileManager) ReopenClosedWindow()               { f.reopenClosedCount++ }
 func (f *mainScreenFakeFileManager) FocusWindowLeft()                  { f.focusWindowLeftCount++ }
 func (f *mainScreenFakeFileManager) FocusWindowRight()                 { f.focusWindowRightCount++ }
 func (f *mainScreenFakeFileManager) ShowDirectoryTreeDialog()          {}
@@ -694,6 +696,22 @@ func TestMainScreenNoopCommandOverridesDefault(t *testing.T) {
 	}
 	if fm.showSortCount != 0 {
 		t.Fatalf("ShowSortDialog count = %d, want 0", fm.showSortCount)
+	}
+}
+
+func TestMainScreenConfiguredBindingCanReopenWindow(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+		{Key: "C-R", Command: CommandWindowReopen},
+	})
+
+	handled := handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{CtrlPressed: true})
+
+	if !handled {
+		t.Fatal("configured window.reopen should be handled")
+	}
+	if fm.reopenClosedCount != 1 {
+		t.Fatalf("ReopenClosedWindow count = %d, want 1", fm.reopenClosedCount)
 	}
 }
 

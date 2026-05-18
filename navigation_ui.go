@@ -11,7 +11,20 @@ import (
 )
 
 func (fm *FileManager) OpenNewWindow() {
-	newFM := NewFileManager(fyne.CurrentApp(), fm.currentPath, fm.config, fm.configManager, fm.customTheme, fm.configScript)
+	fm.openWindowAtPath(fm.currentPath)
+}
+
+func (fm *FileManager) ReopenClosedWindow() {
+	path, ok := nextReopenPath()
+	if !ok {
+		debugPrint("FileManager: No closed window path available; opening current path")
+		path = fm.currentPath
+	}
+	fm.openWindowAtPath(path)
+}
+
+func (fm *FileManager) openWindowAtPath(path string) {
+	newFM := NewFileManager(fyne.CurrentApp(), path, fm.config, fm.configManager, fm.customTheme, fm.configScript)
 	newFM.window.Show()
 	positionWindowNextTo(fm.window, newFM.window)
 }

@@ -25,6 +25,7 @@ const (
 	CommandDirectoryCreate     = "directory.create"
 	CommandClipboardTextFile   = "clipboard.createTextFile"
 	CommandWindowNew           = "window.new"
+	CommandWindowReopen        = "window.reopen"
 	CommandWindowFocusLeft     = "window.focusLeft"
 	CommandWindowFocusRight    = "window.focusRight"
 	CommandTreeShow            = "tree.show"
@@ -71,6 +72,7 @@ type FileManagerInterface interface {
 	SaveCursorPosition(dirPath string)
 
 	OpenNewWindow()
+	ReopenClosedWindow()
 	FocusWindowLeft()
 	FocusWindowRight()
 	ShowDirectoryTreeDialog()
@@ -249,6 +251,7 @@ func (mh *MainScreenKeyHandler) executeCommand(commandID string, ctx CommandCont
 func (mh *MainScreenKeyHandler) shouldDeferCommand(commandID string) bool {
 	switch commandID {
 	case CommandWindowNew,
+		CommandWindowReopen,
 		CommandWindowFocusLeft,
 		CommandWindowFocusRight,
 		CommandTreeShow,
@@ -361,6 +364,7 @@ func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
 		CommandRefresh:             mh.refreshDirectory,
 		CommandHome:                mh.homeDirectory,
 		CommandWindowNew:           func(CommandContext) { mh.fileManager.OpenNewWindow() },
+		CommandWindowReopen:        func(CommandContext) { mh.fileManager.ReopenClosedWindow() },
 		CommandWindowFocusLeft:     func(CommandContext) { mh.fileManager.FocusWindowLeft() },
 		CommandWindowFocusRight:    func(CommandContext) { mh.fileManager.FocusWindowRight() },
 		CommandTreeShow:            func(CommandContext) { mh.fileManager.ShowDirectoryTreeDialog() },
