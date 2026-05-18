@@ -300,6 +300,7 @@ type KeyBindingEntry struct {
 // ExternalCommandEntry describes a command that can be run for matching files.
 type ExternalCommandEntry struct {
 	Name       string   `json:"name"`                 // Menu label
+	Key        string   `json:"key,omitempty"`        // Optional single-key menu accelerator
 	Extensions []string `json:"extensions,omitempty"` // Case-insensitive, with or without dot; "*" matches all files
 	Command    string   `json:"command"`              // Executable path or command name
 	Args       []string `json:"args,omitempty"`       // Supports {file}, {files}, {all_files}, {dir}, {name}

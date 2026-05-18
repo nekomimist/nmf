@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
@@ -59,6 +60,7 @@ type Menu struct {
 // MenuItem holds a Starlark-defined menu item action.
 type MenuItem struct {
 	Label     string
+	Key       string
 	Command   string
 	Separator bool
 	Callable  starlark.Callable
@@ -657,6 +659,7 @@ func (rt *Runtime) builtinClearKeys(_ *starlark.Thread, _ *starlark.Builtin, arg
 
 func (rt *Runtime) builtinExternalCommand(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var name string
+	var key string
 	var command string
 	var cwd string
 	extensionsValue := starlark.Value(starlark.None)
@@ -672,6 +675,7 @@ func (rt *Runtime) builtinExternalCommand(_ *starlark.Thread, fn *starlark.Built
 		"args?", &argsValue,
 		"cwd?", &cwd,
 		"edit?", &edit,
+		"key?", &key,
 	); err != nil {
 		return nil, err
 	}
@@ -686,11 +690,16 @@ func (rt *Runtime) builtinExternalCommand(_ *starlark.Thread, fn *starlark.Built
 	if strings.TrimSpace(name) == "" {
 		return nil, fmt.Errorf("external command name must not be empty")
 	}
+	key, err = normalizeCommandMenuKey(key)
+	if err != nil {
+		return nil, err
+	}
 	if !edit && strings.TrimSpace(command) == "" {
 		return nil, fmt.Errorf("external command cmd must not be empty")
 	}
 	rt.cfg.UI.ExternalCommands = append(rt.cfg.UI.ExternalCommands, config.ExternalCommandEntry{
 		Name:       name,
+		Key:        key,
 		Extensions: extensions,
 		Command:    command,
 		Args:       commandArgs,
@@ -760,6 +769,7 @@ func (rt *Runtime) builtinMenuItem(thread *starlark.Thread, fn *starlark.Builtin
 	}
 	var menuName string
 	var label string
+	var key string
 	commandValue := starlark.Value(starlark.None)
 	fnValue := starlark.Value(starlark.None)
 	if err := starlark.UnpackArgs(
@@ -770,6 +780,7 @@ func (rt *Runtime) builtinMenuItem(thread *starlark.Thread, fn *starlark.Builtin
 		"label", &label,
 		"cmd?", &commandValue,
 		"fn?", &fnValue,
+		"key?", &key,
 	); err != nil {
 		return nil, err
 	}
@@ -780,6 +791,13 @@ func (rt *Runtime) builtinMenuItem(thread *starlark.Thread, fn *starlark.Builtin
 	}
 	if label == "" {
 		return nil, fmt.Errorf("menu item label must not be empty")
+	}
+	if key != "" {
+		normalizedKey, err := normalizeMenuItemKey(key)
+		if err != nil {
+			return nil, err
+		}
+		key = normalizedKey
 	}
 
 	command, hasCommand, err := optionalString(commandValue, "cmd")
@@ -797,6 +815,7 @@ func (rt *Runtime) builtinMenuItem(thread *starlark.Thread, fn *starlark.Builtin
 	menu := rt.ensureMenu(menuName)
 	menu.Items = append(menu.Items, MenuItem{
 		Label:    label,
+		Key:      key,
 		Command:  command,
 		Callable: callable,
 	})
@@ -876,6 +895,7 @@ func (rt *Runtime) builtinShowMenu(thread *starlark.Thread, fn *starlark.Builtin
 		}
 		items = append(items, keymanager.CommandMenuItem{
 			Label: entry.Label,
+			Key:   entry.Key,
 			Action: func() {
 				if entry.Command != "" {
 					if ctx.RunCommand != nil {
@@ -894,6 +914,24 @@ func (rt *Runtime) builtinShowMenu(thread *starlark.Thread, fn *starlark.Builtin
 	}
 	deferCommandTransition(ctx, "starlark.show_menu", show)
 	return starlark.None, nil
+}
+
+func normalizeMenuItemKey(key string) (string, error) {
+	return normalizeCommandMenuKey(key)
+}
+
+func normalizeCommandMenuKey(key string) (string, error) {
+	if key == "" {
+		return "", nil
+	}
+	runes := []rune(key)
+	if len(runes) != 1 {
+		return "", fmt.Errorf("command menu key must be a single printable character")
+	}
+	if unicode.IsSpace(runes[0]) || !unicode.IsPrint(runes[0]) {
+		return "", fmt.Errorf("command menu key must be a non-space printable character")
+	}
+	return string(runes[0]), nil
 }
 
 func (rt *Runtime) builtinRun(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

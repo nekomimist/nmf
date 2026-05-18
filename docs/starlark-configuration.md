@@ -67,6 +67,7 @@ if nmf.os() == "windows":
 nmf.clear_external_commands()
 nmf.external_command(
     name = "Open in Vim",
+    key = "V",
     exts = ["go", "md"],
     cmd = "vim",
     args = ["{file}"],
@@ -129,14 +130,14 @@ def toggle_name_modified(ctx):
 nmf.command("user.toggle_name_modified", toggle_name_modified)
 
 nmf.menu("tools", title = "Tools")
-nmf.menu_item("tools", "Refresh", cmd = "directory.refresh")
+nmf.menu_item("tools", "Refresh", cmd = "directory.refresh", key = "R")
 nmf.menu_separator("tools")
 
 def edit_from_menu(ctx):
     if ctx.current_file:
         nmf.exec("vim", args = [ctx.current_file])
 
-nmf.menu_item("tools", "Edit in Vim", fn = edit_from_menu)
+nmf.menu_item("tools", "Edit in Vim", fn = edit_from_menu, key = "E")
 
 def show_tools(ctx):
     nmf.show_menu("tools")
@@ -168,10 +169,10 @@ List sections:
 - `nmf.key(key, cmd = None, fn = None, event = "")`
 - `nmf.unkey(key, event = "")`
 - `nmf.clear_keys()`
-- `nmf.external_command(name, cmd, exts = [], args = [], cwd = "", edit = False)`
+- `nmf.external_command(name, cmd, exts = [], args = [], cwd = "", edit = False, key = "")`
 - `nmf.clear_external_commands()`
 - `nmf.menu(name, title = "")`
-- `nmf.menu_item(menu, label, cmd = None, fn = None)`
+- `nmf.menu_item(menu, label, cmd = None, fn = None, key = "")`
 - `nmf.menu_separator(menu)`
 - `nmf.clear_menu(name)`
 
@@ -182,6 +183,10 @@ them by case-insensitive prefix.
 `nmf.unkey` appends a binding to the built-in `noop` command, which disables a
 default key binding with the same key and event for the current run.
 Menu definitions are runtime-only and are not saved to `config.json`.
+Menu item and external command `key` values are optional single printable
+characters. While a command menu is open, typing the key runs the first visible
+item with that key case-insensitively. Later duplicate keys stay visible but
+behave as if they had no key.
 
 Utility API:
 
@@ -224,11 +229,13 @@ Color API:
   `fileDirectory`, `fileSymlink`, `fileHidden`, `statusAdded`,
   `statusDeleted`, `statusModified`, `selectionBackground`, `cursor`,
   `lineEditCursor`, `lineEditSelection`, `dialogListCursor`,
+  `menuCursor`,
   `searchOverlayBackground`, `searchOverlayForeground`, and
   `busyOverlayBackground`.
 - `lineEditCursor` and `lineEditSelection` apply only to one-line edit dialogs.
   `dialogListCursor` applies to Navigation History, Directory Jump, Filter,
   Copy/Move, and Jobs list cursor rows.
+  `menuCursor` applies to command menu cursor rows.
 - A color can be an RGBA list or tuple like `[255, 255, 255, 255]`, a Fyne
   theme color name like `"foreground"` or `"selection"`, or a Fyne primary
   color name like `"blue"` or `"green"`.

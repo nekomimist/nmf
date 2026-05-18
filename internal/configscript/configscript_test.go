@@ -42,6 +42,7 @@ nmf.key("C-P", "user.parent", event = "down")
 nmf.clear_external_commands()
 nmf.external_command(
     name = "Open in Vim",
+    key = "V",
     exts = ["go", "md"],
     cmd = "vim",
     args = ["{file}"],
@@ -116,7 +117,7 @@ nmf.command("user.parent", parent)
 	if len(cfg.UI.KeyBindings) != 1 || cfg.UI.KeyBindings[0].Command != "user.parent" {
 		t.Fatalf("key bindings = %+v, want user.parent", cfg.UI.KeyBindings)
 	}
-	if len(cfg.UI.ExternalCommands) != 1 || cfg.UI.ExternalCommands[0].Command != "vim" || cfg.UI.ExternalCommands[0].Cwd != "{dir}" || !cfg.UI.ExternalCommands[0].Edit {
+	if len(cfg.UI.ExternalCommands) != 1 || cfg.UI.ExternalCommands[0].Key != "V" || cfg.UI.ExternalCommands[0].Command != "vim" || cfg.UI.ExternalCommands[0].Cwd != "{dir}" || !cfg.UI.ExternalCommands[0].Edit {
 		t.Fatalf("external commands = %+v, want vim", cfg.UI.ExternalCommands)
 	}
 	if _, ok := rt.Commands["user.parent"]; !ok {
@@ -487,11 +488,11 @@ func TestLoadRegistersStarlarkMenu(t *testing.T) {
 	path := filepath.Join(dir, FileName)
 	src := `
 nmf.menu("tools", title = "Tools")
-nmf.menu_item("tools", "Refresh", cmd = "directory.refresh")
+nmf.menu_item("tools", "Refresh", cmd = "directory.refresh", key = "R")
 nmf.menu_separator("tools")
 def edit(ctx):
     nmf.exec("vim", args = [ctx.current_file])
-nmf.menu_item("tools", "Edit", fn = edit)
+nmf.menu_item("tools", "Edit", fn = edit, key = "E")
 `
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
@@ -509,7 +510,7 @@ nmf.menu_item("tools", "Edit", fn = edit)
 	if menu.Title != "Tools" {
 		t.Fatalf("menu title = %q, want Tools", menu.Title)
 	}
-	if len(menu.Items) != 3 || menu.Items[0].Label != "Refresh" || menu.Items[0].Command != "directory.refresh" || !menu.Items[1].Separator || menu.Items[2].Label != "Edit" || menu.Items[2].Callable == nil {
+	if len(menu.Items) != 3 || menu.Items[0].Label != "Refresh" || menu.Items[0].Key != "R" || menu.Items[0].Command != "directory.refresh" || !menu.Items[1].Separator || menu.Items[2].Label != "Edit" || menu.Items[2].Key != "E" || menu.Items[2].Callable == nil {
 		t.Fatalf("menu items = %+v, want command, separator, and callable items", menu.Items)
 	}
 }
@@ -519,11 +520,11 @@ func TestCustomCommandCanShowStarlarkMenu(t *testing.T) {
 	path := filepath.Join(dir, FileName)
 	src := `
 nmf.menu("tools", title = "Tools")
-nmf.menu_item("tools", "Refresh", cmd = "directory.refresh")
+nmf.menu_item("tools", "Refresh", cmd = "directory.refresh", key = "R")
 nmf.menu_separator("tools")
 def edit(ctx):
     nmf.exec("vim", args = [ctx.current_file])
-nmf.menu_item("tools", "Edit", fn = edit)
+nmf.menu_item("tools", "Edit", fn = edit, key = "E")
 def show_tools(ctx):
     nmf.show_menu("tools")
 nmf.command("user.show_tools", show_tools)
@@ -567,6 +568,9 @@ nmf.command("user.show_tools", show_tools)
 	if labels := fm.menuLabels(); !reflect.DeepEqual(labels, []string{"Refresh", "", "Edit"}) {
 		t.Fatalf("menu labels = %#v, want Refresh/separator/Edit", labels)
 	}
+	if fm.menuItems[0].Key != "R" || fm.menuItems[2].Key != "E" {
+		t.Fatalf("menu item keys = %+v, want R and E", fm.menuItems)
+	}
 	if !fm.menuItems[1].Separator {
 		t.Fatalf("menu item 1 = %+v, want separator", fm.menuItems[1])
 	}
@@ -582,6 +586,28 @@ nmf.command("user.show_tools", show_tools)
 	}
 	if gotEdit {
 		t.Fatal("exec edit = true, want false")
+	}
+}
+
+func TestMenuRegistrationAllowsDuplicateKeys(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+nmf.menu_item("tools", "One", cmd = "directory.refresh", key = "E")
+nmf.menu_item("tools", "Two", cmd = "directory.refresh", key = "e")
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	menu := rt.Menus["tools"]
+	if menu == nil || len(menu.Items) != 2 || menu.Items[0].Key != "E" || menu.Items[1].Key != "e" {
+		t.Fatalf("menu items = %+v, want duplicate keys preserved for display-time resolution", menu.Items)
 	}
 }
 
@@ -666,6 +692,10 @@ nmf.menu_item("tools", "Bad", cmd = "directory.refresh", fn = f)
 `},
 		{name: "no actions", src: `nmf.menu_item("tools", "Bad")`},
 		{name: "non callable fn", src: `nmf.menu_item("tools", "Bad", fn = "nope")`},
+		{name: "multi rune key", src: `nmf.menu_item("tools", "Bad", cmd = "directory.refresh", key = "EX")`},
+		{name: "space key", src: `nmf.menu_item("tools", "Bad", cmd = "directory.refresh", key = " ")`},
+		{name: "external command multi rune key", src: `nmf.external_command("Bad", cmd = "vim", key = "EX")`},
+		{name: "external command space key", src: `nmf.external_command("Bad", cmd = "vim", key = " ")`},
 	}
 
 	for _, tt := range tests {

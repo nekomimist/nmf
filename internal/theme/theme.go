@@ -23,6 +23,7 @@ const (
 	ColorLineEditCursor          = "lineEditCursor"
 	ColorLineEditSelection       = "lineEditSelection"
 	ColorDialogListCursor        = "dialogListCursor"
+	ColorMenuCursor              = "menuCursor"
 	ColorSearchOverlayBackground = "searchOverlayBackground"
 	ColorSearchOverlayForeground = "searchOverlayForeground"
 	ColorBusyOverlayBackground   = "busyOverlayBackground"
@@ -33,6 +34,7 @@ var (
 		ColorLineEditCursor:    fynetheme.ColorNamePrimary,
 		ColorLineEditSelection: fynetheme.ColorNameSelection,
 		ColorDialogListCursor:  fynetheme.ColorNameSelection,
+		ColorMenuCursor:        fynetheme.ColorNameFocus,
 	}
 
 	lightAppColorDefaults = map[string]color.RGBA{
@@ -292,6 +294,15 @@ func NewDialogListOverrideTheme(base fyne.Theme, themeProvider interface {
 }) fyne.Theme {
 	return newColorOverrideTheme(base, map[fyne.ThemeColorName]color.Color{
 		fynetheme.ColorNameSelection: themeProvider.GetCustomColor(ColorDialogListCursor),
+	})
+}
+
+// NewMenuOverrideTheme returns a scoped theme for command menu cursor rows.
+func NewMenuOverrideTheme(base fyne.Theme, themeProvider interface {
+	GetCustomColor(string) color.RGBA
+}) fyne.Theme {
+	return newColorOverrideTheme(base, map[fyne.ThemeColorName]color.Color{
+		fynetheme.ColorNameFocus: themeProvider.GetCustomColor(ColorMenuCursor),
 	})
 }
 

@@ -35,3 +35,12 @@ func dialogListThemeOverride(obj fyne.CanvasObject) fyne.CanvasObject {
 	base := fyne.CurrentApp().Settings().Theme()
 	return container.NewThemeOverride(obj, customtheme.NewDialogListOverrideTheme(base, themeProvider))
 }
+
+func menuThemeOverride(obj fyne.CanvasObject) fyne.CanvasObject {
+	themeProvider := currentThemeColorProvider()
+	if themeProvider == nil {
+		return obj
+	}
+	base := fyne.CurrentApp().Settings().Theme()
+	return container.NewThemeOverride(obj, customtheme.NewMenuOverrideTheme(base, themeProvider))
+}

@@ -124,13 +124,14 @@ Configurable color names:
 - `fileRegular`, `fileDirectory`, `fileSymlink`, `fileHidden`
 - `statusAdded`, `statusDeleted`, `statusModified`
 - `selectionBackground`, `cursor`
-- `lineEditCursor`, `lineEditSelection`, `dialogListCursor`
+- `lineEditCursor`, `lineEditSelection`, `dialogListCursor`, `menuCursor`
 - `searchOverlayBackground`, `searchOverlayForeground`
 - `busyOverlayBackground`
 
 `lineEditCursor` and `lineEditSelection` apply only to one-line edit dialogs.
 `dialogListCursor` applies to keyboard cursor rows in Navigation History,
 Directory Jump, Filter, Copy/Move, and Jobs lists.
+`menuCursor` applies to command menu cursor rows.
 
 Color values:
 
@@ -296,6 +297,7 @@ command menu.
     "externalCommands": [
       {
         "name": "Open in editor",
+        "key": "E",
         "extensions": ["go", "md"],
         "command": "vim",
         "args": ["{file}"],
@@ -313,6 +315,9 @@ command menu.
 ```
 
 - `name`: menu label.
+- `key`: optional single printable character. In the command menu, the first
+  visible item using a key wins case-insensitively; later duplicates behave as
+  if they had no key.
 - `extensions`: optional case-insensitive extension list. Dots are optional;
   `*` matches all files. Empty list also matches all files.
 - `command`: executable name or path. It may be empty when `edit` is true.

@@ -86,6 +86,7 @@ func TestCustomThemeFyneBackedAppColorDefaults(t *testing.T) {
 		{name: "line edit cursor", color: ColorLineEditCursor, want: theme.LightTheme().Color(theme.ColorNamePrimary, theme.VariantLight)},
 		{name: "line edit selection", color: ColorLineEditSelection, want: theme.LightTheme().Color(theme.ColorNameSelection, theme.VariantLight)},
 		{name: "dialog list cursor", color: ColorDialogListCursor, want: theme.LightTheme().Color(theme.ColorNameSelection, theme.VariantLight)},
+		{name: "menu cursor", color: ColorMenuCursor, want: theme.LightTheme().Color(theme.ColorNameFocus, theme.VariantLight)},
 	}
 
 	for _, tt := range tests {
@@ -132,6 +133,9 @@ func TestScopedOverrideThemes(t *testing.T) {
 				ColorDialogListCursor: {
 					Value: &config.ThemeColorValue{RGBA: [4]uint8{9, 10, 11, 12}, IsRGBA: true},
 				},
+				ColorMenuCursor: {
+					Value: &config.ThemeColorValue{RGBA: [4]uint8{13, 14, 15, 16}, IsRGBA: true},
+				},
 			},
 		},
 	}
@@ -148,5 +152,10 @@ func TestScopedOverrideThemes(t *testing.T) {
 	listTheme := NewDialogListOverrideTheme(theme.LightTheme(), customTheme)
 	if got, want := listTheme.Color(theme.ColorNameSelection, theme.VariantLight), (color.RGBA{9, 10, 11, 12}); got != want {
 		t.Fatalf("dialog list selection = %#v, want %#v", got, want)
+	}
+
+	menuTheme := NewMenuOverrideTheme(theme.LightTheme(), customTheme)
+	if got, want := menuTheme.Color(theme.ColorNameFocus, theme.VariantLight), (color.RGBA{13, 14, 15, 16}); got != want {
+		t.Fatalf("menu focus = %#v, want %#v", got, want)
 	}
 }

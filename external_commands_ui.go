@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/config"
 	"nmf/internal/fileinfo"
@@ -29,17 +28,21 @@ func (fm *FileManager) ShowExternalCommandMenu() {
 		return
 	}
 
-	items := make([]*fyne.MenuItem, 0, len(commands))
+	items := make([]keymanager.CommandMenuItem, 0, len(commands))
 	for _, command := range commands {
 		entry := command
-		items = append(items, fyne.NewMenuItem(entry.Name, func() {
-			if fm.runExternalCommandTemplate(entry.Command, entry.Args, entry.Cwd, targets, entry.Edit) {
-				fm.FocusFileList()
-			}
-		}))
+		items = append(items, keymanager.CommandMenuItem{
+			Label: entry.Name,
+			Key:   entry.Key,
+			Action: func() {
+				if fm.runExternalCommandTemplate(entry.Command, entry.Args, entry.Cwd, targets, entry.Edit) {
+					fm.FocusFileList()
+				}
+			},
+		})
 	}
 
-	fm.showCommandPopup("Run Command", items...)
+	fm.showCommandMenu(items)
 }
 
 func informationalExternalCommandMenuItem(label string) *fyne.MenuItem {
@@ -48,31 +51,39 @@ func informationalExternalCommandMenuItem(label string) *fyne.MenuItem {
 
 // ShowCommandMenu displays a generic command menu at the current cursor row.
 func (fm *FileManager) ShowCommandMenu(title string, items []keymanager.CommandMenuItem) {
-	menuItems := make([]*fyne.MenuItem, 0, len(items))
-	for _, item := range items {
-		entry := item
-		if entry.Separator {
-			menuItems = append(menuItems, fyne.NewMenuItemSeparator())
-			continue
-		}
-		menuItem := fyne.NewMenuItem(entry.Label, func() {
-			if entry.Action != nil {
-				entry.Action()
-			}
-			fm.FocusFileList()
-		})
-		menuItems = append(menuItems, menuItem)
-	}
-	fm.showCommandPopup(title, menuItems...)
+	_ = title
+	fm.showCommandMenu(items)
 }
 
 func (fm *FileManager) showCommandPopup(title string, items ...*fyne.MenuItem) {
+	_ = title
+	commandItems := make([]keymanager.CommandMenuItem, 0, len(items))
+	for _, item := range items {
+		entry := item
+		if entry.IsSeparator {
+			commandItems = append(commandItems, keymanager.CommandMenuItem{Separator: true})
+			continue
+		}
+		commandItems = append(commandItems, keymanager.CommandMenuItem{
+			Label: entry.Label,
+			Action: func() {
+				if entry.Action != nil {
+					entry.Action()
+				}
+				fm.FocusFileList()
+			},
+		})
+	}
+	fm.showCommandMenu(commandItems)
+}
+
+func (fm *FileManager) showCommandMenu(items []keymanager.CommandMenuItem) {
 	if fm.window == nil || fm.window.Canvas() == nil {
 		return
 	}
 
-	menu := fyne.NewMenu(title, items...)
-	widget.ShowPopUpMenuAtPosition(menu, fm.window.Canvas(), fm.externalCommandMenuPosition())
+	menu := ui.NewCommandMenu(items, fm.FocusFileList)
+	menu.ShowAtPosition(fm.window.Canvas(), fm.externalCommandMenuPosition())
 }
 
 func (fm *FileManager) externalCommandMenuPosition() fyne.Position {
