@@ -22,7 +22,7 @@ func (fm *FileManager) CreateDirectory(name string) bool {
 	newPath, err := fileinfo.CreateDirectoryPortable(fm.currentPath, name)
 	if err != nil {
 		debugPrint("FileManager: Create directory failed parent=%s name=%s err=%v", fm.currentPath, name, err)
-		ui.ShowMessageDialog(fm.window, "Create directory failed", err.Error())
+		fm.ShowMessageDialog("Create directory failed", err.Error())
 		return false
 	}
 

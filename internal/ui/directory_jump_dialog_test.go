@@ -3,7 +3,11 @@ package ui
 import (
 	"testing"
 
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/test"
+
 	"nmf/internal/config"
+	"nmf/internal/keymanager"
 )
 
 func TestNormalizeDirectoryJumpShortcut(t *testing.T) {
@@ -85,5 +89,43 @@ func TestFilterDirectoryJumpEntriesMatchesShortcutPrefixOnly(t *testing.T) {
 	filtered = filterDirectoryJumpEntries(entries, "")
 	if len(filtered) != len(entries) {
 		t.Fatalf("empty query result length = %d, want %d", len(filtered), len(entries))
+	}
+}
+
+func TestDirectoryJumpUniqueShortcutDefersAcceptUntilKeyUp(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	dialog := NewDirectoryJumpDialog([]config.DirectoryJumpEntry{
+		{Shortcut: "e", Directory: "/target"},
+	}, km, func(string, ...interface{}) {})
+	var acceptedPath string
+	dialog.callback = func(path string) {
+		acceptedPath = path
+	}
+	km.PushHandler(keymanager.NewDirectoryJumpDialogKeyHandler(dialog, func(string, ...interface{}) {}))
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyE})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyE})
+	km.HandleTypedRune('e')
+
+	if acceptedPath != "" {
+		t.Fatalf("accepted path before key up = %q, want empty", acceptedPath)
+	}
+	if dialog.closed {
+		t.Fatal("dialog should stay open until key up")
+	}
+
+	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyE})
+
+	if acceptedPath != "/target" {
+		t.Fatalf("accepted path after key up = %q, want /target", acceptedPath)
+	}
+	if !dialog.closed {
+		t.Fatal("dialog should be closed after deferred accept")
+	}
+	if got := km.GetStackSize(); got != 0 {
+		t.Fatalf("key manager stack size = %d, want 0", got)
 	}
 }

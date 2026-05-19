@@ -106,7 +106,7 @@ func (fm *FileManager) jumpToConfiguredDirectory(inputPath string) {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			debugPrint("FileManager: Error getting home directory: %v", err)
-			ui.ShowMessageDialog(fm.window, "フォルダを開けませんでした", err.Error())
+			fm.ShowMessageDialog("フォルダを開けませんでした", err.Error())
 			return
 		}
 		path = strings.Replace(path, "~", home, 1)
@@ -115,7 +115,7 @@ func (fm *FileManager) jumpToConfiguredDirectory(inputPath string) {
 	resolvedPath, parsed, err := resolveDirectoryPath(path)
 	if err != nil {
 		debugPrint("FileManager: Invalid directory jump path '%s': %v", inputPath, err)
-		ui.ShowMessageDialog(fm.window, "フォルダを開けませんでした", err.Error())
+		fm.ShowMessageDialog("フォルダを開けませんでした", err.Error())
 		return
 	}
 

@@ -43,7 +43,7 @@ func (fm *FileManager) renameCurrentFile(target fileinfo.FileInfo, newName strin
 	newPath, err := fileinfo.RenamePortable(target.Path, trimmed)
 	if err != nil {
 		debugPrint("FileManager: Rename failed %s -> %s: %v", target.Path, trimmed, err)
-		ui.ShowMessageDialog(fm.window, "Rename failed", err.Error())
+		fm.ShowMessageDialog("Rename failed", err.Error())
 		return false
 	}
 

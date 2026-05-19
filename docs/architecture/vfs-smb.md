@@ -69,7 +69,13 @@ Wiring is installed in `NewFileManager`:
 
 ## File Opening Behavior
 
-Main-list Enter delegates to `fileinfo.OpenWithDefaultApp`.
+Main-list `Return` uses the `open` command. It enters directories, enters
+supported archive files, and delegates other files to
+`fileinfo.OpenWithDefaultApp`.
+
+Main-list `Shift+Return` uses `open.defaultApp`. It enters directories but
+delegates files directly to `fileinfo.OpenWithDefaultApp`, so archive-like
+application formats such as `.xlsx` can be launched with the OS-associated app.
 
 - Windows: uses `ShellExecuteW("open")`; `smb://` is converted to UNC first.
 - Unix-like: prefers local mount path when available, then tries openers in order:
@@ -81,7 +87,7 @@ Main-list Enter delegates to `fileinfo.OpenWithDefaultApp`.
 - Archive entries: extract the selected file to an `nmf-archive-open-*`
   temporary directory, then delegate to the same platform opener.
 
-When Enter is pressed on a supported archive file, the UI navigates to
+When `Return` is pressed on a supported archive file, the UI navigates to
 `archive-file!/` instead of launching the archive externally.
 
 ## Built-in Preview Viewer

@@ -297,6 +297,8 @@ type mainScreenFakeFileManager struct {
 	showExternalMenuCount  int
 	showViewerCount        int
 	showSortCount          int
+	openFilePath           string
+	openDefaultAppPath     string
 	deletePermanent        bool
 	focusPathCount         int
 	currentPath            string
@@ -379,11 +381,20 @@ func (f *mainScreenFakeFileManager) SetClipboardText(text string) bool {
 	f.clipboardText = text
 	return f.clipboardResult
 }
-func (f *mainScreenFakeFileManager) QuitApplication()                 {}
-func (f *mainScreenFakeFileManager) OpenFile(file *fileinfo.FileInfo) {}
-func (f *mainScreenFakeFileManager) ShowCopyDialog()                  {}
-func (f *mainScreenFakeFileManager) ShowMoveDialog()                  {}
-func (f *mainScreenFakeFileManager) ShowRenameDialog()                { f.showRenameCount++ }
+func (f *mainScreenFakeFileManager) QuitApplication() {}
+func (f *mainScreenFakeFileManager) OpenFile(file *fileinfo.FileInfo) {
+	if file != nil {
+		f.openFilePath = file.Path
+	}
+}
+func (f *mainScreenFakeFileManager) OpenFileDefaultApp(file *fileinfo.FileInfo) {
+	if file != nil {
+		f.openDefaultAppPath = file.Path
+	}
+}
+func (f *mainScreenFakeFileManager) ShowCopyDialog()   {}
+func (f *mainScreenFakeFileManager) ShowMoveDialog()   {}
+func (f *mainScreenFakeFileManager) ShowRenameDialog() { f.showRenameCount++ }
 func (f *mainScreenFakeFileManager) ShowDeleteDialog(permanent bool) {
 	f.showDeleteCount++
 	f.deletePermanent = permanent
@@ -392,6 +403,62 @@ func (f *mainScreenFakeFileManager) ShowExplorerContextMenu() { f.showExplorerMe
 func (f *mainScreenFakeFileManager) ShowExternalCommandMenu() { f.showExternalMenuCount++ }
 func (f *mainScreenFakeFileManager) ShowFileViewer()          { f.showViewerCount++ }
 func (f *mainScreenFakeFileManager) ShowCommandMenu(title string, items []CommandMenuItem) {
+}
+
+func TestMainScreenReturnRunsOpen(t *testing.T) {
+	fm := &mainScreenFakeFileManager{
+		files: []fileinfo.FileInfo{{Name: "book.xlsx", Path: "/dir/book.xlsx"}},
+	}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{})
+
+	if !handled {
+		t.Fatal("Return should be handled")
+	}
+	if fm.openFilePath != "/dir/book.xlsx" {
+		t.Fatalf("OpenFile path = %q, want /dir/book.xlsx", fm.openFilePath)
+	}
+	if fm.openDefaultAppPath != "" {
+		t.Fatalf("OpenFileDefaultApp path = %q, want empty", fm.openDefaultAppPath)
+	}
+}
+
+func TestMainScreenShiftReturnRunsOpenDefaultApp(t *testing.T) {
+	fm := &mainScreenFakeFileManager{
+		files: []fileinfo.FileInfo{{Name: "book.xlsx", Path: "/dir/book.xlsx"}},
+	}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{ShiftPressed: true})
+
+	if !handled {
+		t.Fatal("Shift+Return should be handled")
+	}
+	if fm.openDefaultAppPath != "/dir/book.xlsx" {
+		t.Fatalf("OpenFileDefaultApp path = %q, want /dir/book.xlsx", fm.openDefaultAppPath)
+	}
+	if fm.openFilePath != "" {
+		t.Fatalf("OpenFile path = %q, want empty", fm.openFilePath)
+	}
+}
+
+func TestMainScreenConfiguredBindingCanRunOpenDefaultApp(t *testing.T) {
+	fm := &mainScreenFakeFileManager{
+		files: []fileinfo.FileInfo{{Name: "book.xlsx", Path: "/dir/book.xlsx"}},
+	}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+		{Key: "O", Command: CommandOpenDefaultApp},
+	})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyO}, ModifierState{})
+
+	if !handled {
+		t.Fatal("configured open.defaultApp should be handled")
+	}
+	if fm.openDefaultAppPath != "/dir/book.xlsx" {
+		t.Fatalf("OpenFileDefaultApp path = %q, want /dir/book.xlsx", fm.openDefaultAppPath)
+	}
 }
 
 func TestMainScreenJShowsDirectoryJumpDialog(t *testing.T) {

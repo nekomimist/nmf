@@ -1813,15 +1813,16 @@ func (f *configScriptFakeFileManager) ShowMessageDialog(title string, message st
 	f.messageText = message
 	f.showMessageCount++
 }
-func (f *configScriptFakeFileManager) QuitApplication()                 {}
-func (f *configScriptFakeFileManager) OpenFile(file *fileinfo.FileInfo) {}
-func (f *configScriptFakeFileManager) ShowCopyDialog()                  {}
-func (f *configScriptFakeFileManager) ShowMoveDialog()                  {}
-func (f *configScriptFakeFileManager) ShowRenameDialog()                {}
-func (f *configScriptFakeFileManager) ShowDeleteDialog(permanent bool)  {}
-func (f *configScriptFakeFileManager) ShowExplorerContextMenu()         {}
-func (f *configScriptFakeFileManager) ShowExternalCommandMenu()         {}
-func (f *configScriptFakeFileManager) ShowFileViewer()                  {}
+func (f *configScriptFakeFileManager) QuitApplication()                           {}
+func (f *configScriptFakeFileManager) OpenFile(file *fileinfo.FileInfo)           {}
+func (f *configScriptFakeFileManager) OpenFileDefaultApp(file *fileinfo.FileInfo) {}
+func (f *configScriptFakeFileManager) ShowCopyDialog()                            {}
+func (f *configScriptFakeFileManager) ShowMoveDialog()                            {}
+func (f *configScriptFakeFileManager) ShowRenameDialog()                          {}
+func (f *configScriptFakeFileManager) ShowDeleteDialog(permanent bool)            {}
+func (f *configScriptFakeFileManager) ShowExplorerContextMenu()                   {}
+func (f *configScriptFakeFileManager) ShowExternalCommandMenu()                   {}
+func (f *configScriptFakeFileManager) ShowFileViewer()                            {}
 func (f *configScriptFakeFileManager) ShowCommandMenu(title string, items []keymanager.CommandMenuItem) {
 	f.menuTitle = title
 	f.menuItems = items

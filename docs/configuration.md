@@ -268,7 +268,7 @@ Available main-screen commands:
 
 - `cursor.up`, `cursor.down`, `cursor.pageUp`, `cursor.pageDown`
 - `cursor.first`, `cursor.last`
-- `open`, `selection.toggle`, `selection.markAll`
+- `open`, `open.defaultApp`, `selection.toggle`, `selection.markAll`
 - `directory.parent`, `directory.refresh`, `directory.home`, `directory.create`
 - `clipboard.createTextFile`
 - `window.new`, `window.reopen`, `window.focusLeft`, `window.focusRight`

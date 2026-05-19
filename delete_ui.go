@@ -28,9 +28,9 @@ func (fm *FileManager) ShowDeleteDialog(permanent bool) {
 		}
 		jobs.GetManager().EnqueueDelete(srcPaths, mode)
 		if permanent {
-			ui.ShowCompactMessageDialog(fm.window, "Delete", fmt.Sprintf("Queued permanent delete for %d item(s).", len(srcPaths)))
+			fm.ShowMessageDialog("Delete", fmt.Sprintf("Queued permanent delete for %d item(s).", len(srcPaths)))
 		} else {
-			ui.ShowCompactMessageDialog(fm.window, "Trash", fmt.Sprintf("Queued %d item(s) to Trash.", len(srcPaths)))
+			fm.ShowMessageDialog("Trash", fmt.Sprintf("Queued %d item(s) to Trash.", len(srcPaths)))
 		}
 		fm.FocusFileList()
 	})

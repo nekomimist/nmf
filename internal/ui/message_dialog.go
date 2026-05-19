@@ -12,40 +12,35 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-// ShowMessageDialog displays a simple OK dialog with a title and message.
-// It returns immediately after showing.
-func ShowMessageDialog(parent fyne.Window, title, message string) {
-	d := dialog.NewInformation(title, message, parent)
-	d.Show()
-}
-
 // ShowCompactMessageDialog displays a small acknowledgement dialog without the
 // large information icon used by Fyne's default information dialog.
 func ShowCompactMessageDialog(parent fyne.Window, title, message string) {
-	var d *dialog.CustomDialog
-	closeDialog := func() {
-		if d != nil {
-			d.Hide()
+	fyne.Do(func() {
+		var d *dialog.CustomDialog
+		closeDialog := func() {
+			if d != nil {
+				d.Hide()
+			}
 		}
-	}
 
-	label := widget.NewLabel(message)
-	label.Alignment = fyne.TextAlignLeading
-	label.Wrapping = fyne.TextWrapBreak
-	messageSize, dialogSize := compactMessageDialogSizes(message)
-	messageBox := container.NewGridWrap(messageSize, container.NewPadded(label))
-	content := container.NewVBox(
-		messageBox,
-		container.NewGridWithColumns(1, widget.NewButton("OK", closeDialog)),
-	)
-	sink := newCompactMessageSink(content, closeDialog)
+		label := widget.NewLabel(message)
+		label.Alignment = fyne.TextAlignLeading
+		label.Wrapping = fyne.TextWrapBreak
+		messageSize, dialogSize := compactMessageDialogSizes(message)
+		messageBox := container.NewGridWrap(messageSize, container.NewPadded(label))
+		content := container.NewVBox(
+			messageBox,
+			container.NewGridWithColumns(1, widget.NewButton("OK", closeDialog)),
+		)
+		sink := newCompactMessageSink(content, closeDialog)
 
-	d = dialog.NewCustomWithoutButtons(title, sink, parent)
-	d.Show()
-	d.Resize(dialogSize)
-	if parent != nil {
-		parent.Canvas().Focus(sink)
-	}
+		d = dialog.NewCustomWithoutButtons(title, sink, parent)
+		d.Show()
+		d.Resize(dialogSize)
+		if parent != nil {
+			parent.Canvas().Focus(sink)
+		}
+	})
 }
 
 func compactMessageDialogSizes(message string) (fyne.Size, fyne.Size) {

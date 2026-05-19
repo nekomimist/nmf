@@ -289,22 +289,24 @@ func (d *CopyMoveDialog) AcceptSelection() {
 	d.keyManager.PopHandler()
 
 	// Allow direct path via search text when no list match
+	acceptedPath := ""
 	search := d.GetSearchText()
 	if search != "" && len(d.filteredDest) == 0 {
 		if resolvedPath, ok := d.resolveDirectoryPath(search); ok {
 			d.debugPrint("CopyMoveDialog: direct path accept: %s", resolvedPath)
-			if d.onAccept != nil {
-				d.onAccept(resolvedPath)
-			}
+			acceptedPath = resolvedPath
 		}
-	} else if d.onAccept != nil && d.selectedPath != "" {
-		d.onAccept(d.selectedPath)
+	} else if d.selectedPath != "" {
+		acceptedPath = d.selectedPath
 	}
 	if d.dialog != nil {
 		d.dialog.Hide()
 	}
 	if d.parent != nil {
 		d.parent.Canvas().Unfocus()
+	}
+	if d.onAccept != nil && acceptedPath != "" {
+		d.onAccept(acceptedPath)
 	}
 }
 
@@ -314,26 +316,28 @@ func (d *CopyMoveDialog) AcceptDirectPath() {
 	}
 	d.closed = true
 	d.keyManager.PopHandler()
+	acceptedPath := ""
 	search := d.GetSearchText()
 	if search != "" {
 		if resolvedPath, ok := d.resolveDirectoryPath(search); ok {
 			d.debugPrint("CopyMoveDialog: Ctrl+Enter direct: %s", resolvedPath)
-			if d.onAccept != nil {
-				d.onAccept(resolvedPath)
-			}
-		} else if d.onAccept != nil && d.selectedPath != "" {
+			acceptedPath = resolvedPath
+		} else if d.selectedPath != "" {
 			d.debugPrint("CopyMoveDialog: invalid direct path; fallback to selection: %s", d.selectedPath)
-			d.onAccept(d.selectedPath)
+			acceptedPath = d.selectedPath
 		}
-	} else if d.onAccept != nil && d.selectedPath != "" {
+	} else if d.selectedPath != "" {
 		d.debugPrint("CopyMoveDialog: empty direct path; fallback to selection: %s", d.selectedPath)
-		d.onAccept(d.selectedPath)
+		acceptedPath = d.selectedPath
 	}
 	if d.dialog != nil {
 		d.dialog.Hide()
 	}
 	if d.parent != nil {
 		d.parent.Canvas().Unfocus()
+	}
+	if d.onAccept != nil && acceptedPath != "" {
+		d.onAccept(acceptedPath)
 	}
 }
 

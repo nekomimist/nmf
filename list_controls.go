@@ -416,7 +416,23 @@ func (fm *FileManager) OpenFile(file *fileinfo.FileInfo) {
 	// Regular file: try to open with associated application
 	if err := fileinfo.OpenWithDefaultApp(file.Path); err != nil {
 		debugPrint("FileManager: Failed to open file '%s': %v", file.Path, err)
-		ui.ShowMessageDialog(fm.window, "ファイルを開けませんでした", err.Error())
+		fm.ShowMessageDialog("ファイルを開けませんでした", err.Error())
+		return
+	}
+}
+
+// OpenFileDefaultApp opens a file with the system default app, or navigates into a directory.
+func (fm *FileManager) OpenFileDefaultApp(file *fileinfo.FileInfo) {
+	if file == nil {
+		return
+	}
+	if file.IsDir {
+		fm.LoadDirectory(file.Path)
+		return
+	}
+	if err := fileinfo.OpenWithDefaultApp(file.Path); err != nil {
+		debugPrint("FileManager: Failed to open file with default app '%s': %v", file.Path, err)
+		fm.ShowMessageDialog("ファイルを開けませんでした", err.Error())
 		return
 	}
 }

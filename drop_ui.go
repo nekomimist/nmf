@@ -50,7 +50,7 @@ func (fm *FileManager) handleDroppedURIs(uris []fyne.URI) {
 	dest, err := dropDestination(fm.currentPath)
 	if err != nil {
 		debugPrint("FileManager: Drop rejected: %v", err)
-		ui.ShowCompactMessageDialog(fm.window, "Drop", err.Error())
+		fm.ShowMessageDialog("Drop", err.Error())
 		fm.FocusFileList()
 		return
 	}
@@ -59,7 +59,7 @@ func (fm *FileManager) handleDroppedURIs(uris []fyne.URI) {
 	paths, err := droppedURIPaths(uris)
 	if err != nil {
 		debugPrint("FileManager: Drop rejected: %v", err)
-		ui.ShowCompactMessageDialog(fm.window, "Drop", err.Error())
+		fm.ShowMessageDialog("Drop", err.Error())
 		fm.FocusFileList()
 		return
 	}
@@ -165,17 +165,12 @@ func (fm *FileManager) showDropActionDialog(paths []string, dest string) {
 			paths = droppedMoveSources(paths, dest)
 			if len(paths) == 0 {
 				debugPrint("FileManager: Drop move skipped same-directory sources")
-				ui.ShowCompactMessageDialog(fm.window, "Move", "Dropped item(s) are already in this directory.")
+				fm.ShowMessageDialog("Move", "Dropped item(s) are already in this directory.")
 				return
 			}
 		}
 		enqueueDroppedTransfer(jobs.GetManager(), op, paths, dest, fm.conflictResolver())
 		debugPrint("FileManager: Drop queued action=%s sources=%d dest=%s", string(op), len(paths), dest)
-		ui.ShowCompactMessageDialog(
-			fm.window,
-			strings.Title(string(op)),
-			fmt.Sprintf("Queued %d item(s) to:\n%s", len(paths), dest),
-		)
 	}
 
 	summary := widget.NewLabel(dropSummary(paths, dest))

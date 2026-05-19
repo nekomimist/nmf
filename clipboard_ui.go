@@ -40,18 +40,18 @@ func (fm *FileManager) ShowClipboardTextFileDialog() {
 func (fm *FileManager) CreateClipboardTextFile(name string) bool {
 	text, ok := fm.clipboardText()
 	if !ok {
-		ui.ShowMessageDialog(fm.window, "Clipboard unavailable", "The application clipboard is not available.")
+		fm.ShowMessageDialog("Clipboard unavailable", "The application clipboard is not available.")
 		return false
 	}
 	if text == "" {
-		ui.ShowMessageDialog(fm.window, "Clipboard is empty", "There is no text to save.")
+		fm.ShowMessageDialog("Clipboard is empty", "There is no text to save.")
 		return false
 	}
 
 	newPath, err := fileinfo.CreateTextFilePortable(fm.currentPath, name, text)
 	if err != nil {
 		debugPrint("FileManager: Create text file failed parent=%s name=%s err=%v", fm.currentPath, name, err)
-		ui.ShowMessageDialog(fm.window, "Create text file failed", err.Error())
+		fm.ShowMessageDialog("Create text file failed", err.Error())
 		return false
 	}
 

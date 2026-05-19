@@ -11,7 +11,6 @@ import (
 
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
-	"nmf/internal/ui"
 )
 
 // SaveCursorPosition saves the current cursor position for the given directory.
@@ -165,7 +164,7 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 		fyne.Do(func() {
 			// Clear busy state on error
 			fm.endBusy()
-			ui.ShowMessageDialog(fm.window, "フォルダを開けませんでした", err.Error())
+			fm.ShowMessageDialog("フォルダを開けませんでした", err.Error())
 			// Revert to previous path on error and restart watcher
 			if previousPath != "" {
 				fm.currentPath = previousPath

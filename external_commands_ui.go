@@ -160,7 +160,7 @@ func (fm *FileManager) runExternalCommandMaybeEdit(command string, args []string
 		parsedCommand, parsedArgs, err := parseExternalCommandLine(edited)
 		if err != nil {
 			debugPrint("FileManager: command line parse failed err=%v", err)
-			ui.ShowCompactMessageDialog(fm.window, "Command parse failed", err.Error())
+			fm.ShowMessageDialog("Command parse failed", err.Error())
 			return false
 		}
 		if strings.TrimSpace(parsedCommand) == "" {
@@ -182,7 +182,7 @@ func (fm *FileManager) runExternalCommand(command string, args []string, cwd str
 	}
 	if err := cmd.Start(); err != nil {
 		debugPrint("FileManager: external command failed command=%s err=%v", command, err)
-		ui.ShowCompactMessageDialog(fm.window, "Command failed", err.Error())
+		fm.ShowMessageDialog("Command failed", err.Error())
 		return false
 	}
 	debugPrint("FileManager: external command started command=%s pid=%d cwd=%s", command, cmd.Process.Pid, cmd.Dir)

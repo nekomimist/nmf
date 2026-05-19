@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -138,8 +137,6 @@ func (fm *FileManager) showCopyMoveDialog(op ui.Operation) {
 		} else {
 			mgr.EnqueueMoveWithResolver(srcPaths, selectedDest, resolver)
 		}
-		// Feedback
-		ui.ShowMessageDialog(fm.window, strings.Title(string(op)), fmt.Sprintf("Queued %d item(s) to:\n%s", len(srcPaths), selectedDest))
 		fm.FocusFileList()
 	})
 }

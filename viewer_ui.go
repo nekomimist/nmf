@@ -27,7 +27,7 @@ func (fm *FileManager) ShowFileViewer() {
 	debugPrint("FileViewer: read-preview elapsed=%s path=%s err=%v", time.Since(stepStart), file.Path, err)
 	if err != nil {
 		debugPrint("FileViewer: open failed path=%s err=%v", file.Path, err)
-		ui.ShowMessageDialog(fm.window, "Viewer failed", err.Error())
+		fm.ShowMessageDialog("Viewer failed", err.Error())
 		fm.FocusFileList()
 		return
 	}

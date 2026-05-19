@@ -30,6 +30,9 @@ type DirectoryJumpDialog struct {
 	parent          fyne.Window
 	closed          bool
 	sink            *KeySink
+
+	pendingAutoAcceptPath string
+	autoAcceptScheduled   bool
 }
 
 // NewDirectoryJumpDialog creates a configured directory jump dialog.
@@ -185,7 +188,11 @@ func (d *DirectoryJumpDialog) updateFilteredEntries(query string) {
 
 	if NormalizeDirectoryJumpShortcut(query) != "" && len(d.filteredEntries) == 1 {
 		d.debugPrint("DirectoryJumpDialog: unique shortcut match path=%s", d.filteredEntries[0].Directory)
-		d.acceptPath(d.filteredEntries[0].Directory)
+		d.pendingAutoAcceptPath = d.filteredEntries[0].Directory
+		d.autoAcceptScheduled = false
+	} else {
+		d.pendingAutoAcceptPath = ""
+		d.autoAcceptScheduled = false
 	}
 }
 
@@ -321,7 +328,22 @@ func (d *DirectoryJumpDialog) AppendToSearch(char string) {
 	if d.searchEntry != nil {
 		d.searchEntry.SetText(d.searchEntry.Text + char)
 		d.debugPrint("DirectoryJumpDialog: append search=%s", d.searchEntry.Text)
+		d.scheduleAutoAccept()
 	}
+}
+
+func (d *DirectoryJumpDialog) scheduleAutoAccept() {
+	if d.closed || d.autoAcceptScheduled || d.pendingAutoAcceptPath == "" {
+		return
+	}
+	path := d.pendingAutoAcceptPath
+	d.autoAcceptScheduled = true
+	d.keyManager.DeferUntilKeysReleased("directoryJump.autoAccept", func() {
+		if d.closed || d.pendingAutoAcceptPath != path {
+			return
+		}
+		d.acceptPath(path)
+	})
 }
 
 // BackspaceSearch removes the last character from search text.
@@ -363,14 +385,14 @@ func (d *DirectoryJumpDialog) acceptPath(path string) {
 	d.closed = true
 	d.keyManager.PopHandler()
 
-	if d.callback != nil && path != "" {
-		d.callback(path)
-	}
 	if d.dialog != nil {
 		d.dialog.Hide()
 	}
 	if d.parent != nil {
 		d.parent.Canvas().Unfocus()
+	}
+	if d.callback != nil && path != "" {
+		d.callback(path)
 	}
 }
 

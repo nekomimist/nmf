@@ -17,6 +17,7 @@ const (
 	CommandCursorFirst         = "cursor.first"
 	CommandCursorLast          = "cursor.last"
 	CommandOpen                = "open"
+	CommandOpenDefaultApp      = "open.defaultApp"
 	CommandSelectToggle        = "selection.toggle"
 	CommandSelectAll           = "selection.markAll"
 	CommandParentDirectory     = "directory.parent"
@@ -95,6 +96,7 @@ type FileManagerInterface interface {
 	QuitApplication()
 
 	OpenFile(file *fileinfo.FileInfo)
+	OpenFileDefaultApp(file *fileinfo.FileInfo)
 	ShowCopyDialog()
 	ShowMoveDialog()
 	ShowRenameDialog()
@@ -315,6 +317,7 @@ func defaultMainScreenBindings() []config.KeyBindingEntry {
 		{Key: "Down", Command: CommandCursorDown, Event: keyEventTyped},
 		{Key: "S-Down", Command: CommandCursorPageDown, Event: keyEventTyped},
 		{Key: "Return", Command: CommandOpen, Event: keyEventTyped},
+		{Key: "S-Return", Command: CommandOpenDefaultApp, Event: keyEventTyped},
 		{Key: "Space", Command: CommandSelectToggle, Event: keyEventTyped},
 		{Key: "C-A", Command: CommandSelectAll, Event: keyEventDown},
 		{Key: "Backspace", Command: CommandParentDirectory, Event: keyEventTyped},
@@ -358,6 +361,7 @@ func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
 		CommandCursorFirst:         mh.cursorFirst,
 		CommandCursorLast:          mh.cursorLast,
 		CommandOpen:                mh.openCurrent,
+		CommandOpenDefaultApp:      mh.openCurrentDefaultApp,
 		CommandSelectToggle:        mh.toggleSelection,
 		CommandSelectAll:           mh.selectAll,
 		CommandParentDirectory:     mh.parentDirectory,
@@ -459,6 +463,15 @@ func (mh *MainScreenKeyHandler) openCurrent(CommandContext) {
 	if currentIdx >= 0 && currentIdx < len(files) {
 		fileInfo := files[currentIdx]
 		mh.fileManager.OpenFile(&fileInfo)
+	}
+}
+
+func (mh *MainScreenKeyHandler) openCurrentDefaultApp(CommandContext) {
+	currentIdx := mh.fileManager.GetCurrentCursorIndex()
+	files := mh.fileManager.GetFiles()
+	if currentIdx >= 0 && currentIdx < len(files) {
+		fileInfo := files[currentIdx]
+		mh.fileManager.OpenFileDefaultApp(&fileInfo)
 	}
 }
 
