@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
@@ -24,6 +25,7 @@ const (
 	fileViewerLineWidth   float32 = 90
 	fileViewerTextLimit   int     = 64 << 10
 	fileViewerHexLimit    int     = 64 << 10
+	hexDumpFullLineBytes  int     = 79
 )
 
 type FileViewerDialog struct {
@@ -40,11 +42,15 @@ type FileViewerDialog struct {
 	lineLabel *widget.Label
 	tabs      *container.AppTabs
 
+	textTab *container.TabItem
+	hexTab  *container.TabItem
+
 	activeName string
 	lastQuery  string
 	lastIndex  int
 	closed     bool
 	handlerSet bool
+	debugPrint func(format string, args ...interface{})
 }
 
 func NewFileViewerDialog(preview *fileinfo.PreviewFile, km ...*keymanager.KeyManager) *FileViewerDialog {
@@ -60,14 +66,32 @@ func NewFileViewerDialog(preview *fileinfo.PreviewFile, km ...*keymanager.KeyMan
 	}
 }
 
+func (d *FileViewerDialog) SetDebugPrint(debugPrint func(format string, args ...interface{})) {
+	d.debugPrint = debugPrint
+}
+
 func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
+	totalStart := time.Now()
+	stepStart := totalStart
 	d.parent = parent
-	d.textEntry = NewReadOnlyEntry(viewerText(d.preview), d.CancelDialog, d.handleEntryKey, d.handleEntryRune)
-	d.hexEntry = NewReadOnlyEntry(viewerHex(d.preview), d.CancelDialog, d.handleEntryKey, d.handleEntryRune)
-	d.textEntry.OnCursorChanged = d.updateLineDisplay
-	d.hexEntry.OnCursorChanged = d.updateLineDisplay
-	d.textEntry.SetScrollHandler(d.handleEntryScroll)
-	d.hexEntry.SetScrollHandler(d.handleEntryScroll)
+	d.debug("FileViewer: dialog-start bytes=%d text_bytes=%d binary=%t markdown=%t",
+		len(d.preview.Data), len(d.preview.Text), d.preview.Binary, d.preview.Markdown)
+
+	text := viewerText(d.preview)
+	d.debug("FileViewer: text-view elapsed=%s bytes=%d", time.Since(stepStart), len(text))
+	stepStart = time.Now()
+	d.textEntry = NewReadOnlyEntry(text, d.CancelDialog, d.handleEntryKey, d.handleEntryRune)
+	d.configureViewerEntry(d.textEntry)
+	d.debug("FileViewer: text-entry elapsed=%s bytes=%d", time.Since(stepStart), len(text))
+	stepStart = time.Now()
+
+	hexContent := fyne.CanvasObject(widget.NewLabel("Hex preview will load when selected."))
+	if d.preview.Binary {
+		hexContent = d.createHexEntry()
+	}
+	d.debug("FileViewer: hex-tab-content elapsed=%s loaded=%t", time.Since(stepStart), d.hexEntry != nil)
+	stepStart = time.Now()
+
 	d.search = widget.NewEntry()
 	d.search.SetPlaceHolder("Search")
 	d.search.OnSubmitted = func(_ string) { d.findNext() }
@@ -78,13 +102,16 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	d.status.Truncation = fyne.TextTruncateClip
 	d.lineLabel = widget.NewLabel("")
 	d.lineLabel.TextStyle = fyne.TextStyle{Monospace: true}
+	d.debug("FileViewer: controls elapsed=%s", time.Since(stepStart))
+	stepStart = time.Now()
 
-	d.tabs = container.NewAppTabs(
-		container.NewTabItem("Text", d.textEntry),
-		container.NewTabItem("Markdown", container.NewScroll(d.markdownView())),
-		container.NewTabItem("Hex", d.hexEntry),
-	)
+	d.textTab = container.NewTabItem("Text", d.textEntry)
+	d.hexTab = container.NewTabItem("Hex", hexContent)
+	d.tabs = container.NewAppTabs(d.textTab, container.NewTabItem("Markdown", container.NewScroll(d.markdownView())), d.hexTab)
 	d.tabs.OnSelected = func(item *container.TabItem) {
+		if item == d.hexTab {
+			d.ensureHexEntry()
+		}
 		d.activeName = item.Text
 		d.lastIndex = -1
 		d.updateLineDisplay()
@@ -96,6 +123,8 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 		d.tabs.SelectIndex(1)
 		d.activeName = "Markdown"
 	}
+	d.debug("FileViewer: tabs elapsed=%s active=%s", time.Since(stepStart), d.activeName)
+	stepStart = time.Now()
 
 	toolbar := container.NewBorder(nil, nil, nil, container.NewHBox(
 		widget.NewButtonWithIcon("", theme.ContentCopyIcon(), d.copySelection),
@@ -116,19 +145,33 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 		nil,
 		d.tabs,
 	)
+	d.debug("FileViewer: layout elapsed=%s", time.Since(stepStart))
+	stepStart = time.Now()
+
 	if d.km != nil {
 		d.km.PushHandler(keymanager.NewFileViewerKeyHandler(d))
 		d.handlerSet = true
 	}
+	d.debug("FileViewer: handler elapsed=%s", time.Since(stepStart))
+	stepStart = time.Now()
 
 	d.dialog = dialog.NewCustomWithoutButtons("Viewer", content, parent)
 	d.dialog.SetOnClosed(func() {
 		d.CancelDialog()
 	})
+	d.debug("FileViewer: dialog-create elapsed=%s", time.Since(stepStart))
+	stepStart = time.Now()
+
 	d.dialog.Show()
+	d.debug("FileViewer: dialog-show elapsed=%s", time.Since(stepStart))
+	stepStart = time.Now()
 	d.dialog.Resize(fileViewerDialogSize(parent))
+	d.debug("FileViewer: dialog-resize elapsed=%s", time.Since(stepStart))
+	stepStart = time.Now()
 	d.updateLineDisplay()
 	d.focusActiveEntry()
+	d.debug("FileViewer: dialog-focus elapsed=%s", time.Since(stepStart))
+	d.debug("FileViewer: dialog-ready elapsed=%s", time.Since(totalStart))
 }
 
 func fileViewerDialogSize(parent fyne.Window) fyne.Size {
@@ -154,12 +197,50 @@ func fileViewerDialogSize(parent fyne.Window) fyne.Size {
 }
 
 func (d *FileViewerDialog) markdownView() fyne.CanvasObject {
+	start := time.Now()
 	if d.preview.Binary {
+		d.debug("FileViewer: markdown-view elapsed=%s mode=binary-placeholder", time.Since(start))
 		return widget.NewLabel("Binary file: markdown preview disabled. Use the Hex tab.")
 	}
 	rich := widget.NewRichTextFromMarkdown(viewerText(d.preview))
 	rich.Wrapping = fyne.TextWrapWord
+	d.debug("FileViewer: markdown-view elapsed=%s mode=markdown", time.Since(start))
 	return rich
+}
+
+func (d *FileViewerDialog) configureViewerEntry(entry *ReadOnlyEntry) {
+	entry.OnCursorChanged = d.updateLineDisplay
+	entry.SetScrollHandler(d.handleEntryScroll)
+}
+
+func (d *FileViewerDialog) createHexEntry() *ReadOnlyEntry {
+	stepStart := time.Now()
+	hex := viewerHex(d.preview)
+	d.debug("FileViewer: hex-view elapsed=%s bytes=%d", time.Since(stepStart), len(hex))
+	stepStart = time.Now()
+	entry := NewReadOnlyEntry(hex, d.CancelDialog, d.handleEntryKey, d.handleEntryRune)
+	d.configureViewerEntry(entry)
+	d.hexEntry = entry
+	d.debug("FileViewer: hex-entry elapsed=%s bytes=%d", time.Since(stepStart), len(hex))
+	return entry
+}
+
+func (d *FileViewerDialog) ensureHexEntry() {
+	if d.hexEntry != nil || d.hexTab == nil {
+		return
+	}
+	stepStart := time.Now()
+	d.hexTab.Content = d.createHexEntry()
+	if d.tabs != nil {
+		d.tabs.Refresh()
+	}
+	d.debug("FileViewer: hex-lazy-load elapsed=%s", time.Since(stepStart))
+}
+
+func (d *FileViewerDialog) debug(format string, args ...interface{}) {
+	if d.debugPrint != nil {
+		d.debugPrint(format, args...)
+	}
 }
 
 func viewerText(preview *fileinfo.PreviewFile) string {
@@ -182,8 +263,9 @@ func viewerHex(preview *fileinfo.PreviewFile) string {
 	}
 	data := preview.Data
 	truncated := false
-	if len(data) > fileViewerHexLimit {
-		data = data[:fileViewerHexLimit]
+	limit := hexDumpDataLimit(fileViewerHexLimit)
+	if len(data) > limit {
+		data = data[:limit]
 		truncated = true
 	}
 	text := fileinfo.FormatHexDump(data)
@@ -193,6 +275,17 @@ func viewerHex(preview *fileinfo.PreviewFile) string {
 			fileinfo.FormatFileSize(int64(len(preview.Data))))
 	}
 	return text
+}
+
+func hexDumpDataLimit(textLimit int) int {
+	if textLimit <= 0 {
+		return 0
+	}
+	lines := textLimit / hexDumpFullLineBytes
+	if lines < 1 {
+		lines = 1
+	}
+	return lines * 16
 }
 
 func truncateUTF8Bytes(text string, limit int) (string, bool) {

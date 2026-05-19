@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -45,7 +46,7 @@ func TestViewerHexTruncatesDisplayData(t *testing.T) {
 	if !strings.Contains(got, "viewer hex truncated") {
 		t.Fatalf("viewerHex() missing truncation notice")
 	}
-	if strings.Contains(got, "00010000") {
+	if strings.Contains(got, fmt.Sprintf("%08x", hexDumpDataLimit(fileViewerHexLimit))) {
 		t.Fatalf("viewerHex() includes offset beyond display limit")
 	}
 }

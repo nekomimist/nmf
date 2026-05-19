@@ -6,6 +6,7 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"golang.org/x/text/encoding"
@@ -33,7 +34,15 @@ type PreviewFile struct {
 // ReadPreviewFile reads at most PreviewReadLimit bytes from p and prepares text
 // and binary views for the built-in viewer.
 func ReadPreviewFile(p string) (*PreviewFile, error) {
+	return ReadPreviewFileWithDebug(p, nil)
+}
+
+// ReadPreviewFileWithDebug is ReadPreviewFile with optional timing logs.
+func ReadPreviewFileWithDebug(p string, debugPrint func(format string, args ...interface{})) (*PreviewFile, error) {
+	totalStart := time.Now()
+	stepStart := totalStart
 	info, err := StatPortable(p)
+	previewDebug(debugPrint, "FileViewer: stat elapsed=%s path=%s err=%v", time.Since(stepStart), p, err)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +50,9 @@ func ReadPreviewFile(p string) (*PreviewFile, error) {
 		return nil, fmt.Errorf("viewer cannot open directories: %s", p)
 	}
 
+	stepStart = time.Now()
 	vfs, parsed, err := ResolveRead(p)
+	previewDebug(debugPrint, "FileViewer: resolve elapsed=%s path=%s err=%v", time.Since(stepStart), p, err)
 	if err != nil {
 		return nil, err
 	}
@@ -52,13 +63,17 @@ func ReadPreviewFile(p string) (*PreviewFile, error) {
 	if native == "" {
 		native = p
 	}
+	stepStart = time.Now()
 	rc, err := vfs.Open(native)
+	previewDebug(debugPrint, "FileViewer: open elapsed=%s native=%s err=%v", time.Since(stepStart), native, err)
 	if err != nil {
 		return nil, err
 	}
 	defer rc.Close()
 
+	stepStart = time.Now()
 	data, err := io.ReadAll(io.LimitReader(rc, PreviewReadLimit+1))
+	previewDebug(debugPrint, "FileViewer: read elapsed=%s bytes=%d err=%v", time.Since(stepStart), len(data), err)
 	if err != nil {
 		return nil, err
 	}
@@ -67,23 +82,37 @@ func ReadPreviewFile(p string) (*PreviewFile, error) {
 		data = data[:PreviewReadLimit]
 	}
 
+	stepStart = time.Now()
 	text, enc := DecodePreviewText(data)
+	previewDebug(debugPrint, "FileViewer: decode elapsed=%s bytes=%d text_bytes=%d encoding=%s", time.Since(stepStart), len(data), len(text), enc)
+	stepStart = time.Now()
+	binary := LooksBinary(data)
+	previewDebug(debugPrint, "FileViewer: binary-check elapsed=%s binary=%t", time.Since(stepStart), binary)
 	display := parsed.Display
 	if display == "" {
 		display = p
 	}
-	return &PreviewFile{
+	preview := &PreviewFile{
 		Path:      display,
 		Name:      filepath.Base(display),
 		Data:      data,
 		Text:      text,
 		Encoding:  enc,
 		Truncated: truncated,
-		Binary:    LooksBinary(data),
+		Binary:    binary,
 		Markdown:  IsMarkdownPath(display),
 		Size:      info.Size(),
 		SizeKnown: true,
-	}, nil
+	}
+	previewDebug(debugPrint, "FileViewer: preview-ready elapsed=%s bytes=%d text_bytes=%d binary=%t truncated=%t",
+		time.Since(totalStart), len(preview.Data), len(preview.Text), preview.Binary, preview.Truncated)
+	return preview, nil
+}
+
+func previewDebug(debugPrint func(format string, args ...interface{}), format string, args ...interface{}) {
+	if debugPrint != nil {
+		debugPrint(format, args...)
+	}
 }
 
 // DecodePreviewText converts common Japanese/Unicode text encodings to UTF-8.
