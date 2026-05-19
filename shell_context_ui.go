@@ -34,14 +34,20 @@ func (fm *FileManager) ShowExplorerContextMenu() {
 
 	nativeWindow, ok := fm.window.(driver.NativeWindow)
 	if !ok {
-		debugPrint("FileManager: Native window context unavailable for Explorer context menu")
+		debugPrint("FileManager: Explorer context menu error native window unavailable window=%T", fm.window)
 		return
 	}
 
 	var err error
 	nativeWindow.RunNative(func(context any) {
 		winCtx, ok := context.(driver.WindowsWindowContext)
-		if !ok || winCtx.HWND == 0 {
+		if !ok {
+			debugPrint("FileManager: Explorer context menu error invalid native context=%T", context)
+			err = shellmenu.ErrUnsupported
+			return
+		}
+		if winCtx.HWND == 0 {
+			debugPrint("FileManager: Explorer context menu error missing hwnd")
 			err = shellmenu.ErrUnsupported
 			return
 		}
@@ -52,8 +58,12 @@ func (fm *FileManager) ShowExplorerContextMenu() {
 		debugPrint("FileManager: Cursor row anchor unavailable; using mouse position")
 		err = shellmenu.Show(winCtx.HWND, paths)
 	})
-	if err != nil && !errors.Is(err, shellmenu.ErrUnsupported) {
-		debugPrint("FileManager: Explorer context menu failed: %v", err)
+	if err != nil {
+		if errors.Is(err, shellmenu.ErrUnsupported) {
+			debugPrint("FileManager: Explorer context menu error unsupported: %v", err)
+		} else {
+			debugPrint("FileManager: Explorer context menu error failed: %v", err)
+		}
 	}
 
 	fm.FocusFileList()

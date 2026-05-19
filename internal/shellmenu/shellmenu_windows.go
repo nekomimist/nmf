@@ -233,7 +233,7 @@ func Show(hwnd uintptr, paths []string) error {
 	var pt point
 	ret, _, err := procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 	if ret == 0 {
-		return fmt.Errorf("GetCursorPos failed: %w", err)
+		return logErr(fmt.Errorf("GetCursorPos failed: %w", err))
 	}
 	return showAtScreenPosition(hwnd, paths, pt)
 }
@@ -241,12 +241,12 @@ func Show(hwnd uintptr, paths []string) error {
 // ShowAtClientPosition opens the Explorer shell context menu at a window client coordinate.
 func ShowAtClientPosition(hwnd uintptr, paths []string, x, y int) error {
 	if hwnd == 0 {
-		return ErrUnsupported
+		return logErr(ErrUnsupported)
 	}
 	pt := point{x: int32(x), y: int32(y)}
 	ret, _, err := procClientToScreen.Call(hwnd, uintptr(unsafe.Pointer(&pt)))
 	if ret == 0 {
-		return fmt.Errorf("ClientToScreen failed: %w", err)
+		return logErr(fmt.Errorf("ClientToScreen failed: %w", err))
 	}
 	return showAtScreenPosition(hwnd, paths, pt)
 }
@@ -318,14 +318,15 @@ func StartFileDrag(hwnd uintptr, paths []string) error {
 
 func showAtScreenPosition(hwnd uintptr, paths []string, pt point) error {
 	if hwnd == 0 {
-		return ErrUnsupported
+		return logErr(ErrUnsupported)
 	}
 	nativePaths := normalizePaths(paths)
 	if len(nativePaths) == 0 {
+		dbg("Show skipped: no native paths")
 		return nil
 	}
 	if err := ensureSameParent(nativePaths); err != nil {
-		return err
+		return logErr(err)
 	}
 
 	runtime.LockOSThread()
@@ -333,7 +334,7 @@ func showAtScreenPosition(hwnd uintptr, paths []string, pt point) error {
 
 	coinited, err := initializeCOM()
 	if err != nil {
-		return err
+		return logErr(err)
 	}
 	if coinited {
 		defer procCoUninitialize.Call()
@@ -341,13 +342,13 @@ func showAtScreenPosition(hwnd uintptr, paths []string, pt point) error {
 
 	menu, _, err := procCreatePopupMenu.Call()
 	if menu == 0 {
-		return fmt.Errorf("CreatePopupMenu failed: %w", err)
+		return logErr(fmt.Errorf("CreatePopupMenu failed: %w", err))
 	}
 	defer procDestroyMenu.Call(menu)
 
 	folder, childPIDLs, absPIDLs, err := shellFolderAndChildren(nativePaths)
 	if err != nil {
-		return err
+		return logErr(err)
 	}
 	defer releaseUnknown((*unknown)(unsafe.Pointer(folder)))
 	for _, pidl := range absPIDLs {
@@ -366,7 +367,7 @@ func showAtScreenPosition(hwnd uintptr, paths []string, pt point) error {
 		uintptr(unsafe.Pointer(&menuPtr)),
 	)
 	if failed(hr) {
-		return fmt.Errorf("IShellFolder.GetUIObjectOf(IContextMenu) failed: 0x%x", uint32(hr))
+		return logErr(fmt.Errorf("IShellFolder.GetUIObjectOf(IContextMenu) failed: 0x%x", uint32(hr)))
 	}
 	defer releaseUnknown((*unknown)(unsafe.Pointer(menuPtr)))
 
@@ -395,12 +396,12 @@ func showAtScreenPosition(hwnd uintptr, paths []string, pt point) error {
 		cmfNormal,
 	)
 	if failed(hr) {
-		return fmt.Errorf("IContextMenu.QueryContextMenu failed: 0x%x", uint32(hr))
+		return logErr(fmt.Errorf("IContextMenu.QueryContextMenu failed: 0x%x", uint32(hr)))
 	}
 
 	owner, err := newMenuOwner(hwnd, menu2, menu3)
 	if err != nil {
-		return err
+		return logErr(err)
 	}
 	defer owner.destroy()
 
@@ -414,6 +415,7 @@ func showAtScreenPosition(hwnd uintptr, paths []string, pt point) error {
 		0,
 	)
 	if cmd == 0 {
+		dbg("Show canceled/no command selected")
 		return nil
 	}
 
@@ -429,9 +431,16 @@ func showAtScreenPosition(hwnd uintptr, paths []string, pt point) error {
 		uintptr(unsafe.Pointer(&invoke)),
 	)
 	if failed(hr) {
-		return fmt.Errorf("IContextMenu.InvokeCommand failed: 0x%x", uint32(hr))
+		return logErr(fmt.Errorf("IContextMenu.InvokeCommand failed: 0x%x", uint32(hr)))
 	}
 	return nil
+}
+
+func logErr(err error) error {
+	if err != nil {
+		dbg("Show error=%v", err)
+	}
+	return err
 }
 
 func shellDataObject(hwnd uintptr, folder *shellFolder, childPIDLs []uintptr) (*dataObject, error) {
