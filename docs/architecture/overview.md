@@ -88,7 +88,8 @@ Top-level config sections:
 Main-screen keyboard shortcuts are resolved through the key manager command
 registry. Configured `keyBindings` map key specifications such as `C-N`,
 `S-J`, or `F2` to stable internal command IDs. `externalCommands` define the
-commands shown from the main-screen external command menu.
+commands shown from the main-screen external command menu. Runtime-state
+maintenance tools are exposed through the `maintenance.show` command.
 
 If `init.star` is present next to `config.json`, it is loaded after JSON and
 before Fyne theme/window construction. Starlark can overlay all user-editable

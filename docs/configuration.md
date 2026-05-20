@@ -222,6 +222,7 @@ default behavior.
     "keyBindings": [
       { "key": "S-A-C-F2", "command": "rename.show", "event": "typed" },
       { "key": "C-N", "command": "window.new", "event": "down" },
+      { "key": "F12", "command": "maintenance.show" },
       { "key": "S-S", "command": "noop" }
     ]
   }
@@ -281,6 +282,7 @@ Available main-screen commands:
 - `explorerContext.show`
 - `externalCommand.menu`
 - `viewer.show`
+- `maintenance.show`
 - `noop`
 
 Starlark `init.star` can register additional command IDs with the `user.`

@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2"
 
 	"nmf/internal/fileinfo"
+	"nmf/internal/maintenance"
 	"nmf/internal/ui"
 )
 
@@ -93,6 +94,23 @@ func (fm *FileManager) ShowDirectoryJumpDialog() {
 		debugPrint("FileManager: Directory selected from jump dialog: %s", selectedPath)
 		fm.jumpToConfiguredDirectory(selectedPath)
 		fm.FocusFileList()
+	})
+}
+
+// ShowMaintenanceDialog opens maintenance tools for runtime state cleanup.
+func (fm *FileManager) ShowMaintenanceDialog() {
+	dialog := ui.NewMaintenanceDialog(fm.config, fm.keyManager, debugPrint)
+	dialog.ShowDialog(fm.window, func(result maintenance.Result) (int, error) {
+		removed := maintenance.Apply(fm.config, result)
+		if removed == 0 {
+			return 0, nil
+		}
+		if err := fm.configManager.SaveAsync(fm.config); err != nil {
+			debugPrint("FileManager: Error saving maintenance cleanup: %v", err)
+			return removed, err
+		}
+		debugPrint("FileManager: Maintenance cleanup removed=%d", removed)
+		return removed, nil
 	})
 }
 

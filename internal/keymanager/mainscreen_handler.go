@@ -48,6 +48,7 @@ const (
 	CommandExplorerContextShow = "explorerContext.show"
 	CommandExternalCommandMenu = "externalCommand.menu"
 	CommandViewerShow          = "viewer.show"
+	CommandMaintenanceShow     = "maintenance.show"
 	CommandNoop                = "noop"
 )
 
@@ -104,6 +105,7 @@ type FileManagerInterface interface {
 	ShowExplorerContextMenu()
 	ShowExternalCommandMenu()
 	ShowFileViewer()
+	ShowMaintenanceDialog()
 	ShowCommandMenu(title string, items []CommandMenuItem)
 }
 
@@ -274,7 +276,8 @@ func (mh *MainScreenKeyHandler) shouldDeferCommand(commandID string) bool {
 		CommandDeletePermanent,
 		CommandExplorerContextShow,
 		CommandExternalCommandMenu,
-		CommandViewerShow:
+		CommandViewerShow,
+		CommandMaintenanceShow:
 		return true
 	default:
 		return false
@@ -392,6 +395,7 @@ func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
 		CommandExplorerContextShow: func(CommandContext) { mh.fileManager.ShowExplorerContextMenu() },
 		CommandExternalCommandMenu: func(CommandContext) { mh.fileManager.ShowExternalCommandMenu() },
 		CommandViewerShow:          func(CommandContext) { mh.fileManager.ShowFileViewer() },
+		CommandMaintenanceShow:     func(CommandContext) { mh.fileManager.ShowMaintenanceDialog() },
 		CommandNoop:                func(CommandContext) {},
 	}
 }

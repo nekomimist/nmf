@@ -296,6 +296,7 @@ type mainScreenFakeFileManager struct {
 	showExplorerMenuCount  int
 	showExternalMenuCount  int
 	showViewerCount        int
+	showMaintenanceCount   int
 	showSortCount          int
 	openFilePath           string
 	openDefaultAppPath     string
@@ -402,6 +403,7 @@ func (f *mainScreenFakeFileManager) ShowDeleteDialog(permanent bool) {
 func (f *mainScreenFakeFileManager) ShowExplorerContextMenu() { f.showExplorerMenuCount++ }
 func (f *mainScreenFakeFileManager) ShowExternalCommandMenu() { f.showExternalMenuCount++ }
 func (f *mainScreenFakeFileManager) ShowFileViewer()          { f.showViewerCount++ }
+func (f *mainScreenFakeFileManager) ShowMaintenanceDialog()   { f.showMaintenanceCount++ }
 func (f *mainScreenFakeFileManager) ShowCommandMenu(title string, items []CommandMenuItem) {
 }
 
@@ -458,6 +460,22 @@ func TestMainScreenConfiguredBindingCanRunOpenDefaultApp(t *testing.T) {
 	}
 	if fm.openDefaultAppPath != "/dir/book.xlsx" {
 		t.Fatalf("OpenFileDefaultApp path = %q, want /dir/book.xlsx", fm.openDefaultAppPath)
+	}
+}
+
+func TestMainScreenConfiguredBindingCanShowMaintenanceDialog(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+		{Key: "F12", Command: CommandMaintenanceShow},
+	})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyF12}, ModifierState{})
+
+	if !handled {
+		t.Fatal("configured maintenance.show should be handled")
+	}
+	if fm.showMaintenanceCount != 1 {
+		t.Fatalf("ShowMaintenanceDialog count = %d, want 1", fm.showMaintenanceCount)
 	}
 }
 
@@ -834,6 +852,28 @@ func TestMainScreenDefersInputTransitionUntilKeysReleased(t *testing.T) {
 	km.HandleKeyUp(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
 	if fm.showHistoryCount != 1 {
 		t.Fatalf("ShowNavigationHistoryDialog count = %d after release, want 1", fm.showHistoryCount)
+	}
+}
+
+func TestMainScreenDefersMaintenanceDialogTransition(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+		{Key: "F12", Command: CommandMaintenanceShow},
+	})
+	handler.SetTransitionGate(km.DeferUntilKeysReleased)
+	km.PushHandler(handler)
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyF12})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyF12})
+
+	if fm.showMaintenanceCount != 0 {
+		t.Fatalf("ShowMaintenanceDialog count = %d before key release, want 0", fm.showMaintenanceCount)
+	}
+
+	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyF12})
+	if fm.showMaintenanceCount != 1 {
+		t.Fatalf("ShowMaintenanceDialog count = %d after release, want 1", fm.showMaintenanceCount)
 	}
 }
 
