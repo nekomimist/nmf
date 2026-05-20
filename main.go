@@ -130,7 +130,9 @@ func main() {
 	displayInfo := display.Primary(debugPrint)
 	configScript, err := configscript.LoadWithDisplay(configscript.ScriptPath(configManager.ConfigPath()), cfg, displayInfo, debugPrint)
 	if err != nil {
-		log.Fatalf("Error loading Starlark configuration: %v", err)
+		log.Printf("Error loading Starlark configuration: %v", err)
+		showStartupConfigScriptErrorAndExit(cfg, err)
+		return
 	}
 	if configScript.Loaded() {
 		configManager.SetSaveTransform(configScript.SaveTransform(persistentConfig))

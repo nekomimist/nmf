@@ -15,11 +15,25 @@ import (
 // ShowCompactMessageDialog displays a small acknowledgement dialog without the
 // large information icon used by Fyne's default information dialog.
 func ShowCompactMessageDialog(parent fyne.Window, title, message string) {
+	ShowCompactMessageDialogWithOnClose(parent, title, message, nil)
+}
+
+// ShowCompactMessageDialogWithOnClose displays a compact acknowledgement dialog
+// and runs onClose after the user dismisses it.
+func ShowCompactMessageDialogWithOnClose(parent fyne.Window, title, message string, onClose func()) {
 	fyne.Do(func() {
 		var d *dialog.CustomDialog
+		closed := false
 		closeDialog := func() {
+			if closed {
+				return
+			}
+			closed = true
 			if d != nil {
 				d.Hide()
+			}
+			if onClose != nil {
+				onClose()
 			}
 		}
 
