@@ -2,6 +2,7 @@ package main
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"nmf/internal/fileinfo"
 	"nmf/internal/ui"
@@ -22,15 +23,31 @@ func (fm *FileManager) ShowRenameDialog() {
 	}
 
 	dlg := ui.NewLineEditDialog(ui.LineEditDialogOptions{
-		Title:       "Rename",
-		Prompt:      "New name:",
-		CurrentText: target.Name,
-		InitialText: target.Name,
-		ConfirmText: "Rename",
+		Title:            "Rename",
+		Prompt:           "New name:",
+		CurrentText:      target.Name,
+		InitialText:      target.Name,
+		InitialSelection: renameInitialSelection(target),
+		ConfirmText:      "Rename",
 	}, fm.keyManager)
 	dlg.ShowDialog(fm.window, func(newName string) bool {
 		return fm.renameCurrentFile(target, newName)
 	})
+}
+
+func renameInitialSelection(target fileinfo.FileInfo) *ui.LineEditSelection {
+	if target.IsDir {
+		return nil
+	}
+	name := target.Name
+	dot := strings.LastIndex(name, ".")
+	if dot <= 0 || dot == len(name)-1 {
+		return nil
+	}
+	return &ui.LineEditSelection{
+		Start: 0,
+		End:   utf8.RuneCountInString(name[:dot]),
+	}
 }
 
 func (fm *FileManager) renameCurrentFile(target fileinfo.FileInfo, newName string) bool {

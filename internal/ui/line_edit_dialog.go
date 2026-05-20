@@ -17,23 +17,31 @@ import (
 )
 
 const (
-	lineEditDialogWidth                  float32 = 520
-	lineEditDialogHeight                 float32 = 160
+	lineEditDialogWidth                  float32 = 640
+	lineEditDialogHeight                 float32 = 180
 	lineEditEntryHorizontalInset         float32 = 4
-	lineEditEntryVerticalInset           float32 = 3
+	lineEditEntryVerticalInset           float32 = 6
 	lineEditEntryTrailingCaretClearance  float32 = 2
 	lineEditEntryMinimumCaretStrokeWidth float32 = 1
 )
 
+// LineEditSelection describes an initial single-line selection using rune
+// offsets. The cursor is placed at End.
+type LineEditSelection struct {
+	Start int
+	End   int
+}
+
 // LineEditDialogOptions configures a single-line edit dialog.
 type LineEditDialogOptions struct {
-	Title       string
-	Prompt      string
-	CurrentText string
-	InitialText string
-	ConfirmText string
-	Width       float32
-	Height      float32
+	Title            string
+	Prompt           string
+	CurrentText      string
+	InitialText      string
+	InitialSelection *LineEditSelection
+	ConfirmText      string
+	Width            float32
+	Height           float32
 }
 
 // LineEditDialog edits one line of text and commits it through a callback.
@@ -65,7 +73,11 @@ func NewLineEditDialog(opts LineEditDialogOptions, km *keymanager.KeyManager) *L
 	}
 	d.entry = NewLineEditEntry(d.CancelDialog)
 	d.entry.SetText(opts.InitialText)
-	d.entry.MoveCursorEnd()
+	if opts.InitialSelection != nil {
+		d.entry.SelectRange(opts.InitialSelection.Start, opts.InitialSelection.End)
+	} else {
+		d.entry.MoveCursorEnd()
+	}
 	d.entry.OnSubmitted = func(_ string) {
 		d.AcceptEdit()
 	}
@@ -353,6 +365,26 @@ func (e *LineEditEntry) InsertText(text string) {
 	e.replaceRunes(e.normalizedCursor(), e.normalizedCursor(), text)
 }
 
+// SelectRange selects text from start to end using rune offsets and places the
+// cursor at end.
+func (e *LineEditEntry) SelectRange(start, end int) {
+	max := utf8.RuneCountInString(e.Text)
+	start = clampLineEditOffset(start, max)
+	end = clampLineEditOffset(end, max)
+	if start > end {
+		start, end = end, start
+	}
+	e.setCursor(start)
+	if start == end {
+		return
+	}
+	e.KeyDown(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
+	for e.CursorColumn < end {
+		e.TypedKey(&fyne.KeyEvent{Name: fyne.KeyRight})
+	}
+	e.KeyUp(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
+}
+
 func (e *LineEditEntry) replaceRunes(start, end int, replacement string) {
 	runes := []rune(e.Text)
 	if start < 0 {
@@ -369,25 +401,24 @@ func (e *LineEditEntry) replaceRunes(start, end int, replacement string) {
 	e.setCursor(start + utf8.RuneCountInString(replacement))
 }
 
-func (e *LineEditEntry) normalizedCursor() int {
-	max := utf8.RuneCountInString(e.Text)
-	if e.CursorColumn < 0 {
+func clampLineEditOffset(pos, max int) int {
+	if pos < 0 {
 		return 0
 	}
-	if e.CursorColumn > max {
+	if pos > max {
 		return max
 	}
-	return e.CursorColumn
+	return pos
+}
+
+func (e *LineEditEntry) normalizedCursor() int {
+	max := utf8.RuneCountInString(e.Text)
+	return clampLineEditOffset(e.CursorColumn, max)
 }
 
 func (e *LineEditEntry) setCursor(pos int) {
 	max := utf8.RuneCountInString(e.Text)
-	if pos < 0 {
-		pos = 0
-	}
-	if pos > max {
-		pos = max
-	}
+	pos = clampLineEditOffset(pos, max)
 	e.CursorRow = 0
 	e.CursorColumn = pos
 	e.Refresh()
@@ -464,16 +495,13 @@ func (r *lineEditEntryRenderer) applyContentInset() {
 	if content == nil {
 		return
 	}
-	content.Move(content.Position().Add(fyne.NewPos(lineEditEntryHorizontalInset, lineEditEntryVerticalInset)))
+	content.Move(content.Position().Add(fyne.NewPos(lineEditEntryHorizontalInset, 0)))
 	size := content.Size().Subtract(fyne.NewSize(
 		lineEditEntryHorizontalInset*2,
-		lineEditEntryVerticalInset*2,
+		0,
 	))
 	if size.Width < 0 {
 		size.Width = 0
-	}
-	if size.Height < 0 {
-		size.Height = 0
 	}
 	content.Resize(size)
 }

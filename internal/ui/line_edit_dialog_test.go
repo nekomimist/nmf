@@ -126,6 +126,59 @@ func TestLineEditEntryInsertTextAtCursor(t *testing.T) {
 	}
 }
 
+func TestLineEditEntrySelectRange(t *testing.T) {
+	entry := NewLineEditEntry(nil)
+	entry.SetText("note.txt")
+
+	entry.SelectRange(0, 4)
+
+	if got := entry.SelectedText(); got != "note" {
+		t.Fatalf("SelectedText() = %q, want note", got)
+	}
+	if entry.CursorColumn != 4 {
+		t.Fatalf("cursor = %d, want 4", entry.CursorColumn)
+	}
+}
+
+func TestLineEditEntrySelectRangeUsesRuneOffsets(t *testing.T) {
+	entry := NewLineEditEntry(nil)
+	entry.SetText("日本語.txt")
+
+	entry.SelectRange(0, 3)
+
+	if got := entry.SelectedText(); got != "日本語" {
+		t.Fatalf("SelectedText() = %q, want 日本語", got)
+	}
+	if entry.CursorColumn != 3 {
+		t.Fatalf("cursor = %d, want 3", entry.CursorColumn)
+	}
+}
+
+func TestLineEditDialogDefaultsToEndCursorWithoutInitialSelection(t *testing.T) {
+	dialog := NewLineEditDialog(LineEditDialogOptions{InitialText: "abc"}, nil)
+
+	if dialog.entry.CursorColumn != 3 {
+		t.Fatalf("cursor = %d, want end", dialog.entry.CursorColumn)
+	}
+	if got := dialog.entry.SelectedText(); got != "" {
+		t.Fatalf("SelectedText() = %q, want empty", got)
+	}
+}
+
+func TestLineEditDialogAppliesInitialSelection(t *testing.T) {
+	dialog := NewLineEditDialog(LineEditDialogOptions{
+		InitialText:      "note.txt",
+		InitialSelection: &LineEditSelection{Start: 0, End: 4},
+	}, nil)
+
+	if got := dialog.entry.SelectedText(); got != "note" {
+		t.Fatalf("SelectedText() = %q, want note", got)
+	}
+	if dialog.entry.CursorColumn != 4 {
+		t.Fatalf("cursor = %d, want 4", dialog.entry.CursorColumn)
+	}
+}
+
 func TestLineEditEntryReadlineShortcutKeys(t *testing.T) {
 	entry := NewLineEditEntry(nil)
 	entry.SetText("abcd")
@@ -280,8 +333,8 @@ func TestLineEditEntryRendererAddsContentInsetAndClampsCaret(t *testing.T) {
 	if content.Position().X < lineEditEntryHorizontalInset {
 		t.Fatalf("content x inset = %f, want at least %f", content.Position().X, lineEditEntryHorizontalInset)
 	}
-	if content.Position().Y < lineEditEntryVerticalInset {
-		t.Fatalf("content y inset = %f, want at least %f", content.Position().Y, lineEditEntryVerticalInset)
+	if content.Size().Height <= size.Height-lineEditEntryVerticalInset {
+		t.Fatalf("content height = %f, want vertical inset kept as extra height within %f", content.Size().Height, size.Height)
 	}
 
 	caretRight := renderer.caret.Position().X + renderer.caret.Size().Width

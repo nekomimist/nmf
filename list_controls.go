@@ -303,7 +303,7 @@ func (fm *FileManager) ShowPathEditDialog() {
 		Prompt:      "Path:",
 		InitialText: fm.currentPath,
 		ConfirmText: "Open",
-		Width:       640,
+		Width:       760,
 	}, fm.keyManager)
 	dlg.ShowDialog(fm.window, func(path string) bool {
 		return fm.navigateToPath(path)
