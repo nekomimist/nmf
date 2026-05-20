@@ -171,6 +171,17 @@ func (fakeSMBOps) Symlink(target, linkpath string) error        { return nil }
 func (fakeSMBOps) Base(p string) string                         { return pathBase(p) }
 func (fakeSMBOps) Join(elem ...string) string                   { return strings.Join(elem, "/") }
 
+type trackingSMBOps struct {
+	fakeSMBOps
+	renameCalls int
+	renameErr   error
+}
+
+func (o *trackingSMBOps) Rename(oldpath, newpath string) error {
+	o.renameCalls++
+	return o.renameErr
+}
+
 type nopReadWriteCloser struct{}
 
 func (nopReadWriteCloser) Read([]byte) (int, error)    { return 0, io.EOF }
@@ -576,6 +587,120 @@ func TestMoveDirectoryToSameParentIsNoop(t *testing.T) {
 
 	if _, err := os.Stat(child); err != nil {
 		t.Fatalf("source directory contents should remain: %v", err)
+	}
+}
+
+func TestMoveFileUsesRenameFastPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcDir := filepath.Join(tmpDir, "src")
+	dstDir := filepath.Join(tmpDir, "dst")
+	if err := os.Mkdir(srcDir, 0755); err != nil {
+		t.Fatalf("make source dir: %v", err)
+	}
+	if err := os.Mkdir(dstDir, 0755); err != nil {
+		t.Fatalf("make destination dir: %v", err)
+	}
+	src := filepath.Join(srcDir, "file.txt")
+	if err := os.WriteFile(src, []byte("source"), 0644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	job := &Job{Type: TypeMove, ctx: context.Background()}
+	if err := copyOrMovePath(job, src, dstDir); err != nil {
+		t.Fatalf("move should use rename fast path: %v", err)
+	}
+
+	if _, err := os.Stat(src); !os.IsNotExist(err) {
+		t.Fatalf("source should be moved away, got %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(dstDir, "file.txt")); err != nil || string(got) != "source" {
+		t.Fatalf("destination content wrong: got %q err=%v", got, err)
+	}
+	part := filepath.Join(dstDir, "file.txt.part")
+	if _, err := os.Stat(part); !os.IsNotExist(err) {
+		t.Fatalf("copy temp file should not be created on rename fast path, got %v", err)
+	}
+}
+
+func TestMoveDirectoryIntoItselfIsRejected(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcDir := filepath.Join(tmpDir, "dir")
+	destDir := filepath.Join(srcDir, "child")
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		t.Fatalf("make nested dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "file.txt"), []byte("source"), 0644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	job := &Job{Type: TypeMove, ctx: context.Background()}
+	if err := copyOrMovePath(job, srcDir, destDir); err == nil || !strings.Contains(err.Error(), "cannot move a directory into itself") {
+		t.Fatalf("move into descendant error = %v, want self-move rejection", err)
+	}
+	if _, err := os.Stat(filepath.Join(srcDir, "file.txt")); err != nil {
+		t.Fatalf("source should remain after rejected move: %v", err)
+	}
+}
+
+func TestMoveDirectoryMergeSkipsRenameFastPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcDir := filepath.Join(tmpDir, "src", "dir")
+	dstParent := filepath.Join(tmpDir, "dst")
+	dstDir := filepath.Join(dstParent, "dir")
+	if err := os.MkdirAll(srcDir, 0755); err != nil {
+		t.Fatalf("make source dir: %v", err)
+	}
+	if err := os.MkdirAll(dstDir, 0755); err != nil {
+		t.Fatalf("make destination dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "from-source.txt"), []byte("source"), 0644); err != nil {
+		t.Fatalf("write source child: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dstDir, "existing.txt"), []byte("existing"), 0644); err != nil {
+		t.Fatalf("write destination child: %v", err)
+	}
+
+	job := &Job{Type: TypeMove, ctx: context.Background()}
+	if err := copyOrMovePath(job, srcDir, dstParent); err != nil {
+		t.Fatalf("move directory merge failed: %v", err)
+	}
+	if _, err := os.Stat(srcDir); !os.IsNotExist(err) {
+		t.Fatalf("source directory should be removed after merge, got %v", err)
+	}
+	for _, name := range []string{"from-source.txt", "existing.txt"} {
+		if _, err := os.Stat(filepath.Join(dstDir, name)); err != nil {
+			t.Fatalf("merged destination missing %s: %v", name, err)
+		}
+	}
+}
+
+func TestMoveSMBUsesRenameFastPathWithinShare(t *testing.T) {
+	tmpDir := t.TempDir()
+	src := filepath.Join(tmpDir, "file.txt")
+	if err := os.WriteFile(src, []byte("source"), 0644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	fi, err := os.Lstat(src)
+	if err != nil {
+		t.Fatalf("stat source: %v", err)
+	}
+
+	ops := &trackingSMBOps{}
+	root := "smb://host/share"
+	job := &Job{ID: 42, Type: TypeMove, ctx: context.Background()}
+	execCtx := newExecutionContext()
+	srcPath := executionPath{backend: backendSMB, path: "/from/file.txt", smb: ops, smbDisplayRoot: root}
+	dstPath := executionPath{backend: backendSMB, path: "/to/file.txt", smb: ops, smbDisplayRoot: root}
+
+	moved, err := tryFastMovePath(job, execCtx, srcPath, dstPath, fi, false)
+	if err != nil {
+		t.Fatalf("tryFastMovePath returned error: %v", err)
+	}
+	if !moved {
+		t.Fatal("tryFastMovePath should report moved")
+	}
+	if ops.renameCalls != 1 {
+		t.Fatalf("SMB Rename calls = %d, want 1", ops.renameCalls)
 	}
 }
 

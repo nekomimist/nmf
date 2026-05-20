@@ -84,6 +84,8 @@ Jobs:
 - Copying an item to its own directory is allowed; the exact same destination
   path is treated as a collision and can become an auto-suffixed duplicate.
 - Moving an item to its exact current path remains a no-op.
+- Move jobs first try a provider rename within the resolved backend/share, then
+  fall back to copy plus source deletion when rename is unavailable.
 
 Watcher:
 

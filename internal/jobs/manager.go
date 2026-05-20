@@ -682,6 +682,16 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 		return nil
 	}
 
+	if j.Type == TypeMove && fi.IsDir() && isDescendantExecutionPath(dst, src) {
+		return wrapPath(dst.displayPath(), errors.New("cannot move a directory into itself"))
+	}
+
+	if moved, err := tryFastMovePath(j, execCtx, src, dst, fi, overwrite); err != nil {
+		return err
+	} else if moved {
+		return nil
+	}
+
 	if target, isLink, err := linkTargetForCopy(execCtx, src, fi); err != nil {
 		return wrapPath(src.displayPath(), err)
 	} else if isLink {
@@ -775,6 +785,31 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 		}
 	}
 	return nil
+}
+
+func tryFastMovePath(j *Job, execCtx *executionContext, src, dst executionPath, fi os.FileInfo, overwrite bool) (bool, error) {
+	if j.Type != TypeMove {
+		return false, nil
+	}
+	if canceled(j) {
+		return false, errCanceled
+	}
+	if fi.IsDir() && !overwrite {
+		exists, err := pathExists(execCtx, dst)
+		if err != nil {
+			return false, wrapPath(dst.displayPath(), err)
+		}
+		if exists {
+			return false, nil
+		}
+	}
+	if err := renamePath(execCtx, src, dst); err == nil {
+		dbg("job %d: rename %s -> %s", j.ID, src.displayPath(), dst.displayPath())
+		return true, nil
+	} else {
+		dbg("job %d: rename fallback %s -> %s: %v", j.ID, src.displayPath(), dst.displayPath(), err)
+	}
+	return false, nil
 }
 
 func resolveDestinationConflict(j *Job, execCtx *executionContext, src, dst executionPath, srcInfo os.FileInfo) (executionPath, bool, bool, error) {
@@ -931,6 +966,51 @@ func sameExecutionPath(a, b executionPath) bool {
 		bp = strings.ToLower(bp)
 	}
 	return ap == bp
+}
+
+func isDescendantExecutionPath(child, parent executionPath) bool {
+	if child.backend != parent.backend {
+		return false
+	}
+	switch child.backend {
+	case backendArchive:
+		if child.archivePath != parent.archivePath {
+			return false
+		}
+		return isDescendantSlashPath(child.path, parent.path)
+	case backendSMB:
+		if normalizeSMBRoot(child.smbDisplayRoot) != normalizeSMBRoot(parent.smbDisplayRoot) {
+			return false
+		}
+		return isDescendantSlashPath(child.path, parent.path)
+	default:
+		childPath := filepath.Clean(child.path)
+		parentPath := filepath.Clean(parent.path)
+		if runtime.GOOS == "windows" {
+			childPath = strings.ToLower(childPath)
+			parentPath = strings.ToLower(parentPath)
+		}
+		if childPath == parentPath {
+			return false
+		}
+		rel, err := filepath.Rel(parentPath, childPath)
+		if err != nil {
+			return false
+		}
+		return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
+	}
+}
+
+func isDescendantSlashPath(child, parent string) bool {
+	childPath := normalizeSMBExecutionPath(child)
+	parentPath := normalizeSMBExecutionPath(parent)
+	if childPath == parentPath {
+		return false
+	}
+	if parentPath == "/" {
+		return strings.HasPrefix(childPath, "/") && childPath != "/"
+	}
+	return strings.HasPrefix(childPath, strings.TrimRight(parentPath, "/")+"/")
 }
 
 func pathExists(execCtx *executionContext, p executionPath) (bool, error) {
