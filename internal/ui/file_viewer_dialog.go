@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
@@ -251,10 +252,54 @@ func viewerText(preview *fileinfo.PreviewFile) string {
 		return "Binary file: text preview disabled. Use the Hex tab."
 	}
 	text, truncated := truncateUTF8Bytes(preview.Text, fileViewerTextLimit)
+	text = sanitizeViewerText(text)
 	if truncated {
 		text += fmt.Sprintf("\n\n[viewer text truncated at %s]", fileinfo.FormatFileSize(int64(fileViewerTextLimit)))
 	}
 	return text
+}
+
+func sanitizeViewerText(text string) string {
+	var b strings.Builder
+	changed := false
+	for i, r := range text {
+		if viewerPrintableRune(r) {
+			if changed {
+				b.WriteRune(r)
+			}
+			continue
+		}
+		if !changed {
+			b.Grow(len(text))
+			b.WriteString(text[:i])
+			changed = true
+		}
+		writeEscapedRune(&b, r)
+	}
+	if !changed {
+		return text
+	}
+	return b.String()
+}
+
+func viewerPrintableRune(r rune) bool {
+	switch r {
+	case '\n', '\r', '\t':
+		return true
+	default:
+		return unicode.IsPrint(r)
+	}
+}
+
+func writeEscapedRune(b *strings.Builder, r rune) {
+	switch {
+	case r <= 0xff:
+		fmt.Fprintf(b, "\\x%02x", r)
+	case r <= 0xffff:
+		fmt.Fprintf(b, "\\u%04x", r)
+	default:
+		fmt.Fprintf(b, "\\U%08x", r)
+	}
 }
 
 func viewerHex(preview *fileinfo.PreviewFile) string {

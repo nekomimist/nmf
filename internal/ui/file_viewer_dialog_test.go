@@ -37,6 +37,22 @@ func TestViewerTextTruncatesDisplayText(t *testing.T) {
 	}
 }
 
+func TestViewerTextEscapesNonPrintableText(t *testing.T) {
+	preview := &fileinfo.PreviewFile{
+		Text: "hello\x1b[31m\t日本語\nzero-width:\u200b\x7f",
+	}
+
+	got := viewerText(preview)
+	if strings.Contains(got, "\x1b") || strings.Contains(got, "\u200b") || strings.Contains(got, "\x7f") {
+		t.Fatalf("viewerText() = %q, want raw non-printable characters escaped", got)
+	}
+	for _, want := range []string{`hello\x1b[31m`, "\t日本語\n", `zero-width:\u200b\x7f`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("viewerText() = %q, want fragment %q", got, want)
+		}
+	}
+}
+
 func TestViewerHexTruncatesDisplayData(t *testing.T) {
 	preview := &fileinfo.PreviewFile{
 		Data: bytes.Repeat([]byte{0xff}, fileViewerHexLimit+1),
