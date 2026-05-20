@@ -20,6 +20,8 @@ This directory is the canonical source for project design and operational docume
 - `docs/starlark-configuration.md`
   - Optional `init.star` overlay configuration, custom commands, and
     persistence behavior.
+- `docs/unc-smb-status.md`
+  - Current UNC/SMB implementation status, remaining work, and touch points.
 - `docs/architecture-review.md`
   - Active architecture risk register (unresolved items only).
 - `docs/runbooks/` (recommended when needed)

@@ -10,7 +10,7 @@ Cross-platform GUI file manager "nmf" built with Go + Fyne v2.7.3. Features keyb
 ```
 nmf/
 ├── main.go                         # Application entry point with multi-window management
-├── UNC-TODO.md                     # SMB/UNC implementation roadmap and status
+├── docs/unc-smb-status.md          # SMB/UNC implementation roadmap and status
 └── internal/
     ├── config/                     # Configuration management
     │   ├── config.go              # Settings, defaults, file I/O, cursor memory
