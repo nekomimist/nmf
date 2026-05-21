@@ -81,6 +81,28 @@ func (h *deferPushOnTypedKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierSta
 func (h *deferPushOnTypedKeyHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
 func (h *deferPushOnTypedKeyHandler) GetName() string                          { return "deferPushOnTypedKey" }
 
+type deferPopOnTypedKeyHandler struct {
+	km *KeyManager
+}
+
+func (h *deferPopOnTypedKeyHandler) OnKeyDown(_ *fyne.KeyEvent, _ ModifierState) bool {
+	return false
+}
+func (h *deferPopOnTypedKeyHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool {
+	return false
+}
+func (h *deferPopOnTypedKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState) bool {
+	if ev.Name == fyne.KeyReturn || ev.Name == fyne.KeyEscape {
+		h.km.DeferUntilKeysReleased("test.typedPop", func() {
+			h.km.PopHandler()
+		})
+		return true
+	}
+	return false
+}
+func (h *deferPopOnTypedKeyHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
+func (h *deferPopOnTypedKeyHandler) GetName() string                          { return "deferPopOnTypedKey" }
+
 type transientStackChangeOnTypedKeyHandler struct {
 	km        *KeyManager
 	typedKeys []fyne.KeyName
@@ -182,6 +204,41 @@ func TestKeyManagerGatesRepeatedTypedKeyDuringDeferredTransition(t *testing.T) {
 
 	if len(main.typedKeys) != 1 || main.typedKeys[0] != fyne.KeyReturn {
 		t.Fatalf("typed keys after transition = %v, want [Return]", main.typedKeys)
+	}
+}
+
+func TestKeyManagerDefersTypedKeyPopUntilKeyRelease(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	main := &recordingHandler{}
+	dialog := &deferPopOnTypedKeyHandler{km: km}
+	km.PushHandler(main)
+	km.PushHandler(dialog)
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	if got := km.GetCurrentHandler(); got != dialog {
+		t.Fatalf("current handler before key up = %T, want dialog handler", got)
+	}
+	if len(main.typedKeys) != 0 {
+		t.Fatalf("typed keys leaked to main while dialog close was pending: %v", main.typedKeys)
+	}
+
+	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	if got := km.GetCurrentHandler(); got != main {
+		t.Fatalf("current handler after key up = %T, want main handler", got)
+	}
+	if len(main.typedKeys) != 0 {
+		t.Fatalf("late typed key leaked to main after dialog close: %v", main.typedKeys)
+	}
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	if len(main.typedKeys) != 1 || main.typedKeys[0] != fyne.KeyReturn {
+		t.Fatalf("next typed key = %v, want [Return]", main.typedKeys)
 	}
 }
 

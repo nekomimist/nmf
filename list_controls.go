@@ -240,8 +240,10 @@ func (fm *FileManager) ShowIncrementalSearchDialog() {
 	fm.searchOverlay.SetCancelCallback(func() {
 		debugPrint("FileManager: Incremental search cancelled")
 		// Pop the search handler and refocus main view
-		fm.keyManager.PopHandler()
-		fm.FocusFileList()
+		fm.keyManager.DeferUntilKeysReleased("search.cancelCallback", func() {
+			fm.keyManager.PopHandler()
+			fm.FocusFileList()
+		})
 	})
 
 	// Push the search handler and show overlay
@@ -284,7 +286,9 @@ func (fm *FileManager) ShowSortDialog() {
 	// Set up cleanup callback (pop key handler)
 	sortDialog.SetOnCleanup(func() {
 		debugPrint("FileManager: Cleaning up sort dialog - popping key handler")
-		fm.keyManager.PopHandler()
+		fm.keyManager.DeferUntilKeysReleased("sort.close", func() {
+			fm.keyManager.PopHandler()
+		})
 	})
 
 	// Create and push keyboard handler
@@ -333,8 +337,10 @@ func (fm *FileManager) AcceptIncrementalSearchOverlay() {
 	if fm.searchOverlay != nil {
 		fm.searchOverlay.HideAccepted()
 	}
-	fm.keyManager.PopHandler()
-	fm.FocusFileList()
+	fm.keyManager.DeferUntilKeysReleased("search.acceptCallback", func() {
+		fm.keyManager.PopHandler()
+		fm.FocusFileList()
+	})
 }
 
 // IsIncrementalSearchVisible returns whether the search overlay is visible.

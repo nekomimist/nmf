@@ -418,19 +418,21 @@ func (dtd *DirectoryTreeDialog) AcceptSelection() {
 		return
 	}
 	dtd.closed = true
-	// Pop the handler first
-	dtd.keyManager.PopHandler()
 
-	if dtd.callback != nil && dtd.selectedPath != "" {
-		dtd.callback(dtd.selectedPath)
-	}
-	if dtd.dialog != nil {
-		dtd.dialog.Hide()
-	}
-	// Unfocus parent window canvas if available
-	if dtd.parent != nil {
-		dtd.parent.Canvas().Unfocus()
-	}
+	selectedPath := dtd.selectedPath
+	deferDialogClose(dtd.keyManager, "tree.accept", func() {
+		dtd.keyManager.PopHandler()
+		if dtd.callback != nil && selectedPath != "" {
+			dtd.callback(selectedPath)
+		}
+		if dtd.dialog != nil {
+			dtd.dialog.Hide()
+		}
+		// Unfocus parent window canvas if available
+		if dtd.parent != nil {
+			dtd.parent.Canvas().Unfocus()
+		}
+	})
 }
 
 // CancelDialog cancels the dialog without selection
@@ -439,15 +441,16 @@ func (dtd *DirectoryTreeDialog) CancelDialog() {
 		return
 	}
 	dtd.closed = true
-	// Pop the handler first
-	dtd.keyManager.PopHandler()
 
-	if dtd.dialog != nil {
-		dtd.dialog.Hide()
-	}
-	if dtd.parent != nil {
-		dtd.parent.Canvas().Unfocus()
-	}
+	deferDialogClose(dtd.keyManager, "tree.cancel", func() {
+		dtd.keyManager.PopHandler()
+		if dtd.dialog != nil {
+			dtd.dialog.Hide()
+		}
+		if dtd.parent != nil {
+			dtd.parent.Canvas().Unfocus()
+		}
+	})
 }
 
 // ToggleRootMode toggles between root filesystem and parent directory mode

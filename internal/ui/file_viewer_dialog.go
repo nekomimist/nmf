@@ -365,16 +365,18 @@ func (d *FileViewerDialog) CancelDialog() {
 		return
 	}
 	d.closed = true
-	if d.handlerSet && d.km != nil {
-		d.km.PopHandler()
-		d.handlerSet = false
-	}
-	if d.dialog != nil {
-		d.dialog.Hide()
-	}
-	if d.parent != nil {
-		d.parent.Canvas().Unfocus()
-	}
+	deferDialogClose(d.km, "viewer.close", func() {
+		if d.handlerSet && d.km != nil {
+			d.km.PopHandler()
+			d.handlerSet = false
+		}
+		if d.dialog != nil {
+			d.dialog.Hide()
+		}
+		if d.parent != nil {
+			d.parent.Canvas().Unfocus()
+		}
+	})
 }
 
 func (d *FileViewerDialog) CloseViewer() {

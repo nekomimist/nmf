@@ -189,13 +189,15 @@ func (d *MaintenanceDialog) Cancel() {
 		return
 	}
 	d.closed = true
-	d.keyManager.PopHandler()
-	if d.dialog != nil {
-		d.dialog.Hide()
-	}
-	if d.parent != nil {
-		d.parent.Canvas().Unfocus()
-	}
+	deferDialogClose(d.keyManager, "maintenance.close", func() {
+		d.keyManager.PopHandler()
+		if d.dialog != nil {
+			d.dialog.Hide()
+		}
+		if d.parent != nil {
+			d.parent.Canvas().Unfocus()
+		}
+	})
 }
 
 func (d *MaintenanceDialog) invalidateScan() {

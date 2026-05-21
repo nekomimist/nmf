@@ -336,29 +336,32 @@ func (nhd *NavigationHistoryDialog) AcceptSelection() {
 		return
 	}
 	nhd.closed = true
-	// Pop the handler first
-	nhd.keyManager.PopHandler()
 
 	// Check if search text is a valid path and no history match exists
 	searchText := nhd.GetSearchText()
+	selectedPath := ""
 	if searchText != "" && len(nhd.filteredPaths) == 0 {
 		if resolvedPath, ok := nhd.resolveDirectoryPath(searchText); ok {
 			nhd.debugPrint("HistoryDialog: No history match, using search text as path: %s", resolvedPath)
-			if nhd.callback != nil {
-				nhd.callback(resolvedPath)
-			}
+			selectedPath = resolvedPath
 		}
-	} else if nhd.callback != nil && nhd.selectedPath != "" {
+	} else if nhd.selectedPath != "" {
 		// Use selected history path
-		nhd.callback(nhd.selectedPath)
+		selectedPath = nhd.selectedPath
 	}
 
-	if nhd.dialog != nil {
-		nhd.dialog.Hide()
-	}
-	if nhd.parent != nil {
-		nhd.parent.Canvas().Unfocus()
-	}
+	deferDialogClose(nhd.keyManager, "history.accept", func() {
+		nhd.keyManager.PopHandler()
+		if nhd.callback != nil && selectedPath != "" {
+			nhd.callback(selectedPath)
+		}
+		if nhd.dialog != nil {
+			nhd.dialog.Hide()
+		}
+		if nhd.parent != nil {
+			nhd.parent.Canvas().Unfocus()
+		}
+	})
 }
 
 // AcceptDirectPathNavigation accepts direct path navigation (Ctrl+Enter)
@@ -367,33 +370,36 @@ func (nhd *NavigationHistoryDialog) AcceptDirectPathNavigation() {
 		return
 	}
 	nhd.closed = true
-	// Pop the handler first
-	nhd.keyManager.PopHandler()
 
 	searchText := nhd.GetSearchText()
+	selectedPath := ""
 	if searchText != "" {
 		if resolvedPath, ok := nhd.resolveDirectoryPath(searchText); ok {
 			// Use search text as direct path navigation, ignoring history
 			nhd.debugPrint("HistoryDialog: Direct path navigation (Ctrl+Enter): %s", resolvedPath)
-			if nhd.callback != nil {
-				nhd.callback(resolvedPath)
-			}
+			selectedPath = resolvedPath
 		} else if nhd.callback != nil && nhd.selectedPath != "" {
 			// Fallback to selected history path if search text is not valid
 			nhd.debugPrint("HistoryDialog: Invalid search path, falling back to selected history: %s", nhd.selectedPath)
-			nhd.callback(nhd.selectedPath)
+			selectedPath = nhd.selectedPath
 		}
-	} else if nhd.callback != nil && nhd.selectedPath != "" {
+	} else if nhd.selectedPath != "" {
 		// Empty search text; use selected history path.
-		nhd.callback(nhd.selectedPath)
+		selectedPath = nhd.selectedPath
 	}
 
-	if nhd.dialog != nil {
-		nhd.dialog.Hide()
-	}
-	if nhd.parent != nil {
-		nhd.parent.Canvas().Unfocus()
-	}
+	deferDialogClose(nhd.keyManager, "history.acceptDirect", func() {
+		nhd.keyManager.PopHandler()
+		if nhd.callback != nil && selectedPath != "" {
+			nhd.callback(selectedPath)
+		}
+		if nhd.dialog != nil {
+			nhd.dialog.Hide()
+		}
+		if nhd.parent != nil {
+			nhd.parent.Canvas().Unfocus()
+		}
+	})
 }
 
 // CancelDialog cancels the dialog without selection
@@ -402,15 +408,16 @@ func (nhd *NavigationHistoryDialog) CancelDialog() {
 		return
 	}
 	nhd.closed = true
-	// Pop the handler first
-	nhd.keyManager.PopHandler()
 
-	if nhd.dialog != nil {
-		nhd.dialog.Hide()
-	}
-	if nhd.parent != nil {
-		nhd.parent.Canvas().Unfocus()
-	}
+	deferDialogClose(nhd.keyManager, "history.cancel", func() {
+		nhd.keyManager.PopHandler()
+		if nhd.dialog != nil {
+			nhd.dialog.Hide()
+		}
+		if nhd.parent != nil {
+			nhd.parent.Canvas().Unfocus()
+		}
+	})
 }
 
 // IsSearchFocused returns true if the search entry has focus

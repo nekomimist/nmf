@@ -150,13 +150,15 @@ func (d *LineEditDialog) CancelDialog() {
 
 func (d *LineEditDialog) close() {
 	d.closed = true
-	d.keyManager.PopHandler()
-	if d.dialog != nil {
-		d.dialog.Hide()
-	}
-	if d.parent != nil {
-		d.parent.Canvas().Unfocus()
-	}
+	deferDialogClose(d.keyManager, "lineEdit.close", func() {
+		d.keyManager.PopHandler()
+		if d.dialog != nil {
+			d.dialog.Hide()
+		}
+		if d.parent != nil {
+			d.parent.Canvas().Unfocus()
+		}
+	})
 }
 
 func (d *LineEditDialog) MoveCursorStart() {

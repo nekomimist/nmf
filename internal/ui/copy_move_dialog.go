@@ -328,7 +328,6 @@ func (d *CopyMoveDialog) AcceptSelection() {
 		return
 	}
 	d.closed = true
-	d.keyManager.PopHandler()
 
 	// Allow direct path via search text when no list match
 	acceptedPath := ""
@@ -341,15 +340,18 @@ func (d *CopyMoveDialog) AcceptSelection() {
 	} else if d.selectedPath != "" {
 		acceptedPath = d.selectedPath
 	}
-	if d.dialog != nil {
-		d.dialog.Hide()
-	}
-	if d.parent != nil {
-		d.parent.Canvas().Unfocus()
-	}
-	if d.onAccept != nil && acceptedPath != "" {
-		d.onAccept(acceptedPath)
-	}
+	deferDialogClose(d.keyManager, "copyMove.accept", func() {
+		d.keyManager.PopHandler()
+		if d.dialog != nil {
+			d.dialog.Hide()
+		}
+		if d.parent != nil {
+			d.parent.Canvas().Unfocus()
+		}
+		if d.onAccept != nil && acceptedPath != "" {
+			d.onAccept(acceptedPath)
+		}
+	})
 }
 
 func (d *CopyMoveDialog) AcceptDirectPath() {
@@ -357,7 +359,6 @@ func (d *CopyMoveDialog) AcceptDirectPath() {
 		return
 	}
 	d.closed = true
-	d.keyManager.PopHandler()
 	acceptedPath := ""
 	search := d.GetSearchText()
 	if search != "" {
@@ -372,15 +373,18 @@ func (d *CopyMoveDialog) AcceptDirectPath() {
 		d.debugPrint("CopyMoveDialog: empty direct path; fallback to selection: %s", d.selectedPath)
 		acceptedPath = d.selectedPath
 	}
-	if d.dialog != nil {
-		d.dialog.Hide()
-	}
-	if d.parent != nil {
-		d.parent.Canvas().Unfocus()
-	}
-	if d.onAccept != nil && acceptedPath != "" {
-		d.onAccept(acceptedPath)
-	}
+	deferDialogClose(d.keyManager, "copyMove.acceptDirect", func() {
+		d.keyManager.PopHandler()
+		if d.dialog != nil {
+			d.dialog.Hide()
+		}
+		if d.parent != nil {
+			d.parent.Canvas().Unfocus()
+		}
+		if d.onAccept != nil && acceptedPath != "" {
+			d.onAccept(acceptedPath)
+		}
+	})
 }
 
 func (d *CopyMoveDialog) CancelDialog() {
@@ -388,13 +392,15 @@ func (d *CopyMoveDialog) CancelDialog() {
 		return
 	}
 	d.closed = true
-	d.keyManager.PopHandler()
-	if d.dialog != nil {
-		d.dialog.Hide()
-	}
-	if d.parent != nil {
-		d.parent.Canvas().Unfocus()
-	}
+	deferDialogClose(d.keyManager, "copyMove.cancel", func() {
+		d.keyManager.PopHandler()
+		if d.dialog != nil {
+			d.dialog.Hide()
+		}
+		if d.parent != nil {
+			d.parent.Canvas().Unfocus()
+		}
+	})
 }
 
 // Helpers

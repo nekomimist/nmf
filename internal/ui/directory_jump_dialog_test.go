@@ -129,3 +129,38 @@ func TestDirectoryJumpUniqueShortcutDefersAcceptUntilKeyUp(t *testing.T) {
 		t.Fatalf("key manager stack size = %d, want 0", got)
 	}
 }
+
+func TestDirectoryJumpManualAcceptDefersCloseUntilKeyUp(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	dialog := NewDirectoryJumpDialog([]config.DirectoryJumpEntry{
+		{Shortcut: "e", Directory: "/target"},
+	}, km, func(string, ...interface{}) {})
+	dialog.selectedPath = "/target"
+	var acceptedPath string
+	dialog.callback = func(path string) {
+		acceptedPath = path
+	}
+	km.PushHandler(keymanager.NewDirectoryJumpDialogKeyHandler(dialog, func(string, ...interface{}) {}))
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	dialog.AcceptSelection()
+
+	if acceptedPath != "" {
+		t.Fatalf("accepted path before key up = %q, want empty", acceptedPath)
+	}
+	if got := km.GetStackSize(); got != 1 {
+		t.Fatalf("key manager stack size before key up = %d, want 1", got)
+	}
+
+	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	if acceptedPath != "/target" {
+		t.Fatalf("accepted path after key up = %q, want /target", acceptedPath)
+	}
+	if got := km.GetStackSize(); got != 0 {
+		t.Fatalf("key manager stack size after key up = %d, want 0", got)
+	}
+}

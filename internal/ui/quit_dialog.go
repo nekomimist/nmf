@@ -59,13 +59,15 @@ func (qcd *QuitConfirmDialog) ShowDialog(parent fyne.Window, callback func(bool)
 			}
 			qcd.closed = true
 
-			// Pop the handler first
-			qcd.keyManager.PopHandler()
+			deferDialogClose(qcd.keyManager, "quit.close", func() {
+				// Pop the handler first
+				qcd.keyManager.PopHandler()
 
-			// Call the callback
-			if qcd.callback != nil {
-				qcd.callback(confirmed)
-			}
+				// Call the callback
+				if qcd.callback != nil {
+					qcd.callback(confirmed)
+				}
+			})
 		},
 		parent,
 	)
@@ -90,18 +92,20 @@ func (qcd *QuitConfirmDialog) ConfirmQuit() {
 
 	qcd.debugPrint("QuitConfirmDialog: User confirmed quit via keyboard")
 
-	// Pop the handler first
-	qcd.keyManager.PopHandler()
+	deferDialogClose(qcd.keyManager, "quit.confirm", func() {
+		// Pop the handler first
+		qcd.keyManager.PopHandler()
 
-	// Hide the dialog
-	if qcd.dialog != nil {
-		qcd.dialog.Hide()
-	}
+		// Hide the dialog
+		if qcd.dialog != nil {
+			qcd.dialog.Hide()
+		}
 
-	// Call the callback with true (confirmed)
-	if qcd.callback != nil {
-		qcd.callback(true)
-	}
+		// Call the callback with true (confirmed)
+		if qcd.callback != nil {
+			qcd.callback(true)
+		}
+	})
 }
 
 // CancelQuit cancels the quit action
@@ -113,16 +117,18 @@ func (qcd *QuitConfirmDialog) CancelQuit() {
 
 	qcd.debugPrint("QuitConfirmDialog: User cancelled quit via keyboard")
 
-	// Pop the handler first
-	qcd.keyManager.PopHandler()
+	deferDialogClose(qcd.keyManager, "quit.cancel", func() {
+		// Pop the handler first
+		qcd.keyManager.PopHandler()
 
-	// Hide the dialog
-	if qcd.dialog != nil {
-		qcd.dialog.Hide()
-	}
+		// Hide the dialog
+		if qcd.dialog != nil {
+			qcd.dialog.Hide()
+		}
 
-	// Call the callback with false (cancelled)
-	if qcd.callback != nil {
-		qcd.callback(false)
-	}
+		// Call the callback with false (cancelled)
+		if qcd.callback != nil {
+			qcd.callback(false)
+		}
+	})
 }

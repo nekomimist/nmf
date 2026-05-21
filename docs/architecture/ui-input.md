@@ -26,6 +26,8 @@ Input-owner transitions:
 
 - Commands that open a dialog/menu, enter an input mode, or create a new window
   are deferred until all currently pressed keys have been released.
+- Dialog/menu/input-mode close paths that return control to the main file list
+  use the same central gate before popping their handler.
 - While such a transition is pending, `KeyManager` consumes typed key/rune
   events and only uses key-up events to update pressed-key state.
 - This keeps the triggering key from leaking into the newly opened input owner

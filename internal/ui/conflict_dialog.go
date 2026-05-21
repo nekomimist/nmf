@@ -232,18 +232,20 @@ func (d *ConflictDialog) finish(res jobs.ConflictResolution) {
 	}
 	d.closed = true
 	d.unregisterShortcuts()
-	if d.km != nil {
-		d.km.PopHandler()
-	}
-	if d.dialog != nil {
-		d.dialog.Hide()
-	}
-	if d.parent != nil {
-		d.parent.Canvas().Unfocus()
-	}
-	if d.callback != nil {
-		d.callback(res)
-	}
+	deferDialogClose(d.km, "conflict.close", func() {
+		if d.km != nil {
+			d.km.PopHandler()
+		}
+		if d.dialog != nil {
+			d.dialog.Hide()
+		}
+		if d.parent != nil {
+			d.parent.Canvas().Unfocus()
+		}
+		if d.callback != nil {
+			d.callback(res)
+		}
+	})
 }
 
 func (d *ConflictDialog) updateEntryState() {

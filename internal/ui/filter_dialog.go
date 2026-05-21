@@ -365,8 +365,6 @@ func (fd *FilterDialog) AcceptSelection() {
 		return
 	}
 	fd.closed = true
-	// Pop the handler first
-	fd.keyManager.PopHandler()
 
 	var selectedEntry *config.FilterEntry
 
@@ -386,16 +384,18 @@ func (fd *FilterDialog) AcceptSelection() {
 		selectedEntry.UseCount++
 	}
 
-	if fd.callback != nil && selectedEntry != nil {
-		fd.callback(selectedEntry)
-	}
-
-	if fd.dialog != nil {
-		fd.dialog.Hide()
-	}
-	if fd.parent != nil {
-		fd.parent.Canvas().Unfocus()
-	}
+	deferDialogClose(fd.keyManager, "filter.accept", func() {
+		fd.keyManager.PopHandler()
+		if fd.callback != nil && selectedEntry != nil {
+			fd.callback(selectedEntry)
+		}
+		if fd.dialog != nil {
+			fd.dialog.Hide()
+		}
+		if fd.parent != nil {
+			fd.parent.Canvas().Unfocus()
+		}
+	})
 }
 
 // CancelDialog cancels the dialog without selection
@@ -404,15 +404,16 @@ func (fd *FilterDialog) CancelDialog() {
 		return
 	}
 	fd.closed = true
-	// Pop the handler first
-	fd.keyManager.PopHandler()
 
-	if fd.dialog != nil {
-		fd.dialog.Hide()
-	}
-	if fd.parent != nil {
-		fd.parent.Canvas().Unfocus()
-	}
+	deferDialogClose(fd.keyManager, "filter.cancel", func() {
+		fd.keyManager.PopHandler()
+		if fd.dialog != nil {
+			fd.dialog.Hide()
+		}
+		if fd.parent != nil {
+			fd.parent.Canvas().Unfocus()
+		}
+	})
 }
 
 // IsSearchFocused returns true if the search entry has focus

@@ -123,16 +123,18 @@ func (d *DeleteConfirmDialog) ConfirmDelete() {
 		}
 	}
 	d.closed = true
-	d.keyManager.PopHandler()
-	if d.dialog != nil {
-		d.dialog.Hide()
-	}
-	if d.parent != nil {
-		d.parent.Canvas().Unfocus()
-	}
-	if d.onAccept != nil {
-		d.onAccept()
-	}
+	deferDialogClose(d.keyManager, "delete.confirm", func() {
+		d.keyManager.PopHandler()
+		if d.dialog != nil {
+			d.dialog.Hide()
+		}
+		if d.parent != nil {
+			d.parent.Canvas().Unfocus()
+		}
+		if d.onAccept != nil {
+			d.onAccept()
+		}
+	})
 }
 
 func (d *DeleteConfirmDialog) CancelDelete() {
@@ -140,13 +142,15 @@ func (d *DeleteConfirmDialog) CancelDelete() {
 		return
 	}
 	d.closed = true
-	d.keyManager.PopHandler()
-	if d.dialog != nil {
-		d.dialog.Hide()
-	}
-	if d.parent != nil {
-		d.parent.Canvas().Unfocus()
-	}
+	deferDialogClose(d.keyManager, "delete.cancel", func() {
+		d.keyManager.PopHandler()
+		if d.dialog != nil {
+			d.dialog.Hide()
+		}
+		if d.parent != nil {
+			d.parent.Canvas().Unfocus()
+		}
+	})
 }
 
 type deleteConfirmEntry struct {

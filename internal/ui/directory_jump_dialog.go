@@ -383,17 +383,19 @@ func (d *DirectoryJumpDialog) acceptPath(path string) {
 		return
 	}
 	d.closed = true
-	d.keyManager.PopHandler()
 
-	if d.dialog != nil {
-		d.dialog.Hide()
-	}
-	if d.parent != nil {
-		d.parent.Canvas().Unfocus()
-	}
-	if d.callback != nil && path != "" {
-		d.callback(path)
-	}
+	deferDialogClose(d.keyManager, "directoryJump.accept", func() {
+		d.keyManager.PopHandler()
+		if d.dialog != nil {
+			d.dialog.Hide()
+		}
+		if d.parent != nil {
+			d.parent.Canvas().Unfocus()
+		}
+		if d.callback != nil && path != "" {
+			d.callback(path)
+		}
+	})
 }
 
 // CancelDialog cancels the dialog without selection.
@@ -402,12 +404,14 @@ func (d *DirectoryJumpDialog) CancelDialog() {
 		return
 	}
 	d.closed = true
-	d.keyManager.PopHandler()
 
-	if d.dialog != nil {
-		d.dialog.Hide()
-	}
-	if d.parent != nil {
-		d.parent.Canvas().Unfocus()
-	}
+	deferDialogClose(d.keyManager, "directoryJump.cancel", func() {
+		d.keyManager.PopHandler()
+		if d.dialog != nil {
+			d.dialog.Hide()
+		}
+		if d.parent != nil {
+			d.parent.Canvas().Unfocus()
+		}
+	})
 }
