@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"fyne.io/fyne/v2/widget"
+
 	"nmf/internal/search"
 )
 
@@ -21,6 +23,27 @@ func TestNavigationHistoryBackspaceRemovesUTF8Rune(t *testing.T) {
 
 	if got := dialog.GetSearchText(); got != "日本" {
 		t.Fatalf("search text got %q, want %q", got, "日本")
+	}
+}
+
+func TestNavigationHistoryHorizontalScrollState(t *testing.T) {
+	dialog := NewNavigationHistoryDialog(
+		[]string{"/tmp/very/long/path"},
+		map[string]time.Time{},
+		nil,
+		func(string, ...interface{}) {},
+		search.NewPlainProvider(),
+	)
+	dialog.listScroller = newDialogListScroller(widget.NewLabel(""), 300, 100, 20)
+
+	dialog.ScrollSelectedRight()
+	if !dialog.scrollRight {
+		t.Fatal("right scroll should enable follow mode")
+	}
+
+	dialog.ResetHorizontalScroll()
+	if dialog.scrollRight {
+		t.Fatal("left scroll should disable follow mode")
 	}
 }
 

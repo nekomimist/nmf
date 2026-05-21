@@ -20,6 +20,8 @@ type CopyMoveDialogInterface interface {
 	BackspaceSearch()
 	GetSearchText() string
 	CopySelectedPathToSearch()
+	ScrollSelectedRight()
+	ResetHorizontalScroll()
 
 	// Selection
 	SelectCurrentItem()
@@ -83,6 +85,12 @@ func (h *CopyMoveDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modif
 		} else {
 			h.dialog.MoveDown()
 		}
+		return true
+	case fyne.KeyRight:
+		h.dialog.ScrollSelectedRight()
+		return true
+	case fyne.KeyLeft:
+		h.dialog.ResetHorizontalScroll()
 		return true
 	case fyne.KeySpace:
 		h.dialog.SelectCurrentItem()

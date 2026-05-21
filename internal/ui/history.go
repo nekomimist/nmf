@@ -60,6 +60,8 @@ type NavigationHistoryDialog struct {
 	closed        bool                   // Prevent double-close/pop
 	sink          *KeySink               // Key capturing wrapper
 	matchers      *search.Provider
+	listScroller  *dialogListScroller
+	scrollRight   bool
 }
 
 // NewNavigationHistoryDialog creates a new navigation history dialog
@@ -126,6 +128,7 @@ func (nhd *NavigationHistoryDialog) createWidgets() {
 			nhd.selectedIndex = int(id)
 			nhd.selectedPath = nhd.filteredPaths[id]
 			nhd.debugPrint("HistoryDialog: History selected: %s (index: %d)", nhd.selectedPath, nhd.selectedIndex)
+			nhd.applyHorizontalScroll()
 			// Keep focus on sink so KeyManager continues to receive keys
 			if nhd.parent != nil && nhd.sink != nil {
 				nhd.parent.Canvas().Focus(nhd.sink)
@@ -161,6 +164,7 @@ func (nhd *NavigationHistoryDialog) updateFilteredPaths(query string) {
 		nhd.selectedIndex = 0
 		nhd.selectedPath = nhd.filteredPaths[0]
 		nhd.historyList.Select(0)
+		nhd.applyHorizontalScroll()
 	} else {
 		nhd.selectedIndex = -1
 		nhd.selectedPath = ""
@@ -178,7 +182,8 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 	searchSection := container.NewBorder(nil, nil, searchLabel, nil, nhd.searchEntry)
 
 	// Create scrollable list container
-	listScroll := newScrollableDialogList(nhd.historyList, dialogTextWidth(nhd.allPaths, 600), 600, 400)
+	listScroll := newDialogListScroller(nhd.historyList, dialogTextWidth(nhd.allPaths, 600), 600, 400)
+	nhd.listScroller = listScroll
 
 	// Create empty state message
 	emptyLabel := widget.NewLabel("No matching paths found")
@@ -460,6 +465,25 @@ func (nhd *NavigationHistoryDialog) CopySelectedPathToSearch() {
 		nhd.searchEntry.SetText(nhd.selectedPath)
 		nhd.debugPrint("HistoryDialog: Copied selected path to search: %s", nhd.selectedPath)
 	}
+}
+
+func (nhd *NavigationHistoryDialog) ScrollSelectedRight() {
+	nhd.scrollRight = true
+	nhd.applyHorizontalScroll()
+}
+
+func (nhd *NavigationHistoryDialog) ResetHorizontalScroll() {
+	nhd.scrollRight = false
+	if nhd.listScroller != nil {
+		nhd.listScroller.ResetHorizontalScroll()
+	}
+}
+
+func (nhd *NavigationHistoryDialog) applyHorizontalScroll() {
+	if !nhd.scrollRight || nhd.listScroller == nil || nhd.selectedPath == "" {
+		return
+	}
+	nhd.listScroller.ScrollPathRight(nhd.selectedPath)
 }
 
 func (nhd *NavigationHistoryDialog) resolveDirectoryPath(path string) (string, bool) {

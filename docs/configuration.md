@@ -125,6 +125,7 @@ Configurable color names:
 - `statusAdded`, `statusDeleted`, `statusModified`
 - `selectionBackground`, `cursor`
 - `lineEditCursor`, `lineEditSelection`, `dialogListCursor`, `menuCursor`
+- `copyMoveOpenDestination`
 - `searchOverlayBackground`, `searchOverlayForeground`
 - `busyOverlayBackground`
 
@@ -132,6 +133,8 @@ Configurable color names:
 `dialogListCursor` applies to keyboard cursor rows in Navigation History,
 Directory Jump, Filter, Copy/Move, and Jobs lists.
 `menuCursor` applies to command menu cursor rows.
+`copyMoveOpenDestination` applies to Copy/Move destination rows that are open
+in another File Manager window.
 
 Color values:
 

@@ -2,17 +2,21 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
+	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
+	customtheme "nmf/internal/theme"
 )
 
 // Operation represents the requested action
@@ -23,35 +27,45 @@ const (
 	OpMove Operation = "move"
 )
 
+// DestinationCandidate describes a copy/move destination and where it came from.
+type DestinationCandidate struct {
+	Path              string
+	OpenInOtherWindow bool
+}
+
 // CopyMoveDialog presents targets and lets user pick destination by filtering history
 type CopyMoveDialog struct {
 	op           Operation
 	targets      []string
 	searchEntry  *CustomSearchEntry
 	destList     *widget.List
-	filteredDest []string
-	allDest      []string
+	filteredDest []DestinationCandidate
+	allDest      []DestinationCandidate
+	openDest     map[string]bool
 	lastUsed     map[string]time.Time
 	dataBinding  binding.StringList
 	selectedPath string
 	selectedIdx  int
 
-	debugPrint func(format string, args ...interface{})
-	keyManager *keymanager.KeyManager
-	parent     fyne.Window
-	dialog     dialog.Dialog
-	sink       *KeySink
-	closed     bool
+	debugPrint  func(format string, args ...interface{})
+	keyManager  *keymanager.KeyManager
+	parent      fyne.Window
+	dialog      dialog.Dialog
+	sink        *KeySink
+	closed      bool
+	destScroll  *dialogListScroller
+	scrollRight bool
 
 	onAccept func(dest string)
 }
 
 // NewCopyMoveDialog creates a new dialog instance
-func NewCopyMoveDialog(op Operation, targets []string, destCandidates []string, lastUsed map[string]time.Time, km *keymanager.KeyManager, debugPrint func(format string, args ...interface{})) *CopyMoveDialog {
+func NewCopyMoveDialog(op Operation, targets []string, destCandidates []DestinationCandidate, lastUsed map[string]time.Time, km *keymanager.KeyManager, debugPrint func(format string, args ...interface{})) *CopyMoveDialog {
 	d := &CopyMoveDialog{
 		op:         op,
 		targets:    targets,
 		allDest:    destCandidates,
+		openDest:   destinationOpenMap(destCandidates),
 		lastUsed:   lastUsed,
 		keyManager: km,
 		debugPrint: debugPrint,
@@ -68,18 +82,26 @@ func (d *CopyMoveDialog) createWidgets() {
 	d.dataBinding = binding.NewStringList()
 	d.destList = widget.NewListWithData(
 		d.dataBinding,
-		func() fyne.CanvasObject { return widget.NewLabel("") },
+		func() fyne.CanvasObject {
+			text := canvas.NewText("", currentAppThemeColor(fynetheme.ColorNameForeground))
+			text.TextSize = fynetheme.TextSize()
+			return text
+		},
 		func(item binding.DataItem, obj fyne.CanvasObject) {
 			str, _ := item.(binding.String).Get()
-			if label, ok := obj.(*widget.Label); ok {
-				label.SetText(str)
+			if text, ok := obj.(*canvas.Text); ok {
+				text.Text = str
+				text.TextSize = fynetheme.TextSize()
+				text.Color = d.destinationTextColor(str)
+				text.Refresh()
 			}
 		},
 	)
 	d.destList.OnSelected = func(id widget.ListItemID) {
 		if id >= 0 && int(id) < len(d.filteredDest) {
 			d.selectedIdx = int(id)
-			d.selectedPath = d.filteredDest[id]
+			d.selectedPath = d.filteredDest[id].Path
+			d.applyHorizontalScroll()
 			if d.parent != nil && d.sink != nil {
 				d.parent.Canvas().Focus(d.sink)
 			}
@@ -131,8 +153,8 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(dest strin
 	// Destination search + list (fixed size like history dialog)
 	searchLabel := widget.NewLabel("Destination:")
 	searchSection := container.NewBorder(nil, nil, searchLabel, nil, d.searchEntry)
-	destScroll := container.NewScroll(dialogListThemeOverride(d.destList))
-	destScroll.SetMinSize(fyne.NewSize(600, 260))
+	destScroll := newDialogListScroller(d.destList, dialogDestinationTextWidth(d.allDest, 600), 600, 260)
+	d.destScroll = destScroll
 	empty := widget.NewLabel("No matching destinations")
 	empty.Alignment = fyne.TextAlignCenter
 	empty.Hide()
@@ -195,18 +217,19 @@ func (d *CopyMoveDialog) updateFiltered(q string) {
 		d.filteredDest = d.allDest
 	} else {
 		ql := strings.ToLower(q)
-		d.filteredDest = d.filteredDest[:0]
+		d.filteredDest = d.filteredDest[:0:0]
 		for _, p := range d.allDest {
-			if strings.Contains(strings.ToLower(p), ql) {
+			if strings.Contains(strings.ToLower(p.Path), ql) {
 				d.filteredDest = append(d.filteredDest, p)
 			}
 		}
 	}
-	d.dataBinding.Set(d.filteredDest)
+	d.dataBinding.Set(destinationPaths(d.filteredDest))
 	if len(d.filteredDest) > 0 {
 		d.selectedIdx = 0
-		d.selectedPath = d.filteredDest[0]
+		d.selectedPath = d.filteredDest[0].Path
 		d.destList.Select(0)
+		d.applyHorizontalScroll()
 	} else {
 		d.selectedIdx = -1
 		d.selectedPath = ""
@@ -279,6 +302,25 @@ func (d *CopyMoveDialog) CopySelectedPathToSearch() {
 }
 func (d *CopyMoveDialog) SelectCurrentItem() {
 	d.debugPrint("CopyMoveDialog: Select current dest: %s", d.selectedPath)
+}
+
+func (d *CopyMoveDialog) ScrollSelectedRight() {
+	d.scrollRight = true
+	d.applyHorizontalScroll()
+}
+
+func (d *CopyMoveDialog) ResetHorizontalScroll() {
+	d.scrollRight = false
+	if d.destScroll != nil {
+		d.destScroll.ResetHorizontalScroll()
+	}
+}
+
+func (d *CopyMoveDialog) applyHorizontalScroll() {
+	if !d.scrollRight || d.destScroll == nil || d.selectedPath == "" {
+		return
+	}
+	d.destScroll.ScrollPathRight(d.selectedPath)
 }
 
 func (d *CopyMoveDialog) AcceptSelection() {
@@ -363,4 +405,36 @@ func (d *CopyMoveDialog) resolveDirectoryPath(p string) (string, bool) {
 		return "", false
 	}
 	return resolved, true
+}
+
+func (d *CopyMoveDialog) destinationTextColor(path string) color.Color {
+	if d.openDest[path] {
+		themeProvider := currentThemeColorProvider()
+		if themeProvider != nil {
+			return themeProvider.GetCustomColor(customtheme.ColorCopyMoveOpenDestination)
+		}
+	}
+	return currentAppThemeColor(fynetheme.ColorNameForeground)
+}
+
+func destinationOpenMap(candidates []DestinationCandidate) map[string]bool {
+	result := make(map[string]bool, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.OpenInOtherWindow {
+			result[candidate.Path] = true
+		}
+	}
+	return result
+}
+
+func destinationPaths(candidates []DestinationCandidate) []string {
+	paths := make([]string, len(candidates))
+	for i, candidate := range candidates {
+		paths[i] = candidate.Path
+	}
+	return paths
+}
+
+func dialogDestinationTextWidth(candidates []DestinationCandidate, minimum float32) float32 {
+	return dialogTextWidth(destinationPaths(candidates), minimum)
 }

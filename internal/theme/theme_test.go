@@ -103,6 +103,18 @@ func TestCustomThemeFyneBackedAppColorDefaults(t *testing.T) {
 	}
 }
 
+func TestCustomThemeCopyMoveOpenDestinationColor(t *testing.T) {
+	cfg := &config.Config{}
+	customTheme := NewCustomTheme(cfg, func(string, ...interface{}) {})
+
+	if got, want := customTheme.GetCustomColor(ColorCopyMoveOpenDestination), (color.RGBA{30, 120, 80, 255}); got != want {
+		t.Fatalf("copy move open destination = %#v, want %#v", got, want)
+	}
+	if !IsAppColorName(ColorCopyMoveOpenDestination) {
+		t.Fatalf("%s should be an app color name", ColorCopyMoveOpenDestination)
+	}
+}
+
 func TestCustomThemeFyneBackedAppColorOverrides(t *testing.T) {
 	cfg := &config.Config{
 		Theme: config.ThemeConfig{

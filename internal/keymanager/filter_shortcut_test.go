@@ -11,6 +11,8 @@ import (
 type fakeFilterSearchDialog struct {
 	backspace int
 	search    string
+	right     int
+	left      int
 }
 
 func (f *fakeFilterSearchDialog) MoveUp()                       {}
@@ -30,6 +32,8 @@ func (f *fakeFilterSearchDialog) AcceptDirectPath()             {}
 func (f *fakeFilterSearchDialog) CancelDialog()                 {}
 func (f *fakeFilterSearchDialog) CopySelectedPathToSearch()     {}
 func (f *fakeFilterSearchDialog) CopySelectedShortcutToSearch() {}
+func (f *fakeFilterSearchDialog) ScrollSelectedRight()          { f.right++ }
+func (f *fakeFilterSearchDialog) ResetHorizontalScroll()        { f.left++ }
 
 func TestFilteringDialogsTreatCtrlHAsBackspace(t *testing.T) {
 	tests := []struct {
@@ -88,6 +92,37 @@ func TestFilteringDialogsAcceptFirstTypedRune(t *testing.T) {
 			}
 			if dialog.search != "w" {
 				t.Fatalf("search = %q, want %q", dialog.search, "w")
+			}
+		})
+	}
+}
+
+func TestPathDialogsHandleHorizontalScrollKeys(t *testing.T) {
+	tests := []struct {
+		name    string
+		handler func(*fakeFilterSearchDialog) KeyHandler
+	}{
+		{name: "history", handler: func(d *fakeFilterSearchDialog) KeyHandler {
+			return NewHistoryDialogKeyHandler(d, func(string, ...interface{}) {})
+		}},
+		{name: "copy move", handler: func(d *fakeFilterSearchDialog) KeyHandler {
+			return NewCopyMoveDialogKeyHandler(d, func(string, ...interface{}) {})
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dialog := &fakeFilterSearchDialog{}
+			handler := tt.handler(dialog)
+
+			if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyRight}, ModifierState{}) {
+				t.Fatal("Right typed key should be handled")
+			}
+			if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyLeft}, ModifierState{}) {
+				t.Fatal("Left typed key should be handled")
+			}
+			if dialog.right != 1 || dialog.left != 1 {
+				t.Fatalf("scroll calls right=%d left=%d, want 1/1", dialog.right, dialog.left)
 			}
 		})
 	}

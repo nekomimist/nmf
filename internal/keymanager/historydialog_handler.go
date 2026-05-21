@@ -20,6 +20,8 @@ type HistoryDialogInterface interface {
 	BackspaceSearch()
 	GetSearchText() string
 	CopySelectedPathToSearch() // Copy selected path to search entry
+	ScrollSelectedRight()
+	ResetHorizontalScroll()
 
 	// Focus management (deprecated in focusless design)
 	IsSearchFocused() bool
@@ -104,6 +106,14 @@ func (hh *HistoryDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modif
 		} else {
 			hh.historyDialog.MoveDown()
 		}
+		return true
+
+	case fyne.KeyRight:
+		hh.historyDialog.ScrollSelectedRight()
+		return true
+
+	case fyne.KeyLeft:
+		hh.historyDialog.ResetHorizontalScroll()
 		return true
 
 	case fyne.KeySpace:

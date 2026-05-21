@@ -244,11 +244,11 @@ func (fm *FileManager) ShowJobsDialog() {
 	showJobsWindow()
 }
 
-// buildDestinationCandidates composes other windows' dirs then history without dups
-func (fm *FileManager) buildDestinationCandidates() []string {
+// buildDestinationCandidates composes other windows' dirs then history without dups.
+func (fm *FileManager) buildDestinationCandidates() []ui.DestinationCandidate {
 	// Collect from other windows
-	seen := map[string]struct{}{}
-	var candidates []string
+	seen := map[string]int{}
+	var candidates []ui.DestinationCandidate
 	windowRegistry.Range(func(k, v any) bool {
 		if other, ok := v.(*FileManager); ok {
 			if other == fm {
@@ -258,9 +258,14 @@ func (fm *FileManager) buildDestinationCandidates() []string {
 				if fileinfo.IsArchivePath(other.currentPath) {
 					return true
 				}
-				if _, ok := seen[other.currentPath]; !ok {
-					candidates = append(candidates, other.currentPath)
-					seen[other.currentPath] = struct{}{}
+				if idx, ok := seen[other.currentPath]; ok {
+					candidates[idx].OpenInOtherWindow = true
+				} else {
+					seen[other.currentPath] = len(candidates)
+					candidates = append(candidates, ui.DestinationCandidate{
+						Path:              other.currentPath,
+						OpenInOtherWindow: true,
+					})
 				}
 			}
 		}
@@ -270,8 +275,8 @@ func (fm *FileManager) buildDestinationCandidates() []string {
 	// Optionally include current path after other windows
 	if fm.currentPath != "" && !fileinfo.IsArchivePath(fm.currentPath) {
 		if _, ok := seen[fm.currentPath]; !ok {
-			candidates = append(candidates, fm.currentPath)
-			seen[fm.currentPath] = struct{}{}
+			seen[fm.currentPath] = len(candidates)
+			candidates = append(candidates, ui.DestinationCandidate{Path: fm.currentPath})
 		}
 	}
 
@@ -283,8 +288,8 @@ func (fm *FileManager) buildDestinationCandidates() []string {
 		if _, ok := seen[p]; ok {
 			continue
 		}
-		candidates = append(candidates, p)
-		seen[p] = struct{}{}
+		seen[p] = len(candidates)
+		candidates = append(candidates, ui.DestinationCandidate{Path: p})
 	}
 	return candidates
 }

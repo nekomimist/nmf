@@ -24,6 +24,7 @@ const (
 	ColorLineEditSelection       = "lineEditSelection"
 	ColorDialogListCursor        = "dialogListCursor"
 	ColorMenuCursor              = "menuCursor"
+	ColorCopyMoveOpenDestination = "copyMoveOpenDestination"
 	ColorSearchOverlayBackground = "searchOverlayBackground"
 	ColorSearchOverlayForeground = "searchOverlayForeground"
 	ColorBusyOverlayBackground   = "busyOverlayBackground"
@@ -47,6 +48,7 @@ var (
 		ColorStatusModified:          {200, 150, 0, 80},
 		ColorSelectionBackground:     {70, 120, 170, 100},
 		ColorCursor:                  {0, 0, 0, 255},
+		ColorCopyMoveOpenDestination: {30, 120, 80, 255},
 		ColorSearchOverlayBackground: {40, 40, 40, 240},
 		ColorSearchOverlayForeground: {255, 255, 255, 255},
 		ColorBusyOverlayBackground:   {0, 0, 0, 96},
@@ -61,6 +63,7 @@ var (
 		ColorStatusModified:          {255, 200, 0, 80},
 		ColorSelectionBackground:     {100, 150, 200, 100},
 		ColorCursor:                  {255, 255, 255, 255},
+		ColorCopyMoveOpenDestination: {120, 220, 170, 255},
 		ColorSearchOverlayBackground: {220, 220, 220, 240},
 		ColorSearchOverlayForeground: {0, 0, 0, 255},
 		ColorBusyOverlayBackground:   {0, 0, 0, 96},
