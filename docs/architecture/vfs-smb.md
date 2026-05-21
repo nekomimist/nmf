@@ -100,8 +100,9 @@ platform default application.
   model.
 - The viewer reads only the first 1 MiB and reports truncation in the dialog
   status.
-- Text decoding prefers UTF-8, handles UTF-8/UTF-16 BOMs, and falls back across
-  Shift_JIS, EUC-JP, and UTF-16 candidates before displaying replacement text.
+- Text decoding uses `github.com/gogs/chardet` for non-empty preview data,
+  converts the detected charset to valid UTF-8, and displays replacement text
+  if detection or conversion fails.
 - Text and Markdown tabs operate on decoded text; the hex tab operates on the
   original bytes that were read.
 

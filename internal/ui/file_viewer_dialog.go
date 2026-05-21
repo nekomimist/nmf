@@ -292,14 +292,11 @@ func viewerPrintableRune(r rune) bool {
 }
 
 func writeEscapedRune(b *strings.Builder, r rune) {
-	switch {
-	case r <= 0xff:
-		fmt.Fprintf(b, "\\x%02x", r)
-	case r <= 0xffff:
-		fmt.Fprintf(b, "\\u%04x", r)
-	default:
-		fmt.Fprintf(b, "\\U%08x", r)
+	if r <= 0xffff {
+		fmt.Fprintf(b, "\\u%04X", r)
+		return
 	}
+	fmt.Fprintf(b, "\\U%08X", r)
 }
 
 func viewerHex(preview *fileinfo.PreviewFile) string {

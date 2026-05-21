@@ -46,7 +46,7 @@ func TestViewerTextEscapesNonPrintableText(t *testing.T) {
 	if strings.Contains(got, "\x1b") || strings.Contains(got, "\u200b") || strings.Contains(got, "\x7f") {
 		t.Fatalf("viewerText() = %q, want raw non-printable characters escaped", got)
 	}
-	for _, want := range []string{`hello\x1b[31m`, "\t日本語\n", `zero-width:\u200b\x7f`} {
+	for _, want := range []string{`hello\u001B[31m`, "\t日本語\n", `zero-width:\u200B\u007F`} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("viewerText() = %q, want fragment %q", got, want)
 		}

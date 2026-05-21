@@ -8,11 +8,13 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20260406072232-3ac4aa2bb164
 	github.com/go-text/typesetting v0.3.4
+	github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f
 	github.com/hirochachacha/go-smb2 v1.1.0
 	github.com/koron/gomigemo v1.0.3
 	github.com/mholt/archives v0.1.5
 	go.starlark.net v0.0.0-20260326113308-fadfc96def35
 	golang.org/x/sys v0.43.0
+	golang.org/x/text v0.36.0
 )
 
 require (
@@ -71,6 +73,5 @@ require (
 	golang.org/x/image v0.39.0 // indirect
 	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/term v0.42.0 // indirect
-	golang.org/x/text v0.36.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

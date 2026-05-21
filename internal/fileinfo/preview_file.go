@@ -7,11 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"unicode/utf8"
 
-	"golang.org/x/text/encoding"
-	"golang.org/x/text/encoding/japanese"
-	"golang.org/x/text/encoding/unicode"
+	"github.com/gogs/chardet"
+	"golang.org/x/text/encoding/ianaindex"
 	"golang.org/x/text/transform"
 )
 
@@ -115,65 +113,29 @@ func previewDebug(debugPrint func(format string, args ...interface{}), format st
 	}
 }
 
-// DecodePreviewText converts common Japanese/Unicode text encodings to UTF-8.
+// DecodePreviewText detects text encoding and converts it to valid UTF-8.
 func DecodePreviewText(data []byte) (string, string) {
 	if len(data) == 0 {
 		return "", "UTF-8"
 	}
-	if bytes.HasPrefix(data, []byte{0xEF, 0xBB, 0xBF}) {
-		return string(data[3:]), "UTF-8 BOM"
+	result, err := chardet.NewTextDetector().DetectBest(data)
+	if err != nil || result == nil || result.Charset == "" {
+		return replacementText(data), "UTF-8 replacement"
 	}
-	if bytes.HasPrefix(data, []byte{0xFF, 0xFE}) {
-		return decodeWithEncoding(data[2:], unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM), "UTF-16LE BOM")
+	enc, err := ianaindex.IANA.Encoding(result.Charset)
+	if err != nil || enc == nil {
+		return replacementText(data), result.Charset + " replacement"
 	}
-	if bytes.HasPrefix(data, []byte{0xFE, 0xFF}) {
-		return decodeWithEncoding(data[2:], unicode.UTF16(unicode.BigEndian, unicode.IgnoreBOM), "UTF-16BE BOM")
-	}
-	if utf8.Valid(data) {
-		return string(data), "UTF-8"
-	}
-
-	candidates := []struct {
-		name string
-		enc  encoding.Encoding
-	}{
-		{"Shift_JIS", japanese.ShiftJIS},
-		{"EUC-JP", japanese.EUCJP},
-		{"UTF-16LE", unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM)},
-		{"UTF-16BE", unicode.UTF16(unicode.BigEndian, unicode.IgnoreBOM)},
-	}
-	bestText := string(bytes.ToValidUTF8(data, []byte("\uFFFD")))
-	bestName := "UTF-8 replacement"
-	bestScore := replacementScore(bestText)
-	for _, candidate := range candidates {
-		text, _ := decodeWithEncoding(data, candidate.enc, candidate.name)
-		score := replacementScore(text)
-		if score < bestScore {
-			bestText = text
-			bestName = candidate.name
-			bestScore = score
-		}
-	}
-	return bestText, bestName
-}
-
-func decodeWithEncoding(data []byte, enc encoding.Encoding, name string) (string, string) {
 	reader := transform.NewReader(bytes.NewReader(data), enc.NewDecoder())
 	decoded, err := io.ReadAll(reader)
 	if err != nil {
-		return string(bytes.ToValidUTF8(data, []byte("\uFFFD"))), name + " replacement"
+		return replacementText(data), result.Charset + " replacement"
 	}
-	return string(decoded), name
+	return strings.TrimPrefix(replacementText(decoded), "\uFEFF"), result.Charset
 }
 
-func replacementScore(text string) int {
-	score := strings.Count(text, "\uFFFD") * 10
-	for _, r := range text {
-		if r == 0 {
-			score += 3
-		}
-	}
-	return score
+func replacementText(data []byte) string {
+	return string(bytes.ToValidUTF8(data, []byte("\uFFFD")))
 }
 
 // LooksBinary reports whether data appears to be binary rather than text.

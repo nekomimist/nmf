@@ -38,7 +38,9 @@ func TestReadPreviewFileTruncatesAtLimit(t *testing.T) {
 }
 
 func TestDecodePreviewTextEncodings(t *testing.T) {
-	shiftJIS := encodeText(t, japanese.ShiftJIS.NewEncoder(), "こんにちは")
+	utf8Text := strings.Repeat("日本語のテキストです。", 8)
+	shiftJISText := strings.Repeat("これはShift_JISで保存された日本語のテキストです。", 8)
+	shiftJIS := encodeText(t, japanese.ShiftJIS.NewEncoder(), shiftJISText)
 	utf16le := append([]byte{0xff, 0xfe}, utf16Bytes("日本語", binary.LittleEndian)...)
 
 	tests := []struct {
@@ -47,10 +49,10 @@ func TestDecodePreviewTextEncodings(t *testing.T) {
 		wantText string
 		wantEnc  string
 	}{
-		{name: "utf8", data: []byte("hello"), wantText: "hello", wantEnc: "UTF-8"},
-		{name: "utf8 bom", data: []byte{0xef, 0xbb, 0xbf, 'h', 'i'}, wantText: "hi", wantEnc: "UTF-8 BOM"},
-		{name: "shift jis", data: shiftJIS, wantText: "こんにちは", wantEnc: "Shift_JIS"},
-		{name: "utf16le bom", data: utf16le, wantText: "日本語", wantEnc: "UTF-16LE BOM"},
+		{name: "utf8", data: []byte(utf8Text), wantText: utf8Text, wantEnc: "UTF-8"},
+		{name: "utf8 bom", data: []byte{0xef, 0xbb, 0xbf, 'h', 'i'}, wantText: "hi", wantEnc: "UTF-8"},
+		{name: "shift jis", data: shiftJIS, wantText: shiftJISText, wantEnc: "Shift_JIS"},
+		{name: "utf16le bom", data: utf16le, wantText: "日本語", wantEnc: "UTF-16LE"},
 	}
 
 	for _, tt := range tests {
@@ -63,6 +65,13 @@ func TestDecodePreviewTextEncodings(t *testing.T) {
 				t.Fatalf("encoding = %q, want %q", enc, tt.wantEnc)
 			}
 		})
+	}
+}
+
+func TestDecodePreviewTextEmpty(t *testing.T) {
+	got, enc := DecodePreviewText(nil)
+	if got != "" || enc != "UTF-8" {
+		t.Fatalf("DecodePreviewText(nil) = %q, %q; want empty UTF-8", got, enc)
 	}
 }
 
