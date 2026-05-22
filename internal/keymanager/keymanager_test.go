@@ -273,6 +273,22 @@ func TestKeyManagerGatesTypedRuneBeforeDeferredTransition(t *testing.T) {
 	}
 }
 
+func TestKeyManagerDoesNotRetainTypedKeyWithoutTransition(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	km.PushHandler(noopHandler{})
+
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	closed := false
+	km.DeferUntilKeysReleased("close", func() {
+		closed = true
+	})
+
+	if !closed {
+		t.Fatal("defer should run immediately after a typed key that did not request a transition")
+	}
+}
+
 func TestKeyManagerSuppressesLateTypedRuneAfterDeferredTransition(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	km.PushHandler(&deferPushOnTypedKeyHandler{km: km})

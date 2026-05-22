@@ -3,6 +3,8 @@ package ui
 import (
 	"testing"
 
+	"fyne.io/fyne/v2"
+
 	"nmf/internal/keymanager"
 )
 
@@ -37,6 +39,48 @@ func TestPermanentDeleteAcceptsConfirmWord(t *testing.T) {
 	}
 	if !d.closed {
 		t.Fatal("dialog should close after correct confirmation text")
+	}
+}
+
+func TestPermanentDeleteWrongReturnDoesNotTrapLaterCancel(t *testing.T) {
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	d := NewDeleteConfirmDialog([]string{"file.txt"}, true, km)
+	km.PushHandler(keymanager.NewDeleteConfirmDialogKeyHandler(d))
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	if d.closed {
+		t.Fatal("dialog should remain open after Return without DELETE")
+	}
+
+	d.CancelDelete()
+
+	if !d.closed {
+		t.Fatal("cancel should close after a wrong Return confirmation")
+	}
+	if got := km.GetStackSize(); got != 0 {
+		t.Fatalf("key handler stack size = %d, want 0", got)
+	}
+}
+
+func TestPermanentDeleteWrongReturnDoesNotTrapLaterAccept(t *testing.T) {
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	d := NewDeleteConfirmDialog([]string{"file.txt"}, true, km)
+	accepted := false
+	d.onAccept = func() { accepted = true }
+	km.PushHandler(keymanager.NewDeleteConfirmDialogKeyHandler(d))
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	d.entry.SetText("DELETE")
+	d.ConfirmDelete()
+
+	if !accepted {
+		t.Fatal("confirm should accept after a wrong Return confirmation")
+	}
+	if got := km.GetStackSize(); got != 0 {
+		t.Fatalf("key handler stack size = %d, want 0", got)
 	}
 }
 
