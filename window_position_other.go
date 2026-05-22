@@ -6,3 +6,6 @@ import "fyne.io/fyne/v2"
 
 func positionWindowNextTo(parent, child fyne.Window) {
 }
+
+func restoreWindowBeforeFocus(fyne.Window) {
+}

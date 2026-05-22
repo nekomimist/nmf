@@ -20,14 +20,27 @@ func platformWindowSwitchRect(window fyne.Window) (windowSwitchRect, bool) {
 	if !ok {
 		return windowSwitchRect{}, false
 	}
+
+	if isWindowIconic(hwnd) {
+		placement, ok := getWindowPlacement(hwnd)
+		if ok {
+			return windowSwitchRectFromWinRect(placement.RcNormalPosition), true
+		}
+		debugPrint("FileManager: minimized window placement unavailable for switch rect")
+	}
+
 	rect, ok := getWindowRect(hwnd)
 	if !ok {
 		return windowSwitchRect{}, false
 	}
+	return windowSwitchRectFromWinRect(rect), true
+}
+
+func windowSwitchRectFromWinRect(rect winRect) windowSwitchRect {
 	return windowSwitchRect{
 		Left:   rect.Left,
 		Top:    rect.Top,
 		Right:  rect.Right,
 		Bottom: rect.Bottom,
-	}, true
+	}
 }

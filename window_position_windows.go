@@ -12,17 +12,21 @@ import (
 
 const (
 	monitorDefaultToNearest = 2
+	swRestore               = 9
 
 	swpNoSize   = 0x0001
 	swpNoZOrder = 0x0004
 )
 
 var (
-	winUser32             = windows.NewLazySystemDLL("user32.dll")
-	procGetWindowRect     = winUser32.NewProc("GetWindowRect")
-	procSetWindowPos      = winUser32.NewProc("SetWindowPos")
-	procMonitorFromWindow = winUser32.NewProc("MonitorFromWindow")
-	procGetMonitorInfoW   = winUser32.NewProc("GetMonitorInfoW")
+	winUser32              = windows.NewLazySystemDLL("user32.dll")
+	procGetWindowPlacement = winUser32.NewProc("GetWindowPlacement")
+	procGetWindowRect      = winUser32.NewProc("GetWindowRect")
+	procIsIconic           = winUser32.NewProc("IsIconic")
+	procShowWindow         = winUser32.NewProc("ShowWindow")
+	procSetWindowPos       = winUser32.NewProc("SetWindowPos")
+	procMonitorFromWindow  = winUser32.NewProc("MonitorFromWindow")
+	procGetMonitorInfoW    = winUser32.NewProc("GetMonitorInfoW")
 )
 
 type winRect struct {
@@ -32,11 +36,25 @@ type winRect struct {
 	Bottom int32
 }
 
+type winPoint struct {
+	X int32
+	Y int32
+}
+
 type winMonitorInfo struct {
 	CbSize    uint32
 	RcMonitor winRect
 	RcWork    winRect
 	DwFlags   uint32
+}
+
+type winWindowPlacement struct {
+	Length           uint32
+	Flags            uint32
+	ShowCmd          uint32
+	PtMinPosition    winPoint
+	PtMaxPosition    winPoint
+	RcNormalPosition winRect
 }
 
 func positionWindowNextTo(parent, child fyne.Window) {
@@ -113,6 +131,35 @@ func getWindowRect(hwnd uintptr) (winRect, bool) {
 	var rect winRect
 	ret, _, _ := procGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&rect)))
 	return rect, ret != 0
+}
+
+func getWindowPlacement(hwnd uintptr) (winWindowPlacement, bool) {
+	placement := winWindowPlacement{Length: uint32(unsafe.Sizeof(winWindowPlacement{}))}
+	ret, _, _ := procGetWindowPlacement.Call(hwnd, uintptr(unsafe.Pointer(&placement)))
+	return placement, ret != 0
+}
+
+func restoreWindowBeforeFocus(window fyne.Window) {
+	hwnd, ok := windowHWND(window)
+	if !ok {
+		return
+	}
+
+	if !isWindowIconic(hwnd) {
+		return
+	}
+
+	ret, _, err := procShowWindow.Call(hwnd, swRestore)
+	if ret == 0 {
+		debugPrint("FileManager: ShowWindow restore returned false: %v", err)
+		return
+	}
+	debugPrint("FileManager: restored iconified window before focus")
+}
+
+func isWindowIconic(hwnd uintptr) bool {
+	ret, _, _ := procIsIconic.Call(hwnd)
+	return ret != 0
 }
 
 func monitorWorkRect(hwnd uintptr) winRect {

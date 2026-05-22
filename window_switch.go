@@ -110,6 +110,7 @@ func (fm *FileManager) focusNeighborWindow(direction windowSwitchDirection) {
 	}
 
 	debugPrint("FileManager: window switch direction=%d target=%s", direction, target.currentPath)
+	restoreWindowBeforeFocus(target.window)
 	target.window.Show()
 	target.window.RequestFocus()
 	target.FocusFileList()
