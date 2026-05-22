@@ -11,7 +11,8 @@
 
 ## 簡易viewerのText表示をEntry以外に置き換えたい
 - 64KiB程度の表示でもFyneのmulti-line Entryは初期レイアウトが重い。
-- 選択・コピー・検索・移動の要件を整理した上で、TextGrid化または独自Canvas描画を検討する。
+- Text表示と移動だけはTextGrid PoCへ置き換えた。
+- 未対応: Text表示の選択・コピー・検索、Markdown高速化、Hex高速化。
 
 # DONE 以下は一応終わったもの
 ## 内部で使っている色定数を設定可能にしたい

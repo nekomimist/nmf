@@ -82,7 +82,10 @@ Built-in file viewer:
 - The handler owns less-like navigation keys (`j/k`, `f/b`, `g/G`, `n/N`,
   `/`, `:`, `q`) so keys do not fall through to the main file list if focus
   moves to non-text parts of the dialog.
-- Text and hex panes use `ReadOnlyEntry`, which preserves selection and copy
+- The Text pane uses a TextGrid PoC that renders only the visible lines for
+  faster initial display. It supports less-like movement and line jumps, but
+  selection, copy, and search are intentionally not wired yet.
+- The hex pane still uses `ReadOnlyEntry`, which preserves selection and copy
   behavior while suppressing edits. Search and line inputs are normal entries;
   submitted searches return focus to the active viewer pane regardless of
   match result.

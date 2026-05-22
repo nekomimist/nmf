@@ -35,7 +35,7 @@ type FileViewerDialog struct {
 	parent  fyne.Window
 	dialog  dialog.Dialog
 
-	textEntry *ReadOnlyEntry
+	textGrid  *fileViewerTextGrid
 	hexEntry  *ReadOnlyEntry
 	search    *widget.Entry
 	jump      *widget.Entry
@@ -81,9 +81,8 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	text := viewerText(d.preview)
 	d.debug("FileViewer: text-view elapsed=%s bytes=%d", time.Since(stepStart), len(text))
 	stepStart = time.Now()
-	d.textEntry = NewReadOnlyEntry(text, d.CancelDialog, d.handleEntryKey, d.handleEntryRune)
-	d.configureViewerEntry(d.textEntry)
-	d.debug("FileViewer: text-entry elapsed=%s bytes=%d", time.Since(stepStart), len(text))
+	d.textGrid = newFileViewerTextGrid(text, d.km, d.updateLineDisplay, d.debugPrint)
+	d.debug("FileViewer: text-grid elapsed=%s bytes=%d", time.Since(stepStart), len(text))
 	stepStart = time.Now()
 
 	hexContent := fyne.CanvasObject(widget.NewLabel("Hex preview will load when selected."))
@@ -106,7 +105,7 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	d.debug("FileViewer: controls elapsed=%s", time.Since(stepStart))
 	stepStart = time.Now()
 
-	d.textTab = container.NewTabItem("Text", d.textEntry)
+	d.textTab = container.NewTabItem("Text", d.textGrid)
 	d.hexTab = container.NewTabItem("Hex", hexContent)
 	d.tabs = container.NewAppTabs(d.textTab, container.NewTabItem("Markdown", container.NewScroll(d.markdownView())), d.hexTab)
 	d.tabs.OnSelected = func(item *container.TabItem) {
@@ -170,7 +169,7 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	d.debug("FileViewer: dialog-resize elapsed=%s", time.Since(stepStart))
 	stepStart = time.Now()
 	d.updateLineDisplay()
-	d.focusActiveEntry()
+	d.focusActiveViewer()
 	d.debug("FileViewer: dialog-focus elapsed=%s", time.Since(stepStart))
 	d.debug("FileViewer: dialog-ready elapsed=%s", time.Since(totalStart))
 }
@@ -287,7 +286,7 @@ func viewerPrintableRune(r rune) bool {
 	case '\n', '\r', '\t':
 		return true
 	default:
-		return unicode.IsPrint(r)
+		return unicode.IsGraphic(r)
 	}
 }
 
@@ -388,12 +387,16 @@ func (d *FileViewerDialog) activeEntry() *ReadOnlyEntry {
 	case "Hex":
 		return d.hexEntry
 	default:
-		return d.textEntry
+		return nil
 	}
 }
 
-func (d *FileViewerDialog) focusActiveEntry() {
+func (d *FileViewerDialog) focusActiveViewer() {
 	if d.parent == nil {
+		return
+	}
+	if d.activeName == "Text" && d.textGrid != nil {
+		d.parent.Canvas().Focus(d.textGrid)
 		return
 	}
 	entry := d.activeEntry()
@@ -467,6 +470,11 @@ func (d *FileViewerDialog) handleEntryScroll(deltaY float32) bool {
 }
 
 func (d *FileViewerDialog) copySelection() {
+	if d.activeName == "Text" {
+		d.setStatusSuffix("copy=unsupported")
+		d.focusActiveViewer()
+		return
+	}
 	entry := d.activeEntry()
 	if entry == nil {
 		return
@@ -483,7 +491,7 @@ func (d *FileViewerDialog) copySelection() {
 	}
 	app.Clipboard().SetContent(text)
 	d.status.SetText(d.statusText() + fmt.Sprintf("  copied=%d", len(text)))
-	d.focusActiveEntry()
+	d.focusActiveViewer()
 }
 
 func (d *FileViewerDialog) findNext() {
@@ -502,6 +510,11 @@ func (d *FileViewerDialog) find(direction int) {
 	if d.activeName == "Markdown" {
 		d.tabs.SelectIndex(0)
 		d.activeName = "Text"
+	}
+	if d.activeName == "Text" {
+		d.setStatusSuffix("search=unsupported")
+		d.focusActiveViewer()
+		return
 	}
 	entry := d.activeEntry()
 	if entry == nil || entry.Text == "" {
@@ -538,13 +551,13 @@ func (d *FileViewerDialog) find(direction int) {
 	}
 	if next < 0 {
 		d.setStatusSuffix("search=no-match")
-		d.focusActiveEntry()
+		d.focusActiveViewer()
 		return
 	}
 	d.lastIndex = next
 	d.moveEntryToByteOffset(entry, next)
 	d.setStatusSuffix(fmt.Sprintf("search=%d", next))
-	d.focusActiveEntry()
+	d.focusActiveViewer()
 }
 
 func (d *FileViewerDialog) jumpToLine() {
@@ -555,6 +568,16 @@ func (d *FileViewerDialog) jumpToLine() {
 	if d.activeName == "Markdown" {
 		d.tabs.SelectIndex(0)
 		d.activeName = "Text"
+	}
+	if d.activeName == "Text" {
+		if d.textGrid == nil {
+			return
+		}
+		line = d.textGrid.JumpToLine(line)
+		d.updateLineDisplay()
+		d.setStatusSuffix(fmt.Sprintf("line=%d", line))
+		d.focusActiveViewer()
+		return
 	}
 	entry := d.activeEntry()
 	if entry == nil {
@@ -569,7 +592,7 @@ func (d *FileViewerDialog) jumpToLine() {
 	entry.Refresh()
 	d.updateLineDisplay()
 	d.setStatusSuffix(fmt.Sprintf("line=%d", line))
-	d.focusActiveEntry()
+	d.focusActiveViewer()
 }
 
 func (d *FileViewerDialog) moveEntryToByteOffset(entry *ReadOnlyEntry, offset int) {
@@ -609,14 +632,32 @@ func (d *FileViewerDialog) ViewerLineUp() {
 }
 
 func (d *FileViewerDialog) ViewerPageDown() {
+	if d.activeName == "Text" && d.textGrid != nil {
+		d.textGrid.PageDown()
+		d.updateLineDisplay()
+		d.focusActiveViewer()
+		return
+	}
 	d.moveCursorRows(20)
 }
 
 func (d *FileViewerDialog) ViewerPageUp() {
+	if d.activeName == "Text" && d.textGrid != nil {
+		d.textGrid.PageUp()
+		d.updateLineDisplay()
+		d.focusActiveViewer()
+		return
+	}
 	d.moveCursorRows(-20)
 }
 
 func (d *FileViewerDialog) ViewerHome() {
+	if d.activeName == "Text" && d.textGrid != nil {
+		d.textGrid.Home()
+		d.updateLineDisplay()
+		d.focusActiveViewer()
+		return
+	}
 	entry := d.activeEntry()
 	if entry == nil {
 		return
@@ -625,10 +666,16 @@ func (d *FileViewerDialog) ViewerHome() {
 	entry.CursorColumn = 0
 	entry.Refresh()
 	d.updateLineDisplay()
-	d.focusActiveEntry()
+	d.focusActiveViewer()
 }
 
 func (d *FileViewerDialog) ViewerEnd() {
+	if d.activeName == "Text" && d.textGrid != nil {
+		d.textGrid.End()
+		d.updateLineDisplay()
+		d.focusActiveViewer()
+		return
+	}
 	entry := d.activeEntry()
 	if entry == nil {
 		return
@@ -640,7 +687,7 @@ func (d *FileViewerDialog) ViewerEnd() {
 	entry.CursorColumn = 0
 	entry.Refresh()
 	d.updateLineDisplay()
-	d.focusActiveEntry()
+	d.focusActiveViewer()
 }
 
 func (d *FileViewerDialog) ViewerSearchNext() {
@@ -664,6 +711,12 @@ func (d *FileViewerDialog) ViewerFocusLine() {
 }
 
 func (d *FileViewerDialog) moveCursorRows(delta int) {
+	if d.activeName == "Text" && d.textGrid != nil {
+		d.textGrid.MoveRows(delta)
+		d.updateLineDisplay()
+		d.focusActiveViewer()
+		return
+	}
 	entry := d.activeEntry()
 	if entry == nil {
 		return
@@ -680,11 +733,15 @@ func (d *FileViewerDialog) moveCursorRows(delta int) {
 	entry.CursorColumn = 0
 	entry.Refresh()
 	d.updateLineDisplay()
-	d.focusActiveEntry()
+	d.focusActiveViewer()
 }
 
 func (d *FileViewerDialog) updateLineDisplay() {
 	if d.lineLabel == nil {
+		return
+	}
+	if d.activeName == "Text" && d.textGrid != nil {
+		d.lineLabel.SetText(fmt.Sprintf("line=%d/%d", d.textGrid.CurrentLine(), d.textGrid.TotalLines()))
 		return
 	}
 	entry := d.activeEntry()
