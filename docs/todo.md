@@ -11,8 +11,9 @@
 
 ## 簡易viewerのText表示をEntry以外に置き換えたい
 - 64KiB程度の表示でもFyneのmulti-line Entryは初期レイアウトが重い。
-- Text表示と移動だけはTextGrid PoCへ置き換えた。
-- 未対応: Text表示の選択・コピー・検索、Markdown高速化、Hex高速化。
+- Text/Hex表示と移動だけはTextGrid PoCへ置き換えた。
+- 長い行は横スクロールを標準にし、折り返し表示へ切り替えられるようにした。
+- 未対応: Text/Hex表示の選択・コピー・検索、Markdown高速化。
 
 # DONE 以下は一応終わったもの
 ## 内部で使っている色定数を設定可能にしたい

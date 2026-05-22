@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/fileinfo"
 )
@@ -124,6 +125,51 @@ func TestFileViewerTextGridClampsMovement(t *testing.T) {
 	}
 }
 
+func TestFileViewerTextGridHorizontalScrollClampsAndSlices(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	grid := newFileViewerTextGrid("abcdef", nil, nil, nil)
+	grid.visibleRows = 1
+	grid.visibleCols = 3
+
+	grid.MoveColumns(2)
+	if grid.CurrentColumn() != 3 {
+		t.Fatalf("CurrentColumn() = %d, want 3", grid.CurrentColumn())
+	}
+	if got := grid.grid.Text(); got != "cde" {
+		t.Fatalf("grid text after horizontal scroll = %q, want %q", got, "cde")
+	}
+
+	grid.MoveColumns(99)
+	if grid.CurrentColumn() != 4 {
+		t.Fatalf("CurrentColumn() after clamp = %d, want 4", grid.CurrentColumn())
+	}
+	if got := grid.grid.Text(); got != "def" {
+		t.Fatalf("grid text after clamp = %q, want %q", got, "def")
+	}
+}
+
+func TestFileViewerTextGridToggleWrapResetsColumn(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	grid := newFileViewerTextGrid("abcdef", nil, nil, nil)
+	grid.visibleRows = 2
+	grid.visibleCols = 3
+	grid.MoveColumns(2)
+
+	if !grid.ToggleWrap() {
+		t.Fatal("ToggleWrap() = false, want true")
+	}
+	if grid.CurrentColumn() != 1 {
+		t.Fatalf("CurrentColumn() = %d, want 1 after wrap", grid.CurrentColumn())
+	}
+	if got := grid.grid.Text(); got != "abc\ndef" {
+		t.Fatalf("grid text in wrap mode = %q, want wrapped rows", got)
+	}
+}
+
 func TestFileViewerTextGridMinSizeDoesNotFollowVisibleLineWidth(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
@@ -140,6 +186,74 @@ func TestFileViewerTextGridMinSizeDoesNotFollowVisibleLineWidth(t *testing.T) {
 	}
 	if after.Width != 0 {
 		t.Fatalf("MinSize().Width = %v, want stable zero width", after.Width)
+	}
+}
+
+func TestFileViewerDialogMarkdownStartsOnTextTab(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "README.md",
+		Text:     "# title",
+		Markdown: true,
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	if d.activeName != "Text" {
+		t.Fatalf("activeName = %q, want Text", d.activeName)
+	}
+}
+
+func TestFileViewerDialogBinaryStartsOnHexTextGrid(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:   "data.bin",
+		Data:   []byte{0x00, 0x01, 0xff},
+		Text:   "\x00\x01\xff",
+		Binary: true,
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	if d.activeName != "Hex" {
+		t.Fatalf("activeName = %q, want Hex", d.activeName)
+	}
+	if d.hexGrid == nil {
+		t.Fatal("hexGrid is nil, want TextGrid hex viewer")
+	}
+	if got := strings.Join(d.hexGrid.lines, "\n"); !strings.Contains(got, "00000000") {
+		t.Fatalf("hex grid text = %q, want hex dump offset", got)
+	}
+}
+
+func TestFileViewerDialogLazyLoadsHexTextGrid(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path: "note.txt",
+		Data: []byte("hello"),
+		Text: "hello",
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	if d.hexGrid != nil {
+		t.Fatal("hexGrid loaded before Hex tab selection")
+	}
+	d.tabs.Select(d.hexTab)
+	if d.hexGrid == nil {
+		t.Fatal("hexGrid is nil after Hex tab selection")
 	}
 }
 

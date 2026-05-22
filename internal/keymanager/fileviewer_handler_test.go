@@ -14,6 +14,9 @@ type fakeFileViewer struct {
 	pgUp   int
 	home   int
 	end    int
+	left   int
+	right  int
+	wrap   int
 	next   int
 	prev   int
 	search int
@@ -27,6 +30,9 @@ func (f *fakeFileViewer) ViewerPageDown()       { f.pgDown++ }
 func (f *fakeFileViewer) ViewerPageUp()         { f.pgUp++ }
 func (f *fakeFileViewer) ViewerHome()           { f.home++ }
 func (f *fakeFileViewer) ViewerEnd()            { f.end++ }
+func (f *fakeFileViewer) ViewerColumnLeft()     { f.left++ }
+func (f *fakeFileViewer) ViewerColumnRight()    { f.right++ }
+func (f *fakeFileViewer) ViewerToggleWrap()     { f.wrap++ }
 func (f *fakeFileViewer) ViewerSearchNext()     { f.next++ }
 func (f *fakeFileViewer) ViewerSearchPrevious() { f.prev++ }
 func (f *fakeFileViewer) ViewerFocusSearch()    { f.search++ }
@@ -36,15 +42,16 @@ func TestFileViewerHandlerLessKeys(t *testing.T) {
 	viewer := &fakeFileViewer{}
 	handler := NewFileViewerKeyHandler(viewer)
 
-	for _, r := range []rune{'j', 'k', 'f', 'b', 'g', 'G', 'n', 'N', '/', ':', 'q'} {
+	for _, r := range []rune{'j', 'k', 'h', 'l', 'f', 'b', 'g', 'G', 'w', 'n', 'N', '/', ':', 'q'} {
 		if !handler.OnTypedRune(r, ModifierState{}) {
 			t.Fatalf("rune %q should be handled", r)
 		}
 	}
 
 	if viewer.down != 1 || viewer.up != 1 || viewer.pgDown != 1 || viewer.pgUp != 1 ||
-		viewer.home != 1 || viewer.end != 1 || viewer.next != 1 || viewer.prev != 1 ||
-		viewer.search != 1 || viewer.line != 1 || viewer.closed != 1 {
+		viewer.home != 1 || viewer.end != 1 || viewer.left != 1 || viewer.right != 1 ||
+		viewer.wrap != 1 || viewer.next != 1 || viewer.prev != 1 || viewer.search != 1 ||
+		viewer.line != 1 || viewer.closed != 1 {
 		t.Fatalf("viewer actions = %+v, want each less action once", viewer)
 	}
 }
@@ -56,6 +63,8 @@ func TestFileViewerHandlerNavigationKeys(t *testing.T) {
 	for _, key := range []fyne.KeyName{
 		fyne.KeyDown,
 		fyne.KeyUp,
+		fyne.KeyLeft,
+		fyne.KeyRight,
 		fyne.KeyPageDown,
 		fyne.KeyPageUp,
 		fyne.KeyHome,
@@ -67,7 +76,8 @@ func TestFileViewerHandlerNavigationKeys(t *testing.T) {
 	}
 
 	if viewer.down != 1 || viewer.up != 1 || viewer.pgDown != 1 ||
-		viewer.pgUp != 1 || viewer.home != 1 || viewer.end != 1 {
+		viewer.pgUp != 1 || viewer.home != 1 || viewer.end != 1 ||
+		viewer.left != 1 || viewer.right != 1 {
 		t.Fatalf("viewer actions = %+v, want each navigation action once", viewer)
 	}
 }

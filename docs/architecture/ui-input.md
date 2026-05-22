@@ -82,13 +82,14 @@ Built-in file viewer:
 - The handler owns less-like navigation keys (`j/k`, `f/b`, `g/G`, `n/N`,
   `/`, `:`, `q`) so keys do not fall through to the main file list if focus
   moves to non-text parts of the dialog.
-- The Text pane uses a TextGrid PoC that renders only the visible lines for
-  faster initial display. It supports less-like movement and line jumps, but
-  selection, copy, and search are intentionally not wired yet.
-- The hex pane still uses `ReadOnlyEntry`, which preserves selection and copy
-  behavior while suppressing edits. Search and line inputs are normal entries;
-  submitted searches return focus to the active viewer pane regardless of
-  match result.
+- The Text and hex panes use a TextGrid PoC that renders only visible text for
+  faster initial display. It supports less-like vertical movement, line jumps,
+  horizontal movement, and a wrap toggle; selection, copy, and search are
+  intentionally not wired yet.
+- Markdown files open on the Text pane by default. The Markdown tab remains
+  available for manual rendered preview.
+- Search and line inputs are normal entries; submitted searches return focus to
+  the active viewer pane regardless of match result.
 
 Filter-style text input:
 

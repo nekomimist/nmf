@@ -18,6 +18,7 @@ import (
 
 const (
 	fileViewerTextGridFallbackRows = 20
+	fileViewerTextGridFallbackCols = 80
 	fileViewerTextGridTabWidth     = 4
 )
 
@@ -27,7 +28,10 @@ type fileViewerTextGrid struct {
 	grid          *widget.TextGrid
 	lines         []string
 	topLine       int
+	leftCol       int
 	visibleRows   int
+	visibleCols   int
+	wrap          bool
 	wideAmbiguous bool
 
 	km         *keymanager.KeyManager
@@ -41,6 +45,7 @@ func newFileViewerTextGrid(text string, km *keymanager.KeyManager, onMoved func(
 		grid:          widget.NewTextGrid(),
 		lines:         splitViewerLines(text),
 		visibleRows:   fileViewerTextGridFallbackRows,
+		visibleCols:   fileViewerTextGridFallbackCols,
 		wideAmbiguous: viewerLocaleUsesWideAmbiguous(),
 		km:            km,
 		onMoved:       onMoved,
@@ -130,6 +135,18 @@ func viewerDisplayLine(line string, wideAmbiguous bool) string {
 		}
 	}
 	return b.String()
+}
+
+func viewerDisplayLineWidth(line string, wideAmbiguous bool) int {
+	col := 0
+	for _, r := range line {
+		if r == '\t' {
+			col = nextTabStop(col, fileViewerTextGridTabWidth)
+			continue
+		}
+		col += viewerRuneWidth(r, wideAmbiguous)
+	}
+	return col
 }
 
 func viewerRuneWidth(r rune, wideAmbiguous bool) int {
@@ -233,6 +250,31 @@ func (v *fileViewerTextGrid) PageUp() {
 	v.MoveRows(-v.pageRows())
 }
 
+func (v *fileViewerTextGrid) MoveColumns(delta int) {
+	if v.wrap {
+		return
+	}
+	v.setLeftCol(v.leftCol + delta)
+}
+
+func (v *fileViewerTextGrid) ToggleWrap() bool {
+	v.wrap = !v.wrap
+	v.leftCol = 0
+	v.refreshGrid()
+	if v.onMoved != nil {
+		v.onMoved()
+	}
+	return v.wrap
+}
+
+func (v *fileViewerTextGrid) Wrap() bool {
+	return v.wrap
+}
+
+func (v *fileViewerTextGrid) CurrentColumn() int {
+	return v.leftCol + 1
+}
+
 func (v *fileViewerTextGrid) Home() {
 	v.setTopLine(0)
 }
@@ -280,22 +322,34 @@ func (v *fileViewerTextGrid) pageRows() int {
 }
 
 func (v *fileViewerTextGrid) updateVisibleRows(size fyne.Size) {
-	if size.Height <= 0 {
+	if size.Width <= 0 && size.Height <= 0 {
 		return
 	}
 	textSize := v.Theme().Size(theme.SizeNameText)
 	cell := fyne.MeasureText("M", textSize, fyne.TextStyle{Monospace: true})
-	if cell.Height <= 0 {
+	if cell.Width <= 0 || cell.Height <= 0 {
 		return
 	}
-	rows := int(size.Height / cell.Height)
-	if rows < 1 {
-		rows = 1
+	rows := v.visibleRows
+	if size.Height > 0 {
+		rows = int(size.Height / cell.Height)
+		if rows < 1 {
+			rows = 1
+		}
 	}
-	if rows == v.visibleRows {
+	cols := v.visibleCols
+	if size.Width > 0 {
+		cols = int(size.Width / cell.Width)
+		if cols < 1 {
+			cols = 1
+		}
+	}
+	if rows == v.visibleRows && cols == v.visibleCols {
 		return
 	}
 	v.visibleRows = rows
+	v.visibleCols = cols
+	v.setLeftCol(v.leftCol)
 	v.setTopLine(v.topLine)
 }
 
@@ -318,6 +372,25 @@ func (v *fileViewerTextGrid) setTopLine(line int) {
 	}
 }
 
+func (v *fileViewerTextGrid) setLeftCol(col int) {
+	maxCol := v.maxLeftCol()
+	if col < 0 {
+		col = 0
+	}
+	if col > maxCol {
+		col = maxCol
+	}
+	if col == v.leftCol {
+		v.refreshGrid()
+		return
+	}
+	v.leftCol = col
+	v.refreshGrid()
+	if v.onMoved != nil {
+		v.onMoved()
+	}
+}
+
 func (v *fileViewerTextGrid) maxTopLine() int {
 	total := v.TotalLines()
 	maxTop := total - 1
@@ -327,32 +400,95 @@ func (v *fileViewerTextGrid) maxTopLine() int {
 	return maxTop
 }
 
+func (v *fileViewerTextGrid) maxLeftCol() int {
+	if v.wrap {
+		return 0
+	}
+	cols := v.visibleCols
+	if cols < 1 {
+		cols = fileViewerTextGridFallbackCols
+	}
+	maxWidth := 0
+	for _, line := range v.lines {
+		if w := viewerDisplayLineWidth(line, v.wideAmbiguous); w > maxWidth {
+			maxWidth = w
+		}
+	}
+	maxCol := maxWidth - cols
+	if maxCol < 0 {
+		return 0
+	}
+	return maxCol
+}
+
 func (v *fileViewerTextGrid) refreshGrid() {
 	start := time.Now()
 	rows := v.visibleRows
 	if rows < 1 {
 		rows = fileViewerTextGridFallbackRows
 	}
-	end := v.topLine + rows
-	if end > len(v.lines) {
-		end = len(v.lines)
+	cols := v.visibleCols
+	if cols < 1 {
+		cols = fileViewerTextGridFallbackCols
 	}
-	if end < v.topLine {
-		end = v.topLine
-	}
-	displayLines := make([]string, 0, end-v.topLine)
-	for _, line := range v.lines[v.topLine:end] {
-		displayLines = append(displayLines, viewerDisplayLine(line, v.wideAmbiguous))
+	displayLines := make([]string, 0, rows)
+	for i := v.topLine; i < len(v.lines) && len(displayLines) < rows; i++ {
+		display := viewerDisplayLine(v.lines[i], v.wideAmbiguous)
+		if v.wrap {
+			displayLines = append(displayLines, viewerWrapDisplayLine(display, cols, rows-len(displayLines))...)
+			continue
+		}
+		displayLines = append(displayLines, viewerSliceDisplayLine(display, v.leftCol, cols))
 	}
 	v.grid.SetText(strings.Join(displayLines, "\n"))
 	v.grid.Refresh()
-	v.debug("FileViewer: text-grid-refresh elapsed=%s top=%d rows=%d", time.Since(start), v.topLine+1, rows)
+	v.debug("FileViewer: text-grid-refresh elapsed=%s top=%d col=%d rows=%d cols=%d wrap=%t",
+		time.Since(start), v.topLine+1, v.leftCol+1, rows, cols, v.wrap)
 }
 
 func (v *fileViewerTextGrid) debug(format string, args ...interface{}) {
 	if v.debugPrint != nil {
 		v.debugPrint(format, args...)
 	}
+}
+
+func viewerSliceDisplayLine(line string, startCol, width int) string {
+	if width < 1 {
+		width = fileViewerTextGridFallbackCols
+	}
+	if startCol < 0 {
+		startCol = 0
+	}
+	runes := []rune(line)
+	if startCol >= len(runes) {
+		return ""
+	}
+	end := startCol + width
+	if end > len(runes) {
+		end = len(runes)
+	}
+	return string(runes[startCol:end])
+}
+
+func viewerWrapDisplayLine(line string, width, limit int) []string {
+	if width < 1 {
+		width = fileViewerTextGridFallbackCols
+	}
+	if limit < 1 {
+		return nil
+	}
+	if line == "" {
+		return []string{""}
+	}
+	var rows []string
+	for len(line) > 0 && len(rows) < limit {
+		rows = append(rows, viewerSliceDisplayLine(line, 0, width))
+		if len([]rune(line)) <= width {
+			break
+		}
+		line = string([]rune(line)[width:])
+	}
+	return rows
 }
 
 type fileViewerTextGridRenderer struct {

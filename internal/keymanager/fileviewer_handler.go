@@ -11,6 +11,9 @@ type FileViewerInterface interface {
 	ViewerPageUp()
 	ViewerHome()
 	ViewerEnd()
+	ViewerColumnLeft()
+	ViewerColumnRight()
+	ViewerToggleWrap()
 	ViewerSearchNext()
 	ViewerSearchPrevious()
 	ViewerFocusSearch()
@@ -37,6 +40,10 @@ func (h *FileViewerKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierSt
 		h.viewer.ViewerLineUp()
 	case fyne.KeyDown:
 		h.viewer.ViewerLineDown()
+	case fyne.KeyLeft:
+		h.viewer.ViewerColumnLeft()
+	case fyne.KeyRight:
+		h.viewer.ViewerColumnRight()
 	case fyne.KeyPageUp:
 		h.viewer.ViewerPageUp()
 	case fyne.KeyPageDown:
@@ -80,6 +87,10 @@ func (h *FileViewerKeyHandler) OnTypedRune(r rune, modifiers ModifierState) bool
 		h.viewer.ViewerLineDown()
 	case 'k':
 		h.viewer.ViewerLineUp()
+	case 'h':
+		h.viewer.ViewerColumnLeft()
+	case 'l':
+		h.viewer.ViewerColumnRight()
 	case 'f':
 		h.viewer.ViewerPageDown()
 	case 'b':
@@ -88,6 +99,8 @@ func (h *FileViewerKeyHandler) OnTypedRune(r rune, modifiers ModifierState) bool
 		h.viewer.ViewerHome()
 	case 'G':
 		h.viewer.ViewerEnd()
+	case 'w':
+		h.viewer.ViewerToggleWrap()
 	case 'n':
 		h.viewer.ViewerSearchNext()
 	case 'N':
