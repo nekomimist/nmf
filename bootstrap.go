@@ -21,19 +21,20 @@ import (
 
 func NewFileManager(app fyne.App, path string, config *config.Config, configManager *config.Manager, customTheme *customtheme.CustomTheme, configScript *configscript.Runtime) *FileManager {
 	fm := &FileManager{
-		window:         app.NewWindow("File Manager"),
-		currentPath:    path,
-		cursorPath:     "",
-		selectedFiles:  make(map[string]bool),
-		fileBinding:    binding.NewUntypedList(),
-		config:         config,
-		configManager:  configManager,
-		configScript:   configScript,
-		activeSort:     config.UI.Sort,
-		customTheme:    customTheme,
-		cursorRenderer: ui.NewCursorRenderer(config.UI.CursorStyle),
-		keyManager:     keymanager.NewKeyManager(debugPrint),
-		searchMatchers: search.NewProvider(debugPrint),
+		window:            app.NewWindow("File Manager"),
+		currentPath:       path,
+		cursorPath:        "",
+		selectedFiles:     make(map[string]bool),
+		fileBinding:       binding.NewUntypedList(),
+		config:            config,
+		configManager:     configManager,
+		configScript:      configScript,
+		initialWindowSize: fyne.NewSize(float32(config.Window.Width), float32(config.Window.Height)),
+		activeSort:        config.UI.Sort,
+		customTheme:       customTheme,
+		cursorRenderer:    ui.NewCursorRenderer(config.UI.CursorStyle),
+		keyManager:        keymanager.NewKeyManager(debugPrint),
+		searchMatchers:    search.NewProvider(debugPrint),
 	}
 
 	// Busy overlay (hidden by default)

@@ -39,7 +39,7 @@ Input-owner transitions:
 Main-screen configurable bindings:
 
 - Configured under `ui.keyBindings` in `config.json`.
-- Key specs support forms such as `C-N`, `S-J`, `C-S-F`, `A-X`, `F2`, `Return`,
+- Key specs support forms such as `C-N`, `S-J`, `S-Q`, `C-S-Q`, `C-S-F`, `A-X`, `F2`, `Return`,
   and `Delete`.
 - Modifiers are limited to `S`, `A`, and `C`; unknown modifiers or key names are
   logged as warnings and that binding entry is ignored.

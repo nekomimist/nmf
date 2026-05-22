@@ -261,7 +261,7 @@ func (fm *FileManager) setupUI() {
 
 	fm.window.SetContent(content)
 	fm.setupDropHandler()
-	fm.window.Resize(fyne.NewSize(float32(fm.config.Window.Width), float32(fm.config.Window.Height)))
+	fm.window.Resize(fm.initialWindowSize)
 
 	// Initialize jobs indicator state
 	fm.onJobsUpdated()

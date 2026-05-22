@@ -20,34 +20,35 @@ import (
 
 // FileManager is the main file manager struct.
 type FileManager struct {
-	mu             sync.RWMutex // Protects files and selectedFiles from concurrent access
-	window         fyne.Window
-	currentPath    string
-	files          []fileinfo.FileInfo
-	originalFiles  []fileinfo.FileInfo // Original files before filtering
-	fileList       *widget.List
-	fileListView   *ui.KeySink
-	pathDisplay    *widget.Label
-	statusLabel    *widget.Label
-	cursorPath     string          // Current cursor file path
-	cursorAnchor   cursorRowAnchor // Last visible row object for shell menu positioning
-	selectedFiles  map[string]bool // Set of selected file paths
-	storageInfo    fileinfo.StorageInfo
-	storageKnown   bool
-	fileBinding    binding.UntypedList
-	config         *config.Config
-	configManager  *config.Manager
-	configScript   *configscript.Runtime
-	activeSort     config.SortConfig
-	customTheme    *customtheme.CustomTheme                // Custom theme for colors
-	cursorRenderer ui.CursorRenderer                       // Cursor display renderer
-	keyManager     *keymanager.KeyManager                  // Keyboard input manager
-	dirWatcher     *watcher.DirectoryWatcher               // Directory change watcher
-	currentFilter  *config.FilterEntry                     // Currently applied filter
-	searchOverlay  *ui.IncrementalSearchOverlay            // Incremental search overlay
-	searchHandler  *keymanager.IncrementalSearchKeyHandler // Search key handler
-	searchMatchers *search.Provider                        // Shared search matcher provider
-	iconSvc        *fileinfo.IconService                   // Async icon service
+	mu                sync.RWMutex // Protects files and selectedFiles from concurrent access
+	window            fyne.Window
+	currentPath       string
+	files             []fileinfo.FileInfo
+	originalFiles     []fileinfo.FileInfo // Original files before filtering
+	fileList          *widget.List
+	fileListView      *ui.KeySink
+	pathDisplay       *widget.Label
+	statusLabel       *widget.Label
+	cursorPath        string          // Current cursor file path
+	cursorAnchor      cursorRowAnchor // Last visible row object for shell menu positioning
+	selectedFiles     map[string]bool // Set of selected file paths
+	storageInfo       fileinfo.StorageInfo
+	storageKnown      bool
+	fileBinding       binding.UntypedList
+	config            *config.Config
+	configManager     *config.Manager
+	configScript      *configscript.Runtime
+	initialWindowSize fyne.Size
+	activeSort        config.SortConfig
+	customTheme       *customtheme.CustomTheme                // Custom theme for colors
+	cursorRenderer    ui.CursorRenderer                       // Cursor display renderer
+	keyManager        *keymanager.KeyManager                  // Keyboard input manager
+	dirWatcher        *watcher.DirectoryWatcher               // Directory change watcher
+	currentFilter     *config.FilterEntry                     // Currently applied filter
+	searchOverlay     *ui.IncrementalSearchOverlay            // Incremental search overlay
+	searchHandler     *keymanager.IncrementalSearchKeyHandler // Search key handler
+	searchMatchers    *search.Provider                        // Shared search matcher provider
+	iconSvc           *fileinfo.IconService                   // Async icon service
 	// Busy state while loading directories
 	busyOverlay *ui.BusyOverlay
 	busyActive  bool

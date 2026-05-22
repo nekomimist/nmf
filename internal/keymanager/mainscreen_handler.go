@@ -29,6 +29,8 @@ const (
 	CommandWindowReopen        = "window.reopen"
 	CommandWindowFocusLeft     = "window.focusLeft"
 	CommandWindowFocusRight    = "window.focusRight"
+	CommandWindowResetSize     = "window.resetSize"
+	CommandWindowResetAllSizes = "window.resetAllSizes"
 	CommandTreeShow            = "tree.show"
 	CommandHistoryShow         = "history.show"
 	CommandDirectoryJumpShow   = "directoryJump.show"
@@ -77,6 +79,8 @@ type FileManagerInterface interface {
 	ReopenClosedWindow()
 	FocusWindowLeft()
 	FocusWindowRight()
+	ResetWindowSize()
+	ResetAllWindowSizes()
 	ShowDirectoryTreeDialog()
 	ShowNavigationHistoryDialog()
 	ShowDirectoryJumpDialog()
@@ -334,6 +338,8 @@ func defaultMainScreenBindings() []config.KeyBindingEntry {
 		{Key: "R", Command: CommandRenameShow, Event: keyEventUp},
 		{Key: "Left", Command: CommandWindowFocusLeft, Event: keyEventDown},
 		{Key: "Right", Command: CommandWindowFocusRight, Event: keyEventDown},
+		{Key: "S-Q", Command: CommandWindowResetSize, Event: keyEventTyped},
+		{Key: "C-S-Q", Command: CommandWindowResetAllSizes, Event: keyEventDown},
 		{Key: "Tab", Command: CommandExplorerContextShow, Event: keyEventTyped},
 		{Key: "F3", Command: CommandFilterToggle, Event: keyEventTyped},
 		{Key: "Q", Command: CommandQuit, Event: keyEventTyped},
@@ -374,6 +380,8 @@ func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
 		CommandWindowReopen:        func(CommandContext) { mh.fileManager.ReopenClosedWindow() },
 		CommandWindowFocusLeft:     func(CommandContext) { mh.fileManager.FocusWindowLeft() },
 		CommandWindowFocusRight:    func(CommandContext) { mh.fileManager.FocusWindowRight() },
+		CommandWindowResetSize:     func(CommandContext) { mh.fileManager.ResetWindowSize() },
+		CommandWindowResetAllSizes: func(CommandContext) { mh.fileManager.ResetAllWindowSizes() },
 		CommandTreeShow:            func(CommandContext) { mh.fileManager.ShowDirectoryTreeDialog() },
 		CommandHistoryShow:         func(CommandContext) { mh.fileManager.ShowNavigationHistoryDialog() },
 		CommandDirectoryJumpShow:   func(CommandContext) { mh.fileManager.ShowDirectoryJumpDialog() },

@@ -330,44 +330,46 @@ func TestKeyManagerDoesNotDrainAfterTransientStackChange(t *testing.T) {
 }
 
 type mainScreenFakeFileManager struct {
-	showJobsCount          int
-	showHistoryCount       int
-	showSearchCount        int
-	showDirectoryJumpCount int
-	reopenClosedCount      int
-	focusWindowLeftCount   int
-	focusWindowRightCount  int
-	showCreateDirCount     int
-	createDirName          string
-	createDirResult        bool
-	showClipboardFileCount int
-	clipboardFileName      string
-	clipboardFileResult    bool
-	messageTitle           string
-	messageText            string
-	showMessageCount       int
-	clipboardText          string
-	clipboardResult        bool
-	showRenameCount        int
-	showDeleteCount        int
-	showExplorerMenuCount  int
-	showExternalMenuCount  int
-	showViewerCount        int
-	showMaintenanceCount   int
-	showSortCount          int
-	openFilePath           string
-	openDefaultAppPath     string
-	deletePermanent        bool
-	focusPathCount         int
-	currentPath            string
-	loadDirectoryPath      string
-	saveCursorPath         string
-	cursorIndex            int
-	setCursorIndex         int
-	files                  []fileinfo.FileInfo
-	selectedFiles          map[string]bool
-	allSelectedFiles       []fileinfo.FileInfo
-	refreshFileListCount   int
+	showJobsCount            int
+	showHistoryCount         int
+	showSearchCount          int
+	showDirectoryJumpCount   int
+	reopenClosedCount        int
+	focusWindowLeftCount     int
+	focusWindowRightCount    int
+	resetWindowSizeCount     int
+	resetAllWindowSizesCount int
+	showCreateDirCount       int
+	createDirName            string
+	createDirResult          bool
+	showClipboardFileCount   int
+	clipboardFileName        string
+	clipboardFileResult      bool
+	messageTitle             string
+	messageText              string
+	showMessageCount         int
+	clipboardText            string
+	clipboardResult          bool
+	showRenameCount          int
+	showDeleteCount          int
+	showExplorerMenuCount    int
+	showExternalMenuCount    int
+	showViewerCount          int
+	showMaintenanceCount     int
+	showSortCount            int
+	openFilePath             string
+	openDefaultAppPath       string
+	deletePermanent          bool
+	focusPathCount           int
+	currentPath              string
+	loadDirectoryPath        string
+	saveCursorPath           string
+	cursorIndex              int
+	setCursorIndex           int
+	files                    []fileinfo.FileInfo
+	selectedFiles            map[string]bool
+	allSelectedFiles         []fileinfo.FileInfo
+	refreshFileListCount     int
 }
 
 func (f *mainScreenFakeFileManager) GetCurrentCursorIndex() int    { return f.cursorIndex }
@@ -408,6 +410,8 @@ func (f *mainScreenFakeFileManager) OpenNewWindow()                    {}
 func (f *mainScreenFakeFileManager) ReopenClosedWindow()               { f.reopenClosedCount++ }
 func (f *mainScreenFakeFileManager) FocusWindowLeft()                  { f.focusWindowLeftCount++ }
 func (f *mainScreenFakeFileManager) FocusWindowRight()                 { f.focusWindowRightCount++ }
+func (f *mainScreenFakeFileManager) ResetWindowSize()                  { f.resetWindowSizeCount++ }
+func (f *mainScreenFakeFileManager) ResetAllWindowSizes()              { f.resetAllWindowSizesCount++ }
 func (f *mainScreenFakeFileManager) ShowDirectoryTreeDialog()          {}
 func (f *mainScreenFakeFileManager) ShowNavigationHistoryDialog()      { f.showHistoryCount++ }
 func (f *mainScreenFakeFileManager) ShowDirectoryJumpDialog() {
@@ -854,6 +858,72 @@ func TestMainScreenConfiguredBindingCanReopenWindow(t *testing.T) {
 	}
 	if fm.reopenClosedCount != 1 {
 		t.Fatalf("ReopenClosedWindow count = %d, want 1", fm.reopenClosedCount)
+	}
+}
+
+func TestMainScreenShiftQResetsCurrentWindowSize(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyQ}, ModifierState{ShiftPressed: true})
+
+	if !handled {
+		t.Fatal("Shift+Q should be handled")
+	}
+	if fm.resetWindowSizeCount != 1 {
+		t.Fatalf("ResetWindowSize count = %d, want 1", fm.resetWindowSizeCount)
+	}
+	if fm.resetAllWindowSizesCount != 0 {
+		t.Fatalf("ResetAllWindowSizes count = %d, want 0", fm.resetAllWindowSizesCount)
+	}
+}
+
+func TestMainScreenCtrlShiftQResetsAllWindowSizes(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyQ}, ModifierState{CtrlPressed: true, ShiftPressed: true})
+
+	if !handled {
+		t.Fatal("Ctrl+Shift+Q should be handled")
+	}
+	if fm.resetAllWindowSizesCount != 1 {
+		t.Fatalf("ResetAllWindowSizes count = %d, want 1", fm.resetAllWindowSizesCount)
+	}
+	if fm.resetWindowSizeCount != 0 {
+		t.Fatalf("ResetWindowSize count = %d, want 0", fm.resetWindowSizeCount)
+	}
+}
+
+func TestMainScreenNoopCommandOverridesResetSize(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+		{Key: "S-Q", Command: CommandNoop},
+	})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyQ}, ModifierState{ShiftPressed: true})
+
+	if !handled {
+		t.Fatal("configured noop should be handled")
+	}
+	if fm.resetWindowSizeCount != 0 {
+		t.Fatalf("ResetWindowSize count = %d, want 0", fm.resetWindowSizeCount)
+	}
+}
+
+func TestMainScreenNoopCommandOverridesResetAllSizes(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+		{Key: "C-S-Q", Command: CommandNoop, Event: "down"},
+	})
+
+	handled := handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyQ}, ModifierState{CtrlPressed: true, ShiftPressed: true})
+
+	if !handled {
+		t.Fatal("configured noop should be handled")
+	}
+	if fm.resetAllWindowSizesCount != 0 {
+		t.Fatalf("ResetAllWindowSizes count = %d, want 0", fm.resetAllWindowSizesCount)
 	}
 }
 

@@ -268,6 +268,9 @@ Events:
 When `event` is omitted, Ctrl or Alt bindings default to `down`; other bindings
 default to `typed`.
 
+Built-in window-size reset bindings are `S-Q` for the current File Manager
+window and `C-S-Q` for all File Manager windows.
+
 Available main-screen commands:
 
 - `cursor.up`, `cursor.down`, `cursor.pageUp`, `cursor.pageDown`
@@ -276,6 +279,7 @@ Available main-screen commands:
 - `directory.parent`, `directory.refresh`, `directory.home`, `directory.create`
 - `clipboard.createTextFile`
 - `window.new`, `window.reopen`, `window.focusLeft`, `window.focusRight`
+- `window.resetSize`, `window.resetAllSizes`
 - `tree.show`, `history.show`, `directoryJump.show`
 - `filter.show`, `filter.clear`, `filter.toggle`
 - `search.show`, `sort.show`, `jobs.show`

@@ -87,7 +87,7 @@ Top-level config sections:
 
 Main-screen keyboard shortcuts are resolved through the key manager command
 registry. Configured `keyBindings` map key specifications such as `C-N`,
-`S-J`, or `F2` to stable internal command IDs. `externalCommands` define the
+`S-J`, `S-Q`, or `F2` to stable internal command IDs. `externalCommands` define the
 commands shown from the main-screen external command menu. Runtime-state
 maintenance tools are exposed through the `maintenance.show` command.
 

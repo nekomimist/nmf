@@ -1788,6 +1788,8 @@ func (f *configScriptFakeFileManager) OpenNewWindow()                    {}
 func (f *configScriptFakeFileManager) ReopenClosedWindow()               {}
 func (f *configScriptFakeFileManager) FocusWindowLeft()                  {}
 func (f *configScriptFakeFileManager) FocusWindowRight()                 {}
+func (f *configScriptFakeFileManager) ResetWindowSize()                  {}
+func (f *configScriptFakeFileManager) ResetAllWindowSizes()              {}
 func (f *configScriptFakeFileManager) ShowDirectoryTreeDialog()          {}
 func (f *configScriptFakeFileManager) ShowNavigationHistoryDialog()      {}
 func (f *configScriptFakeFileManager) ShowDirectoryJumpDialog()          {}
