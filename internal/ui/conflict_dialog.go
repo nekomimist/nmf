@@ -2,10 +2,12 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
@@ -86,7 +88,7 @@ func (d *ConflictDialog) ShowDialog(parent fyne.Window, callback func(jobs.Confl
 		d.choice.SetSelected(options[0])
 	}
 
-	d.nameEntry = newConflictNameEntry(d.CancelJob)
+	d.nameEntry = newConflictNameEntry(d.km, d.CancelJob)
 	d.nameEntry.SetText(suggested)
 	d.nameEntry.OnSubmitted = func(string) {
 		d.Continue()
@@ -105,7 +107,7 @@ func (d *ConflictDialog) ShowDialog(parent fyne.Window, callback func(jobs.Confl
 		container.NewBorder(nil, nil, widget.NewLabel("Modified:"), nil, destModified),
 		widget.NewLabel(""),
 		container.NewPadded(d.choice),
-		d.nameEntry,
+		lineEditThemeOverride(d.nameEntry),
 		widget.NewLabel(""),
 		d.applyRest,
 		d.errorLabel,
@@ -325,11 +327,14 @@ func (d *ConflictDialog) focusCurrent() {
 
 type conflictNameEntry struct {
 	TabEntry
+	km       *keymanager.KeyManager
 	onCancel func()
+	focused  bool
+	disabled bool
 }
 
-func newConflictNameEntry(onCancel func()) *conflictNameEntry {
-	e := &conflictNameEntry{onCancel: onCancel}
+func newConflictNameEntry(km *keymanager.KeyManager, onCancel func()) *conflictNameEntry {
+	e := &conflictNameEntry{km: km, onCancel: onCancel}
 	e.acceptTab = true
 	e.Wrapping = fyne.TextWrap(fyne.TextTruncateClip)
 	e.ExtendBaseWidget(e)
@@ -344,4 +349,60 @@ func (e *conflictNameEntry) TypedKey(ev *fyne.KeyEvent) {
 		return
 	}
 	e.TabEntry.TypedKey(ev)
+}
+
+func (e *conflictNameEntry) KeyDown(ev *fyne.KeyEvent) {
+	if e.km != nil {
+		e.km.HandleKeyDown(ev)
+	}
+	e.TabEntry.KeyDown(ev)
+}
+
+func (e *conflictNameEntry) KeyUp(ev *fyne.KeyEvent) {
+	if e.km != nil {
+		e.km.HandleKeyUp(ev)
+	}
+	e.TabEntry.KeyUp(ev)
+}
+
+func (e *conflictNameEntry) FocusGained() {
+	e.focused = true
+	e.TabEntry.FocusGained()
+}
+
+func (e *conflictNameEntry) FocusLost() {
+	e.focused = false
+	e.TabEntry.FocusLost()
+}
+
+func (e *conflictNameEntry) Disable() {
+	e.disabled = true
+	e.TabEntry.Disable()
+}
+
+func (e *conflictNameEntry) Enable() {
+	e.disabled = false
+	e.TabEntry.Enable()
+}
+
+func (e *conflictNameEntry) CreateRenderer() fyne.WidgetRenderer {
+	caret := canvas.NewRectangle(color.Transparent)
+	caret.Hide()
+	return &lineEditEntryRenderer{
+		entry: e,
+		base:  e.TabEntry.CreateRenderer(),
+		caret: caret,
+	}
+}
+
+func (e *conflictNameEntry) lineEditFocused() bool {
+	return e.focused
+}
+
+func (e *conflictNameEntry) lineEditDisabled() bool {
+	return e.disabled
+}
+
+func (e *conflictNameEntry) lineEditTextStyle() fyne.TextStyle {
+	return e.TextStyle
 }

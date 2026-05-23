@@ -269,6 +269,18 @@ func (e *LineEditEntry) CreateRenderer() fyne.WidgetRenderer {
 	}
 }
 
+func (e *LineEditEntry) lineEditFocused() bool {
+	return e.focused
+}
+
+func (e *LineEditEntry) lineEditDisabled() bool {
+	return e.disabled
+}
+
+func (e *LineEditEntry) lineEditTextStyle() fyne.TextStyle {
+	return e.TextStyle
+}
+
 func (e *LineEditEntry) KeyDown(ev *fyne.KeyEvent) {
 	e.TabEntry.KeyDown(ev)
 }
@@ -427,9 +439,18 @@ func (e *LineEditEntry) setCursor(pos int) {
 }
 
 type lineEditEntryRenderer struct {
-	entry *LineEditEntry
+	entry lineEditEntryRendererTarget
 	base  fyne.WidgetRenderer
 	caret *canvas.Rectangle
+}
+
+type lineEditEntryRendererTarget interface {
+	fyne.Widget
+	Theme() fyne.Theme
+	CursorPosition() fyne.Position
+	lineEditFocused() bool
+	lineEditDisabled() bool
+	lineEditTextStyle() fyne.TextStyle
 }
 
 func (r *lineEditEntryRenderer) Destroy() {
@@ -461,7 +482,7 @@ func (r *lineEditEntryRenderer) Refresh() {
 }
 
 func (r *lineEditEntryRenderer) restoreFocusedBorderColor() {
-	if r.entry == nil || !r.entry.focused || r.entry.disabled {
+	if r.entry == nil || !r.entry.lineEditFocused() || r.entry.lineEditDisabled() {
 		return
 	}
 	border := r.borderRectangle()
@@ -509,7 +530,7 @@ func (r *lineEditEntryRenderer) applyContentInset() {
 }
 
 func (r *lineEditEntryRenderer) updateCaret() {
-	if r.entry == nil || r.caret == nil || !r.entry.focused || r.entry.disabled {
+	if r.entry == nil || r.caret == nil || !r.entry.lineEditFocused() || r.entry.lineEditDisabled() {
 		r.caret.Hide()
 		return
 	}
@@ -517,7 +538,7 @@ func (r *lineEditEntryRenderer) updateCaret() {
 	th := r.entry.Theme()
 	inputBorder := th.Size(fynetheme.SizeNameInputBorder)
 	textSize := th.Size(fynetheme.SizeNameText)
-	lineHeight := fyne.MeasureText("M", textSize, r.entry.TextStyle).Height
+	lineHeight := fyne.MeasureText("M", textSize, r.entry.lineEditTextStyle()).Height
 	caretWidth := inputBorder
 	if caretWidth < lineEditEntryMinimumCaretStrokeWidth {
 		caretWidth = lineEditEntryMinimumCaretStrokeWidth
