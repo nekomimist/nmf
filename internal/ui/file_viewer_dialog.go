@@ -80,6 +80,7 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	d.debug("FileViewer: text-view elapsed=%s bytes=%d", time.Since(stepStart), len(text))
 	stepStart = time.Now()
 	d.textGrid = newFileViewerTextGrid(text, d.km, d.updateLineDisplay, d.debugPrint)
+	d.textGrid.SetCopyHandler(d.copySelection)
 	d.debug("FileViewer: text-grid elapsed=%s bytes=%d", time.Since(stepStart), len(text))
 	stepStart = time.Now()
 
@@ -210,6 +211,7 @@ func (d *FileViewerDialog) createHexGrid() *fileViewerTextGrid {
 	d.debug("FileViewer: hex-view elapsed=%s bytes=%d", time.Since(stepStart), len(hex))
 	stepStart = time.Now()
 	grid := newFileViewerTextGrid(hex, d.km, d.updateLineDisplay, d.debugPrint)
+	grid.SetCopyHandler(d.copySelection)
 	d.hexGrid = grid
 	d.debug("FileViewer: hex-grid elapsed=%s bytes=%d", time.Since(stepStart), len(hex))
 	return grid
@@ -394,7 +396,32 @@ func (d *FileViewerDialog) focusActiveViewer() {
 }
 
 func (d *FileViewerDialog) copySelection() {
-	d.setStatusSuffix("copy=unsupported")
+	grid := d.activeGrid()
+	if grid == nil {
+		d.debug("FileViewer: copy-selection active=%s grid=false", d.activeName)
+		d.setStatusSuffix("copy=unsupported")
+		d.focusActiveViewer()
+		return
+	}
+	text := grid.SelectedText()
+	start, end, chars := grid.selectionDebugInfo()
+	d.debug("FileViewer: copy-selection active=%s selection=%t start=%d:%d end=%d:%d chars=%d text_chars=%d",
+		d.activeName, grid.selection.set, start.line+1, start.col, end.line+1, end.col, chars, len([]rune(text)))
+	if text == "" {
+		d.setStatusSuffix("copy=no-selection")
+		d.focusActiveViewer()
+		return
+	}
+	clipboard := fyne.CurrentApp().Clipboard()
+	if clipboard == nil {
+		d.debug("FileViewer: copy-selection clipboard=false")
+		d.setStatusSuffix("copy=no-clipboard")
+		d.focusActiveViewer()
+		return
+	}
+	clipboard.SetContent(text)
+	d.debug("FileViewer: copy-selection clipboard-set chars=%d", len([]rune(text)))
+	d.setStatusSuffix(fmt.Sprintf("copied=%d", len([]rune(text))))
 	d.focusActiveViewer()
 }
 
@@ -533,6 +560,11 @@ func (d *FileViewerDialog) ViewerFocusLine() {
 	if d.parent != nil && d.jump != nil {
 		d.parent.Canvas().Focus(d.jump)
 	}
+}
+
+func (d *FileViewerDialog) ViewerCopySelection() {
+	d.debug("FileViewer: copy-selection via=keymanager")
+	d.copySelection()
 }
 
 func (d *FileViewerDialog) moveCursorRows(delta int) {

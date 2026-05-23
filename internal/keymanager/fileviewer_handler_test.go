@@ -21,6 +21,7 @@ type fakeFileViewer struct {
 	prev   int
 	search int
 	line   int
+	copy   int
 }
 
 func (f *fakeFileViewer) CloseViewer()          { f.closed++ }
@@ -37,6 +38,7 @@ func (f *fakeFileViewer) ViewerSearchNext()     { f.next++ }
 func (f *fakeFileViewer) ViewerSearchPrevious() { f.prev++ }
 func (f *fakeFileViewer) ViewerFocusSearch()    { f.search++ }
 func (f *fakeFileViewer) ViewerFocusLine()      { f.line++ }
+func (f *fakeFileViewer) ViewerCopySelection()  { f.copy++ }
 
 func TestFileViewerHandlerLessKeys(t *testing.T) {
 	viewer := &fakeFileViewer{}
@@ -53,6 +55,21 @@ func TestFileViewerHandlerLessKeys(t *testing.T) {
 		viewer.wrap != 1 || viewer.next != 1 || viewer.prev != 1 || viewer.search != 1 ||
 		viewer.line != 1 || viewer.closed != 1 {
 		t.Fatalf("viewer actions = %+v, want each less action once", viewer)
+	}
+}
+
+func TestFileViewerHandlerCtrlCCopiesSelection(t *testing.T) {
+	viewer := &fakeFileViewer{}
+	handler := NewFileViewerKeyHandler(viewer)
+
+	if !handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyC}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("Ctrl+C should be handled")
+	}
+	if viewer.copy != 1 {
+		t.Fatalf("copy calls = %d, want 1", viewer.copy)
+	}
+	if handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyC}, ModifierState{}) {
+		t.Fatal("plain C should not be handled by OnKeyDown")
 	}
 }
 

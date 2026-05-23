@@ -18,6 +18,7 @@ type FileViewerInterface interface {
 	ViewerSearchPrevious()
 	ViewerFocusSearch()
 	ViewerFocusLine()
+	ViewerCopySelection()
 }
 
 // FileViewerKeyHandler handles less-like keys for the built-in viewer.
@@ -34,6 +35,10 @@ func (h *FileViewerKeyHandler) GetName() string { return "FileViewer" }
 func (h *FileViewerKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	if ev == nil {
 		return false
+	}
+	if modifiers.CtrlPressed && ev.Name == fyne.KeyC {
+		h.viewer.ViewerCopySelection()
+		return true
 	}
 	switch ev.Name {
 	case fyne.KeyUp:

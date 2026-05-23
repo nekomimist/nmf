@@ -7,10 +7,13 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/fileinfo"
+	"nmf/internal/keymanager"
 )
 
 func TestViewerTextDisablesBinaryPreview(t *testing.T) {
@@ -288,6 +291,148 @@ func TestFileViewerTextGridJumpToLineClampsRange(t *testing.T) {
 	}
 	if got := grid.JumpToLine(-1); got != 1 {
 		t.Fatalf("JumpToLine(-1) = %d, want 1", got)
+	}
+}
+
+func TestFileViewerTextGridSelectedTextSingleLine(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	grid := newFileViewerTextGrid("abcdef", nil, nil, nil)
+	grid.selection = viewerTextSelection{
+		start: viewerTextPosition{line: 0, col: 1},
+		end:   viewerTextPosition{line: 0, col: 4},
+		set:   true,
+	}
+
+	if got := grid.SelectedText(); got != "bcd" {
+		t.Fatalf("SelectedText() = %q, want %q", got, "bcd")
+	}
+}
+
+func TestFileViewerTextGridSelectedTextMultiLine(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	grid := newFileViewerTextGrid("abc\ndef\nghi", nil, nil, nil)
+	grid.selection = viewerTextSelection{
+		start: viewerTextPosition{line: 0, col: 1},
+		end:   viewerTextPosition{line: 2, col: 2},
+		set:   true,
+	}
+
+	if got := grid.SelectedText(); got != "bc\ndef\ngh" {
+		t.Fatalf("SelectedText() = %q, want multi-line logical text", got)
+	}
+}
+
+func TestFileViewerTextGridSelectedTextSkipsDisplayPadding(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	line := "a\tあb"
+	grid := newFileViewerTextGrid(line, nil, nil, nil)
+	grid.selection = viewerTextSelection{
+		start: viewerTextPosition{line: 0, col: 0},
+		end:   viewerTextPosition{line: 0, col: len([]rune(line))},
+		set:   true,
+	}
+
+	if got := grid.SelectedText(); got != line {
+		t.Fatalf("SelectedText() = %q, want original logical text %q", got, line)
+	}
+}
+
+func TestFileViewerTextGridPositionForHorizontalScroll(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	grid := newFileViewerTextGrid("abcdef", nil, nil, nil)
+	grid.visibleRows = 1
+	grid.visibleCols = 3
+	grid.cellSize = fyne.NewSize(10, 20)
+	grid.MoveColumns(2)
+
+	got := grid.textPositionForCanvasPosition(fyne.NewPos(0, 0))
+	want := viewerTextPosition{line: 0, col: 2}
+	if got != want {
+		t.Fatalf("textPositionForCanvasPosition() = %#v, want %#v", got, want)
+	}
+}
+
+func TestFileViewerTextGridPositionForWrap(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	grid := newFileViewerTextGrid("abcdef", nil, nil, nil)
+	grid.visibleRows = 2
+	grid.visibleCols = 3
+	grid.cellSize = fyne.NewSize(10, 20)
+	grid.ToggleWrap()
+
+	got := grid.textPositionForCanvasPosition(fyne.NewPos(0, 21))
+	want := viewerTextPosition{line: 0, col: 3}
+	if got != want {
+		t.Fatalf("textPositionForCanvasPosition() = %#v, want %#v", got, want)
+	}
+}
+
+func TestFileViewerDialogCopySelectionUsesClipboard(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "note.txt",
+		Data:     []byte("abcdef"),
+		Text:     "abcdef",
+		Encoding: "UTF-8",
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	d.textGrid.selection = viewerTextSelection{
+		start: viewerTextPosition{line: 0, col: 1},
+		end:   viewerTextPosition{line: 0, col: 4},
+		set:   true,
+	}
+	d.copySelection()
+
+	if got := app.Clipboard().Content(); got != "bcd" {
+		t.Fatalf("clipboard = %q, want %q", got, "bcd")
+	}
+	if !strings.Contains(d.status.Text, "copied=3") {
+		t.Fatalf("status = %q, want copied count", d.status.Text)
+	}
+}
+
+func TestFileViewerDialogTextGridCtrlCCopiesThroughKeyManager(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "note.txt",
+		Data:     []byte("abcdef"),
+		Text:     "abcdef",
+		Encoding: "UTF-8",
+	}, km)
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	d.textGrid.selection = viewerTextSelection{
+		start: viewerTextPosition{line: 0, col: 1},
+		end:   viewerTextPosition{line: 0, col: 4},
+		set:   true,
+	}
+	d.textGrid.KeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
+	d.textGrid.KeyDown(&fyne.KeyEvent{Name: fyne.KeyC})
+
+	if got := app.Clipboard().Content(); got != "bcd" {
+		t.Fatalf("clipboard = %q, want %q", got, "bcd")
 	}
 }
 
