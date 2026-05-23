@@ -14,7 +14,8 @@
 - Text/Hex表示と移動だけはTextGrid PoCへ置き換えた。
 - 長い行は横スクロールを標準にし、折り返し表示へ切り替えられるようにした。
 - Text/Hex表示のマウスドラッグ選択とコピーはTextGrid上で対応した。
-- 未対応: Text/Hex表示の検索、キーボード選択、Markdown高速化。
+- Text/Hex表示のliteral検索はTextGrid上で対応した。
+- 未対応: Text/Hex表示のキーボード選択、Markdown高速化。
 
 # DONE 以下は一応終わったもの
 ## 内部で使っている色定数を設定可能にしたい

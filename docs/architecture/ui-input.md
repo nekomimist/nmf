@@ -84,8 +84,8 @@ Built-in file viewer:
   moves to non-text parts of the dialog.
 - The Text and hex panes use a TextGrid PoC that renders only visible text for
   faster initial display. It supports less-like vertical movement, line jumps,
-  horizontal movement, a wrap toggle, mouse drag selection, and copy. Search
-  and keyboard selection are intentionally not wired yet.
+  horizontal movement, a wrap toggle, mouse drag selection, copy, and literal
+  current-match search. Keyboard selection is intentionally not wired yet.
 - Markdown files open on the Text pane by default. The Markdown tab remains
   available for manual rendered preview.
 - Search and line inputs are normal entries; submitted searches return focus to

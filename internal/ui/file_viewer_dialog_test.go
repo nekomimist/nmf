@@ -436,6 +436,189 @@ func TestFileViewerDialogTextGridCtrlCCopiesThroughKeyManager(t *testing.T) {
 	}
 }
 
+func TestFileViewerTextGridFindForwardAndBackward(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	grid := newFileViewerTextGrid("alpha\nbeta\nalphabet", nil, nil, nil)
+
+	result := grid.Find("alpha", 1)
+	if !result.Matched || result.Line != 1 || result.Column != 1 || result.Wrapped {
+		t.Fatalf("Find forward = %+v, want first alpha", result)
+	}
+	result = grid.Find("alpha", 1)
+	if !result.Matched || result.Line != 3 || result.Column != 1 || result.Wrapped {
+		t.Fatalf("Find next = %+v, want second alpha", result)
+	}
+	result = grid.Find("alpha", -1)
+	if !result.Matched || result.Line != 1 || result.Column != 1 || result.Wrapped {
+		t.Fatalf("Find previous = %+v, want first alpha", result)
+	}
+}
+
+func TestFileViewerTextGridFindWraps(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	grid := newFileViewerTextGrid("one\ntwo\nthree", nil, nil, nil)
+	grid.JumpToLine(3)
+
+	result := grid.Find("one", 1)
+	if !result.Matched || !result.Wrapped || result.Line != 1 {
+		t.Fatalf("Find wrapped = %+v, want wrapped match on line 1", result)
+	}
+}
+
+func TestFileViewerTextGridFindNotFoundDoesNotMove(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	grid := newFileViewerTextGrid("one\ntwo\nthree", nil, nil, nil)
+	grid.JumpToLine(2)
+
+	result := grid.Find("missing", 1)
+	if result.Matched {
+		t.Fatalf("Find missing = %+v, want no match", result)
+	}
+	if grid.CurrentLine() != 2 {
+		t.Fatalf("CurrentLine() = %d, want unchanged line 2", grid.CurrentLine())
+	}
+}
+
+func TestFileViewerTextGridFindScrollsHorizontally(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	grid := newFileViewerTextGrid("0123456789abcdef", nil, nil, nil)
+	grid.visibleRows = 1
+	grid.visibleCols = 4
+
+	result := grid.Find("abc", 1)
+	if !result.Matched || result.Column != 11 {
+		t.Fatalf("Find = %+v, want match at col 11", result)
+	}
+	if grid.CurrentColumn() != 11 {
+		t.Fatalf("CurrentColumn() = %d, want match column visible", grid.CurrentColumn())
+	}
+}
+
+func TestFileViewerDialogFindUsesSearchTextLiterally(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "note.txt",
+		Data:     []byte("alpha\n beta"),
+		Text:     "alpha\n beta",
+		Encoding: "UTF-8",
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	d.search.SetText(" beta")
+	d.findNext()
+
+	if d.textGrid.CurrentLine() != 2 {
+		t.Fatalf("CurrentLine() = %d, want literal leading-space match on line 2", d.textGrid.CurrentLine())
+	}
+	if !strings.Contains(d.status.Text, "match line=2 col=1") {
+		t.Fatalf("status = %q, want match location", d.status.Text)
+	}
+}
+
+func TestFileViewerDialogFindSwitchesMarkdownToText(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "README.md",
+		Data:     []byte("# title\nbody"),
+		Text:     "# title\nbody",
+		Markdown: true,
+		Encoding: "UTF-8",
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	d.tabs.SelectIndex(1)
+	d.activeName = "Markdown"
+	d.search.SetText("body")
+	d.findNext()
+
+	if d.activeName != "Text" {
+		t.Fatalf("activeName = %q, want Text", d.activeName)
+	}
+	if d.textGrid.CurrentLine() != 2 {
+		t.Fatalf("CurrentLine() = %d, want body line", d.textGrid.CurrentLine())
+	}
+}
+
+func TestFileViewerDialogSlashFocusesSearchAfterKeyRelease(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "note.txt",
+		Data:     []byte("alpha"),
+		Text:     "alpha",
+		Encoding: "UTF-8",
+	}, km)
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	d.textGrid.KeyDown(&fyne.KeyEvent{Name: fyne.KeySlash})
+	d.textGrid.TypedKey(&fyne.KeyEvent{Name: fyne.KeySlash})
+	if w.Canvas().Focused() == d.search {
+		t.Fatal("search focused before slash key release")
+	}
+
+	d.textGrid.KeyUp(&fyne.KeyEvent{Name: fyne.KeySlash})
+	if w.Canvas().Focused() != d.search {
+		t.Fatal("search not focused after slash key release")
+	}
+	if d.search.Text != "" {
+		t.Fatalf("search text = %q, want empty after slash command", d.search.Text)
+	}
+}
+
+func TestFileViewerDialogColonFocusesLineAfterKeyRelease(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "note.txt",
+		Data:     []byte("alpha"),
+		Text:     "alpha",
+		Encoding: "UTF-8",
+	}, km)
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	d.textGrid.KeyDown(&fyne.KeyEvent{Name: fyne.KeySemicolon})
+	d.textGrid.TypedRune(':')
+	if w.Canvas().Focused() == d.jump {
+		t.Fatal("line entry focused before colon key release")
+	}
+
+	d.textGrid.KeyUp(&fyne.KeyEvent{Name: fyne.KeySemicolon})
+	if w.Canvas().Focused() != d.jump {
+		t.Fatal("line entry not focused after colon key release")
+	}
+	if d.jump.Text != "" {
+		t.Fatalf("line text = %q, want empty after colon command", d.jump.Text)
+	}
+}
+
 func TestSplitViewerLinesKeepsTrailingEmptyLine(t *testing.T) {
 	lines := splitViewerLines("a\n")
 	if len(lines) != 2 || lines[0] != "a" || lines[1] != "" {

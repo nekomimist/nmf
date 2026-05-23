@@ -434,16 +434,30 @@ func (d *FileViewerDialog) findPrevious() {
 }
 
 func (d *FileViewerDialog) find(direction int) {
-	query := strings.TrimSpace(d.search.Text)
+	query := d.search.Text
 	if query == "" {
+		if grid := d.activeGrid(); grid != nil {
+			grid.Find("", direction)
+		}
 		return
 	}
 	if d.activeName == "Markdown" {
 		d.tabs.SelectIndex(0)
 		d.activeName = "Text"
 	}
-	if d.activeGrid() != nil {
-		d.setStatusSuffix("search=unsupported")
+	if grid := d.activeGrid(); grid != nil {
+		result := grid.Find(query, direction)
+		d.updateLineDisplay()
+		if !result.Matched {
+			d.setStatusSuffix("search=not-found")
+			d.focusActiveViewer()
+			return
+		}
+		suffix := fmt.Sprintf("match line=%d col=%d", result.Line, result.Column)
+		if result.Wrapped {
+			suffix += " wrapped"
+		}
+		d.setStatusSuffix(suffix)
 		d.focusActiveViewer()
 		return
 	}
@@ -551,15 +565,27 @@ func (d *FileViewerDialog) ViewerSearchPrevious() {
 }
 
 func (d *FileViewerDialog) ViewerFocusSearch() {
-	if d.parent != nil && d.search != nil {
-		d.parent.Canvas().Focus(d.search)
+	d.deferViewerFocus("viewer.focusSearch", func() {
+		if d.parent != nil && d.search != nil {
+			d.parent.Canvas().Focus(d.search)
+		}
+	})
+}
+
+func (d *FileViewerDialog) deferViewerFocus(label string, focus func()) {
+	if d.km != nil {
+		d.km.DeferUntilKeysReleased(label, focus)
+		return
 	}
+	focus()
 }
 
 func (d *FileViewerDialog) ViewerFocusLine() {
-	if d.parent != nil && d.jump != nil {
-		d.parent.Canvas().Focus(d.jump)
-	}
+	d.deferViewerFocus("viewer.focusLine", func() {
+		if d.parent != nil && d.jump != nil {
+			d.parent.Canvas().Focus(d.jump)
+		}
+	})
 }
 
 func (d *FileViewerDialog) ViewerCopySelection() {
