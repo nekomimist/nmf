@@ -3,6 +3,16 @@
 ## KeyDown/KeyUp系キーバインドのrepeat適性を棚卸ししたい
 - Fyne/GLFWではキーリピートがKeyDownではなくTypedKey/TypedShortcut側へ流れる。
 - repeatしてほしい操作はtyped/TypedShortcutへ寄せ、長押しで増殖して困る操作はdown/upに残す。
+- Fyneのイベント順は概ね KeyDown -> TypedKey/TypedShortcut -> TypedRune -> KeyUp。
+  KeyDown/KeyUpを全廃してTyped系へ完全移行するには、現行の`KeyName + modifier` bindingを
+  TypedRune/TypedKey/TypedShortcutのどれで解決するか分類する必要がある。
+- 文字キーをTypedKeyで即実行すると、同じ打鍵由来のTypedRuneが後から新しいdialogへ漏れる可能性がある。
+  完全移行するなら、文字系bindingは「TypedKeyで候補を記録し、続くTypedRuneで確定する」ような
+  pending/commit方式が必要になりそう。
+- Ctrl/Alt系はTypedShortcutへ寄せられるが、Fyne組み込みのShortcutCopy/SelectAll/Cut/Paste等に
+  畳まれる組み合わせがあり、`Ctrl+C`と`Ctrl+Insert`のように区別できないケースがある。
+- 以上から、大規模なKeyDown/KeyUp全廃は複雑さの置き場所が変わるだけの可能性が高い。
+  当面は全移行ではなく、repeatが必要な操作だけtyped/TypedShortcutへ寄せる方針が費用対効果よさそう。
 
 ## OK/Cancel的な二択ボタン
 - あまり統一感がないかもしれない。CancelIconとConfirmIcon をつけて、Confirmのほうのアイコン色を
