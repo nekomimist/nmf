@@ -1,17 +1,21 @@
 package ui
 
 import (
+	"image/color"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
+	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 	"nmf/internal/search"
+	customtheme "nmf/internal/theme"
 )
 
 // CustomSearchEntry is a custom entry that redirects focus to KeySink
@@ -50,6 +54,7 @@ type NavigationHistoryDialog struct {
 	selectedIndex int // Currently selected list index
 	filteredPaths []string
 	allPaths      []string
+	openPaths     map[string]bool
 	lastUsed      map[string]time.Time
 	dataBinding   binding.StringList
 	debugPrint    func(format string, args ...interface{})
@@ -67,6 +72,7 @@ type NavigationHistoryDialog struct {
 // NewNavigationHistoryDialog creates a new navigation history dialog
 func NewNavigationHistoryDialog(
 	paths []string,
+	openPaths map[string]bool,
 	lastUsed map[string]time.Time,
 	keyManager *keymanager.KeyManager,
 	debugPrint func(format string, args ...interface{}),
@@ -74,6 +80,7 @@ func NewNavigationHistoryDialog(
 ) *NavigationHistoryDialog {
 	dialog := &NavigationHistoryDialog{
 		allPaths:   paths,
+		openPaths:  openPaths,
 		lastUsed:   lastUsed,
 		debugPrint: debugPrint,
 		keyManager: keyManager,
@@ -105,9 +112,9 @@ func (nhd *NavigationHistoryDialog) createWidgets() {
 	nhd.historyList = widget.NewListWithData(
 		nhd.dataBinding,
 		func() fyne.CanvasObject {
-			// Simple template: just a label showing the full path
-			label := widget.NewLabel("")
-			return label
+			text := canvas.NewText("", currentAppThemeColor(fynetheme.ColorNameForeground))
+			text.TextSize = fynetheme.TextSize()
+			return text
 		},
 		func(item binding.DataItem, obj fyne.CanvasObject) {
 			str, _ := item.(binding.String).Get()
@@ -115,9 +122,11 @@ func (nhd *NavigationHistoryDialog) createWidgets() {
 				return
 			}
 
-			// Update the label with the full path
-			if label, ok := obj.(*widget.Label); ok {
-				label.SetText(str)
+			if text, ok := obj.(*canvas.Text); ok {
+				text.Text = str
+				text.TextSize = fynetheme.TextSize()
+				text.Color = nhd.historyTextColor(str)
+				text.Refresh()
 			}
 		},
 	)
@@ -500,4 +509,14 @@ func (nhd *NavigationHistoryDialog) resolveDirectoryPath(path string) (string, b
 		return "", false
 	}
 	return resolved, true
+}
+
+func (nhd *NavigationHistoryDialog) historyTextColor(path string) color.Color {
+	if nhd.openPaths[path] {
+		themeProvider := currentThemeColorProvider()
+		if themeProvider != nil {
+			return themeProvider.GetCustomColor(customtheme.ColorCopyMoveOpenDestination)
+		}
+	}
+	return currentAppThemeColor(fynetheme.ColorNameForeground)
 }

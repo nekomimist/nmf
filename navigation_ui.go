@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"sort"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -48,17 +49,30 @@ func (fm *FileManager) ShowNavigationHistoryDialog() {
 		}
 	}
 	historyPaths := fm.config.GetNavigationHistory()
+	openPathList, openPaths := fm.openPathsInOtherWindows()
 
 	// Add current path to the beginning of history list
 	enhancedPaths := []string{}
+	seen := map[string]bool{}
 	if fm.currentPath != "" {
 		enhancedPaths = append(enhancedPaths, fm.currentPath)
+		seen[fm.currentPath] = true
 	}
 
-	// Add existing history paths, but skip duplicates of current path
+	// Include paths currently open in other windows even if they have not reached history yet.
+	for _, path := range openPathList {
+		if path == "" || seen[path] {
+			continue
+		}
+		enhancedPaths = append(enhancedPaths, path)
+		seen[path] = true
+	}
+
+	// Add existing history paths, skipping duplicates.
 	for _, path := range historyPaths {
-		if path != fm.currentPath {
+		if !seen[path] {
 			enhancedPaths = append(enhancedPaths, path)
+			seen[path] = true
 		}
 	}
 
@@ -69,6 +83,7 @@ func (fm *FileManager) ShowNavigationHistoryDialog() {
 
 	dialog := ui.NewNavigationHistoryDialog(
 		enhancedPaths,
+		openPaths,
 		fm.config.UI.NavigationHistory.LastUsed,
 		fm.keyManager,
 		debugPrint,
@@ -79,6 +94,24 @@ func (fm *FileManager) ShowNavigationHistoryDialog() {
 		fm.LoadDirectory(selectedPath)
 		fm.FocusFileList()
 	})
+}
+
+func (fm *FileManager) openPathsInOtherWindows() ([]string, map[string]bool) {
+	openPaths := map[string]bool{}
+	windowRegistry.Range(func(k, v any) bool {
+		other, ok := v.(*FileManager)
+		if !ok || other == fm || other.currentPath == "" {
+			return true
+		}
+		openPaths[other.currentPath] = true
+		return true
+	})
+	pathList := make([]string, 0, len(openPaths))
+	for path := range openPaths {
+		pathList = append(pathList, path)
+	}
+	sort.Strings(pathList)
+	return pathList, openPaths
 }
 
 // ShowDirectoryJumpDialog shows manually configured directory jump targets.

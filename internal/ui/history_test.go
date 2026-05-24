@@ -12,6 +12,7 @@ import (
 func TestNavigationHistoryBackspaceRemovesUTF8Rune(t *testing.T) {
 	dialog := NewNavigationHistoryDialog(
 		[]string{"/tmp"},
+		nil,
 		map[string]time.Time{},
 		nil,
 		func(string, ...interface{}) {},
@@ -29,6 +30,7 @@ func TestNavigationHistoryBackspaceRemovesUTF8Rune(t *testing.T) {
 func TestNavigationHistoryHorizontalScrollState(t *testing.T) {
 	dialog := NewNavigationHistoryDialog(
 		[]string{"/tmp/very/long/path"},
+		nil,
 		map[string]time.Time{},
 		nil,
 		func(string, ...interface{}) {},
@@ -50,6 +52,7 @@ func TestNavigationHistoryHorizontalScrollState(t *testing.T) {
 func TestNavigationHistoryFilterUsesMigemoMatcher(t *testing.T) {
 	dialog := NewNavigationHistoryDialog(
 		[]string{"/tmp/日本語", "/tmp/alpha"},
+		nil,
 		map[string]time.Time{},
 		nil,
 		func(string, ...interface{}) {},
@@ -60,5 +63,25 @@ func TestNavigationHistoryFilterUsesMigemoMatcher(t *testing.T) {
 
 	if len(dialog.filteredPaths) != 1 || dialog.filteredPaths[0] != "/tmp/日本語" {
 		t.Fatalf("filtered paths = %#v, want only Japanese path", dialog.filteredPaths)
+	}
+}
+
+func TestNavigationHistoryFilterKeepsOpenPathMetadata(t *testing.T) {
+	dialog := NewNavigationHistoryDialog(
+		[]string{"/tmp/open", "/tmp/history"},
+		map[string]bool{"/tmp/open": true},
+		map[string]time.Time{},
+		nil,
+		func(string, ...interface{}) {},
+		search.NewPlainProvider(),
+	)
+
+	dialog.updateFilteredPaths("open")
+
+	if len(dialog.filteredPaths) != 1 || dialog.filteredPaths[0] != "/tmp/open" {
+		t.Fatalf("filtered paths = %#v, want only /tmp/open", dialog.filteredPaths)
+	}
+	if !dialog.openPaths["/tmp/open"] {
+		t.Fatal("open path metadata was not retained")
 	}
 }
