@@ -30,6 +30,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 		configManager:     configManager,
 		configScript:      configScript,
 		initialWindowSize: fyne.NewSize(float32(config.Window.Width), float32(config.Window.Height)),
+		windowActive:      true,
 		activeSort:        config.UI.Sort,
 		customTheme:       customTheme,
 		cursorRenderer:    ui.NewCursorRenderer(config.UI.CursorStyle),

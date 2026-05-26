@@ -49,3 +49,17 @@ func TestKeySinkForwardsCustomShortcuts(t *testing.T) {
 		t.Fatalf("modifiers = %+v, want ctrl and shift", handler.modifiers)
 	}
 }
+
+func TestKeySinkReportsFocusChanges(t *testing.T) {
+	var got []bool
+	sink := NewKeySink(widget.NewLabel("content"), nil, WithFocusChanged(func(active bool) {
+		got = append(got, active)
+	}))
+
+	sink.FocusGained()
+	sink.FocusLost()
+
+	if len(got) != 2 || !got[0] || got[1] {
+		t.Fatalf("focus changes = %v, want [true false]", got)
+	}
+}

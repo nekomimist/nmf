@@ -56,7 +56,8 @@ type CopyMoveDialog struct {
 	destScroll  *dialogListScroller
 	scrollRight bool
 
-	onAccept func(dest string)
+	onAccept      func(dest string)
+	onPathChanged func(string)
 }
 
 // NewCopyMoveDialog creates a new dialog instance
@@ -101,6 +102,7 @@ func (d *CopyMoveDialog) createWidgets() {
 		if id >= 0 && int(id) < len(d.filteredDest) {
 			d.selectedIdx = int(id)
 			d.selectedPath = d.filteredDest[id].Path
+			d.notifySelectedPathChanged()
 			d.applyHorizontalScroll()
 			if d.parent != nil && d.sink != nil {
 				d.parent.Canvas().Focus(d.sink)
@@ -229,12 +231,26 @@ func (d *CopyMoveDialog) updateFiltered(q string) {
 		d.selectedIdx = 0
 		d.selectedPath = d.filteredDest[0].Path
 		d.destList.Select(0)
+		d.notifySelectedPathChanged()
 		d.applyHorizontalScroll()
 	} else {
 		d.selectedIdx = -1
 		d.selectedPath = ""
+		d.notifySelectedPathChanged()
 	}
 	d.destList.Refresh()
+}
+
+// SetOnSelectedPathChanged sets a callback for destination selection changes.
+func (d *CopyMoveDialog) SetOnSelectedPathChanged(callback func(string)) {
+	d.onPathChanged = callback
+	d.notifySelectedPathChanged()
+}
+
+func (d *CopyMoveDialog) notifySelectedPathChanged() {
+	if d.onPathChanged != nil {
+		d.onPathChanged(d.selectedPath)
+	}
 }
 
 // Interface methods used by key handler
@@ -341,6 +357,7 @@ func (d *CopyMoveDialog) AcceptSelection() {
 		acceptedPath = d.selectedPath
 	}
 	deferDialogClose(d.keyManager, "copyMove.accept", func() {
+		d.notifyDialogClosed()
 		d.keyManager.PopHandler()
 		if d.dialog != nil {
 			d.dialog.Hide()
@@ -374,6 +391,7 @@ func (d *CopyMoveDialog) AcceptDirectPath() {
 		acceptedPath = d.selectedPath
 	}
 	deferDialogClose(d.keyManager, "copyMove.acceptDirect", func() {
+		d.notifyDialogClosed()
 		d.keyManager.PopHandler()
 		if d.dialog != nil {
 			d.dialog.Hide()
@@ -393,6 +411,7 @@ func (d *CopyMoveDialog) CancelDialog() {
 	}
 	d.closed = true
 	deferDialogClose(d.keyManager, "copyMove.cancel", func() {
+		d.notifyDialogClosed()
 		d.keyManager.PopHandler()
 		if d.dialog != nil {
 			d.dialog.Hide()
@@ -401,6 +420,12 @@ func (d *CopyMoveDialog) CancelDialog() {
 			d.parent.Canvas().Unfocus()
 		}
 	})
+}
+
+func (d *CopyMoveDialog) notifyDialogClosed() {
+	if d.onPathChanged != nil {
+		d.onPathChanged("")
+	}
 }
 
 // Helpers

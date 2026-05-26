@@ -56,3 +56,31 @@ func TestCopyMoveHorizontalScrollState(t *testing.T) {
 		t.Fatal("left scroll should disable follow mode")
 	}
 }
+
+func TestCopyMoveReportsSelectedPathChanges(t *testing.T) {
+	dialog := NewCopyMoveDialog(
+		OpCopy,
+		[]string{"file.txt"},
+		[]DestinationCandidate{{Path: "/tmp/one"}, {Path: "/tmp/two"}},
+		map[string]time.Time{},
+		nil,
+		func(string, ...interface{}) {},
+	)
+	var got []string
+	dialog.SetOnSelectedPathChanged(func(path string) {
+		got = append(got, path)
+	})
+
+	dialog.MoveDown()
+	dialog.updateFiltered("missing")
+
+	want := []string{"/tmp/one", "/tmp/two", ""}
+	if len(got) != len(want) {
+		t.Fatalf("selected path changes = %#v, want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("selected path changes = %#v, want %#v", got, want)
+		}
+	}
+}

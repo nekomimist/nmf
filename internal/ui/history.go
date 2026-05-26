@@ -61,9 +61,10 @@ type NavigationHistoryDialog struct {
 	keyManager    *keymanager.KeyManager // Keyboard input manager
 	dialog        dialog.Dialog          // Reference to the actual dialog
 	callback      func(string)           // Callback function for selection
-	parent        fyne.Window            // Parent window for focus management
-	closed        bool                   // Prevent double-close/pop
-	sink          *KeySink               // Key capturing wrapper
+	onPathChanged func(string)
+	parent        fyne.Window // Parent window for focus management
+	closed        bool        // Prevent double-close/pop
+	sink          *KeySink    // Key capturing wrapper
 	matchers      *search.Provider
 	listScroller  *dialogListScroller
 	scrollRight   bool
@@ -137,6 +138,7 @@ func (nhd *NavigationHistoryDialog) createWidgets() {
 			nhd.selectedIndex = int(id)
 			nhd.selectedPath = nhd.filteredPaths[id]
 			nhd.debugPrint("HistoryDialog: History selected: %s (index: %d)", nhd.selectedPath, nhd.selectedIndex)
+			nhd.notifySelectedPathChanged()
 			nhd.applyHorizontalScroll()
 			// Keep focus on sink so KeyManager continues to receive keys
 			if nhd.parent != nil && nhd.sink != nil {
@@ -173,10 +175,24 @@ func (nhd *NavigationHistoryDialog) updateFilteredPaths(query string) {
 		nhd.selectedIndex = 0
 		nhd.selectedPath = nhd.filteredPaths[0]
 		nhd.historyList.Select(0)
+		nhd.notifySelectedPathChanged()
 		nhd.applyHorizontalScroll()
 	} else {
 		nhd.selectedIndex = -1
 		nhd.selectedPath = ""
+		nhd.notifySelectedPathChanged()
+	}
+}
+
+// SetOnSelectedPathChanged sets a callback for selection changes.
+func (nhd *NavigationHistoryDialog) SetOnSelectedPathChanged(callback func(string)) {
+	nhd.onPathChanged = callback
+	nhd.notifySelectedPathChanged()
+}
+
+func (nhd *NavigationHistoryDialog) notifySelectedPathChanged() {
+	if nhd.onPathChanged != nil {
+		nhd.onPathChanged(nhd.selectedPath)
 	}
 }
 
@@ -360,6 +376,7 @@ func (nhd *NavigationHistoryDialog) AcceptSelection() {
 	}
 
 	deferDialogClose(nhd.keyManager, "history.accept", func() {
+		nhd.notifyDialogClosed()
 		nhd.keyManager.PopHandler()
 		if nhd.callback != nil && selectedPath != "" {
 			nhd.callback(selectedPath)
@@ -398,6 +415,7 @@ func (nhd *NavigationHistoryDialog) AcceptDirectPathNavigation() {
 	}
 
 	deferDialogClose(nhd.keyManager, "history.acceptDirect", func() {
+		nhd.notifyDialogClosed()
 		nhd.keyManager.PopHandler()
 		if nhd.callback != nil && selectedPath != "" {
 			nhd.callback(selectedPath)
@@ -419,6 +437,7 @@ func (nhd *NavigationHistoryDialog) CancelDialog() {
 	nhd.closed = true
 
 	deferDialogClose(nhd.keyManager, "history.cancel", func() {
+		nhd.notifyDialogClosed()
 		nhd.keyManager.PopHandler()
 		if nhd.dialog != nil {
 			nhd.dialog.Hide()
@@ -427,6 +446,12 @@ func (nhd *NavigationHistoryDialog) CancelDialog() {
 			nhd.parent.Canvas().Unfocus()
 		}
 	})
+}
+
+func (nhd *NavigationHistoryDialog) notifyDialogClosed() {
+	if nhd.onPathChanged != nil {
+		nhd.onPathChanged("")
+	}
 }
 
 // IsSearchFocused returns true if the search entry has focus

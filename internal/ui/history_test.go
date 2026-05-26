@@ -85,3 +85,31 @@ func TestNavigationHistoryFilterKeepsOpenPathMetadata(t *testing.T) {
 		t.Fatal("open path metadata was not retained")
 	}
 }
+
+func TestNavigationHistoryReportsSelectedPathChanges(t *testing.T) {
+	dialog := NewNavigationHistoryDialog(
+		[]string{"/tmp/one", "/tmp/two"},
+		nil,
+		map[string]time.Time{},
+		nil,
+		func(string, ...interface{}) {},
+		search.NewPlainProvider(),
+	)
+	var got []string
+	dialog.SetOnSelectedPathChanged(func(path string) {
+		got = append(got, path)
+	})
+
+	dialog.MoveDown()
+	dialog.updateFilteredPaths("missing")
+
+	want := []string{"/tmp/one", "/tmp/two", ""}
+	if len(got) != len(want) {
+		t.Fatalf("selected path changes = %#v, want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("selected path changes = %#v, want %#v", got, want)
+		}
+	}
+}

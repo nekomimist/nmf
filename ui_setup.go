@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image/color"
 	"os"
 	"path/filepath"
 	"strings"
@@ -175,7 +176,7 @@ func (fm *FileManager) setupUI() {
 
 			// Add cursor if at cursor position (covers entire item like status/selection)
 			if isCursor {
-				cursor := fm.cursorRenderer.RenderCursor(obj.Size(), fyne.NewPos(0, 0), fm.config.UI.CursorStyle, fm.customTheme)
+				cursor := fm.cursorRenderer.RenderCursor(obj.Size(), fyne.NewPos(0, 0), fm.config.UI.CursorStyle, fm.cursorThemeProvider())
 
 				// Wrap cursor in a container that won't be affected by NewMax
 				cursorContainer := container.NewWithoutLayout(cursor)
@@ -190,7 +191,12 @@ func (fm *FileManager) setupUI() {
 	}
 
 	// Wrap list with a generic focusable KeySink to suppress Tab traversal
-	fm.fileListView = ui.NewKeySink(fm.fileList, fm.keyManager, ui.WithTabCapture(true))
+	fm.fileListView = ui.NewKeySink(
+		fm.fileList,
+		fm.keyManager,
+		ui.WithTabCapture(true),
+		ui.WithFocusChanged(fm.setWindowActive),
+	)
 
 	// Handle cursor movement (both mouse and keyboard)
 	fm.fileList.OnSelected = func(id widget.ListItemID) {
@@ -247,10 +253,14 @@ func (fm *FileManager) setupUI() {
 		nil, nil, nil,
 		fm.fileListView,
 	)
+	fm.windowHighlight = canvas.NewRectangle(color.Transparent)
+	fm.windowHighlight.StrokeColor = color.Transparent
+	fm.windowHighlight.StrokeWidth = 4
 
 	// Stack main content with overlays on top (search, busy)
 	content := container.NewMax(
 		mainContent,
+		fm.windowHighlight,
 		container.NewBorder(
 			fm.searchOverlay.GetContainer(), // Top overlay
 			nil, nil, nil,

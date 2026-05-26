@@ -16,6 +16,7 @@ type KeySink struct {
 	Content   fyne.CanvasObject
 	km        *keymanager.KeyManager
 	acceptTab bool
+	onFocus   func(bool)
 }
 
 // KeySinkOption customizes KeySink behavior.
@@ -23,6 +24,11 @@ type KeySinkOption func(*KeySink)
 
 // WithTabCapture toggles Tab key capture for focus traversal suppression.
 func WithTabCapture(on bool) KeySinkOption { return func(k *KeySink) { k.acceptTab = on } }
+
+// WithFocusChanged sets a callback invoked when the sink gains or loses focus.
+func WithFocusChanged(callback func(bool)) KeySinkOption {
+	return func(k *KeySink) { k.onFocus = callback }
+}
 
 // NewKeySink creates a new KeySink wrapping the given content.
 // By default, Tab is captured (acceptTab=true).
@@ -44,11 +50,19 @@ func (k *KeySink) CreateRenderer() fyne.WidgetRenderer {
 	return widget.NewSimpleRenderer(k.Content)
 }
 
-// FocusGained implements fyne.Focusable; no-op.
-func (k *KeySink) FocusGained() {}
+// FocusGained implements fyne.Focusable.
+func (k *KeySink) FocusGained() {
+	if k.onFocus != nil {
+		k.onFocus(true)
+	}
+}
 
-// FocusLost implements fyne.Focusable; no-op.
-func (k *KeySink) FocusLost() {}
+// FocusLost implements fyne.Focusable.
+func (k *KeySink) FocusLost() {
+	if k.onFocus != nil {
+		k.onFocus(false)
+	}
+}
 
 // TypedKey forwards typed key events to KeyManager.
 func (k *KeySink) TypedKey(ev *fyne.KeyEvent) {

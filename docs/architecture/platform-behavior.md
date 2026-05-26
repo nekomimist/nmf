@@ -120,6 +120,19 @@ inside the same NMF process.
   still needs confirmation on a desktop that can run the X11 build, because the
   current Linux test environment is WSLg/Wayland-only.
 
+## Window Visual State
+
+Copy/move and navigation-history dialogs can highlight the File Manager window
+that owns the currently selected open-directory candidate. This is an in-content
+overlay border, not a native OS window decoration. On Windows, iconified File
+Manager windows are skipped using the native `IsIconic` state; other platforms
+do not currently expose iconified state through Fyne and use the normal overlay
+path.
+
+Inactive File Manager windows dim only the file-list cursor. Fyne does not expose
+a public top-level window activation callback, so NMF derives this from the main
+File Manager `KeySink` focus state.
+
 ## Adding Platform Integrations
 
 When adding a platform-specific feature:

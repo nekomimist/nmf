@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/widget"
 
@@ -27,6 +28,8 @@ type FileManager struct {
 	originalFiles     []fileinfo.FileInfo // Original files before filtering
 	fileList          *widget.List
 	fileListView      *ui.KeySink
+	windowHighlight   *canvas.Rectangle
+	windowActive      bool
 	pathDisplay       *widget.Label
 	statusLabel       *widget.Label
 	cursorPath        string          // Current cursor file path

@@ -89,6 +89,13 @@ func (fm *FileManager) ShowNavigationHistoryDialog() {
 		debugPrint,
 		fm.searchMatchers,
 	)
+	dialog.SetOnSelectedPathChanged(func(path string) {
+		if openPaths[path] {
+			highlightFileManagerWindowForPath(path)
+			return
+		}
+		clearFileManagerWindowHighlights()
+	})
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
 		debugPrint("FileManager: Directory selected from history dialog: %s", selectedPath)
 		fm.LoadDirectory(selectedPath)
