@@ -8,6 +8,10 @@ func (fm *FileManager) ShowMessageDialog(title string, message string) {
 	})
 }
 
+func (fm *FileManager) ShowVersionDialog() {
+	fm.ShowMessageDialog("Version", appVersion())
+}
+
 func (fm *FileManager) showMessageDialog(show func()) {
 	if show == nil {
 		return

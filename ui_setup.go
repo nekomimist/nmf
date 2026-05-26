@@ -235,6 +235,10 @@ func (fm *FileManager) setupUI() {
 			fm.OpenNewWindow()
 			fm.FocusFileList()
 		}),
+		widget.NewToolbarAction(theme.InfoIcon(), func() {
+			fm.ShowVersionDialog()
+			fm.FocusFileList()
+		}),
 	)
 
 	// Jobs button on the right

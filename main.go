@@ -57,6 +57,7 @@ func setupDebugLogging(path string) (*os.File, error) {
 
 	debugMode = true
 	log.SetOutput(io.MultiWriter(file, os.Stderr))
+	debugPrint("App: version=%s", appVersion())
 	debugPrint("Logger: debug log started path=%s time=%s", path, time.Now().Format(time.RFC3339))
 	return file, nil
 }
@@ -75,6 +76,9 @@ func main() {
 	debugLogFile, err := setupDebugLogging(debugLogPath)
 	if err != nil {
 		log.Fatalf("Error opening debug log '%s': %v", debugLogPath, err)
+	}
+	if debugLogFile == nil {
+		debugPrint("App: version=%s", appVersion())
 	}
 	if debugLogFile != nil {
 		defer func() {
