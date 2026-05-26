@@ -37,8 +37,8 @@ type FileViewerDialog struct {
 
 	textGrid   *fileViewerTextGrid
 	hexGrid    *fileViewerTextGrid
-	search     *widget.Entry
-	jump       *widget.Entry
+	search     *IMEEntry
+	jump       *IMEEntry
 	status     *widget.Label
 	lineLabel  *widget.Label
 	wrapButton *widget.Button
@@ -91,10 +91,10 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	d.debug("FileViewer: hex-tab-content elapsed=%s loaded=%t", time.Since(stepStart), d.hexGrid != nil)
 	stepStart = time.Now()
 
-	d.search = widget.NewEntry()
+	d.search = NewIMEEntry(parent)
 	d.search.SetPlaceHolder("Search")
 	d.search.OnSubmitted = func(_ string) { d.findNext() }
-	d.jump = widget.NewEntry()
+	d.jump = NewIMEEntry(parent)
 	d.jump.SetPlaceHolder("Line")
 	d.jump.OnSubmitted = func(_ string) { d.jumpToLine() }
 	d.status = widget.NewLabel(d.statusText())

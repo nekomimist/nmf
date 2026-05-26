@@ -120,7 +120,9 @@ func (d *LineEditDialog) ShowDialog(parent fyne.Window, onAccept func(string) bo
 	d.dialog.Show()
 	d.dialog.Resize(fyne.NewSize(d.opts.Width, d.opts.Height))
 	if d.parent != nil && d.entry != nil {
+		d.entry.SetIMEWindow(d.parent)
 		d.parent.Canvas().Focus(d.entry)
+		d.entry.UpdateIMEAnchor()
 	}
 }
 
@@ -215,9 +217,10 @@ func (d *LineEditDialog) entryIsFocused() bool {
 // LineEditEntry is a single-line entry with small readline-style edit helpers.
 type LineEditEntry struct {
 	TabEntry
-	onCancel func()
-	focused  bool
-	disabled bool
+	onCancel  func()
+	imeWindow fyne.Window
+	focused   bool
+	disabled  bool
 }
 
 // NewLineEditEntry creates an entry for LineEditDialog.
@@ -237,11 +240,18 @@ func (e *LineEditEntry) TypedKey(ev *fyne.KeyEvent) {
 		return
 	}
 	e.TabEntry.TypedKey(ev)
+	e.UpdateIMEAnchor()
+}
+
+func (e *LineEditEntry) TypedRune(r rune) {
+	e.TabEntry.TypedRune(r)
+	e.UpdateIMEAnchor()
 }
 
 func (e *LineEditEntry) FocusGained() {
 	e.focused = true
 	e.TabEntry.FocusGained()
+	e.UpdateIMEAnchor()
 }
 
 func (e *LineEditEntry) FocusLost() {
@@ -257,6 +267,23 @@ func (e *LineEditEntry) Disable() {
 func (e *LineEditEntry) Enable() {
 	e.disabled = false
 	e.TabEntry.Enable()
+}
+
+func (e *LineEditEntry) SetIMEWindow(window fyne.Window) {
+	e.imeWindow = window
+	e.UpdateIMEAnchor()
+}
+
+func (e *LineEditEntry) SetText(text string) {
+	e.TabEntry.SetText(text)
+	e.UpdateIMEAnchor()
+}
+
+func (e *LineEditEntry) UpdateIMEAnchor() {
+	if e.disabled {
+		return
+	}
+	setIMEAnchorAtTextEnd(e.imeWindow, e, string([]rune(e.Text)[:e.normalizedCursor()]), e.TextStyle)
 }
 
 func (e *LineEditEntry) CreateRenderer() fyne.WidgetRenderer {
@@ -290,6 +317,7 @@ func (e *LineEditEntry) KeyUp(ev *fyne.KeyEvent) {
 }
 
 func (e *LineEditEntry) TypedShortcut(shortcut fyne.Shortcut) {
+	defer e.UpdateIMEAnchor()
 	switch s := shortcut.(type) {
 	case *fyne.ShortcutSelectAll:
 		e.MoveCursorStart()
@@ -436,6 +464,7 @@ func (e *LineEditEntry) setCursor(pos int) {
 	e.CursorRow = 0
 	e.CursorColumn = pos
 	e.Refresh()
+	e.UpdateIMEAnchor()
 }
 
 type lineEditEntryRenderer struct {

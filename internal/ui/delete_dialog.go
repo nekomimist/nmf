@@ -81,6 +81,10 @@ func (d *DeleteConfirmDialog) ShowDialog(parent fyne.Window, onAccept func()) {
 		d.CancelDelete()
 	})
 	d.dialog.Show()
+	if d.permanent && d.parent != nil && d.entry != nil {
+		d.entry.SetIMEWindow(d.parent)
+		d.parent.Canvas().Focus(d.entry)
+	}
 }
 
 func (d *DeleteConfirmDialog) message() string {
@@ -155,7 +159,8 @@ func (d *DeleteConfirmDialog) CancelDelete() {
 
 type deleteConfirmEntry struct {
 	TabEntry
-	onCancel func()
+	onCancel  func()
+	imeWindow fyne.Window
 }
 
 func newDeleteConfirmEntry(onCancel func()) *deleteConfirmEntry {
@@ -174,4 +179,29 @@ func (e *deleteConfirmEntry) TypedKey(ev *fyne.KeyEvent) {
 		return
 	}
 	e.TabEntry.TypedKey(ev)
+	e.UpdateIMEAnchor()
+}
+
+func (e *deleteConfirmEntry) TypedRune(r rune) {
+	e.TabEntry.TypedRune(r)
+	e.UpdateIMEAnchor()
+}
+
+func (e *deleteConfirmEntry) FocusGained() {
+	e.TabEntry.FocusGained()
+	e.UpdateIMEAnchor()
+}
+
+func (e *deleteConfirmEntry) SetIMEWindow(window fyne.Window) {
+	e.imeWindow = window
+	e.UpdateIMEAnchor()
+}
+
+func (e *deleteConfirmEntry) SetText(text string) {
+	e.TabEntry.SetText(text)
+	e.UpdateIMEAnchor()
+}
+
+func (e *deleteConfirmEntry) UpdateIMEAnchor() {
+	setIMEAnchorAtTextEnd(e.imeWindow, e, e.Text, e.TextStyle)
 }

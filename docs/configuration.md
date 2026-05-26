@@ -43,6 +43,9 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
       "directoriesFirst": true
     },
     "itemSpacing": 4,
+    "ime": {
+      "enabled": true
+    },
     "cursorStyle": {
       "type": "underline",
       "thickness": 2
@@ -92,6 +95,8 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
 - `sort.sortOrder`: `asc` or `desc`.
 - `sort.directoriesFirst`: keep directories before regular files.
 - `itemSpacing`: list item spacing. `0` keeps the default.
+- `ime.enabled`: enable native IME candidate/composition position hints on
+  platforms that support them. Set to `false` to disable this integration.
 - `cursorStyle.type`: one of `underline`, `border`, `background`, `icon`, or
   `font`.
 - `cursorStyle.thickness`: underline or border thickness.

@@ -210,6 +210,7 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(dest strin
 	d.dialog.Show()
 	if d.parent != nil && d.sink != nil {
 		d.parent.Canvas().Focus(d.sink)
+		d.searchEntry.RefreshIMEAnchor()
 	}
 }
 

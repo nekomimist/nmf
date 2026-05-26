@@ -89,6 +89,7 @@ func (d *ConflictDialog) ShowDialog(parent fyne.Window, callback func(jobs.Confl
 	}
 
 	d.nameEntry = newConflictNameEntry(d.km, d.CancelJob)
+	d.nameEntry.SetIMEWindow(parent)
 	d.nameEntry.SetText(suggested)
 	d.nameEntry.OnSubmitted = func(string) {
 		d.Continue()
@@ -327,10 +328,11 @@ func (d *ConflictDialog) focusCurrent() {
 
 type conflictNameEntry struct {
 	TabEntry
-	km       *keymanager.KeyManager
-	onCancel func()
-	focused  bool
-	disabled bool
+	km        *keymanager.KeyManager
+	onCancel  func()
+	imeWindow fyne.Window
+	focused   bool
+	disabled  bool
 }
 
 func newConflictNameEntry(km *keymanager.KeyManager, onCancel func()) *conflictNameEntry {
@@ -349,6 +351,12 @@ func (e *conflictNameEntry) TypedKey(ev *fyne.KeyEvent) {
 		return
 	}
 	e.TabEntry.TypedKey(ev)
+	e.UpdateIMEAnchor()
+}
+
+func (e *conflictNameEntry) TypedRune(r rune) {
+	e.TabEntry.TypedRune(r)
+	e.UpdateIMEAnchor()
 }
 
 func (e *conflictNameEntry) KeyDown(ev *fyne.KeyEvent) {
@@ -368,6 +376,7 @@ func (e *conflictNameEntry) KeyUp(ev *fyne.KeyEvent) {
 func (e *conflictNameEntry) FocusGained() {
 	e.focused = true
 	e.TabEntry.FocusGained()
+	e.UpdateIMEAnchor()
 }
 
 func (e *conflictNameEntry) FocusLost() {
@@ -383,6 +392,23 @@ func (e *conflictNameEntry) Disable() {
 func (e *conflictNameEntry) Enable() {
 	e.disabled = false
 	e.TabEntry.Enable()
+}
+
+func (e *conflictNameEntry) SetIMEWindow(window fyne.Window) {
+	e.imeWindow = window
+	e.UpdateIMEAnchor()
+}
+
+func (e *conflictNameEntry) SetText(text string) {
+	e.TabEntry.SetText(text)
+	e.UpdateIMEAnchor()
+}
+
+func (e *conflictNameEntry) UpdateIMEAnchor() {
+	if e.disabled {
+		return
+	}
+	setIMEAnchorAtTextEnd(e.imeWindow, e, e.Text, e.TextStyle)
 }
 
 func (e *conflictNameEntry) CreateRenderer() fyne.WidgetRenderer {

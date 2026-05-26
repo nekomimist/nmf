@@ -264,6 +264,7 @@ func (d *DirectoryJumpDialog) ShowDialog(parent fyne.Window, callback func(strin
 	d.dialog.Show()
 	if d.parent != nil && d.sink != nil {
 		d.parent.Canvas().Focus(d.sink)
+		d.searchEntry.RefreshIMEAnchor()
 	}
 }
 

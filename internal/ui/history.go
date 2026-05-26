@@ -34,6 +34,7 @@ func NewCustomSearchEntry() *CustomSearchEntry {
 
 // FocusGained is called when the entry gains focus - immediately redirect to sink
 func (c *CustomSearchEntry) FocusGained() {
+	c.updateIMEAnchor()
 	// Redirect focus immediately to sink to prevent entry from handling input
 	if c.parent != nil && c.sink != nil {
 		c.parent.Canvas().Focus(c.sink)
@@ -44,6 +45,25 @@ func (c *CustomSearchEntry) FocusGained() {
 func (c *CustomSearchEntry) SetFocusRedirect(parent fyne.Window, sink *KeySink) {
 	c.parent = parent
 	c.sink = sink
+	c.updateIMEAnchor()
+}
+
+func (c *CustomSearchEntry) SetText(text string) {
+	c.Entry.SetText(text)
+	c.updateIMEAnchor()
+}
+
+func (c *CustomSearchEntry) RefreshIMEAnchor() {
+	c.updateIMEAnchor()
+	if fyne.CurrentApp() != nil {
+		fyne.Do(func() {
+			c.updateIMEAnchor()
+		})
+	}
+}
+
+func (c *CustomSearchEntry) updateIMEAnchor() {
+	setIMEAnchorAtTextEnd(c.parent, c, c.Text, c.TextStyle)
 }
 
 // NavigationHistoryDialog represents a navigation history dialog with search
@@ -286,6 +306,7 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 	nhd.dialog.Show()
 	if nhd.parent != nil && nhd.sink != nil {
 		nhd.parent.Canvas().Focus(nhd.sink)
+		nhd.searchEntry.RefreshIMEAnchor()
 	}
 }
 

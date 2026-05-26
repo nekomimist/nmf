@@ -43,6 +43,7 @@ type rawUIConfig struct {
 	ShowHiddenFiles   *bool                      `json:"showHiddenFiles"`
 	Sort              rawSortConfig              `json:"sort"`
 	ItemSpacing       *int                       `json:"itemSpacing"`
+	IME               rawIMEConfig               `json:"ime"`
 	CursorStyle       rawCursorStyleConfig       `json:"cursorStyle"`
 	CursorMemory      rawCursorMemoryConfig      `json:"cursorMemory"`
 	NavigationHistory rawNavigationHistoryConfig `json:"navigationHistory"`
@@ -61,6 +62,10 @@ type rawSortConfig struct {
 type rawCursorStyleConfig struct {
 	Type      *string `json:"type"`
 	Thickness *int    `json:"thickness"`
+}
+
+type rawIMEConfig struct {
+	Enabled *bool `json:"enabled"`
 }
 
 type rawCursorMemoryConfig struct {
@@ -228,6 +233,7 @@ type UIConfig struct {
 	ShowHiddenFiles   bool                    `json:"showHiddenFiles"`
 	Sort              SortConfig              `json:"sort"`
 	ItemSpacing       int                     `json:"itemSpacing"`
+	IME               IMEConfig               `json:"ime"`
 	CursorStyle       CursorStyleConfig       `json:"cursorStyle"`
 	CursorMemory      CursorMemoryConfig      `json:"cursorMemory"`
 	NavigationHistory NavigationHistoryConfig `json:"navigationHistory"`
@@ -235,6 +241,11 @@ type UIConfig struct {
 	DirectoryJumps    DirectoryJumpsConfig    `json:"directoryJumps"`
 	KeyBindings       []KeyBindingEntry       `json:"keyBindings,omitempty"`
 	ExternalCommands  []ExternalCommandEntry  `json:"externalCommands,omitempty"`
+}
+
+// IMEConfig controls platform IME integration behavior.
+type IMEConfig struct {
+	Enabled bool `json:"enabled"` // Whether to update native IME candidate/composition anchor positions
 }
 
 // SortConfig represents file sorting settings
@@ -705,6 +716,9 @@ func getDefaultConfig() *Config {
 				DirectoriesFirst: true,
 			},
 			ItemSpacing: 4,
+			IME: IMEConfig{
+				Enabled: true,
+			},
 			CursorStyle: CursorStyleConfig{
 				Type:      "underline",
 				Thickness: 2,
@@ -820,6 +834,9 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) {
 	}
 	if fileConfig.UI.ItemSpacing != nil && *fileConfig.UI.ItemSpacing != 0 {
 		defaultConfig.UI.ItemSpacing = *fileConfig.UI.ItemSpacing
+	}
+	if fileConfig.UI.IME.Enabled != nil {
+		defaultConfig.UI.IME.Enabled = *fileConfig.UI.IME.Enabled
 	}
 
 	// Merge CursorStyle config

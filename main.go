@@ -17,6 +17,7 @@ import (
 	"nmf/internal/configscript"
 	"nmf/internal/display"
 	"nmf/internal/fileinfo"
+	"nmf/internal/ime"
 	"nmf/internal/jobs"
 	"nmf/internal/shellmenu"
 	customtheme "nmf/internal/theme"
@@ -141,6 +142,8 @@ func main() {
 	if configScript.Loaded() {
 		configManager.SetSaveTransform(configScript.SaveTransform(persistentConfig))
 	}
+	ime.SetEnabled(cfg.UI.IME.Enabled)
+	debugPrint("Config: IME integration enabled=%t", cfg.UI.IME.Enabled)
 
 	app := app.NewWithID(appID)
 	app.SetIcon(appIconResource)

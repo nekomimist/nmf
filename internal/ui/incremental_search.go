@@ -120,6 +120,7 @@ func (iso *IncrementalSearchOverlay) Show(parent fyne.Window) {
 	}
 
 	iso.debugPrint("IncrementalSearchOverlay: Showing overlay")
+	iso.updateIMEAnchor()
 }
 
 // Hide hides the overlay and exits search mode
@@ -275,6 +276,14 @@ func (iso *IncrementalSearchOverlay) updateDisplay() {
 
 func (iso *IncrementalSearchOverlay) setSearchText(text string) {
 	iso.searchText.SetText(text)
+	iso.updateIMEAnchor()
+}
+
+func (iso *IncrementalSearchOverlay) updateIMEAnchor() {
+	if !iso.visible || iso.parent == nil || iso.searchText == nil {
+		return
+	}
+	setIMEAnchorAtTextEnd(iso.parent, iso.searchText, iso.searchText.fullText, iso.searchLabel.TextStyle)
 }
 
 type shrinkingTextLabel struct {

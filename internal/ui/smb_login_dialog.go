@@ -26,12 +26,18 @@ func (p *SMBCredentialsProvider) Get(host, share, _ string) (fileinfo.Credential
 	done := make(chan struct{})
 
 	fyne.Do(func() {
-		userEntry := widget.NewEntry()
+		userEntry := NewIMEEntry(p.parent)
 		passEntry := widget.NewPasswordEntry()
-		domainEntry := widget.NewEntry()
+		domainEntry := NewIMEEntry(p.parent)
 		saveCheck := widget.NewCheck("この端末に保存 (keyring)", nil)
 		userEntry.SetPlaceHolder("username")
 		domainEntry.SetPlaceHolder("domain (optional)")
+		passEntry.OnChanged = func(string) {
+			setIMEAnchorAtTextEnd(p.parent, passEntry, passEntry.Text, passEntry.TextStyle)
+		}
+		passEntry.OnCursorChanged = func() {
+			setIMEAnchorAtTextEnd(p.parent, passEntry, passEntry.Text, passEntry.TextStyle)
+		}
 
 		form := dialog.NewForm(
 			"SMB Login: "+host+"/"+share,

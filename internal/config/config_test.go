@@ -49,6 +49,9 @@ func TestGetDefaultConfig(t *testing.T) {
 	if config.UI.ItemSpacing != 4 {
 		t.Errorf("Expected default item spacing 4, got %d", config.UI.ItemSpacing)
 	}
+	if !config.UI.IME.Enabled {
+		t.Error("Expected IME integration to be enabled by default")
+	}
 
 	// Test CursorStyle defaults
 	if config.UI.CursorStyle.Type != "underline" {
@@ -110,6 +113,7 @@ func TestMergeConfigs(t *testing.T) {
 	path := "/path/to/font.ttf"
 	fontName := "Noto Sans CJK JP"
 	itemSpacing := 8
+	imeEnabled := false
 	fontSize := 16
 	width := 1024
 	height := 768
@@ -140,6 +144,9 @@ func TestMergeConfigs(t *testing.T) {
 				DirectoriesFirst: &falseVal,
 			},
 			ItemSpacing: &itemSpacing,
+			IME: rawIMEConfig{
+				Enabled: &imeEnabled,
+			},
 			CursorStyle: rawCursorStyleConfig{
 				Type:      &border,
 				Thickness: &thickness,
@@ -192,6 +199,9 @@ func TestMergeConfigs(t *testing.T) {
 	}
 	if defaultConfig.UI.Sort.DirectoriesFirst != false {
 		t.Error("Expected merged DirectoriesFirst to be false")
+	}
+	if defaultConfig.UI.IME.Enabled {
+		t.Error("Expected merged IME integration to be disabled")
 	}
 	if defaultConfig.UI.CursorStyle.Type != "border" {
 		t.Errorf("Expected merged cursor type 'border', got '%s'", defaultConfig.UI.CursorStyle.Type)

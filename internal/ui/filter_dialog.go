@@ -290,6 +290,7 @@ func (fd *FilterDialog) ShowDialog(parent fyne.Window, callback func(*config.Fil
 	fd.dialog.Show()
 	if fd.parent != nil && fd.sink != nil {
 		fd.parent.Canvas().Focus(fd.sink)
+		fd.searchEntry.RefreshIMEAnchor()
 	}
 }
 
