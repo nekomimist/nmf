@@ -15,6 +15,10 @@ func CanonicalDisplayPath(input string) (string, Parsed, error) {
 		return "", Parsed{}, fmt.Errorf("path is empty")
 	}
 
+	if display, parsed, ok, err := canonicalArchiveDisplayPath(input, trimmed); ok {
+		return display, parsed, err
+	}
+
 	if isUNC(trimmed) {
 		parsed := parseUNC(trimmed)
 		parsed.Raw = input
@@ -57,6 +61,10 @@ func ResolvePathDisplay(input string) (string, Parsed, error) {
 		return "", Parsed{}, fmt.Errorf("path is empty")
 	}
 
+	if display, parsed, ok, err := canonicalArchiveDisplayPath(input, trimmed); ok {
+		return display, parsed, err
+	}
+
 	normalized := NormalizeInputPath(trimmed)
 	_, parsed, err := ResolveRead(normalized)
 	if err != nil {
@@ -82,6 +90,27 @@ func ResolvePathDisplay(input string) (string, Parsed, error) {
 		resolved = absPath
 	}
 	return resolved, parsed, nil
+}
+
+func canonicalArchiveDisplayPath(input, trimmed string) (string, Parsed, bool, error) {
+	archiveFile, inner, ok := SplitArchivePath(trimmed)
+	if !ok {
+		return "", Parsed{}, false, nil
+	}
+	archiveDisplay, _, err := CanonicalDisplayPath(archiveFile)
+	if err != nil {
+		return "", Parsed{Raw: input, Scheme: SchemeArchive, Display: trimmed, Provider: "archive", Archive: archiveFile, Inner: inner}, true, err
+	}
+	display := ArchiveDisplayPath(archiveDisplay, inner)
+	return display, Parsed{
+		Scheme:   SchemeArchive,
+		Raw:      input,
+		Display:  display,
+		Native:   archiveNativePath(inner),
+		Provider: "archive",
+		Archive:  archiveDisplay,
+		Inner:    inner,
+	}, true, nil
 }
 
 // ResolveDirectoryPath resolves input to a canonical path for navigation.

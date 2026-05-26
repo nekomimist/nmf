@@ -68,6 +68,25 @@ func TestCanonicalDisplayPathNormalizesSMBForms(t *testing.T) {
 	}
 }
 
+func TestCanonicalDisplayPathNormalizesUNCArchivePath(t *testing.T) {
+	input := `\\wsl.localhost\Ubuntu\home\neko\src\lookup.tar.gz!/`
+	want := "smb://wsl.localhost/Ubuntu/home/neko/src/lookup.tar.gz!/"
+
+	got, parsed, err := CanonicalDisplayPath(input)
+	if err != nil {
+		t.Fatalf("CanonicalDisplayPath(%q) error: %v", input, err)
+	}
+	if parsed.Scheme != SchemeArchive {
+		t.Fatalf("CanonicalDisplayPath(%q) scheme = %q, want archive", input, parsed.Scheme)
+	}
+	if got != want {
+		t.Fatalf("CanonicalDisplayPath(%q) = %q, want %q", input, got, want)
+	}
+	if parsed.Archive != "smb://wsl.localhost/Ubuntu/home/neko/src/lookup.tar.gz" || parsed.Inner != "." {
+		t.Fatalf("unexpected parsed archive path: %+v", parsed)
+	}
+}
+
 func TestParseUNCWithSingleBackslashSeparators(t *testing.T) {
 	p := parseUNC("\\\\naja.local\\neko\\a")
 	if p.Host != "naja.local" || p.Share != "neko" {
