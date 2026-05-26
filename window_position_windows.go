@@ -83,16 +83,14 @@ func positionWindowNextTo(parent, child fyne.Window) {
 	workRect := monitorWorkRect(parentHWND)
 	childWidth := childRect.Right - childRect.Left
 	childHeight := childRect.Bottom - childRect.Top
-	x := parentRect.Right
-	y := parentRect.Top
-
-	if x+childWidth > workRect.Right {
-		x = parentRect.Left - childWidth
-	}
-	if x < workRect.Left {
-		x = clampInt32(parentRect.Left+32, workRect.Left, workRect.Right-childWidth)
-	}
-	y = clampInt32(y, workRect.Top, workRect.Bottom-childHeight)
+	occupied := fileManagerWindowPlacementRects(parent, child)
+	x, y, side := selectWindowPlacement(
+		windowSwitchRectFromWinRect(parentRect),
+		childWidth,
+		childHeight,
+		windowSwitchRectFromWinRect(workRect),
+		occupied,
+	)
 
 	ret, _, err := procSetWindowPos.Call(
 		childHWND,
@@ -107,7 +105,23 @@ func positionWindowNextTo(parent, child fyne.Window) {
 		debugPrint("FileManager: SetWindowPos failed: %v", err)
 		return
 	}
-	debugPrint("FileManager: Positioned new window x=%d y=%d", x, y)
+	debugPrint("FileManager: Positioned new window x=%d y=%d side=%s", x, y, side)
+}
+
+func fileManagerWindowPlacementRects(parent, child fyne.Window) []windowSwitchRect {
+	managers := snapshotFileManagerWindows()
+	rects := make([]windowSwitchRect, 0, len(managers))
+	for _, manager := range managers {
+		if manager == nil || manager.window == nil || manager.window == parent || manager.window == child {
+			continue
+		}
+		rect, ok := platformWindowSwitchRect(manager.window)
+		if !ok {
+			continue
+		}
+		rects = append(rects, rect)
+	}
+	return rects
 }
 
 func windowHWND(window fyne.Window) (uintptr, bool) {
@@ -184,17 +198,4 @@ func monitorWorkRect(hwnd uintptr) winRect {
 		}
 	}
 	return info.RcWork
-}
-
-func clampInt32(value, min, max int32) int32 {
-	if max < min {
-		return min
-	}
-	if value < min {
-		return min
-	}
-	if value > max {
-		return max
-	}
-	return value
 }

@@ -97,6 +97,10 @@ context menu integration.
 - Windows places the new window beside the source window using
   `driver.NativeWindow`, Win32 `HWND`, and `SetWindowPos` in
   `window_position_windows.go`.
+- If another File Manager window already occupies the preferred side within a
+  small left/top coordinate threshold, Windows placement tries the opposite side
+  when there is enough work-area space; if neither side is available, it uses
+  the same clamped fallback position as the no-space case.
 - Other platforms intentionally use default window-manager placement through
   `window_position_other.go`.
 
