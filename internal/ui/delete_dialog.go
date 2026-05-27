@@ -132,9 +132,7 @@ func (d *DeleteConfirmDialog) ConfirmDelete() {
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}
-		if d.parent != nil {
-			d.parent.Canvas().Unfocus()
-		}
+		unfocusIfDialogOwned(d.parent, d.entry)
 		if d.onAccept != nil {
 			d.onAccept()
 		}
@@ -151,9 +149,7 @@ func (d *DeleteConfirmDialog) CancelDelete() {
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}
-		if d.parent != nil {
-			d.parent.Canvas().Unfocus()
-		}
+		unfocusIfDialogOwned(d.parent, d.entry)
 	})
 }
 

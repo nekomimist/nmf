@@ -428,10 +428,7 @@ func (dtd *DirectoryTreeDialog) AcceptSelection() {
 		if dtd.dialog != nil {
 			dtd.dialog.Hide()
 		}
-		// Unfocus parent window canvas if available
-		if dtd.parent != nil {
-			dtd.parent.Canvas().Unfocus()
-		}
+		unfocusIfDialogOwned(dtd.parent, dtd.sink)
 	})
 }
 
@@ -447,9 +444,7 @@ func (dtd *DirectoryTreeDialog) CancelDialog() {
 		if dtd.dialog != nil {
 			dtd.dialog.Hide()
 		}
-		if dtd.parent != nil {
-			dtd.parent.Canvas().Unfocus()
-		}
+		unfocusIfDialogOwned(dtd.parent, dtd.sink)
 	})
 }
 

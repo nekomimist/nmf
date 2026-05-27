@@ -390,9 +390,7 @@ func (d *DirectoryJumpDialog) acceptPath(path string) {
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}
-		if d.parent != nil {
-			d.parent.Canvas().Unfocus()
-		}
+		unfocusIfDialogOwned(d.parent, d.sink, d.searchEntry)
 		if d.callback != nil && path != "" {
 			d.callback(path)
 		}
@@ -411,8 +409,6 @@ func (d *DirectoryJumpDialog) CancelDialog() {
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}
-		if d.parent != nil {
-			d.parent.Canvas().Unfocus()
-		}
+		unfocusIfDialogOwned(d.parent, d.sink, d.searchEntry)
 	})
 }

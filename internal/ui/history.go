@@ -405,9 +405,7 @@ func (nhd *NavigationHistoryDialog) AcceptSelection() {
 		if nhd.dialog != nil {
 			nhd.dialog.Hide()
 		}
-		if nhd.parent != nil {
-			nhd.parent.Canvas().Unfocus()
-		}
+		unfocusIfDialogOwned(nhd.parent, nhd.sink, nhd.searchEntry)
 	})
 }
 
@@ -444,9 +442,7 @@ func (nhd *NavigationHistoryDialog) AcceptDirectPathNavigation() {
 		if nhd.dialog != nil {
 			nhd.dialog.Hide()
 		}
-		if nhd.parent != nil {
-			nhd.parent.Canvas().Unfocus()
-		}
+		unfocusIfDialogOwned(nhd.parent, nhd.sink, nhd.searchEntry)
 	})
 }
 
@@ -463,9 +459,7 @@ func (nhd *NavigationHistoryDialog) CancelDialog() {
 		if nhd.dialog != nil {
 			nhd.dialog.Hide()
 		}
-		if nhd.parent != nil {
-			nhd.parent.Canvas().Unfocus()
-		}
+		unfocusIfDialogOwned(nhd.parent, nhd.sink, nhd.searchEntry)
 	})
 }
 

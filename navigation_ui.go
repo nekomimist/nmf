@@ -35,9 +35,9 @@ func (fm *FileManager) openWindowAtPath(path string) {
 func (fm *FileManager) ShowDirectoryTreeDialog() {
 	dialog := ui.NewDirectoryTreeDialog(fm.currentPath, fm.keyManager, debugPrint)
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
-		debugPrint("FileManager: Directory selected from tree dialog: %s", selectedPath)
+		debugPrint("FileManager: tree dialog selected path=%s focused=%s", selectedPath, focusedObjectLabel(fm.window))
 		fm.LoadDirectory(selectedPath)
-		fm.FocusFileList()
+		fm.focusFileList("tree-dialog-selected")
 	})
 }
 
@@ -97,9 +97,9 @@ func (fm *FileManager) ShowNavigationHistoryDialog() {
 		clearFileManagerWindowHighlights()
 	})
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
-		debugPrint("FileManager: Directory selected from history dialog: %s", selectedPath)
+		debugPrint("FileManager: history dialog selected path=%s focused=%s", selectedPath, focusedObjectLabel(fm.window))
 		fm.LoadDirectory(selectedPath)
-		fm.FocusFileList()
+		fm.focusFileList("history-dialog-selected")
 	})
 }
 
@@ -131,9 +131,9 @@ func (fm *FileManager) ShowDirectoryJumpDialog() {
 
 	dialog := ui.NewDirectoryJumpDialog(entries, fm.keyManager, debugPrint)
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
-		debugPrint("FileManager: Directory selected from jump dialog: %s", selectedPath)
+		debugPrint("FileManager: jump dialog selected path=%s focused=%s", selectedPath, focusedObjectLabel(fm.window))
 		fm.jumpToConfiguredDirectory(selectedPath)
-		fm.FocusFileList()
+		fm.focusFileList("jump-dialog-selected")
 	})
 }
 

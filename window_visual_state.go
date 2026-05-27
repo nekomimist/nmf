@@ -38,6 +38,7 @@ func (fm *FileManager) setWindowActive(active bool) {
 	if fm == nil || fm.windowActive == active {
 		return
 	}
+	debugPrint("FileManager: window active change active=%t focused=%s path=%s", active, focusedObjectLabel(fm.window), fm.currentPath)
 	fm.windowActive = active
 	if fm.fileList != nil {
 		fm.RefreshCursor()

@@ -121,15 +121,24 @@ func (fm *FileManager) navigateToPath(inputPath string) bool {
 	fm.LoadDirectory(resolvedPath)
 
 	// Return focus to file list after successful navigation
-	fm.FocusFileList()
+	fm.focusFileList("path-edit-navigation")
 	return true
 }
 
 // FocusFileList sets focus to the file list view.
 func (fm *FileManager) FocusFileList() {
+	fm.focusFileList("unspecified")
+}
+
+func (fm *FileManager) focusFileList(reason string) {
 	if fm.fileListView != nil {
+		before := focusedObjectLabel(fm.window)
+		debugPrint("FileManager: FocusFileList start reason=%s focused=%s active=%t busy=%t path=%s", reason, before, fm.windowActive, fm.busyActive, fm.currentPath)
 		fm.window.Canvas().Focus(fm.fileListView)
+		debugPrint("FileManager: FocusFileList done reason=%s focused=%s active=%t busy=%t path=%s", reason, focusedObjectLabel(fm.window), fm.windowActive, fm.busyActive, fm.currentPath)
+		return
 	}
+	debugPrint("FileManager: FocusFileList skipped reason=%s fileListView=nil path=%s", reason, fm.currentPath)
 }
 
 func (fm *FileManager) LoadDirectory(path string) {
@@ -148,6 +157,7 @@ func (fm *FileManager) LoadDirectory(path string) {
 
 	// Store the previous directory for parent navigation logic
 	previousPath := fm.currentPath
+	debugPrint("FileManager: LoadDirectory start path=%s previous=%s focused=%s active=%t", path, previousPath, focusedObjectLabel(fm.window), fm.windowActive)
 
 	// Indicate busy and block input while loading
 	fm.beginBusy(fmt.Sprintf("Loading %s...", path))
@@ -282,6 +292,8 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 			fm.dirWatcher.SetPollInterval(fm.pollIntervalForPath(path))
 			fm.dirWatcher.Start()
 		}
+		fm.focusFileList("directory-load-success")
+		debugPrint("FileManager: LoadDirectory done path=%s previous=%s files=%d cursor=%s index=%d focused=%s active=%t", path, previousPath, len(fm.files), fm.cursorPath, fm.GetCurrentCursorIndex(), focusedObjectLabel(fm.window), fm.windowActive)
 	})
 }
 
@@ -294,11 +306,13 @@ func (fm *FileManager) beginBusy(text string) {
 		// Already busy: update label if visible, and store latest text
 		fm.busyText = text
 		fm.busyOverlay.Show(fm.window, text)
+		debugPrint("FileManager: busy update text=%q focused=%s", text, focusedObjectLabel(fm.window))
 		return
 	}
 
 	fm.busyActive = true
 	fm.busyText = text
+	debugPrint("FileManager: busy begin text=%q focused=%s", text, focusedObjectLabel(fm.window))
 
 	// Block keys immediately to avoid reentrancy
 	fm.keyManager.PushHandler(keymanager.NewBusyKeyHandler())
@@ -338,6 +352,7 @@ func (fm *FileManager) endBusy() {
 	// Hide overlay (if visible) and pop guard
 	fm.busyOverlay.Hide()
 	fm.keyManager.PopHandler()
+	debugPrint("FileManager: busy end focused=%s active=%t path=%s", focusedObjectLabel(fm.window), fm.windowActive, fm.currentPath)
 }
 
 // pollIntervalForPath returns the recommended watcher polling interval for a path.

@@ -242,9 +242,7 @@ func (d *ConflictDialog) finish(res jobs.ConflictResolution) {
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}
-		if d.parent != nil {
-			d.parent.Canvas().Unfocus()
-		}
+		unfocusIfDialogOwned(d.parent, d.sink, d.nameEntry)
 		if d.callback != nil {
 			d.callback(res)
 		}

@@ -363,9 +363,7 @@ func (d *CopyMoveDialog) AcceptSelection() {
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}
-		if d.parent != nil {
-			d.parent.Canvas().Unfocus()
-		}
+		unfocusIfDialogOwned(d.parent, d.sink, d.searchEntry)
 		if d.onAccept != nil && acceptedPath != "" {
 			d.onAccept(acceptedPath)
 		}
@@ -397,9 +395,7 @@ func (d *CopyMoveDialog) AcceptDirectPath() {
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}
-		if d.parent != nil {
-			d.parent.Canvas().Unfocus()
-		}
+		unfocusIfDialogOwned(d.parent, d.sink, d.searchEntry)
 		if d.onAccept != nil && acceptedPath != "" {
 			d.onAccept(acceptedPath)
 		}
@@ -417,9 +413,7 @@ func (d *CopyMoveDialog) CancelDialog() {
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}
-		if d.parent != nil {
-			d.parent.Canvas().Unfocus()
-		}
+		unfocusIfDialogOwned(d.parent, d.sink, d.searchEntry)
 	})
 }
 

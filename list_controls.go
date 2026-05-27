@@ -95,9 +95,11 @@ func (fm *FileManager) ShowFilterDialog() {
 	filterDialog := ui.NewFilterDialog(entries, currentFiles, fm.keyManager, debugPrint)
 	filterDialog.ShowDialog(fm.window, func(selectedEntry *config.FilterEntry) {
 		if selectedEntry != nil {
+			debugPrint("FileManager: filter dialog selected pattern=%s focused=%s", selectedEntry.Pattern, focusedObjectLabel(fm.window))
 			fm.ApplyFilter(selectedEntry)
 			fm.saveFilterToHistory(selectedEntry)
 		}
+		fm.focusFileList("filter-dialog-closed")
 	})
 }
 
@@ -310,6 +312,7 @@ func (fm *FileManager) ShowPathEditDialog() {
 		Width:       760,
 	}, fm.keyManager)
 	dlg.ShowDialog(fm.window, func(path string) bool {
+		debugPrint("FileManager: path edit accepted input=%s focused=%s", path, focusedObjectLabel(fm.window))
 		return fm.navigateToPath(path)
 	})
 }

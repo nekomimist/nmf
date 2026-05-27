@@ -157,9 +157,7 @@ func (d *LineEditDialog) close() {
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}
-		if d.parent != nil {
-			d.parent.Canvas().Unfocus()
-		}
+		unfocusIfDialogOwned(d.parent, d.entry)
 	})
 }
 

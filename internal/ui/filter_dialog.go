@@ -393,9 +393,7 @@ func (fd *FilterDialog) AcceptSelection() {
 		if fd.dialog != nil {
 			fd.dialog.Hide()
 		}
-		if fd.parent != nil {
-			fd.parent.Canvas().Unfocus()
-		}
+		unfocusIfDialogOwned(fd.parent, fd.sink, fd.searchEntry)
 	})
 }
 
@@ -411,9 +409,7 @@ func (fd *FilterDialog) CancelDialog() {
 		if fd.dialog != nil {
 			fd.dialog.Hide()
 		}
-		if fd.parent != nil {
-			fd.parent.Canvas().Unfocus()
-		}
+		unfocusIfDialogOwned(fd.parent, fd.sink, fd.searchEntry)
 	})
 }
 
