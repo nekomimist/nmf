@@ -71,8 +71,9 @@ func nextReopenPath() (string, bool) {
 		return "", false
 	}
 
-	path := reopenPaths[0]
-	reopenPaths = append(reopenPaths[:0], reopenPaths[1:]...)
+	last := len(reopenPaths) - 1
+	path := reopenPaths[last]
+	reopenPaths = reopenPaths[:last]
 	return path, true
 }
 
