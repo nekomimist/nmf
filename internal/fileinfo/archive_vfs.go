@@ -36,7 +36,7 @@ func NewArchiveVFS(archivePath string) (*ArchiveVFS, error) {
 	if err != nil {
 		return nil, err
 	}
-	fsys, err := archives.FileSystem(context.Background(), localPath, nil)
+	fsys, err := archiveFileSystem(context.Background(), localPath, currentArchiveOptions())
 	if err != nil {
 		if tempPath != "" {
 			_ = os.Remove(tempPath)
@@ -49,6 +49,27 @@ func NewArchiveVFS(archivePath string) (*ArchiveVFS, error) {
 		tempPath:    tempPath,
 		fsys:        fsys,
 	}, nil
+}
+
+func archiveFileSystem(ctx context.Context, localPath string, opts ArchiveOptions) (fs.FS, error) {
+	file, err := os.Open(localPath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	format, _, err := archives.Identify(ctx, filepath.Base(localPath), file)
+	if err != nil {
+		return nil, fmt.Errorf("identify format: %w", err)
+	}
+	if _, ok := format.(archives.Zip); ok {
+		return &archives.ArchiveFS{
+			Path:    localPath,
+			Format:  archives.Zip{TextEncoding: archiveZipNameEncoding(opts)},
+			Context: ctx,
+		}, nil
+	}
+	return archives.FileSystem(ctx, localPath, nil)
 }
 
 // IsSupportedArchive reports whether p can be opened as an archive-like FS.

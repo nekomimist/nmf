@@ -49,6 +49,9 @@ func TestGetDefaultConfig(t *testing.T) {
 	if config.UI.ItemSpacing != 4 {
 		t.Errorf("Expected default item spacing 4, got %d", config.UI.ItemSpacing)
 	}
+	if config.UI.Archive.ZipNameEncoding != "shift_jis" {
+		t.Errorf("Expected default ZIP name encoding 'shift_jis', got '%s'", config.UI.Archive.ZipNameEncoding)
+	}
 	if !config.UI.IME.Enabled {
 		t.Error("Expected IME integration to be enabled by default")
 	}
@@ -113,6 +116,7 @@ func TestMergeConfigs(t *testing.T) {
 	path := "/path/to/font.ttf"
 	fontName := "Noto Sans CJK JP"
 	itemSpacing := 8
+	zipNameEncoding := "cp437"
 	imeEnabled := false
 	fontSize := 16
 	width := 1024
@@ -144,6 +148,9 @@ func TestMergeConfigs(t *testing.T) {
 				DirectoriesFirst: &falseVal,
 			},
 			ItemSpacing: &itemSpacing,
+			Archive: rawArchiveConfig{
+				ZipNameEncoding: &zipNameEncoding,
+			},
 			IME: rawIMEConfig{
 				Enabled: &imeEnabled,
 			},
@@ -199,6 +206,9 @@ func TestMergeConfigs(t *testing.T) {
 	}
 	if defaultConfig.UI.Sort.DirectoriesFirst != false {
 		t.Error("Expected merged DirectoriesFirst to be false")
+	}
+	if defaultConfig.UI.Archive.ZipNameEncoding != "cp437" {
+		t.Errorf("Expected merged ZIP name encoding 'cp437', got '%s'", defaultConfig.UI.Archive.ZipNameEncoding)
 	}
 	if defaultConfig.UI.IME.Enabled {
 		t.Error("Expected merged IME integration to be disabled")

@@ -43,6 +43,9 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
       "directoriesFirst": true
     },
     "itemSpacing": 4,
+    "archive": {
+      "zipNameEncoding": "shift_jis"
+    },
     "ime": {
       "enabled": true
     },
@@ -95,6 +98,9 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
 - `sort.sortOrder`: `asc` or `desc`.
 - `sort.directoriesFirst`: keep directories before regular files.
 - `itemSpacing`: list item spacing. `0` keeps the default.
+- `archive.zipNameEncoding`: fallback charset for ZIP entry names that are not
+  marked as UTF-8. Default is `shift_jis`; common alternatives include `cp437`
+  and `utf-8`.
 - `ime.enabled`: enable native IME candidate/composition position hints on
   platforms that support them. Set to `false` to disable this integration.
 - `cursorStyle.type`: one of `underline`, `border`, `background`, `icon`, or

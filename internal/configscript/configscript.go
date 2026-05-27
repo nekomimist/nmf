@@ -72,6 +72,7 @@ type saveMask struct {
 	uiShowHiddenFiles           bool
 	uiSort                      bool
 	uiItemSpacing               bool
+	uiArchive                   bool
 	uiCursorStyle               bool
 	uiCursorMemoryMaxEntries    bool
 	uiNavigationHistoryMaxEntry bool
@@ -162,6 +163,9 @@ func (rt *Runtime) SaveTransform(base *config.Config) config.SaveTransform {
 		}
 		if mask.uiItemSpacing {
 			current.UI.ItemSpacing = baseCopy.UI.ItemSpacing
+		}
+		if mask.uiArchive {
+			current.UI.Archive = baseCopy.UI.Archive
 		}
 		if mask.uiCursorStyle {
 			current.UI.CursorStyle = baseCopy.UI.CursorStyle
@@ -286,6 +290,7 @@ func (rt *Runtime) predeclared() starlark.StringDict {
 			"color":              starlark.NewBuiltin("nmf.color", rt.builtinColor),
 			"dark_theme":         starlark.NewBuiltin("nmf.dark_theme", rt.builtinDarkTheme),
 			"ui":                 starlark.NewBuiltin("nmf.ui", rt.builtinUI),
+			"archive":            starlark.NewBuiltin("nmf.archive", rt.builtinArchive),
 			"sort":               starlark.NewBuiltin("nmf.sort", rt.builtinSort),
 			"cursor_style":       starlark.NewBuiltin("nmf.cursor_style", rt.builtinCursorStyle),
 			"cursor_memory":      starlark.NewBuiltin("nmf.cursor_memory", rt.builtinCursorMemory),
@@ -460,6 +465,19 @@ func (rt *Runtime) builtinUI(_ *starlark.Thread, fn *starlark.Builtin, args star
 	rt.cfg.UI.ItemSpacing = itemSpacing
 	rt.saveMask.uiShowHiddenFiles = true
 	rt.saveMask.uiItemSpacing = true
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinArchive(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	zipNameEncoding := rt.cfg.UI.Archive.ZipNameEncoding
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "zip_name_encoding?", &zipNameEncoding); err != nil {
+		return nil, err
+	}
+	if _, err := fileinfo.ResolveArchiveZipNameEncoding(zipNameEncoding); err != nil {
+		return nil, err
+	}
+	rt.cfg.UI.Archive.ZipNameEncoding = strings.TrimSpace(zipNameEncoding)
+	rt.saveMask.uiArchive = true
 	return starlark.None, nil
 }
 

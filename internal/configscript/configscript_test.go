@@ -30,6 +30,7 @@ nmf.color("lineEditCursor", value = "primary")
 nmf.color("lineEditSelection", value = [5, 6, 7, 8])
 nmf.color("dialogListCursor", value = "selection")
 nmf.ui(show_hidden_files = True, item_spacing = 2)
+nmf.archive(zip_name_encoding = "cp437")
 nmf.sort(by = "extension", order = "desc", directories_first = False)
 nmf.cursor_style(type = "border", thickness = 3)
 nmf.cursor_memory(max_entries = 12)
@@ -95,6 +96,9 @@ nmf.command("user.parent", parent)
 	}
 	if !cfg.UI.ShowHiddenFiles || cfg.UI.ItemSpacing != 2 {
 		t.Fatalf("ui = %+v, want hidden=true spacing=2", cfg.UI)
+	}
+	if cfg.UI.Archive.ZipNameEncoding != "cp437" {
+		t.Fatalf("archive = %+v, want cp437", cfg.UI.Archive)
 	}
 	if cfg.UI.Sort.SortBy != "extension" || cfg.UI.Sort.SortOrder != "desc" || cfg.UI.Sort.DirectoriesFirst {
 		t.Fatalf("sort = %+v, want extension desc dirs=false", cfg.UI.Sort)
@@ -233,18 +237,21 @@ func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T
 	base := testConfig()
 	base.Window.Width = 900
 	base.UI.Sort.SortBy = "name"
+	base.UI.Archive.ZipNameEncoding = "shift_jis"
 	base.UI.CursorMemory.MaxEntries = 100
 	base.UI.KeyBindings = []config.KeyBindingEntry{{Key: "X", Command: "jobs.show"}}
 
 	rt := &Runtime{saveMask: saveMask{
 		window:                   true,
 		uiSort:                   true,
+		uiArchive:                true,
 		uiCursorMemoryMaxEntries: true,
 		uiKeyBindings:            true,
 	}}
 	current := config.Clone(base)
 	current.Window.Width = 1200
 	current.UI.Sort.SortBy = "size"
+	current.UI.Archive.ZipNameEncoding = "cp437"
 	current.UI.CursorMemory.MaxEntries = 5
 	current.UI.CursorMemory.Entries["/tmp"] = "file.txt"
 	current.UI.CursorMemory.LastUsed["/tmp"] = time.Unix(10, 0)
@@ -260,6 +267,9 @@ func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T
 	if saved.UI.Sort.SortBy != "name" {
 		t.Fatalf("saved sort = %s, want base name", saved.UI.Sort.SortBy)
 	}
+	if saved.UI.Archive.ZipNameEncoding != "shift_jis" {
+		t.Fatalf("saved archive encoding = %s, want base shift_jis", saved.UI.Archive.ZipNameEncoding)
+	}
 	if saved.UI.CursorMemory.MaxEntries != 100 {
 		t.Fatalf("saved cursor max entries = %d, want base 100", saved.UI.CursorMemory.MaxEntries)
 	}
@@ -268,6 +278,19 @@ func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T
 	}
 	if len(saved.UI.KeyBindings) != 1 || saved.UI.KeyBindings[0].Command != "jobs.show" {
 		t.Fatalf("saved key bindings = %+v, want base binding only", saved.UI.KeyBindings)
+	}
+}
+
+func TestArchiveRejectsInvalidZipNameEncoding(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `nmf.archive(zip_name_encoding = "not-a-real-encoding")`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	if _, err := Load(path, testConfig(), func(string, ...interface{}) {}); err == nil || !strings.Contains(err.Error(), "unsupported ZIP name encoding") {
+		t.Fatalf("Load error = %v, want unsupported ZIP name encoding", err)
 	}
 }
 
@@ -1695,6 +1718,9 @@ func testConfig() *config.Config {
 				DirectoriesFirst: true,
 			},
 			ItemSpacing: 4,
+			Archive: config.ArchiveConfig{
+				ZipNameEncoding: "shift_jis",
+			},
 			CursorStyle: config.CursorStyleConfig{
 				Type:      "underline",
 				Thickness: 2,

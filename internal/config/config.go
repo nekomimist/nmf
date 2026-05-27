@@ -43,6 +43,7 @@ type rawUIConfig struct {
 	ShowHiddenFiles   *bool                      `json:"showHiddenFiles"`
 	Sort              rawSortConfig              `json:"sort"`
 	ItemSpacing       *int                       `json:"itemSpacing"`
+	Archive           rawArchiveConfig           `json:"archive"`
 	IME               rawIMEConfig               `json:"ime"`
 	CursorStyle       rawCursorStyleConfig       `json:"cursorStyle"`
 	CursorMemory      rawCursorMemoryConfig      `json:"cursorMemory"`
@@ -66,6 +67,10 @@ type rawCursorStyleConfig struct {
 
 type rawIMEConfig struct {
 	Enabled *bool `json:"enabled"`
+}
+
+type rawArchiveConfig struct {
+	ZipNameEncoding *string `json:"zipNameEncoding"`
 }
 
 type rawCursorMemoryConfig struct {
@@ -233,6 +238,7 @@ type UIConfig struct {
 	ShowHiddenFiles   bool                    `json:"showHiddenFiles"`
 	Sort              SortConfig              `json:"sort"`
 	ItemSpacing       int                     `json:"itemSpacing"`
+	Archive           ArchiveConfig           `json:"archive"`
 	IME               IMEConfig               `json:"ime"`
 	CursorStyle       CursorStyleConfig       `json:"cursorStyle"`
 	CursorMemory      CursorMemoryConfig      `json:"cursorMemory"`
@@ -246,6 +252,11 @@ type UIConfig struct {
 // IMEConfig controls platform IME integration behavior.
 type IMEConfig struct {
 	Enabled bool `json:"enabled"` // Whether to update native IME candidate/composition anchor positions
+}
+
+// ArchiveConfig controls archive virtual directory behavior.
+type ArchiveConfig struct {
+	ZipNameEncoding string `json:"zipNameEncoding"` // Fallback charset for non-UTF-8 ZIP entry names
 }
 
 // SortConfig represents file sorting settings
@@ -716,6 +727,9 @@ func getDefaultConfig() *Config {
 				DirectoriesFirst: true,
 			},
 			ItemSpacing: 4,
+			Archive: ArchiveConfig{
+				ZipNameEncoding: "shift_jis",
+			},
 			IME: IMEConfig{
 				Enabled: true,
 			},
@@ -834,6 +848,9 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) {
 	}
 	if fileConfig.UI.ItemSpacing != nil && *fileConfig.UI.ItemSpacing != 0 {
 		defaultConfig.UI.ItemSpacing = *fileConfig.UI.ItemSpacing
+	}
+	if fileConfig.UI.Archive.ZipNameEncoding != nil && strings.TrimSpace(*fileConfig.UI.Archive.ZipNameEncoding) != "" {
+		defaultConfig.UI.Archive.ZipNameEncoding = strings.TrimSpace(*fileConfig.UI.Archive.ZipNameEncoding)
 	}
 	if fileConfig.UI.IME.Enabled != nil {
 		defaultConfig.UI.IME.Enabled = *fileConfig.UI.IME.Enabled

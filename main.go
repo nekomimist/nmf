@@ -100,11 +100,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error getting current directory: %v", err)
 		}
-		resolvedStartPath, _, err := resolveDirectoryPath(pwd)
-		if err != nil {
-			log.Fatalf("Error accessing current directory '%s': %v", pwd, err)
-		}
-		startPath = resolvedStartPath
+		startPath = pwd
 	} else {
 		if strings.HasPrefix(startPath, "~") {
 			home, err := os.UserHomeDir()
@@ -113,11 +109,6 @@ func main() {
 			}
 			startPath = strings.Replace(startPath, "~", home, 1)
 		}
-		resolvedStartPath, _, err := resolveDirectoryPath(startPath)
-		if err != nil {
-			log.Fatalf("Error accessing path '%s': %v", startPath, err)
-		}
-		startPath = resolvedStartPath
 	}
 
 	// Load configuration
@@ -142,6 +133,15 @@ func main() {
 	if configScript.Loaded() {
 		configManager.SetSaveTransform(configScript.SaveTransform(persistentConfig))
 	}
+	if err := fileinfo.SetArchiveOptions(fileinfo.ArchiveOptions{ZipNameEncoding: cfg.UI.Archive.ZipNameEncoding}); err != nil {
+		debugPrint("Config: Invalid archive ZIP name encoding %q: %v; using %s", cfg.UI.Archive.ZipNameEncoding, err, fileinfo.DefaultArchiveZipNameEncoding)
+		_ = fileinfo.SetArchiveOptions(fileinfo.ArchiveOptions{ZipNameEncoding: fileinfo.DefaultArchiveZipNameEncoding})
+	}
+	resolvedStartPath, _, err := resolveDirectoryPath(startPath)
+	if err != nil {
+		log.Fatalf("Error accessing path '%s': %v", startPath, err)
+	}
+	startPath = resolvedStartPath
 	ime.SetEnabled(cfg.UI.IME.Enabled)
 	debugPrint("Config: IME integration enabled=%t", cfg.UI.IME.Enabled)
 
