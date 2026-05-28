@@ -102,6 +102,8 @@ Operational notes:
 
 - Use `Manager.SaveAsync` for interactive updates.
 - Call `Manager.Close` on shutdown to flush pending writes.
+- Navigation history keeps `lastUsed` and `useCount` runtime stats, sorts saved
+  entries by zoxide-style frecency, and defaults to retaining 10000 paths.
 
 ## Architecture Invariants
 

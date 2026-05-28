@@ -144,6 +144,7 @@ func Apply(cfg *config.Config, result Result) int {
 		for _, path := range cfg.UI.NavigationHistory.Entries {
 			if removedHistory[path] {
 				delete(cfg.UI.NavigationHistory.LastUsed, path)
+				delete(cfg.UI.NavigationHistory.UseCount, path)
 				removed++
 				continue
 			}

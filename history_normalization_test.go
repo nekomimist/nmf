@@ -29,6 +29,10 @@ func TestNormalizeNavigationHistoryDeduplicatesCanonicalPaths(t *testing.T) {
 					`\\wsl$\Ubuntu\home\neko`:              older,
 					"smb://wsl.localhost/Ubuntu/home/neko": newer,
 				},
+				UseCount: map[string]int{
+					`\\wsl$\Ubuntu\home\neko`:              2,
+					"smb://wsl.localhost/Ubuntu/home/neko": 3,
+				},
 			},
 		},
 	}
@@ -45,5 +49,8 @@ func TestNormalizeNavigationHistoryDeduplicatesCanonicalPaths(t *testing.T) {
 	}
 	if !cfg.UI.NavigationHistory.LastUsed[path].Equal(newer) {
 		t.Fatalf("lastUsed = %v, want newest %v", cfg.UI.NavigationHistory.LastUsed[path], newer)
+	}
+	if got := cfg.UI.NavigationHistory.UseCount[path]; got != 5 {
+		t.Fatalf("useCount = %d, want summed 5", got)
 	}
 }

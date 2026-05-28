@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -83,6 +84,7 @@ type rawNavigationHistoryConfig struct {
 	MaxEntries *int                 `json:"maxEntries"`
 	Entries    []string             `json:"entries"`
 	LastUsed   map[string]time.Time `json:"lastUsed"`
+	UseCount   map[string]int       `json:"useCount"`
 }
 
 type rawFileFilterConfig struct {
@@ -282,8 +284,9 @@ type CursorMemoryConfig struct {
 // NavigationHistoryConfig represents navigation history settings
 type NavigationHistoryConfig struct {
 	MaxEntries int                  `json:"maxEntries"` // Maximum number of paths to remember
-	Entries    []string             `json:"entries"`    // Path history (newest first)
-	LastUsed   map[string]time.Time `json:"lastUsed"`   // LRU management
+	Entries    []string             `json:"entries"`    // Path history (frecency order)
+	LastUsed   map[string]time.Time `json:"lastUsed"`   // Last usage timestamp
+	UseCount   map[string]int       `json:"useCount"`   // Usage frequency counter
 }
 
 // FilterEntry represents a single filter pattern with metadata
@@ -653,6 +656,12 @@ func cloneNavigationHistoryConfig(src NavigationHistoryConfig) NavigationHistory
 			clone.LastUsed[k] = v
 		}
 	}
+	if src.UseCount != nil {
+		clone.UseCount = make(map[string]int, len(src.UseCount))
+		for k, v := range src.UseCount {
+			clone.UseCount[k] = v
+		}
+	}
 	return clone
 }
 
@@ -743,9 +752,10 @@ func getDefaultConfig() *Config {
 				LastUsed:   make(map[string]time.Time),
 			},
 			NavigationHistory: NavigationHistoryConfig{
-				MaxEntries: 50,
+				MaxEntries: 10000,
 				Entries:    make([]string, 0),
 				LastUsed:   make(map[string]time.Time),
+				UseCount:   make(map[string]int),
 			},
 			FileFilter: FileFilterConfig{
 				MaxEntries: 30,
@@ -885,6 +895,10 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) {
 	if fileConfig.UI.NavigationHistory.LastUsed != nil {
 		defaultConfig.UI.NavigationHistory.LastUsed = fileConfig.UI.NavigationHistory.LastUsed
 	}
+	if fileConfig.UI.NavigationHistory.UseCount != nil {
+		defaultConfig.UI.NavigationHistory.UseCount = fileConfig.UI.NavigationHistory.UseCount
+	}
+	ensureNavigationHistoryStats(&defaultConfig.UI.NavigationHistory)
 
 	// Merge FileFilter config
 	if fileConfig.UI.FileFilter.MaxEntries != nil && *fileConfig.UI.FileFilter.MaxEntries != 0 {
@@ -916,58 +930,105 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) {
 // AddToNavigationHistory adds a path to navigation history
 func (c *Config) AddToNavigationHistory(path string) {
 	now := time.Now()
+	history := &c.UI.NavigationHistory
+	ensureNavigationHistoryStats(history)
 
-	// Remove existing entry if it exists
-	for i, entry := range c.UI.NavigationHistory.Entries {
+	found := false
+	for _, entry := range history.Entries {
 		if entry == path {
-			c.UI.NavigationHistory.Entries = append(
-				c.UI.NavigationHistory.Entries[:i],
-				c.UI.NavigationHistory.Entries[i+1:]...,
-			)
+			found = true
 			break
 		}
 	}
-
-	// Add to beginning of slice (newest first)
-	c.UI.NavigationHistory.Entries = append([]string{path}, c.UI.NavigationHistory.Entries...)
-
-	// Update last used time
-	c.UI.NavigationHistory.LastUsed[path] = now
-
-	// Enforce max entries limit
-	if len(c.UI.NavigationHistory.Entries) > c.UI.NavigationHistory.MaxEntries {
-		// Remove oldest entry
-		oldestPath := c.UI.NavigationHistory.Entries[c.UI.NavigationHistory.MaxEntries]
-		c.UI.NavigationHistory.Entries = c.UI.NavigationHistory.Entries[:c.UI.NavigationHistory.MaxEntries]
-		delete(c.UI.NavigationHistory.LastUsed, oldestPath)
+	if !found {
+		history.Entries = append(history.Entries, path)
 	}
+
+	history.LastUsed[path] = now
+	history.UseCount[path]++
+	sortNavigationHistory(history, now)
+	pruneNavigationHistory(history, now)
 }
 
-// GetNavigationHistory returns the navigation history entries sorted by last used time (newest first)
+// GetNavigationHistory returns the navigation history entries sorted by frecency.
 func (c *Config) GetNavigationHistory() []string {
-	entries := c.UI.NavigationHistory.Entries
+	history := &c.UI.NavigationHistory
+	ensureNavigationHistoryStats(history)
+	entries := history.Entries
 	if len(entries) <= 1 {
 		return entries
 	}
 
-	// Create a copy to avoid modifying the original
 	sorted := make([]string, len(entries))
 	copy(sorted, entries)
-
-	// Sort by last used time (newest first)
-	for i := 0; i < len(sorted)-1; i++ {
-		for j := i + 1; j < len(sorted); j++ {
-			timeI := c.UI.NavigationHistory.LastUsed[sorted[i]]
-			timeJ := c.UI.NavigationHistory.LastUsed[sorted[j]]
-
-			// If timeJ is newer than timeI, swap
-			if timeJ.After(timeI) {
-				sorted[i], sorted[j] = sorted[j], sorted[i]
-			}
-		}
-	}
+	sortNavigationHistoryEntries(sorted, history.LastUsed, history.UseCount, time.Now())
 
 	return sorted
+}
+
+func ensureNavigationHistoryStats(history *NavigationHistoryConfig) {
+	if history.LastUsed == nil {
+		history.LastUsed = make(map[string]time.Time)
+	}
+	if history.UseCount == nil {
+		history.UseCount = make(map[string]int)
+	}
+	for _, path := range history.Entries {
+		if _, ok := history.UseCount[path]; !ok {
+			history.UseCount[path] = 1
+		}
+	}
+}
+
+func sortNavigationHistory(history *NavigationHistoryConfig, now time.Time) {
+	sortNavigationHistoryEntries(history.Entries, history.LastUsed, history.UseCount, now)
+}
+
+func sortNavigationHistoryEntries(entries []string, lastUsed map[string]time.Time, useCount map[string]int, now time.Time) {
+	sort.SliceStable(entries, func(i, j int) bool {
+		scoreI := navigationHistoryScore(useCount[entries[i]], lastUsed[entries[i]], now)
+		scoreJ := navigationHistoryScore(useCount[entries[j]], lastUsed[entries[j]], now)
+		if scoreI != scoreJ {
+			return scoreI > scoreJ
+		}
+		timeI := lastUsed[entries[i]]
+		timeJ := lastUsed[entries[j]]
+		if !timeI.Equal(timeJ) {
+			return timeI.After(timeJ)
+		}
+		return entries[i] < entries[j]
+	})
+}
+
+func pruneNavigationHistory(history *NavigationHistoryConfig, now time.Time) {
+	if history.MaxEntries <= 0 || len(history.Entries) <= history.MaxEntries {
+		return
+	}
+	sortNavigationHistory(history, now)
+	for _, path := range history.Entries[history.MaxEntries:] {
+		delete(history.LastUsed, path)
+		delete(history.UseCount, path)
+	}
+	history.Entries = history.Entries[:history.MaxEntries]
+}
+
+func navigationHistoryScore(useCount int, lastUsed time.Time, now time.Time) float64 {
+	if useCount <= 0 {
+		useCount = 1
+	}
+	age := now.Sub(lastUsed)
+	switch {
+	case lastUsed.IsZero():
+		return float64(useCount) * 0.25
+	case age <= time.Hour:
+		return float64(useCount) * 4
+	case age <= 24*time.Hour:
+		return float64(useCount) * 2
+	case age <= 7*24*time.Hour:
+		return float64(useCount) * 0.5
+	default:
+		return float64(useCount) * 0.25
+	}
 }
 
 // FilterNavigationHistory filters history entries by query (case-insensitive partial match)

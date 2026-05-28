@@ -1731,9 +1731,10 @@ func testConfig() *config.Config {
 				LastUsed:   map[string]time.Time{},
 			},
 			NavigationHistory: config.NavigationHistoryConfig{
-				MaxEntries: 50,
+				MaxEntries: 10000,
 				Entries:    []string{},
 				LastUsed:   map[string]time.Time{},
+				UseCount:   map[string]int{},
 			},
 			FileFilter: config.FileFilterConfig{
 				MaxEntries: 30,

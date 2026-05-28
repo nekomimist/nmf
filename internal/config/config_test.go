@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestGetDefaultConfig(t *testing.T) {
@@ -73,11 +74,14 @@ func TestGetDefaultConfig(t *testing.T) {
 	}
 
 	// Test NavigationHistory defaults
-	if config.UI.NavigationHistory.MaxEntries != 50 {
-		t.Errorf("Expected default navigation history max entries 50, got %d", config.UI.NavigationHistory.MaxEntries)
+	if config.UI.NavigationHistory.MaxEntries != 10000 {
+		t.Errorf("Expected default navigation history max entries 10000, got %d", config.UI.NavigationHistory.MaxEntries)
 	}
 	if config.UI.NavigationHistory.Entries == nil {
 		t.Error("Expected navigation history entries to be initialized")
+	}
+	if config.UI.NavigationHistory.UseCount == nil {
+		t.Error("Expected navigation history useCount to be initialized")
 	}
 
 	// Test FileFilter defaults
@@ -103,6 +107,89 @@ func TestGetDefaultConfig(t *testing.T) {
 	}
 	if config.UI.ExternalCommands == nil {
 		t.Error("Expected external commands to be initialized")
+	}
+}
+
+func TestNavigationHistoryMigratesMissingUseCount(t *testing.T) {
+	cfg := getDefaultConfig()
+	lastUsed := time.Now().Add(-time.Hour)
+	fileConfig := &rawConfig{
+		UI: rawUIConfig{
+			NavigationHistory: rawNavigationHistoryConfig{
+				Entries:  []string{"/tmp/one"},
+				LastUsed: map[string]time.Time{"/tmp/one": lastUsed},
+			},
+		},
+	}
+
+	mergeConfigs(cfg, fileConfig)
+
+	if got := cfg.UI.NavigationHistory.UseCount["/tmp/one"]; got != 1 {
+		t.Fatalf("useCount = %d, want migrated 1", got)
+	}
+}
+
+func TestNavigationHistoryFrecencyOrdering(t *testing.T) {
+	now := time.Now()
+	cfg := getDefaultConfig()
+	cfg.UI.NavigationHistory.Entries = []string{"/recent", "/frequent", "/old"}
+	cfg.UI.NavigationHistory.LastUsed = map[string]time.Time{
+		"/recent":   now.Add(-30 * time.Minute),
+		"/frequent": now.Add(-2 * time.Hour),
+		"/old":      now.Add(-8 * 24 * time.Hour),
+	}
+	cfg.UI.NavigationHistory.UseCount = map[string]int{
+		"/recent":   1,
+		"/frequent": 4,
+		"/old":      100,
+	}
+
+	got := cfg.GetNavigationHistory()
+	want := []string{"/old", "/frequent", "/recent"}
+	if len(got) != len(want) {
+		t.Fatalf("history length = %d, want %d: %#v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("history = %#v, want %#v", got, want)
+		}
+	}
+}
+
+func TestAddToNavigationHistoryIncrementsUseCountAndPrunesByScore(t *testing.T) {
+	now := time.Now()
+	cfg := getDefaultConfig()
+	cfg.UI.NavigationHistory.MaxEntries = 2
+	cfg.UI.NavigationHistory.Entries = []string{"/keep", "/drop"}
+	cfg.UI.NavigationHistory.LastUsed = map[string]time.Time{
+		"/keep": now.Add(-30 * time.Minute),
+		"/drop": now.Add(-8 * 24 * time.Hour),
+	}
+	cfg.UI.NavigationHistory.UseCount = map[string]int{
+		"/keep": 1,
+		"/drop": 1,
+	}
+
+	cfg.AddToNavigationHistory("/keep")
+	cfg.AddToNavigationHistory("/new")
+
+	if got := cfg.UI.NavigationHistory.UseCount["/keep"]; got != 2 {
+		t.Fatalf("useCount for /keep = %d, want 2", got)
+	}
+	if _, ok := cfg.UI.NavigationHistory.LastUsed["/drop"]; ok {
+		t.Fatal("/drop lastUsed should be pruned")
+	}
+	if _, ok := cfg.UI.NavigationHistory.UseCount["/drop"]; ok {
+		t.Fatal("/drop useCount should be pruned")
+	}
+	want := []string{"/keep", "/new"}
+	if len(cfg.UI.NavigationHistory.Entries) != len(want) {
+		t.Fatalf("entries = %#v, want %#v", cfg.UI.NavigationHistory.Entries, want)
+	}
+	for i := range want {
+		if cfg.UI.NavigationHistory.Entries[i] != want[i] {
+			t.Fatalf("entries = %#v, want %#v", cfg.UI.NavigationHistory.Entries, want)
+		}
 	}
 }
 

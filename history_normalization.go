@@ -24,9 +24,11 @@ func normalizeNavigationHistory(cfg *config.Config) bool {
 	}
 	entries := cfg.UI.NavigationHistory.Entries
 	lastUsed := cfg.UI.NavigationHistory.LastUsed
+	useCount := cfg.UI.NavigationHistory.UseCount
 	normalized := make([]string, 0, len(entries))
 	seen := make(map[string]bool, len(entries))
 	normalizedLastUsed := make(map[string]timeValue, len(lastUsed))
+	normalizedUseCount := make(map[string]int, len(useCount))
 	changed := false
 
 	for _, entry := range entries {
@@ -38,6 +40,11 @@ func normalizeNavigationHistory(cfg *config.Config) bool {
 		if previous, ok := normalizedLastUsed[canonical]; !ok || when.After(previous.Time) {
 			normalizedLastUsed[canonical] = timeValue{Time: when}
 		}
+		count := useCount[entry]
+		if count <= 0 {
+			count = 1
+		}
+		normalizedUseCount[canonical] += count
 		if seen[canonical] {
 			changed = true
 			continue
@@ -59,6 +66,7 @@ func normalizeNavigationHistory(cfg *config.Config) bool {
 	}
 	cfg.UI.NavigationHistory.Entries = normalized
 	cfg.UI.NavigationHistory.LastUsed = newLastUsed
+	cfg.UI.NavigationHistory.UseCount = normalizedUseCount
 	return true
 }
 

@@ -17,6 +17,8 @@ func TestPlanFindsInaccessibleEntries(t *testing.T) {
 	cfg.UI.NavigationHistory.Entries = []string{"/ok-history", "/missing-history"}
 	cfg.UI.NavigationHistory.LastUsed["/ok-history"] = time.Now()
 	cfg.UI.NavigationHistory.LastUsed["/missing-history"] = time.Now()
+	cfg.UI.NavigationHistory.UseCount["/ok-history"] = 1
+	cfg.UI.NavigationHistory.UseCount["/missing-history"] = 1
 
 	result := Plan(cfg, DefaultOptions(), classifyNone, func(path string) error {
 		if path == "/missing-cursor" || path == "/missing-history" {
@@ -94,6 +96,8 @@ func TestApplyRemovesOnlyLatestCandidates(t *testing.T) {
 	cfg.UI.NavigationHistory.Entries = []string{"/remove-history", "/keep-history"}
 	cfg.UI.NavigationHistory.LastUsed["/remove-history"] = time.Now()
 	cfg.UI.NavigationHistory.LastUsed["/keep-history"] = time.Now()
+	cfg.UI.NavigationHistory.UseCount["/remove-history"] = 1
+	cfg.UI.NavigationHistory.UseCount["/keep-history"] = 1
 
 	removed := Apply(cfg, Result{Candidates: []Candidate{
 		{Task: TaskCursorMemory, Path: "/remove-cursor"},
@@ -118,6 +122,9 @@ func TestApplyRemovesOnlyLatestCandidates(t *testing.T) {
 	if _, exists := cfg.UI.NavigationHistory.LastUsed["/remove-history"]; exists {
 		t.Fatal("history lastUsed was not removed")
 	}
+	if _, exists := cfg.UI.NavigationHistory.UseCount["/remove-history"]; exists {
+		t.Fatal("history useCount was not removed")
+	}
 }
 
 func classifyNone(path string) (PathClass, error) {
@@ -134,6 +141,7 @@ func testConfig() *config.Config {
 			NavigationHistory: config.NavigationHistoryConfig{
 				Entries:  make([]string, 0),
 				LastUsed: make(map[string]time.Time),
+				UseCount: make(map[string]int),
 			},
 		},
 	}

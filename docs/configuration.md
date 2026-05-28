@@ -184,6 +184,8 @@ These fields are managed by the app and normally do not need manual editing:
 If manually editing them, preserve their JSON shape:
 
 - history timestamps use Go's JSON `time.Time` format.
+- navigation history `useCount` stores frecency usage counters; missing values
+  are migrated to `1`.
 - `fileFilter.entries` and `fileFilter.current` use `pattern`, `lastUsed`, and
   `useCount`.
 - navigation history paths are normalized when recorded or shown; SMB/UNC forms
