@@ -421,6 +421,12 @@ func (fm *FileManager) OpenFile(file *fileinfo.FileInfo) {
 		fm.LoadDirectory(fileinfo.ArchiveRootPath(file.Path))
 		return
 	}
+	if dir, ok, err := fileinfo.ResolveShortcutNavigationDir(file.Path); ok {
+		fm.LoadDirectory(dir)
+		return
+	} else if err != nil {
+		debugPrint("FileManager: Windows shortcut navigation skipped path=%s err=%v", file.Path, err)
+	}
 
 	// Regular file: try to open with associated application
 	if err := fileinfo.OpenWithDefaultApp(file.Path); err != nil {

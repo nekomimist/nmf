@@ -75,6 +75,9 @@ Wiring is installed in `NewFileManager`:
 Main-list `Return` uses the `open` command. It enters directories, enters
 supported archive files, and delegates other files to
 `fileinfo.OpenWithDefaultApp`.
+On Windows, `.lnk` shortcut files are resolved before default-app delegation:
+shortcuts to directories enter the target directory, and shortcuts to files
+enter the target file's parent directory.
 
 Main-list `Shift+Return` uses `open.defaultApp`. It enters directories but
 delegates files directly to `fileinfo.OpenWithDefaultApp`, so archive-like

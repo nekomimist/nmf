@@ -13,6 +13,7 @@ require (
 	github.com/jeandeaual/go-locale v0.0.0-20250612000132-0ef82f21eade
 	github.com/koron/gomigemo v1.0.3
 	github.com/mholt/archives v0.1.5
+	github.com/nziu/lnk v0.1.2
 	go.starlark.net v0.0.0-20260326113308-fadfc96def35
 	golang.org/x/sys v0.43.0
 	golang.org/x/text v0.36.0
@@ -39,6 +40,7 @@ require (
 	github.com/fyne-io/oksvg v0.2.0 // indirect
 	github.com/geoffgarside/ber v1.2.0 // indirect
 	github.com/go-gl/gl v0.0.0-20260331235117-4566fea9a276 // indirect
+	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-text/render v0.2.1 // indirect
 	github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
