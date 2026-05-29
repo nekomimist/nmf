@@ -10,7 +10,7 @@
 ## Build, Test, and Development Commands
 - Run app: `go run .` (flags: `-d` for debug, `-path /some/dir`).
 - Build Linux binary: `make build` or `make build-linux` (outputs `dist/nmf`).
-- Build Windows binary from Linux: `make build-windows` (uses Zig cc with CGO; outputs `dist/nmf.exe`).
+- Build Windows binary from Linux: `make build-windows` (uses `x86_64-w64-mingw32-gcc` with CGO; outputs `dist/nmf.exe`).
 - Unit tests: `make test` (runs `go test ./internal/...`; package tests live in `*_test.go`).
 - Lint/vet (recommended): `go vet ./...`; format: `gofmt -s -w .`.
 - Modules: `go mod tidy` after dependency changes.

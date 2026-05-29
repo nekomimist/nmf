@@ -29,7 +29,8 @@ distribution.
 
 - Go 1.25 or newer.
 - Fyne build requirements for the target platform.
-- Zig is required for the provided Windows cross-build target.
+- `gcc-mingw-w64` is required for the provided Windows cross-build target,
+  which uses `x86_64-w64-mingw32-gcc`.
 
 ## Build and Test
 

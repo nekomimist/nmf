@@ -119,7 +119,7 @@ nmf/
 
 - `go run .` - Run application
 - `make build` - Build Linux executable to `dist/nmf`
-- `make build-windows` - Cross-build Windows executable to `dist/nmf.exe` using Zig cc
+- `make build-windows` - Cross-build Windows executable to `dist/nmf.exe` using `x86_64-w64-mingw32-gcc`
 - `make test` - Run tests
 - `go mod tidy` - Clean dependencies
 
