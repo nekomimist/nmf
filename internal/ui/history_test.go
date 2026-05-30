@@ -66,6 +66,23 @@ func TestNavigationHistoryFilterUsesMigemoMatcher(t *testing.T) {
 	}
 }
 
+func TestNavigationHistoryFilterMatchesAllQueryTokens(t *testing.T) {
+	dialog := NewNavigationHistoryDialog(
+		[]string{"/tmp/project/archive", "/tmp/project/docs", "/tmp/archive/logs"},
+		nil,
+		map[string]time.Time{},
+		nil,
+		func(string, ...interface{}) {},
+		search.NewPlainProvider(),
+	)
+
+	dialog.updateFilteredPaths("archive project")
+
+	if len(dialog.filteredPaths) != 1 || dialog.filteredPaths[0] != "/tmp/project/archive" {
+		t.Fatalf("filtered paths = %#v, want only project archive path", dialog.filteredPaths)
+	}
+}
+
 func TestNavigationHistoryFilterKeepsOpenPathMetadata(t *testing.T) {
 	dialog := NewNavigationHistoryDialog(
 		[]string{"/tmp/open", "/tmp/history"},

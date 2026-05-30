@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2/widget"
+
+	"nmf/internal/search"
 )
 
 func TestCopyMoveFilterKeepsOpenDestinationMetadata(t *testing.T) {
@@ -32,6 +34,49 @@ func TestCopyMoveFilterKeepsOpenDestinationMetadata(t *testing.T) {
 	dialog.updateFiltered("")
 	if len(dialog.allDest) != 2 {
 		t.Fatalf("all destinations length = %d, want 2", len(dialog.allDest))
+	}
+}
+
+func TestCopyMoveFilterMatchesAllQueryTokens(t *testing.T) {
+	dialog := NewCopyMoveDialog(
+		OpCopy,
+		[]string{"file.txt"},
+		[]DestinationCandidate{
+			{Path: "/tmp/project/archive"},
+			{Path: "/tmp/project/docs"},
+			{Path: "/tmp/archive/logs"},
+		},
+		map[string]time.Time{},
+		nil,
+		func(string, ...interface{}) {},
+		search.NewPlainProvider(),
+	)
+
+	dialog.updateFiltered("archive project")
+
+	if len(dialog.filteredDest) != 1 || dialog.filteredDest[0].Path != "/tmp/project/archive" {
+		t.Fatalf("filtered destinations = %#v, want only project archive path", dialog.filteredDest)
+	}
+}
+
+func TestCopyMoveFilterUsesMigemoMatcher(t *testing.T) {
+	dialog := NewCopyMoveDialog(
+		OpCopy,
+		[]string{"file.txt"},
+		[]DestinationCandidate{
+			{Path: "/tmp/日本語"},
+			{Path: "/tmp/alpha"},
+		},
+		map[string]time.Time{},
+		nil,
+		func(string, ...interface{}) {},
+		search.NewProvider(func(string, ...interface{}) {}),
+	)
+
+	dialog.updateFiltered("nihongo tmp")
+
+	if len(dialog.filteredDest) != 1 || dialog.filteredDest[0].Path != "/tmp/日本語" {
+		t.Fatalf("filtered destinations = %#v, want only Japanese destination", dialog.filteredDest)
 	}
 }
 

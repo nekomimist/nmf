@@ -41,12 +41,25 @@ func NewPlainProvider() *Provider {
 	return &Provider{}
 }
 
-// Build compiles a matcher for one query.
+// Build compiles a matcher for one query. Whitespace-separated query tokens
+// must all match, while each token keeps the usual plain-or-migemo behavior.
 func (p *Provider) Build(query string) Matcher {
-	return p.build(query)
+	tokens := strings.Fields(query)
+	if len(tokens) == 0 {
+		return plainMatcher{}
+	}
+	if len(tokens) == 1 {
+		return p.buildToken(tokens[0])
+	}
+
+	matchers := make(allMatcher, 0, len(tokens))
+	for _, token := range tokens {
+		matchers = append(matchers, p.buildToken(token))
+	}
+	return matchers
 }
 
-func (p *Provider) build(query string) Matcher {
+func (p *Provider) buildToken(query string) Matcher {
 	plain := plainMatcher{queryLower: strings.ToLower(query)}
 	if query == "" || p == nil || p.dict == nil {
 		return plain
@@ -84,4 +97,15 @@ type combinedMatcher struct {
 
 func (m combinedMatcher) Match(candidate string) bool {
 	return m.plain.Match(candidate) || m.migemo.MatchString(candidate)
+}
+
+type allMatcher []Matcher
+
+func (m allMatcher) Match(candidate string) bool {
+	for _, matcher := range m {
+		if !matcher.Match(candidate) {
+			return false
+		}
+	}
+	return true
 }

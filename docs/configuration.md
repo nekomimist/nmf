@@ -193,10 +193,11 @@ If manually editing them, preserve their JSON shape:
 
 ## Search Matching
 
-Navigation History and Incremental Search use case-insensitive substring
-matching plus migemo expansion for Japanese names. Migemo uses the embedded
-dictionary and is enabled automatically when it loads; if it is unavailable, the
-app falls back to substring matching.
+Navigation History, Incremental Search, and Copy/Move destination search use
+case-insensitive substring matching plus migemo expansion for Japanese names.
+Whitespace-separated query tokens are combined as unordered AND conditions.
+Migemo uses the embedded dictionary and is enabled automatically when it loads;
+if it is unavailable, the app falls back to substring matching.
 
 Directory Jump is intentionally separate: it filters only by configured shortcut
 prefix and does not use migemo.

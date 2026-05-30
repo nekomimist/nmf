@@ -16,6 +16,7 @@ import (
 
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
+	"nmf/internal/search"
 	customtheme "nmf/internal/theme"
 )
 
@@ -49,6 +50,7 @@ type CopyMoveDialog struct {
 
 	debugPrint  func(format string, args ...interface{})
 	keyManager  *keymanager.KeyManager
+	matchers    *search.Provider
 	parent      fyne.Window
 	dialog      dialog.Dialog
 	sink        *KeySink
@@ -61,7 +63,15 @@ type CopyMoveDialog struct {
 }
 
 // NewCopyMoveDialog creates a new dialog instance
-func NewCopyMoveDialog(op Operation, targets []string, destCandidates []DestinationCandidate, lastUsed map[string]time.Time, km *keymanager.KeyManager, debugPrint func(format string, args ...interface{})) *CopyMoveDialog {
+func NewCopyMoveDialog(
+	op Operation,
+	targets []string,
+	destCandidates []DestinationCandidate,
+	lastUsed map[string]time.Time,
+	km *keymanager.KeyManager,
+	debugPrint func(format string, args ...interface{}),
+	matchers ...*search.Provider,
+) *CopyMoveDialog {
 	d := &CopyMoveDialog{
 		op:         op,
 		targets:    targets,
@@ -70,6 +80,9 @@ func NewCopyMoveDialog(op Operation, targets []string, destCandidates []Destinat
 		lastUsed:   lastUsed,
 		keyManager: km,
 		debugPrint: debugPrint,
+	}
+	if len(matchers) > 0 {
+		d.matchers = matchers[0]
 	}
 	d.createWidgets()
 	d.updateFiltered("")
@@ -219,10 +232,10 @@ func (d *CopyMoveDialog) updateFiltered(q string) {
 	if q == "" {
 		d.filteredDest = d.allDest
 	} else {
-		ql := strings.ToLower(q)
+		matcher := d.matchers.Build(q)
 		d.filteredDest = d.filteredDest[:0:0]
 		for _, p := range d.allDest {
-			if strings.Contains(strings.ToLower(p.Path), ql) {
+			if matcher.Match(p.Path) {
 				d.filteredDest = append(d.filteredDest, p)
 			}
 		}

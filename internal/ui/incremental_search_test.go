@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"nmf/internal/fileinfo"
+	"nmf/internal/search"
 	customtheme "nmf/internal/theme"
 )
 
@@ -75,6 +76,27 @@ func TestIncrementalSearchTypingUpdatesMatchDisplay(t *testing.T) {
 	match := overlay.GetCurrentMatch()
 	if match == nil || match.Name != "beta.txt" {
 		t.Fatalf("current match got %+v, want beta.txt", match)
+	}
+}
+
+func TestIncrementalSearchMatchesAllQueryTokens(t *testing.T) {
+	overlay := NewIncrementalSearchOverlay([]fileinfo.FileInfo{
+		{Name: "project archive.txt"},
+		{Name: "project docs.txt"},
+		{Name: "archive logs.txt"},
+	}, nil, incrementalSearchTheme{}, func(string, ...interface{}) {}, search.NewPlainProvider())
+
+	overlay.Show(nil)
+	for _, r := range "archive project" {
+		overlay.AddCharacter(r)
+	}
+
+	match := overlay.GetCurrentMatch()
+	if match == nil || match.Name != "project archive.txt" {
+		t.Fatalf("current match got %+v, want project archive.txt", match)
+	}
+	if len(overlay.matchedFiles) != 1 {
+		t.Fatalf("matched files = %#v, want one match", overlay.matchedFiles)
 	}
 }
 

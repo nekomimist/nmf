@@ -122,7 +122,7 @@ func (fm *FileManager) showCopyMoveDialog(op ui.Operation) {
 
 	// We need full source paths for jobs, not only names — compute now
 	srcPaths := fm.collectTargetPaths()
-	dlg := ui.NewCopyMoveDialog(op, targets, dest, fm.config.UI.NavigationHistory.LastUsed, fm.keyManager, debugPrint)
+	dlg := ui.NewCopyMoveDialog(op, targets, dest, fm.config.UI.NavigationHistory.LastUsed, fm.keyManager, debugPrint, fm.searchMatchers)
 	openDest := destinationCandidateOpenMap(dest)
 	dlg.SetOnSelectedPathChanged(func(path string) {
 		if openDest[path] {

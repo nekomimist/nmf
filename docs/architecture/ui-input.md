@@ -95,9 +95,9 @@ Filter-style text input:
 
 - Dialogs that edit search text through key handlers remove the last UTF-8 rune
   for Backspace and `Ctrl-H`; they must not trim by byte.
-- Navigation History and Incremental Search build matchers through
-  `internal/search`, which provides substring matching with optional embedded
-  migemo expansion.
+- Navigation History, Incremental Search, and Copy/Move destination search
+  build matchers through `internal/search`, which provides whitespace-separated
+  AND matching with substring and optional embedded migemo expansion per token.
 - Directory Jump keeps shortcut-prefix matching separate from migemo so its
   unique-match auto-jump behavior stays deterministic.
 

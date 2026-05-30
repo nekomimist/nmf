@@ -97,6 +97,34 @@ func TestFilteringDialogsAcceptFirstTypedRune(t *testing.T) {
 	}
 }
 
+func TestFilteringDialogsAcceptSpaceTypedRune(t *testing.T) {
+	tests := []struct {
+		name    string
+		handler func(*fakeFilterSearchDialog) KeyHandler
+	}{
+		{name: "history", handler: func(d *fakeFilterSearchDialog) KeyHandler {
+			return NewHistoryDialogKeyHandler(d, func(string, ...interface{}) {})
+		}},
+		{name: "copy move", handler: func(d *fakeFilterSearchDialog) KeyHandler {
+			return NewCopyMoveDialogKeyHandler(d, func(string, ...interface{}) {})
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dialog := &fakeFilterSearchDialog{}
+			handler := tt.handler(dialog)
+
+			if !handler.OnTypedRune(' ', ModifierState{}) {
+				t.Fatal("space typed rune should be handled")
+			}
+			if dialog.search != " " {
+				t.Fatalf("search = %q, want single space", dialog.search)
+			}
+		})
+	}
+}
+
 func TestPathDialogsHandleHorizontalScrollKeys(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -133,6 +161,7 @@ type fakeIncrementalSearch struct {
 	hidden       int
 	accepted     int
 	cursorSet    int
+	search       string
 	currentMatch *fileinfo.FileInfo
 }
 
@@ -140,12 +169,24 @@ func (f *fakeIncrementalSearch) ShowIncrementalSearchOverlay()             {}
 func (f *fakeIncrementalSearch) HideIncrementalSearchOverlay()             { f.hidden++ }
 func (f *fakeIncrementalSearch) AcceptIncrementalSearchOverlay()           { f.accepted++ }
 func (f *fakeIncrementalSearch) IsIncrementalSearchVisible() bool          { return true }
-func (f *fakeIncrementalSearch) AddSearchCharacter(char rune)              {}
+func (f *fakeIncrementalSearch) AddSearchCharacter(char rune)              { f.search += string(char) }
 func (f *fakeIncrementalSearch) RemoveLastSearchCharacter()                { f.removed++ }
 func (f *fakeIncrementalSearch) NextSearchMatch()                          {}
 func (f *fakeIncrementalSearch) PreviousSearchMatch()                      {}
 func (f *fakeIncrementalSearch) GetCurrentSearchMatch() *fileinfo.FileInfo { return f.currentMatch }
 func (f *fakeIncrementalSearch) SetCursorToFile(file *fileinfo.FileInfo)   { f.cursorSet++ }
+
+func TestIncrementalSearchAcceptsSpaceTypedRune(t *testing.T) {
+	search := &fakeIncrementalSearch{}
+	handler := NewIncrementalSearchKeyHandler(search, func(string, ...interface{}) {})
+
+	if !handler.OnTypedRune(' ', ModifierState{}) {
+		t.Fatal("space typed rune should be handled")
+	}
+	if search.search != " " {
+		t.Fatalf("search = %q, want single space", search.search)
+	}
+}
 
 func TestIncrementalSearchTreatsCtrlHAsBackspace(t *testing.T) {
 	search := &fakeIncrementalSearch{}
