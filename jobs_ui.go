@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -20,6 +21,7 @@ func (fm *FileManager) onJobsUpdated() {
 	mgr := jobs.GetManager()
 	snaps := mgr.List()
 	var hasError, hasPending, hasRunning bool
+	remainingJobs := 0
 	for _, s := range snaps {
 		switch s.Status {
 		case jobs.StatusFailed:
@@ -28,14 +30,17 @@ func (fm *FileManager) onJobsUpdated() {
 			}
 		case jobs.StatusPending:
 			hasPending = true
+			remainingJobs++
 		case jobs.StatusRunning:
 			hasRunning = true
+			remainingJobs++
 		}
 	}
 
 	if fm.jobsButton == nil {
 		return
 	}
+	fm.jobsButton.SetText(jobsButtonText(remainingJobs))
 
 	// Visual policy:
 	// - Error or Pending: blink
@@ -56,6 +61,13 @@ func (fm *FileManager) onJobsUpdated() {
 		}
 	}
 	fm.jobsButton.Refresh()
+}
+
+func jobsButtonText(remainingJobs int) string {
+	if remainingJobs <= 0 {
+		return "Jobs"
+	}
+	return fmt.Sprintf("Jobs (%d)", remainingJobs)
 }
 
 func (fm *FileManager) startJobsBlink() {
