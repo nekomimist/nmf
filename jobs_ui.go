@@ -134,7 +134,7 @@ func (fm *FileManager) showCopyMoveDialog(op ui.Operation) {
 
 	// We need full source paths for jobs, not only names — compute now
 	srcPaths := fm.collectTargetPaths()
-	dlg := ui.NewCopyMoveDialog(op, targets, dest, fm.config.UI.NavigationHistory.LastUsed, fm.keyManager, debugPrint, fm.searchMatchers)
+	dlg := ui.NewCopyMoveDialog(op, targets, dest, fm.config.UI.NavigationHistory.LastUsed, fm.config.UI.Copy.PreserveTimestamps, fm.keyManager, debugPrint, fm.searchMatchers)
 	openDest := destinationCandidateOpenMap(dest)
 	dlg.SetOnSelectedPathChanged(func(path string) {
 		if openDest[path] {
@@ -143,7 +143,8 @@ func (fm *FileManager) showCopyMoveDialog(op ui.Operation) {
 		}
 		clearFileManagerWindowHighlights()
 	})
-	dlg.ShowDialog(fm.window, func(selectedDest string) {
+	dlg.ShowDialog(fm.window, func(result ui.CopyMoveResult) {
+		selectedDest := result.Destination
 		if op == ui.OpMove && sameDirectoryPath(selectedDest, fm.currentPath) {
 			debugPrint("FileManager: %s destination is current directory; no-op dest=%s", strings.Title(string(op)), selectedDest)
 			fm.FocusFileList()
@@ -153,7 +154,7 @@ func (fm *FileManager) showCopyMoveDialog(op ui.Operation) {
 		mgr := jobs.GetManager()
 		resolver := fm.conflictResolver()
 		if op == ui.OpCopy {
-			mgr.EnqueueCopyWithResolver(srcPaths, selectedDest, resolver)
+			mgr.EnqueueCopyWithOptions(srcPaths, selectedDest, resolver, jobs.TransferOptions{PreserveTimestamps: result.PreserveTimestamps})
 		} else {
 			mgr.EnqueueMoveWithResolver(srcPaths, selectedDest, resolver)
 		}

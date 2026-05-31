@@ -164,12 +164,15 @@ func (fakeSMBOps) OpenFile(path string, flag int, perm os.FileMode) (io.ReadWrit
 	return nopReadWriteCloser{}, nil
 }
 func (fakeSMBOps) MkdirAll(path string, perm os.FileMode) error { return nil }
-func (fakeSMBOps) Remove(path string) error                     { return nil }
-func (fakeSMBOps) Rename(oldpath, newpath string) error         { return nil }
-func (fakeSMBOps) Readlink(path string) (string, error)         { return "", nil }
-func (fakeSMBOps) Symlink(target, linkpath string) error        { return nil }
-func (fakeSMBOps) Base(p string) string                         { return pathBase(p) }
-func (fakeSMBOps) Join(elem ...string) string                   { return strings.Join(elem, "/") }
+func (fakeSMBOps) Chtimes(path string, atime, mtime time.Time) error {
+	return nil
+}
+func (fakeSMBOps) Remove(path string) error              { return nil }
+func (fakeSMBOps) Rename(oldpath, newpath string) error  { return nil }
+func (fakeSMBOps) Readlink(path string) (string, error)  { return "", nil }
+func (fakeSMBOps) Symlink(target, linkpath string) error { return nil }
+func (fakeSMBOps) Base(p string) string                  { return pathBase(p) }
+func (fakeSMBOps) Join(elem ...string) string            { return strings.Join(elem, "/") }
 
 type trackingSMBOps struct {
 	fakeSMBOps
@@ -1001,6 +1004,74 @@ func TestDirectoryCollisionMergesContents(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dstDir, name)); err != nil {
 			t.Fatalf("merged directory missing %s: %v", name, err)
 		}
+	}
+}
+
+func TestCopyPreservesFileTimestampWhenRequested(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	src := filepath.Join(srcDir, "file.txt")
+	if err := os.WriteFile(src, []byte("source"), 0644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	want := time.Unix(1_700_000_000, 0)
+	if err := os.Chtimes(src, want, want); err != nil {
+		t.Fatalf("set source time: %v", err)
+	}
+
+	job := &Job{Type: TypeCopy, ctx: context.Background(), Options: TransferOptions{PreserveTimestamps: true}}
+	if err := copyOrMovePath(job, src, dstDir); err != nil {
+		t.Fatalf("copy with preserved timestamp failed: %v", err)
+	}
+
+	info, err := os.Stat(filepath.Join(dstDir, "file.txt"))
+	if err != nil {
+		t.Fatalf("stat copied file: %v", err)
+	}
+	if !info.ModTime().Equal(want) {
+		t.Fatalf("copied file modtime = %s, want %s", info.ModTime(), want)
+	}
+}
+
+func TestCopyPreservesDirectoryTimestampAfterChildren(t *testing.T) {
+	srcRoot := t.TempDir()
+	dstRoot := t.TempDir()
+	srcDir := filepath.Join(srcRoot, "dir")
+	child := filepath.Join(srcDir, "child.txt")
+	if err := os.Mkdir(srcDir, 0755); err != nil {
+		t.Fatalf("make source dir: %v", err)
+	}
+	if err := os.WriteFile(child, []byte("child"), 0644); err != nil {
+		t.Fatalf("write source child: %v", err)
+	}
+	fileTime := time.Unix(1_700_000_010, 0)
+	dirTime := time.Unix(1_700_000_000, 0)
+	if err := os.Chtimes(child, fileTime, fileTime); err != nil {
+		t.Fatalf("set child time: %v", err)
+	}
+	if err := os.Chtimes(srcDir, dirTime, dirTime); err != nil {
+		t.Fatalf("set source dir time: %v", err)
+	}
+
+	job := &Job{Type: TypeCopy, ctx: context.Background(), Options: TransferOptions{PreserveTimestamps: true}}
+	if err := copyOrMovePath(job, srcDir, dstRoot); err != nil {
+		t.Fatalf("copy directory with preserved timestamp failed: %v", err)
+	}
+
+	dstDir := filepath.Join(dstRoot, "dir")
+	dirInfo, err := os.Stat(dstDir)
+	if err != nil {
+		t.Fatalf("stat copied dir: %v", err)
+	}
+	if !dirInfo.ModTime().Equal(dirTime) {
+		t.Fatalf("copied dir modtime = %s, want %s", dirInfo.ModTime(), dirTime)
+	}
+	fileInfo, err := os.Stat(filepath.Join(dstDir, "child.txt"))
+	if err != nil {
+		t.Fatalf("stat copied child: %v", err)
+	}
+	if !fileInfo.ModTime().Equal(fileTime) {
+		t.Fatalf("copied child modtime = %s, want %s", fileInfo.ModTime(), fileTime)
 	}
 }
 

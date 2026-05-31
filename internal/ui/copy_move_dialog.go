@@ -34,6 +34,12 @@ type DestinationCandidate struct {
 	OpenInOtherWindow bool
 }
 
+// CopyMoveResult describes the accepted copy/move dialog choices.
+type CopyMoveResult struct {
+	Destination        string
+	PreserveTimestamps bool
+}
+
 // CopyMoveDialog presents targets and lets user pick destination by filtering history
 type CopyMoveDialog struct {
 	op           Operation
@@ -47,6 +53,7 @@ type CopyMoveDialog struct {
 	dataBinding  binding.StringList
 	selectedPath string
 	selectedIdx  int
+	preserveCB   *widget.Check
 
 	debugPrint  func(format string, args ...interface{})
 	keyManager  *keymanager.KeyManager
@@ -58,7 +65,7 @@ type CopyMoveDialog struct {
 	destScroll  *dialogListScroller
 	scrollRight bool
 
-	onAccept      func(dest string)
+	onAccept      func(CopyMoveResult)
 	onPathChanged func(string)
 }
 
@@ -68,6 +75,7 @@ func NewCopyMoveDialog(
 	targets []string,
 	destCandidates []DestinationCandidate,
 	lastUsed map[string]time.Time,
+	preserveTimestamps bool,
 	km *keymanager.KeyManager,
 	debugPrint func(format string, args ...interface{}),
 	matchers ...*search.Provider,
@@ -80,6 +88,10 @@ func NewCopyMoveDialog(
 		lastUsed:   lastUsed,
 		keyManager: km,
 		debugPrint: debugPrint,
+	}
+	if op == OpCopy {
+		d.preserveCB = widget.NewCheck("Preserve timestamps", nil)
+		d.preserveCB.SetChecked(preserveTimestamps)
 	}
 	if len(matchers) > 0 {
 		d.matchers = matchers[0]
@@ -125,7 +137,7 @@ func (d *CopyMoveDialog) createWidgets() {
 }
 
 // ShowDialog renders and shows the copy/move dialog
-func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(dest string)) {
+func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveResult)) {
 	d.parent = parent
 	d.onAccept = onAccept
 
@@ -190,14 +202,18 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(dest strin
 		}
 	}
 
-	content := container.NewVBox(
+	contentObjects := []fyne.CanvasObject{
 		header,
 		targetsScroll,
 		overflowLabel,
 		widget.NewSeparator(),
 		searchSection,
 		fixed,
-	)
+	}
+	if d.preserveCB != nil {
+		contentObjects = append(contentObjects, d.preserveCB)
+	}
+	content := container.NewVBox(contentObjects...)
 
 	// Push key handler and wrap content with KeySink
 	handler := keymanager.NewCopyMoveDialogKeyHandler(d, d.debugPrint)
@@ -225,6 +241,11 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(dest strin
 		d.parent.Canvas().Focus(d.sink)
 		d.searchEntry.RefreshIMEAnchor()
 	}
+}
+
+// PreserveTimestamps reports whether accepted copy should preserve timestamps.
+func (d *CopyMoveDialog) PreserveTimestamps() bool {
+	return d.preserveCB != nil && d.preserveCB.Checked
 }
 
 // updateFiltered updates destination list
@@ -378,7 +399,7 @@ func (d *CopyMoveDialog) AcceptSelection() {
 		}
 		unfocusIfDialogOwned(d.parent, d.sink, d.searchEntry)
 		if d.onAccept != nil && acceptedPath != "" {
-			d.onAccept(acceptedPath)
+			d.onAccept(CopyMoveResult{Destination: acceptedPath, PreserveTimestamps: d.PreserveTimestamps()})
 		}
 	})
 }
@@ -410,7 +431,7 @@ func (d *CopyMoveDialog) AcceptDirectPath() {
 		}
 		unfocusIfDialogOwned(d.parent, d.sink, d.searchEntry)
 		if d.onAccept != nil && acceptedPath != "" {
-			d.onAccept(acceptedPath)
+			d.onAccept(CopyMoveResult{Destination: acceptedPath, PreserveTimestamps: d.PreserveTimestamps()})
 		}
 	})
 }

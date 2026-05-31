@@ -101,16 +101,19 @@ func TestEnqueueDroppedTransferSelectsCopyOrMove(t *testing.T) {
 	dest := "/tmp/dest"
 
 	copyMgr := &fakeDropJobManager{}
-	enqueueDroppedTransfer(copyMgr, ui.OpCopy, sources, dest, resolver)
+	enqueueDroppedTransfer(copyMgr, ui.OpCopy, sources, dest, resolver, jobs.TransferOptions{PreserveTimestamps: true})
 	if copyMgr.copyCalls != 1 || copyMgr.moveCalls != 0 {
 		t.Fatalf("copy calls = %d, move calls = %d; want copy only", copyMgr.copyCalls, copyMgr.moveCalls)
 	}
 	if strings.Join(copyMgr.sources, "|") != strings.Join(sources, "|") || copyMgr.dest != dest || copyMgr.resolver == nil {
 		t.Fatalf("copy manager recorded sources=%#v dest=%q resolver nil=%t", copyMgr.sources, copyMgr.dest, copyMgr.resolver == nil)
 	}
+	if !copyMgr.options.PreserveTimestamps {
+		t.Fatal("copy manager should receive preserve timestamp option")
+	}
 
 	moveMgr := &fakeDropJobManager{}
-	enqueueDroppedTransfer(moveMgr, ui.OpMove, sources, dest, resolver)
+	enqueueDroppedTransfer(moveMgr, ui.OpMove, sources, dest, resolver, jobs.TransferOptions{PreserveTimestamps: true})
 	if moveMgr.moveCalls != 1 || moveMgr.copyCalls != 0 {
 		t.Fatalf("move calls = %d, copy calls = %d; want move only", moveMgr.moveCalls, moveMgr.copyCalls)
 	}
@@ -126,13 +129,19 @@ type fakeDropJobManager struct {
 	sources   []string
 	dest      string
 	resolver  jobs.ConflictResolver
+	options   jobs.TransferOptions
 }
 
 func (f *fakeDropJobManager) EnqueueCopyWithResolver(sources []string, dest string, resolver jobs.ConflictResolver) *jobs.Job {
+	return f.EnqueueCopyWithOptions(sources, dest, resolver, jobs.TransferOptions{})
+}
+
+func (f *fakeDropJobManager) EnqueueCopyWithOptions(sources []string, dest string, resolver jobs.ConflictResolver, options jobs.TransferOptions) *jobs.Job {
 	f.copyCalls++
 	f.sources = append([]string(nil), sources...)
 	f.dest = dest
 	f.resolver = resolver
+	f.options = options
 	return &jobs.Job{Type: jobs.TypeCopy}
 }
 

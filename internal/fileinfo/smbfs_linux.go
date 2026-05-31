@@ -153,6 +153,14 @@ func (m *smbMountedShare) MkdirAll(relPath string, perm os.FileMode) error {
 	return m.share.MkdirAll(p, perm)
 }
 
+func (m *smbMountedShare) Chtimes(relPath string, atime, mtime time.Time) error {
+	p := normalizeSMBPath(relPath)
+	if p == "" {
+		return fmt.Errorf("invalid SMB chtimes path")
+	}
+	return m.share.Chtimes(p, atime, mtime)
+}
+
 func (m *smbMountedShare) Remove(relPath string) error {
 	p := normalizeSMBPath(relPath)
 	if p == "" {
@@ -483,6 +491,28 @@ func (s SMBFS) MkdirAll(relPath string, perm os.FileMode) error {
 	}()
 
 	err = share.MkdirAll(p, perm)
+	if err != nil && isAuthError(err) {
+		ClearCachedCredentials(s.host, s.share)
+	}
+	return err
+}
+
+// Chtimes changes access and modification times.
+func (s SMBFS) Chtimes(relPath string, atime, mtime time.Time) error {
+	p := normalizeSMBPath(relPath)
+	if p == "" {
+		return fmt.Errorf("invalid SMB chtimes path")
+	}
+
+	share, sess, conn, _, err := s.dialAndMount(relPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = closeSMBSession(nil, share, sess, conn)
+	}()
+
+	err = share.Chtimes(p, atime, mtime)
 	if err != nil && isAuthError(err) {
 		ClearCachedCredentials(s.host, s.share)
 	}

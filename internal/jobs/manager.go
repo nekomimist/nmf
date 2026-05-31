@@ -132,23 +132,28 @@ func (m *Manager) EnqueueDelete(sources []string, mode DeleteMode) *Job {
 
 // EnqueueCopyWithResolver enqueues a copy job with an optional collision resolver.
 func (m *Manager) EnqueueCopyWithResolver(sources []string, destDir string, resolver ConflictResolver) *Job {
-	return m.enqueue(TypeCopy, sources, destDir, resolver)
+	return m.EnqueueCopyWithOptions(sources, destDir, resolver, TransferOptions{})
+}
+
+// EnqueueCopyWithOptions enqueues a copy job with transfer options.
+func (m *Manager) EnqueueCopyWithOptions(sources []string, destDir string, resolver ConflictResolver, options TransferOptions) *Job {
+	return m.enqueue(TypeCopy, sources, destDir, resolver, options)
 }
 
 // EnqueueMoveWithResolver enqueues a move job with an optional collision resolver.
 func (m *Manager) EnqueueMoveWithResolver(sources []string, destDir string, resolver ConflictResolver) *Job {
-	return m.enqueue(TypeMove, sources, destDir, resolver)
+	return m.enqueue(TypeMove, sources, destDir, resolver, TransferOptions{PreserveTimestamps: true})
 }
 
-func (m *Manager) enqueue(t Type, sources []string, destDir string, resolver ConflictResolver) *Job {
-	j := &Job{ID: atomic.AddInt64(&m.nextID, 1), Type: t, Sources: append([]string(nil), sources...), DestDir: destDir, Resolver: resolver, Status: StatusPending, EnqueuedAt: time.Now()}
+func (m *Manager) enqueue(t Type, sources []string, destDir string, resolver ConflictResolver, options TransferOptions) *Job {
+	j := &Job{ID: atomic.AddInt64(&m.nextID, 1), Type: t, Sources: append([]string(nil), sources...), DestDir: destDir, Resolver: resolver, Options: options, Status: StatusPending, EnqueuedAt: time.Now()}
 	j.ctx, j.cancel = contextWithCancel()
 	j.TotalFiles = len(sources)
 
 	m.mu.Lock()
 	m.queue = append(m.queue, j)
 	m.mu.Unlock()
-	dbg("enqueue id=%d type=%s n=%d -> %s", j.ID, string(t), len(sources), destDir)
+	dbg("enqueue id=%d type=%s n=%d preserve_timestamps=%t -> %s", j.ID, string(t), len(sources), options.PreserveTimestamps, destDir)
 	m.notify()
 	m.cond.Signal()
 	return j
@@ -757,6 +762,11 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 		if skippedChild {
 			return errSkipped
 		}
+		if shouldPreserveTimestamps(j) {
+			if err := chtimesPath(execCtx, dst, fi.ModTime(), fi.ModTime()); err != nil {
+				return wrapPath(dst.displayPath(), err)
+			}
+		}
 		if j.Type == TypeMove {
 			if canceled(j) {
 				return errCanceled
@@ -772,7 +782,7 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 
 	// regular file
 	dbg("job %d: file %s -> %s", j.ID, src.displayPath(), dst.displayPath())
-	if err := copyFileWithCancel(j, execCtx, src, dst, fi.Mode(), overwrite); err != nil {
+	if err := copyFileWithCancel(j, execCtx, src, dst, fi, overwrite); err != nil {
 		return err
 	}
 	if j.Type == TypeMove {
@@ -785,6 +795,13 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 		}
 	}
 	return nil
+}
+
+func shouldPreserveTimestamps(j *Job) bool {
+	if j == nil {
+		return false
+	}
+	return j.Type == TypeMove || j.Options.PreserveTimestamps
 }
 
 func tryFastMovePath(j *Job, execCtx *executionContext, src, dst executionPath, fi os.FileInfo, overwrite bool) (bool, error) {
@@ -1239,6 +1256,20 @@ func ensureDir(execCtx *executionContext, p executionPath, mode os.FileMode) err
 	return nil
 }
 
+func chtimesPath(execCtx *executionContext, p executionPath, atime, mtime time.Time) error {
+	if p.backend == backendArchive {
+		return errors.New("archive paths are read-only")
+	}
+	if p.backend == backendSMB {
+		ops, err := execCtx.smbOpsFor(p)
+		if err != nil {
+			return err
+		}
+		return ops.Chtimes(p.path, atime, mtime)
+	}
+	return os.Chtimes(p.path, atime, mtime)
+}
+
 func removePath(execCtx *executionContext, p executionPath) error {
 	if p.backend == backendArchive {
 		return errors.New("archive paths are read-only")
@@ -1367,7 +1398,7 @@ func replacePath(execCtx *executionContext, tmp executionPath, dst executionPath
 	}
 }
 
-func copyFileWithCancel(j *Job, execCtx *executionContext, src, dst executionPath, mode os.FileMode, overwrite bool) error {
+func copyFileWithCancel(j *Job, execCtx *executionContext, src, dst executionPath, fi os.FileInfo, overwrite bool) error {
 	tmp := dst
 	tmp.path = dst.path + ".part"
 	tmp.raw = tmp.path
@@ -1382,7 +1413,7 @@ func copyFileWithCancel(j *Job, execCtx *executionContext, src, dst executionPat
 	}
 	defer in.Close()
 
-	out, err := openWritePath(execCtx, tmp, mode)
+	out, err := openWritePath(execCtx, tmp, fi.Mode())
 	if err != nil {
 		return wrapPath(tmp.displayPath(), err)
 	}
@@ -1417,7 +1448,7 @@ func copyFileWithCancel(j *Job, execCtx *executionContext, src, dst executionPat
 	}
 
 	if dst.backend == backendLocal {
-		if err := os.Chmod(tmp.path, mode.Perm()); err != nil {
+		if err := os.Chmod(tmp.path, fi.Mode().Perm()); err != nil {
 			_ = removePath(execCtx, tmp)
 			return wrapPath(tmp.displayPath(), err)
 		}
@@ -1427,6 +1458,11 @@ func copyFileWithCancel(j *Job, execCtx *executionContext, src, dst executionPat
 	if err := replacePath(execCtx, tmp, dst, overwrite); err != nil {
 		_ = removePath(execCtx, tmp)
 		return wrapPath(dst.displayPath(), err)
+	}
+	if shouldPreserveTimestamps(j) {
+		if err := chtimesPath(execCtx, dst, fi.ModTime(), fi.ModTime()); err != nil {
+			return wrapPath(dst.displayPath(), err)
+		}
 	}
 	return nil
 }

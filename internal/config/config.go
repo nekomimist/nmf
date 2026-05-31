@@ -44,6 +44,7 @@ type rawUIConfig struct {
 	ShowHiddenFiles   *bool                      `json:"showHiddenFiles"`
 	Sort              rawSortConfig              `json:"sort"`
 	ItemSpacing       *int                       `json:"itemSpacing"`
+	Copy              rawCopyConfig              `json:"copy"`
 	Archive           rawArchiveConfig           `json:"archive"`
 	IME               rawIMEConfig               `json:"ime"`
 	CursorStyle       rawCursorStyleConfig       `json:"cursorStyle"`
@@ -59,6 +60,10 @@ type rawSortConfig struct {
 	SortBy           *string `json:"sortBy"`
 	SortOrder        *string `json:"sortOrder"`
 	DirectoriesFirst *bool   `json:"directoriesFirst"`
+}
+
+type rawCopyConfig struct {
+	PreserveTimestamps *bool `json:"preserveTimestamps"`
 }
 
 type rawCursorStyleConfig struct {
@@ -240,6 +245,7 @@ type UIConfig struct {
 	ShowHiddenFiles   bool                    `json:"showHiddenFiles"`
 	Sort              SortConfig              `json:"sort"`
 	ItemSpacing       int                     `json:"itemSpacing"`
+	Copy              CopyConfig              `json:"copy"`
 	Archive           ArchiveConfig           `json:"archive"`
 	IME               IMEConfig               `json:"ime"`
 	CursorStyle       CursorStyleConfig       `json:"cursorStyle"`
@@ -266,6 +272,11 @@ type SortConfig struct {
 	SortBy           string `json:"sortBy"`           // "name", "size", "modified", "extension"
 	SortOrder        string `json:"sortOrder"`        // "asc", "desc"
 	DirectoriesFirst bool   `json:"directoriesFirst"` // Whether to show directories before files
+}
+
+// CopyConfig controls copy operation defaults.
+type CopyConfig struct {
+	PreserveTimestamps bool `json:"preserveTimestamps"` // Default for preserving file and directory modified times
 }
 
 // CursorStyleConfig represents cursor appearance settings
@@ -736,6 +747,9 @@ func getDefaultConfig() *Config {
 				DirectoriesFirst: true,
 			},
 			ItemSpacing: 4,
+			Copy: CopyConfig{
+				PreserveTimestamps: false,
+			},
 			Archive: ArchiveConfig{
 				ZipNameEncoding: "shift_jis",
 			},
@@ -858,6 +872,9 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) {
 	}
 	if fileConfig.UI.ItemSpacing != nil && *fileConfig.UI.ItemSpacing != 0 {
 		defaultConfig.UI.ItemSpacing = *fileConfig.UI.ItemSpacing
+	}
+	if fileConfig.UI.Copy.PreserveTimestamps != nil {
+		defaultConfig.UI.Copy.PreserveTimestamps = *fileConfig.UI.Copy.PreserveTimestamps
 	}
 	if fileConfig.UI.Archive.ZipNameEncoding != nil && strings.TrimSpace(*fileConfig.UI.Archive.ZipNameEncoding) != "" {
 		defaultConfig.UI.Archive.ZipNameEncoding = strings.TrimSpace(*fileConfig.UI.Archive.ZipNameEncoding)

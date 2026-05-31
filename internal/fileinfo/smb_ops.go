@@ -3,6 +3,7 @@ package fileinfo
 import (
 	"io"
 	"os"
+	"time"
 )
 
 // SMBPathOps describes SMB-like path operations needed by job execution.
@@ -13,6 +14,7 @@ type SMBPathOps interface {
 	Open(path string) (io.ReadCloser, error)
 	OpenFile(path string, flag int, perm os.FileMode) (io.ReadWriteCloser, error)
 	MkdirAll(path string, perm os.FileMode) error
+	Chtimes(path string, atime, mtime time.Time) error
 	Remove(path string) error
 	Rename(oldpath, newpath string) error
 	Readlink(path string) (string, error)

@@ -18,6 +18,7 @@ func TestCopyMoveFilterKeepsOpenDestinationMetadata(t *testing.T) {
 			{Path: "/tmp/history"},
 		},
 		map[string]time.Time{},
+		false,
 		nil,
 		func(string, ...interface{}) {},
 	)
@@ -47,6 +48,7 @@ func TestCopyMoveFilterMatchesAllQueryTokens(t *testing.T) {
 			{Path: "/tmp/archive/logs"},
 		},
 		map[string]time.Time{},
+		false,
 		nil,
 		func(string, ...interface{}) {},
 		search.NewPlainProvider(),
@@ -68,6 +70,7 @@ func TestCopyMoveFilterUsesMigemoMatcher(t *testing.T) {
 			{Path: "/tmp/alpha"},
 		},
 		map[string]time.Time{},
+		false,
 		nil,
 		func(string, ...interface{}) {},
 		search.NewProvider(func(string, ...interface{}) {}),
@@ -86,6 +89,7 @@ func TestCopyMoveHorizontalScrollState(t *testing.T) {
 		[]string{"file.txt"},
 		[]DestinationCandidate{{Path: "/tmp/very/long/path"}},
 		map[string]time.Time{},
+		false,
 		nil,
 		func(string, ...interface{}) {},
 	)
@@ -108,6 +112,7 @@ func TestCopyMoveReportsSelectedPathChanges(t *testing.T) {
 		[]string{"file.txt"},
 		[]DestinationCandidate{{Path: "/tmp/one"}, {Path: "/tmp/two"}},
 		map[string]time.Time{},
+		false,
 		nil,
 		func(string, ...interface{}) {},
 	)
@@ -127,5 +132,37 @@ func TestCopyMoveReportsSelectedPathChanges(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("selected path changes = %#v, want %#v", got, want)
 		}
+	}
+}
+
+func TestCopyDialogPreserveTimestampsDefault(t *testing.T) {
+	dialog := NewCopyMoveDialog(
+		OpCopy,
+		[]string{"file.txt"},
+		[]DestinationCandidate{{Path: "/tmp/one"}},
+		map[string]time.Time{},
+		true,
+		nil,
+		func(string, ...interface{}) {},
+	)
+
+	if !dialog.PreserveTimestamps() {
+		t.Fatal("copy dialog should use configured preserve timestamps default")
+	}
+}
+
+func TestMoveDialogDoesNotExposePreserveTimestamps(t *testing.T) {
+	dialog := NewCopyMoveDialog(
+		OpMove,
+		[]string{"file.txt"},
+		[]DestinationCandidate{{Path: "/tmp/one"}},
+		map[string]time.Time{},
+		true,
+		nil,
+		func(string, ...interface{}) {},
+	)
+
+	if dialog.PreserveTimestamps() {
+		t.Fatal("move dialog should not expose copy preserve timestamps option")
 	}
 }

@@ -54,6 +54,7 @@ else:
     nmf.color("cursor", value = [0, 0, 0, 255])
 
 nmf.ui(show_hidden_files = True, item_spacing = 2)
+nmf.copy(preserve_timestamps = False)
 nmf.archive(zip_name_encoding = "shift_jis")
 nmf.sort(by = "extension", order = "asc", directories_first = True)
 nmf.cursor_style(type = "border", thickness = 2)
@@ -155,6 +156,7 @@ Scalar sections:
 - `nmf.theme(dark = bool, font_size = int, font_name = str, font_path = str)`
 - `nmf.color(name, value = color|None, dark = color|None, light = color|None)`
 - `nmf.ui(show_hidden_files = bool, item_spacing = int)`
+- `nmf.copy(preserve_timestamps = bool)`
 - `nmf.archive(zip_name_encoding = str)`
 - `nmf.sort(by = "name|size|modified|extension", order = "asc|desc",
   directories_first = bool, temporary = bool)`
@@ -182,6 +184,9 @@ List APIs append to values already loaded from `config.json`. Use the matching
 `clear_*` function when the Starlark file should own the whole list.
 Directory jump shortcuts may be empty or multiple characters; the dialog filters
 them by case-insensitive prefix.
+`nmf.copy(preserve_timestamps = True)` sets the default state for the Copy
+dialog checkbox. The checkbox choice applies only to the copy being queued and
+is not written back to `config.json`.
 `nmf.archive(zip_name_encoding = "...")` sets the fallback charset for ZIP entry
 names that are not marked as UTF-8. Common values include `shift_jis` (default),
 `cp437`, and `utf-8`.

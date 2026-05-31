@@ -50,6 +50,9 @@ func TestGetDefaultConfig(t *testing.T) {
 	if config.UI.ItemSpacing != 4 {
 		t.Errorf("Expected default item spacing 4, got %d", config.UI.ItemSpacing)
 	}
+	if config.UI.Copy.PreserveTimestamps {
+		t.Error("Expected copy preserve timestamps to be disabled by default")
+	}
 	if config.UI.Archive.ZipNameEncoding != "shift_jis" {
 		t.Errorf("Expected default ZIP name encoding 'shift_jis', got '%s'", config.UI.Archive.ZipNameEncoding)
 	}
@@ -203,6 +206,7 @@ func TestMergeConfigs(t *testing.T) {
 	path := "/path/to/font.ttf"
 	fontName := "Noto Sans CJK JP"
 	itemSpacing := 8
+	preserveTimestamps := true
 	zipNameEncoding := "cp437"
 	imeEnabled := false
 	fontSize := 16
@@ -235,6 +239,9 @@ func TestMergeConfigs(t *testing.T) {
 				DirectoriesFirst: &falseVal,
 			},
 			ItemSpacing: &itemSpacing,
+			Copy: rawCopyConfig{
+				PreserveTimestamps: &preserveTimestamps,
+			},
 			Archive: rawArchiveConfig{
 				ZipNameEncoding: &zipNameEncoding,
 			},
@@ -293,6 +300,9 @@ func TestMergeConfigs(t *testing.T) {
 	}
 	if defaultConfig.UI.Sort.DirectoriesFirst != false {
 		t.Error("Expected merged DirectoriesFirst to be false")
+	}
+	if !defaultConfig.UI.Copy.PreserveTimestamps {
+		t.Error("Expected merged copy preserve timestamps to be true")
 	}
 	if defaultConfig.UI.Archive.ZipNameEncoding != "cp437" {
 		t.Errorf("Expected merged ZIP name encoding 'cp437', got '%s'", defaultConfig.UI.Archive.ZipNameEncoding)

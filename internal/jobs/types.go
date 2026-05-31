@@ -43,6 +43,7 @@ type Job struct {
 	DestDir         string   // absolute/native destination directory
 	DeleteMode      DeleteMode
 	Resolver        ConflictResolver
+	Options         TransferOptions
 	conflictDefault ConflictAction
 
 	// state
@@ -62,6 +63,11 @@ type Job struct {
 	// cancellation
 	ctx    context.Context
 	cancel context.CancelFunc
+}
+
+// TransferOptions controls copy/move execution details.
+type TransferOptions struct {
+	PreserveTimestamps bool
 }
 
 // ConflictAction is the user's choice when a destination path already exists.

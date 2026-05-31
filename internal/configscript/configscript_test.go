@@ -30,6 +30,7 @@ nmf.color("lineEditCursor", value = "primary")
 nmf.color("lineEditSelection", value = [5, 6, 7, 8])
 nmf.color("dialogListCursor", value = "selection")
 nmf.ui(show_hidden_files = True, item_spacing = 2)
+nmf.copy(preserve_timestamps = True)
 nmf.archive(zip_name_encoding = "cp437")
 nmf.sort(by = "extension", order = "desc", directories_first = False)
 nmf.cursor_style(type = "border", thickness = 3)
@@ -96,6 +97,9 @@ nmf.command("user.parent", parent)
 	}
 	if !cfg.UI.ShowHiddenFiles || cfg.UI.ItemSpacing != 2 {
 		t.Fatalf("ui = %+v, want hidden=true spacing=2", cfg.UI)
+	}
+	if !cfg.UI.Copy.PreserveTimestamps {
+		t.Fatalf("copy = %+v, want preserve_timestamps=true", cfg.UI.Copy)
 	}
 	if cfg.UI.Archive.ZipNameEncoding != "cp437" {
 		t.Fatalf("archive = %+v, want cp437", cfg.UI.Archive)
@@ -237,6 +241,7 @@ func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T
 	base := testConfig()
 	base.Window.Width = 900
 	base.UI.Sort.SortBy = "name"
+	base.UI.Copy.PreserveTimestamps = false
 	base.UI.Archive.ZipNameEncoding = "shift_jis"
 	base.UI.CursorMemory.MaxEntries = 100
 	base.UI.KeyBindings = []config.KeyBindingEntry{{Key: "X", Command: "jobs.show"}}
@@ -244,6 +249,7 @@ func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T
 	rt := &Runtime{saveMask: saveMask{
 		window:                   true,
 		uiSort:                   true,
+		uiCopy:                   true,
 		uiArchive:                true,
 		uiCursorMemoryMaxEntries: true,
 		uiKeyBindings:            true,
@@ -251,6 +257,7 @@ func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T
 	current := config.Clone(base)
 	current.Window.Width = 1200
 	current.UI.Sort.SortBy = "size"
+	current.UI.Copy.PreserveTimestamps = true
 	current.UI.Archive.ZipNameEncoding = "cp437"
 	current.UI.CursorMemory.MaxEntries = 5
 	current.UI.CursorMemory.Entries["/tmp"] = "file.txt"
@@ -266,6 +273,9 @@ func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T
 	}
 	if saved.UI.Sort.SortBy != "name" {
 		t.Fatalf("saved sort = %s, want base name", saved.UI.Sort.SortBy)
+	}
+	if saved.UI.Copy.PreserveTimestamps {
+		t.Fatalf("saved copy preserve timestamps = true, want base false")
 	}
 	if saved.UI.Archive.ZipNameEncoding != "shift_jis" {
 		t.Fatalf("saved archive encoding = %s, want base shift_jis", saved.UI.Archive.ZipNameEncoding)

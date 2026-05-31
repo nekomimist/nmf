@@ -72,6 +72,7 @@ type saveMask struct {
 	uiShowHiddenFiles           bool
 	uiSort                      bool
 	uiItemSpacing               bool
+	uiCopy                      bool
 	uiArchive                   bool
 	uiCursorStyle               bool
 	uiCursorMemoryMaxEntries    bool
@@ -163,6 +164,9 @@ func (rt *Runtime) SaveTransform(base *config.Config) config.SaveTransform {
 		}
 		if mask.uiItemSpacing {
 			current.UI.ItemSpacing = baseCopy.UI.ItemSpacing
+		}
+		if mask.uiCopy {
+			current.UI.Copy = baseCopy.UI.Copy
 		}
 		if mask.uiArchive {
 			current.UI.Archive = baseCopy.UI.Archive
@@ -290,6 +294,7 @@ func (rt *Runtime) predeclared() starlark.StringDict {
 			"color":              starlark.NewBuiltin("nmf.color", rt.builtinColor),
 			"dark_theme":         starlark.NewBuiltin("nmf.dark_theme", rt.builtinDarkTheme),
 			"ui":                 starlark.NewBuiltin("nmf.ui", rt.builtinUI),
+			"copy":               starlark.NewBuiltin("nmf.copy", rt.builtinCopy),
 			"archive":            starlark.NewBuiltin("nmf.archive", rt.builtinArchive),
 			"sort":               starlark.NewBuiltin("nmf.sort", rt.builtinSort),
 			"cursor_style":       starlark.NewBuiltin("nmf.cursor_style", rt.builtinCursorStyle),
@@ -465,6 +470,16 @@ func (rt *Runtime) builtinUI(_ *starlark.Thread, fn *starlark.Builtin, args star
 	rt.cfg.UI.ItemSpacing = itemSpacing
 	rt.saveMask.uiShowHiddenFiles = true
 	rt.saveMask.uiItemSpacing = true
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinCopy(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	preserveTimestamps := rt.cfg.UI.Copy.PreserveTimestamps
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "preserve_timestamps?", &preserveTimestamps); err != nil {
+		return nil, err
+	}
+	rt.cfg.UI.Copy.PreserveTimestamps = preserveTimestamps
+	rt.saveMask.uiCopy = true
 	return starlark.None, nil
 }
 

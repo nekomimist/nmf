@@ -20,6 +20,7 @@ import (
 
 type droppedJobManager interface {
 	EnqueueCopyWithResolver([]string, string, jobs.ConflictResolver) *jobs.Job
+	EnqueueCopyWithOptions([]string, string, jobs.ConflictResolver, jobs.TransferOptions) *jobs.Job
 	EnqueueMoveWithResolver([]string, string, jobs.ConflictResolver) *jobs.Job
 }
 
@@ -169,7 +170,7 @@ func (fm *FileManager) showDropActionDialog(paths []string, dest string) {
 				return
 			}
 		}
-		enqueueDroppedTransfer(jobs.GetManager(), op, paths, dest, fm.conflictResolver())
+		enqueueDroppedTransfer(jobs.GetManager(), op, paths, dest, fm.conflictResolver(), jobs.TransferOptions{PreserveTimestamps: fm.config.UI.Copy.PreserveTimestamps})
 		debugPrint("FileManager: Drop queued action=%s sources=%d dest=%s", string(op), len(paths), dest)
 	}
 
@@ -214,12 +215,12 @@ func droppedMoveSources(paths []string, dest string) []string {
 	return filtered
 }
 
-func enqueueDroppedTransfer(mgr droppedJobManager, op ui.Operation, sources []string, dest string, resolver jobs.ConflictResolver) *jobs.Job {
+func enqueueDroppedTransfer(mgr droppedJobManager, op ui.Operation, sources []string, dest string, resolver jobs.ConflictResolver, options jobs.TransferOptions) *jobs.Job {
 	if mgr == nil || len(sources) == 0 {
 		return nil
 	}
 	if op == ui.OpMove {
 		return mgr.EnqueueMoveWithResolver(sources, dest, resolver)
 	}
-	return mgr.EnqueueCopyWithResolver(sources, dest, resolver)
+	return mgr.EnqueueCopyWithOptions(sources, dest, resolver, options)
 }

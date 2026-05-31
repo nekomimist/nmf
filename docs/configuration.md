@@ -43,6 +43,9 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
       "directoriesFirst": true
     },
     "itemSpacing": 4,
+    "copy": {
+      "preserveTimestamps": false
+    },
     "archive": {
       "zipNameEncoding": "shift_jis"
     },
@@ -98,6 +101,10 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
 - `sort.sortOrder`: `asc` or `desc`.
 - `sort.directoriesFirst`: keep directories before regular files.
 - `itemSpacing`: list item spacing. `0` keeps the default.
+- `copy.preserveTimestamps`: default state for the Copy dialog's
+  "Preserve timestamps" checkbox. When enabled for a copy, NMF preserves file
+  and directory modification times; directory times are restored after children
+  are copied.
 - `archive.zipNameEncoding`: fallback charset for ZIP entry names that are not
   marked as UTF-8. Default is `shift_jis`; common alternatives include `cp437`
   and `utf-8`.
