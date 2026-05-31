@@ -53,6 +53,9 @@ func TestGetDefaultConfig(t *testing.T) {
 	if config.UI.Copy.PreserveTimestamps {
 		t.Error("Expected copy preserve timestamps to be disabled by default")
 	}
+	if config.UI.Viewer.MaxWidth != 0 || config.UI.Viewer.MaxHeight != 0 {
+		t.Errorf("Expected default viewer max size 0x0, got %dx%d", config.UI.Viewer.MaxWidth, config.UI.Viewer.MaxHeight)
+	}
 	if config.UI.Archive.ZipNameEncoding != "shift_jis" {
 		t.Errorf("Expected default ZIP name encoding 'shift_jis', got '%s'", config.UI.Archive.ZipNameEncoding)
 	}
@@ -132,6 +135,27 @@ func TestNavigationHistoryMigratesMissingUseCount(t *testing.T) {
 	}
 }
 
+func TestMergeConfigsIgnoresNegativeViewerMaxSize(t *testing.T) {
+	cfg := getDefaultConfig()
+	cfg.UI.Viewer.MaxWidth = 1000
+	cfg.UI.Viewer.MaxHeight = 800
+	maxWidth := -1
+	maxHeight := -2
+
+	mergeConfigs(cfg, &rawConfig{
+		UI: rawUIConfig{
+			Viewer: rawViewerConfig{
+				MaxWidth:  &maxWidth,
+				MaxHeight: &maxHeight,
+			},
+		},
+	})
+
+	if cfg.UI.Viewer.MaxWidth != 1000 || cfg.UI.Viewer.MaxHeight != 800 {
+		t.Fatalf("viewer max size = %dx%d, want unchanged 1000x800", cfg.UI.Viewer.MaxWidth, cfg.UI.Viewer.MaxHeight)
+	}
+}
+
 func TestNavigationHistoryFrecencyOrdering(t *testing.T) {
 	now := time.Now()
 	cfg := getDefaultConfig()
@@ -207,6 +231,8 @@ func TestMergeConfigs(t *testing.T) {
 	fontName := "Noto Sans CJK JP"
 	itemSpacing := 8
 	preserveTimestamps := true
+	viewerMaxWidth := 1200
+	viewerMaxHeight := 900
 	zipNameEncoding := "cp437"
 	imeEnabled := false
 	fontSize := 16
@@ -241,6 +267,10 @@ func TestMergeConfigs(t *testing.T) {
 			ItemSpacing: &itemSpacing,
 			Copy: rawCopyConfig{
 				PreserveTimestamps: &preserveTimestamps,
+			},
+			Viewer: rawViewerConfig{
+				MaxWidth:  &viewerMaxWidth,
+				MaxHeight: &viewerMaxHeight,
 			},
 			Archive: rawArchiveConfig{
 				ZipNameEncoding: &zipNameEncoding,
@@ -303,6 +333,9 @@ func TestMergeConfigs(t *testing.T) {
 	}
 	if !defaultConfig.UI.Copy.PreserveTimestamps {
 		t.Error("Expected merged copy preserve timestamps to be true")
+	}
+	if defaultConfig.UI.Viewer.MaxWidth != 1200 || defaultConfig.UI.Viewer.MaxHeight != 900 {
+		t.Errorf("Expected merged viewer max size 1200x900, got %dx%d", defaultConfig.UI.Viewer.MaxWidth, defaultConfig.UI.Viewer.MaxHeight)
 	}
 	if defaultConfig.UI.Archive.ZipNameEncoding != "cp437" {
 		t.Errorf("Expected merged ZIP name encoding 'cp437', got '%s'", defaultConfig.UI.Archive.ZipNameEncoding)

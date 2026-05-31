@@ -46,6 +46,8 @@ type FileViewerDialog struct {
 	activeName string
 	closed     bool
 	handlerSet bool
+	maxWidth   int
+	maxHeight  int
 	debugPrint func(format string, args ...interface{})
 }
 
@@ -63,6 +65,17 @@ func NewFileViewerDialog(preview *fileinfo.PreviewFile, km ...*keymanager.KeyMan
 
 func (d *FileViewerDialog) SetDebugPrint(debugPrint func(format string, args ...interface{})) {
 	d.debugPrint = debugPrint
+}
+
+func (d *FileViewerDialog) SetMaxSize(width, height int) {
+	if width < 0 {
+		width = 0
+	}
+	if height < 0 {
+		height = 0
+	}
+	d.maxWidth = width
+	d.maxHeight = height
 }
 
 func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
@@ -158,7 +171,7 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	d.dialog.Show()
 	d.debug("FileViewer: dialog-show elapsed=%s", time.Since(stepStart))
 	stepStart = time.Now()
-	d.dialog.Resize(fileViewerDialogSize(parent))
+	d.dialog.Resize(fileViewerDialogSize(parent, d.maxWidth, d.maxHeight))
 	d.debug("FileViewer: dialog-resize elapsed=%s", time.Since(stepStart))
 	stepStart = time.Now()
 	d.updateLineDisplay()
@@ -167,24 +180,20 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	d.debug("FileViewer: dialog-ready elapsed=%s", time.Since(totalStart))
 }
 
-func fileViewerDialogSize(parent fyne.Window) fyne.Size {
+func fileViewerDialogSize(parent fyne.Window, maxWidth, maxHeight int) fyne.Size {
 	if parent == nil || parent.Canvas() == nil {
-		return fyne.NewSize(fileViewerMinWidth, fileViewerMinHeight)
+		return cappedFileViewerSize(fileViewerFallbackWidth, fileViewerFallbackHeight, maxWidth, maxHeight)
 	}
 	canvasSize := parent.Canvas().Size()
-	width := canvasSize.Width * 0.96
-	height := canvasSize.Height * 0.88
-	if width < fileViewerMinWidth && canvasSize.Width >= fileViewerMinWidth {
-		width = fileViewerMinWidth
+	return cappedFileViewerSize(canvasSize.Width*fileViewerWidthRatio, canvasSize.Height*fileViewerHeightRatio, maxWidth, maxHeight)
+}
+
+func cappedFileViewerSize(width, height float32, maxWidth, maxHeight int) fyne.Size {
+	if maxWidth > 0 && width > float32(maxWidth) {
+		width = float32(maxWidth)
 	}
-	if height < fileViewerMinHeight && canvasSize.Height >= fileViewerMinHeight {
-		height = fileViewerMinHeight
-	}
-	if canvasSize.Width > 64 && width > canvasSize.Width-32 {
-		width = canvasSize.Width - 32
-	}
-	if canvasSize.Height > 96 && height > canvasSize.Height-48 {
-		height = canvasSize.Height - 48
+	if maxHeight > 0 && height > float32(maxHeight) {
+		height = float32(maxHeight)
 	}
 	return fyne.NewSize(width, height)
 }

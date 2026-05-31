@@ -73,6 +73,7 @@ type saveMask struct {
 	uiSort                      bool
 	uiItemSpacing               bool
 	uiCopy                      bool
+	uiViewer                    bool
 	uiArchive                   bool
 	uiCursorStyle               bool
 	uiCursorMemoryMaxEntries    bool
@@ -167,6 +168,9 @@ func (rt *Runtime) SaveTransform(base *config.Config) config.SaveTransform {
 		}
 		if mask.uiCopy {
 			current.UI.Copy = baseCopy.UI.Copy
+		}
+		if mask.uiViewer {
+			current.UI.Viewer = baseCopy.UI.Viewer
 		}
 		if mask.uiArchive {
 			current.UI.Archive = baseCopy.UI.Archive
@@ -295,6 +299,7 @@ func (rt *Runtime) predeclared() starlark.StringDict {
 			"dark_theme":         starlark.NewBuiltin("nmf.dark_theme", rt.builtinDarkTheme),
 			"ui":                 starlark.NewBuiltin("nmf.ui", rt.builtinUI),
 			"copy":               starlark.NewBuiltin("nmf.copy", rt.builtinCopy),
+			"viewer":             starlark.NewBuiltin("nmf.viewer", rt.builtinViewer),
 			"archive":            starlark.NewBuiltin("nmf.archive", rt.builtinArchive),
 			"sort":               starlark.NewBuiltin("nmf.sort", rt.builtinSort),
 			"cursor_style":       starlark.NewBuiltin("nmf.cursor_style", rt.builtinCursorStyle),
@@ -480,6 +485,21 @@ func (rt *Runtime) builtinCopy(_ *starlark.Thread, fn *starlark.Builtin, args st
 	}
 	rt.cfg.UI.Copy.PreserveTimestamps = preserveTimestamps
 	rt.saveMask.uiCopy = true
+	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinViewer(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	maxWidth := rt.cfg.UI.Viewer.MaxWidth
+	maxHeight := rt.cfg.UI.Viewer.MaxHeight
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "max_width?", &maxWidth, "max_height?", &maxHeight); err != nil {
+		return nil, err
+	}
+	if maxWidth < 0 || maxHeight < 0 {
+		return nil, fmt.Errorf("viewer max_width and max_height must be zero or positive")
+	}
+	rt.cfg.UI.Viewer.MaxWidth = maxWidth
+	rt.cfg.UI.Viewer.MaxHeight = maxHeight
+	rt.saveMask.uiViewer = true
 	return starlark.None, nil
 }
 

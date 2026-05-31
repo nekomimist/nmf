@@ -45,10 +45,12 @@ const (
 	maintenanceDialogHeight float32 = 520
 	maintenanceListHeight   float32 = 260
 
-	fileViewerMinWidth    float32 = 900
-	fileViewerMinHeight   float32 = 760
-	fileViewerSearchWidth float32 = 260
-	fileViewerLineWidth   float32 = 90
+	fileViewerFallbackWidth  float32 = 900
+	fileViewerFallbackHeight float32 = 760
+	fileViewerWidthRatio     float32 = 0.96
+	fileViewerHeightRatio    float32 = 0.88
+	fileViewerSearchWidth    float32 = 260
+	fileViewerLineWidth      float32 = 90
 
 	jobsDetailsWidth  float32 = 680
 	jobsDetailsHeight float32 = 140

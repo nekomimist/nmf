@@ -46,6 +46,10 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
     "copy": {
       "preserveTimestamps": false
     },
+    "viewer": {
+      "maxWidth": 0,
+      "maxHeight": 0
+    },
     "archive": {
       "zipNameEncoding": "shift_jis"
     },
@@ -105,6 +109,8 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
   "Preserve timestamps" checkbox. When enabled for a copy, NMF preserves file
   and directory modification times; directory times are restored after children
   are copied.
+- `viewer.maxWidth`, `viewer.maxHeight`: optional maximum size for the built-in
+  file viewer dialog. `0` means uncapped.
 - `archive.zipNameEncoding`: fallback charset for ZIP entry names that are not
   marked as UTF-8. Default is `shift_jis`; common alternatives include `cp437`
   and `utf-8`.

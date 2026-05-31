@@ -192,6 +192,36 @@ func TestFileViewerTextGridMinSizeDoesNotFollowVisibleLineWidth(t *testing.T) {
 	}
 }
 
+func TestFileViewerDialogSizeUsesCanvasRatioWithoutCap(t *testing.T) {
+	w := test.NewWindow(widget.NewLabel("parent"))
+	w.Resize(fyne.NewSize(2000, 1000))
+
+	got := fileViewerDialogSize(w, 0, 0)
+
+	if got.Width != 1920 || got.Height != 880 {
+		t.Fatalf("fileViewerDialogSize() = %v, want 1920x880", got)
+	}
+}
+
+func TestFileViewerDialogSizeAppliesConfiguredCap(t *testing.T) {
+	w := test.NewWindow(widget.NewLabel("parent"))
+	w.Resize(fyne.NewSize(2000, 1000))
+
+	got := fileViewerDialogSize(w, 1200, 700)
+
+	if got.Width != 1200 || got.Height != 700 {
+		t.Fatalf("fileViewerDialogSize() = %v, want 1200x700", got)
+	}
+}
+
+func TestFileViewerDialogSizeUsesFallbackWithoutParent(t *testing.T) {
+	got := fileViewerDialogSize(nil, 800, 600)
+
+	if got.Width != 800 || got.Height != 600 {
+		t.Fatalf("fileViewerDialogSize(nil) = %v, want capped fallback 800x600", got)
+	}
+}
+
 func TestFileViewerDialogMarkdownStartsOnTextTab(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()

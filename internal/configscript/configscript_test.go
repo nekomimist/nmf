@@ -31,6 +31,7 @@ nmf.color("lineEditSelection", value = [5, 6, 7, 8])
 nmf.color("dialogListCursor", value = "selection")
 nmf.ui(show_hidden_files = True, item_spacing = 2)
 nmf.copy(preserve_timestamps = True)
+nmf.viewer(max_width = 1200, max_height = 900)
 nmf.archive(zip_name_encoding = "cp437")
 nmf.sort(by = "extension", order = "desc", directories_first = False)
 nmf.cursor_style(type = "border", thickness = 3)
@@ -100,6 +101,9 @@ nmf.command("user.parent", parent)
 	}
 	if !cfg.UI.Copy.PreserveTimestamps {
 		t.Fatalf("copy = %+v, want preserve_timestamps=true", cfg.UI.Copy)
+	}
+	if cfg.UI.Viewer.MaxWidth != 1200 || cfg.UI.Viewer.MaxHeight != 900 {
+		t.Fatalf("viewer = %+v, want max 1200x900", cfg.UI.Viewer)
 	}
 	if cfg.UI.Archive.ZipNameEncoding != "cp437" {
 		t.Fatalf("archive = %+v, want cp437", cfg.UI.Archive)
@@ -209,6 +213,19 @@ if not d.available:
 	}
 }
 
+func TestViewerRejectsNegativeMaxSize(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	if err := os.WriteFile(path, []byte(`nmf.viewer(max_width = -1)`), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	_, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	if err == nil || !strings.Contains(err.Error(), "viewer max_width and max_height must be zero or positive") {
+		t.Fatalf("Load error = %v, want negative viewer max size error", err)
+	}
+}
+
 func TestDebugWritesToDebugLog(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, FileName)
@@ -242,6 +259,7 @@ func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T
 	base.Window.Width = 900
 	base.UI.Sort.SortBy = "name"
 	base.UI.Copy.PreserveTimestamps = false
+	base.UI.Viewer = config.ViewerConfig{MaxWidth: 0, MaxHeight: 0}
 	base.UI.Archive.ZipNameEncoding = "shift_jis"
 	base.UI.CursorMemory.MaxEntries = 100
 	base.UI.KeyBindings = []config.KeyBindingEntry{{Key: "X", Command: "jobs.show"}}
@@ -250,6 +268,7 @@ func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T
 		window:                   true,
 		uiSort:                   true,
 		uiCopy:                   true,
+		uiViewer:                 true,
 		uiArchive:                true,
 		uiCursorMemoryMaxEntries: true,
 		uiKeyBindings:            true,
@@ -258,6 +277,7 @@ func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T
 	current.Window.Width = 1200
 	current.UI.Sort.SortBy = "size"
 	current.UI.Copy.PreserveTimestamps = true
+	current.UI.Viewer = config.ViewerConfig{MaxWidth: 1200, MaxHeight: 900}
 	current.UI.Archive.ZipNameEncoding = "cp437"
 	current.UI.CursorMemory.MaxEntries = 5
 	current.UI.CursorMemory.Entries["/tmp"] = "file.txt"
@@ -276,6 +296,9 @@ func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T
 	}
 	if saved.UI.Copy.PreserveTimestamps {
 		t.Fatalf("saved copy preserve timestamps = true, want base false")
+	}
+	if saved.UI.Viewer.MaxWidth != 0 || saved.UI.Viewer.MaxHeight != 0 {
+		t.Fatalf("saved viewer = %+v, want base uncapped", saved.UI.Viewer)
 	}
 	if saved.UI.Archive.ZipNameEncoding != "shift_jis" {
 		t.Fatalf("saved archive encoding = %s, want base shift_jis", saved.UI.Archive.ZipNameEncoding)

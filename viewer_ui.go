@@ -33,6 +33,7 @@ func (fm *FileManager) ShowFileViewer() {
 	}
 
 	dialog := ui.NewFileViewerDialog(preview, fm.keyManager)
+	dialog.SetMaxSize(fm.config.UI.Viewer.MaxWidth, fm.config.UI.Viewer.MaxHeight)
 	dialog.SetDebugPrint(debugPrint)
 	stepStart = time.Now()
 	dialog.ShowDialog(fm.window)

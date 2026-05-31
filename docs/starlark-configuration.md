@@ -157,6 +157,7 @@ Scalar sections:
 - `nmf.color(name, value = color|None, dark = color|None, light = color|None)`
 - `nmf.ui(show_hidden_files = bool, item_spacing = int)`
 - `nmf.copy(preserve_timestamps = bool)`
+- `nmf.viewer(max_width = int, max_height = int)`
 - `nmf.archive(zip_name_encoding = str)`
 - `nmf.sort(by = "name|size|modified|extension", order = "asc|desc",
   directories_first = bool, temporary = bool)`
@@ -187,6 +188,8 @@ them by case-insensitive prefix.
 `nmf.copy(preserve_timestamps = True)` sets the default state for the Copy
 dialog checkbox. The checkbox choice applies only to the copy being queued and
 is not written back to `config.json`.
+`nmf.viewer(max_width = 1200, max_height = 900)` caps the built-in file viewer
+dialog size. Use `0` for either value to leave that dimension uncapped.
 `nmf.archive(zip_name_encoding = "...")` sets the fallback charset for ZIP entry
 names that are not marked as UTF-8. Common values include `shift_jis` (default),
 `cp437`, and `utf-8`.
