@@ -10,16 +10,6 @@ const (
 
 // UI constants
 const (
-	// Window dimensions
-	DefaultWindowWidth  = 800
-	DefaultWindowHeight = 600
-
-	// Tree dialog dimensions
-	TreeDialogWidth  = 550
-	TreeDialogHeight = 500
-	TreeWidth        = 500
-	TreeHeight       = 400
-
 	// Icon sizes
 	DefaultIconSize = 16
 

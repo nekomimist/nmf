@@ -20,9 +20,6 @@ import (
 	customtheme "nmf/internal/theme"
 )
 
-const compareDialogWidth float32 = 600
-const compareSourcePathMaxRunes = 72
-
 // CompareResult describes accepted compare dialog choices.
 type CompareResult struct {
 	Destination string
@@ -143,16 +140,16 @@ func (d *CompareDialog) ShowDialog(parent fyne.Window, onAccept func(CompareResu
 
 	searchLabel := widget.NewLabel("Destination:")
 	searchSection := container.NewBorder(nil, nil, searchLabel, nil, d.searchEntry)
-	destScroll := newDialogListScroller(d.destList, dialogDestinationTextWidth(d.allDest, compareDialogWidth), compareDialogWidth, 240)
+	destScroll := newDialogListScroller(d.destList, dialogDestinationTextWidth(d.allDest, compareDialogWidth), compareDialogWidth, compareDialogListHeight)
 	d.destScroll = destScroll
 	empty := widget.NewLabel("No matching destinations")
 	empty.Alignment = fyne.TextAlignCenter
 	empty.Hide()
 	fixed := container.NewWithoutLayout(destScroll, empty)
-	fixed.Resize(fyne.NewSize(compareDialogWidth, 240))
-	destScroll.Resize(fyne.NewSize(compareDialogWidth, 240))
+	fixed.Resize(metricsSize(compareDialogWidth, compareDialogListHeight))
+	destScroll.Resize(metricsSize(compareDialogWidth, compareDialogListHeight))
 	destScroll.Move(fyne.NewPos(0, 0))
-	empty.Resize(fyne.NewSize(compareDialogWidth, 240))
+	empty.Resize(metricsSize(compareDialogWidth, compareDialogListHeight))
 	empty.Move(fyne.NewPos(0, 0))
 	d.searchEntry.OnChanged = func(q string) {
 		d.updateFiltered(q)

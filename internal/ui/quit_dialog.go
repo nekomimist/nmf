@@ -45,7 +45,7 @@ func (qcd *QuitConfirmDialog) ShowDialog(parent fyne.Window, callback func(bool)
 	qcd.sink = NewKeySink(message, qcd.keyManager, WithTabCapture(false))
 
 	// Set appropriate content size
-	qcd.sink.Resize(fyne.NewSize(400, 100))
+	qcd.sink.Resize(metricsSize(quitDialogWidth, quitDialogHeight))
 
 	// Create custom confirm dialog
 	qcd.dialog = dialog.NewCustomConfirm(

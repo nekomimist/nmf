@@ -19,8 +19,7 @@ import (
 )
 
 const (
-	conflictDialogWidth      float32 = 620
-	conflictDisplayedPathMax         = 72
+	conflictDisplayedPathMax = 72
 )
 
 // ConflictDialog resolves one copy/move destination name collision.
@@ -144,7 +143,7 @@ func (d *ConflictDialog) ShowDialog(parent fyne.Window, callback func(jobs.Confl
 	})
 	d.dialog.Show()
 	d.registerShortcuts()
-	d.dialog.Resize(fyne.NewSize(conflictDialogWidth, 0))
+	d.dialog.Resize(metricsSize(conflictDialogWidth, 0))
 	d.focusCurrent()
 }
 

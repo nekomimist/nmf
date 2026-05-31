@@ -111,7 +111,7 @@ func (fd *FilterDialog) createWidgets() {
 	}
 
 	// Set list size
-	fd.filterList.Resize(fyne.NewSize(600, 350))
+	fd.filterList.Resize(filterDialogListSize())
 }
 
 // updateFilteredEntries updates the filtered entries based on query
@@ -209,7 +209,7 @@ func (fd *FilterDialog) ShowDialog(parent fyne.Window, callback func(*config.Fil
 
 	// Create scrollable list container
 	listScroll := container.NewScroll(dialogListThemeOverride(fd.filterList))
-	listScroll.SetMinSize(fyne.NewSize(600, 350))
+	listScroll.SetMinSize(filterDialogListSize())
 
 	// Create empty state message
 	emptyLabel := widget.NewLabel("No matching patterns found")
@@ -218,13 +218,13 @@ func (fd *FilterDialog) ShowDialog(parent fyne.Window, callback func(*config.Fil
 
 	// Create a fixed-size container that maintains its size
 	fixedContainer := container.NewWithoutLayout(listScroll, emptyLabel)
-	fixedContainer.Resize(fyne.NewSize(600, 350))
+	fixedContainer.Resize(filterDialogListSize())
 
 	// Position elements manually to fill the container
-	listScroll.Resize(fyne.NewSize(600, 350))
+	listScroll.Resize(filterDialogListSize())
 	listScroll.Move(fyne.NewPos(0, 0))
 
-	emptyLabel.Resize(fyne.NewSize(600, 350))
+	emptyLabel.Resize(filterDialogListSize())
 	emptyLabel.Move(fyne.NewPos(0, 0))
 
 	// Show/hide empty state based on filtered results
@@ -254,7 +254,7 @@ func (fd *FilterDialog) ShowDialog(parent fyne.Window, callback func(*config.Fil
 	)
 
 	// Set minimum size
-	content.Resize(fyne.NewSize(650, 500))
+	content.Resize(searchDialogContentSize())
 
 	// Store callback and parent for use by key handler
 	fd.callback = callback

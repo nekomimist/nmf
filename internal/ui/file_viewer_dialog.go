@@ -20,13 +20,9 @@ import (
 )
 
 const (
-	fileViewerMinWidth    float32 = 900
-	fileViewerMinHeight   float32 = 760
-	fileViewerSearchWidth float32 = 260
-	fileViewerLineWidth   float32 = 90
-	fileViewerTextLimit   int     = 64 << 10
-	fileViewerHexLimit    int     = 64 << 10
-	hexDumpFullLineBytes  int     = 79
+	fileViewerTextLimit  int = 64 << 10
+	fileViewerHexLimit   int = 64 << 10
+	hexDumpFullLineBytes int = 79
 )
 
 type FileViewerDialog struct {

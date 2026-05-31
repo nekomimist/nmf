@@ -68,7 +68,7 @@ func (p *SMBCredentialsProvider) Get(host, share, _ string) (fileinfo.Credential
 			},
 			p.parent,
 		)
-		form.Resize(fyne.NewSize(420, 200))
+		form.Resize(metricsSize(smbLoginDialogWidth, smbLoginDialogHeight))
 		form.Show()
 	})
 

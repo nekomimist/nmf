@@ -14,12 +14,6 @@ import (
 	"nmf/internal/maintenance"
 )
 
-const (
-	maintenanceDialogWidth  float32 = 760
-	maintenanceDialogHeight float32 = 520
-	maintenanceListHeight   float32 = 260
-)
-
 type MaintenanceDialog struct {
 	config     *config.Config
 	keyManager *keymanager.KeyManager
@@ -103,7 +97,7 @@ func (d *MaintenanceDialog) ShowDialog(parent fyne.Window, onApply func(maintena
 	d.dialog.SetOnClosed(func() {
 		d.Cancel()
 	})
-	d.dialog.Resize(fyne.NewSize(maintenanceDialogWidth, maintenanceDialogHeight))
+	d.dialog.Resize(metricsSize(maintenanceDialogWidth, maintenanceDialogHeight))
 	d.dialog.Show()
 	if d.parent != nil && d.sink != nil {
 		d.parent.Canvas().Focus(d.sink)
@@ -123,7 +117,7 @@ func (d *MaintenanceDialog) createContent() fyne.CanvasObject {
 	)
 
 	listScroll := container.NewScroll(d.resultList)
-	listScroll.SetMinSize(fyne.NewSize(maintenanceDialogWidth-60, maintenanceListHeight))
+	listScroll.SetMinSize(metricsSize(maintenanceDialogWidth-60, maintenanceListHeight))
 
 	buttons := container.NewHBox(
 		d.scanButton,

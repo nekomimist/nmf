@@ -168,7 +168,7 @@ func (nhd *NavigationHistoryDialog) createWidgets() {
 	}
 
 	// Set list size
-	nhd.historyList.Resize(fyne.NewSize(600, 400))
+	nhd.historyList.Resize(searchDialogListSize())
 }
 
 // updateFilteredPaths updates the filtered paths based on query
@@ -227,7 +227,7 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 	searchSection := container.NewBorder(nil, nil, searchLabel, nil, nhd.searchEntry)
 
 	// Create scrollable list container
-	listScroll := newDialogListScroller(nhd.historyList, dialogTextWidth(nhd.allPaths, 600), 600, 400)
+	listScroll := newDialogListScroller(nhd.historyList, dialogTextWidth(nhd.allPaths, searchDialogListWidth), searchDialogListWidth, searchDialogListHeight)
 	nhd.listScroller = listScroll
 
 	// Create empty state message
@@ -237,13 +237,13 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 
 	// Create a fixed-size container that maintains its size
 	fixedContainer := container.NewWithoutLayout(listScroll, emptyLabel)
-	fixedContainer.Resize(fyne.NewSize(600, 400))
+	fixedContainer.Resize(searchDialogListSize())
 
 	// Position elements manually to fill the container
-	listScroll.Resize(fyne.NewSize(600, 400))
+	listScroll.Resize(searchDialogListSize())
 	listScroll.Move(fyne.NewPos(0, 0))
 
-	emptyLabel.Resize(fyne.NewSize(600, 400))
+	emptyLabel.Resize(searchDialogListSize())
 	emptyLabel.Move(fyne.NewPos(0, 0))
 
 	// Note: Container doesn't have SetMinSize, but the manual layout should maintain size
@@ -270,7 +270,7 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 	)
 
 	// Set minimum size
-	content.Resize(fyne.NewSize(650, 500))
+	content.Resize(searchDialogContentSize())
 
 	// Store callback and parent for use by key handler
 	nhd.callback = callback

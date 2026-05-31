@@ -151,7 +151,7 @@ func (sd *SortDialog) Show(parent fyne.Window, keyHandler interface{}) {
 		},
 		parent,
 	)
-	sd.dialog.Resize(fyne.NewSize(400, 350))
+	sd.dialog.Resize(metricsSize(sortDialogWidth, sortDialogHeight))
 
 	// Show dialog
 	sd.dialog.Show()

@@ -14,13 +14,6 @@ import (
 
 const deleteConfirmWord = "DELETE"
 
-const (
-	deleteDialogWidth           float32 = 560
-	deleteDialogTrashHeight     float32 = 330
-	deleteDialogPermanentHeight float32 = 400
-	deleteTargetListHeight      float32 = 170
-)
-
 // DeleteConfirmDialog confirms trash or permanent deletion for one or more items.
 type DeleteConfirmDialog struct {
 	targets    []string
@@ -99,7 +92,7 @@ func (d *DeleteConfirmDialog) targetList() fyne.CanvasObject {
 	label := widget.NewLabel(d.targetSummary())
 	label.Wrapping = fyne.TextWrapOff
 	scroll := container.NewScroll(label)
-	scroll.SetMinSize(fyne.NewSize(deleteDialogWidth-40, deleteTargetListHeight))
+	scroll.SetMinSize(metricsSize(deleteDialogWidth-40, deleteTargetListHeight))
 	return scroll
 }
 

@@ -78,7 +78,7 @@ func NewJobsWindow(app fyne.App, debugPrint func(format string, args ...interfac
 	header := widget.NewLabel("Job Queue")
 	header.TextStyle.Bold = true
 	detailsScroll := container.NewVScroll(jd.details)
-	detailsScroll.SetMinSize(fyne.NewSize(680, 140))
+	detailsScroll.SetMinSize(metricsSize(jobsDetailsWidth, jobsDetailsHeight))
 	split := container.NewVSplit(dialogListThemeOverride(jd.list), detailsScroll)
 	split.Offset = 0.5
 	bottom := container.NewHBox(layout.NewSpacer(), cancelBtn, closeBtn)
@@ -89,7 +89,7 @@ func NewJobsWindow(app fyne.App, debugPrint func(format string, args ...interfac
 	jd.sink = NewKeySink(content, jd.km, WithTabCapture(true))
 
 	jd.window.SetContent(jd.sink)
-	jd.window.Resize(fyne.NewSize(720, 480))
+	jd.window.Resize(metricsSize(jobsWindowWidth, jobsWindowHeight))
 	jd.window.SetOnClosed(jd.handleClosed)
 	return jd
 }

@@ -171,7 +171,7 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveRe
 		},
 	)
 	targetsScroll := container.NewScroll(targetsList)
-	targetsScroll.SetMinSize(fyne.NewSize(500, 160))
+	targetsScroll.SetMinSize(metricsSize(copyMoveTargetListWidth, copyMoveTargetListHeight))
 	overflowLabel := widget.NewLabel("")
 	if overflow > 0 {
 		overflowLabel.SetText(fmt.Sprintf("... and %d more", overflow))
@@ -180,16 +180,16 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveRe
 	// Destination search + list (fixed size like history dialog)
 	searchLabel := widget.NewLabel("Destination:")
 	searchSection := container.NewBorder(nil, nil, searchLabel, nil, d.searchEntry)
-	destScroll := newDialogListScroller(d.destList, dialogDestinationTextWidth(d.allDest, 600), 600, 260)
+	destScroll := newDialogListScroller(d.destList, dialogDestinationTextWidth(d.allDest, searchDialogListWidth), searchDialogListWidth, copyMoveDestListHeight)
 	d.destScroll = destScroll
 	empty := widget.NewLabel("No matching destinations")
 	empty.Alignment = fyne.TextAlignCenter
 	empty.Hide()
 	fixed := container.NewWithoutLayout(destScroll, empty)
-	fixed.Resize(fyne.NewSize(600, 260))
-	destScroll.Resize(fyne.NewSize(600, 260))
+	fixed.Resize(metricsSize(searchDialogListWidth, copyMoveDestListHeight))
+	destScroll.Resize(metricsSize(searchDialogListWidth, copyMoveDestListHeight))
 	destScroll.Move(fyne.NewPos(0, 0))
-	empty.Resize(fyne.NewSize(600, 260))
+	empty.Resize(metricsSize(searchDialogListWidth, copyMoveDestListHeight))
 	empty.Move(fyne.NewPos(0, 0))
 	d.searchEntry.OnChanged = func(q string) {
 		d.updateFiltered(q)

@@ -17,8 +17,6 @@ import (
 )
 
 const (
-	lineEditDialogWidth                  float32 = 640
-	lineEditDialogHeight                 float32 = 180
 	lineEditEntryHorizontalInset         float32 = 4
 	lineEditEntryVerticalInset           float32 = 6
 	lineEditEntryTrailingCaretClearance  float32 = 2

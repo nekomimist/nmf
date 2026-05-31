@@ -58,19 +58,10 @@ func ShowCompactMessageDialogWithOnClose(parent fyne.Window, title, message stri
 }
 
 func compactMessageDialogSizes(message string) (fyne.Size, fyne.Size) {
-	const (
-		messageWidth      = float32(520)
-		minMessageHeight  = float32(72)
-		lineHeight        = float32(28)
-		verticalPadding   = float32(24)
-		dialogExtraWidth  = float32(40)
-		dialogExtraHeight = float32(92)
-	)
-
-	lines := compactMessageEstimatedLineCount(message, 52)
-	messageHeight := maxFloat32(minMessageHeight, float32(lines)*lineHeight+verticalPadding)
-	messageSize := fyne.NewSize(messageWidth, messageHeight)
-	return messageSize, fyne.NewSize(messageWidth+dialogExtraWidth, messageHeight+dialogExtraHeight)
+	lines := compactMessageEstimatedLineCount(message, compactMessageCharsPerLine)
+	messageHeight := maxFloat32(compactMessageMinHeight, float32(lines)*compactMessageLineHeight+compactMessageVPadding)
+	messageSize := metricsSize(compactMessageWidth, messageHeight)
+	return messageSize, metricsSize(compactMessageWidth+compactDialogExtraWidth, messageHeight+compactDialogExtraHeight)
 }
 
 func compactMessageEstimatedLineCount(message string, charsPerLine int) int {
