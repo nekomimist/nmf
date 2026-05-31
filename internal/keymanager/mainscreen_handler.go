@@ -44,6 +44,7 @@ const (
 	CommandQuit                = "app.quit"
 	CommandCopyShow            = "copy.show"
 	CommandMoveShow            = "move.show"
+	CommandCompareShow         = "compare.show"
 	CommandRenameShow          = "rename.show"
 	CommandDeleteTrash         = "delete.trash"
 	CommandDeletePermanent     = "delete.permanent"
@@ -104,6 +105,7 @@ type FileManagerInterface interface {
 	OpenFileDefaultApp(file *fileinfo.FileInfo)
 	ShowCopyDialog()
 	ShowMoveDialog()
+	ShowCompareDialog()
 	ShowRenameDialog()
 	ShowDeleteDialog(permanent bool)
 	ShowExplorerContextMenu()
@@ -275,6 +277,7 @@ func (mh *MainScreenKeyHandler) shouldDeferCommand(commandID string) bool {
 		CommandQuit,
 		CommandCopyShow,
 		CommandMoveShow,
+		CommandCompareShow,
 		CommandRenameShow,
 		CommandDeleteTrash,
 		CommandDeletePermanent,
@@ -344,6 +347,7 @@ func defaultMainScreenBindings() []config.KeyBindingEntry {
 		{Key: "F3", Command: CommandFilterToggle, Event: keyEventTyped},
 		{Key: "Q", Command: CommandQuit, Event: keyEventTyped},
 		{Key: "C", Command: CommandCopyShow, Event: keyEventTyped},
+		{Key: "S-C", Command: CommandCompareShow, Event: keyEventTyped},
 		{Key: "M", Command: CommandMoveShow, Event: keyEventTyped},
 		{Key: "X", Command: CommandExternalCommandMenu, Event: keyEventTyped},
 		{Key: "V", Command: CommandViewerShow, Event: keyEventTyped},
@@ -397,6 +401,7 @@ func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
 		CommandQuit:                func(CommandContext) { mh.fileManager.QuitApplication() },
 		CommandCopyShow:            func(CommandContext) { mh.fileManager.ShowCopyDialog() },
 		CommandMoveShow:            func(CommandContext) { mh.fileManager.ShowMoveDialog() },
+		CommandCompareShow:         func(CommandContext) { mh.fileManager.ShowCompareDialog() },
 		CommandRenameShow:          mh.rename,
 		CommandDeleteTrash:         func(CommandContext) { mh.fileManager.ShowDeleteDialog(false) },
 		CommandDeletePermanent:     func(CommandContext) { mh.fileManager.ShowDeleteDialog(true) },

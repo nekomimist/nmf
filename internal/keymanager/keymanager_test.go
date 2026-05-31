@@ -372,6 +372,7 @@ type mainScreenFakeFileManager struct {
 	showExternalMenuCount    int
 	showViewerCount          int
 	showMaintenanceCount     int
+	showCompareCount         int
 	showSortCount            int
 	openFilePath             string
 	openDefaultAppPath       string
@@ -470,9 +471,10 @@ func (f *mainScreenFakeFileManager) OpenFileDefaultApp(file *fileinfo.FileInfo) 
 		f.openDefaultAppPath = file.Path
 	}
 }
-func (f *mainScreenFakeFileManager) ShowCopyDialog()   {}
-func (f *mainScreenFakeFileManager) ShowMoveDialog()   {}
-func (f *mainScreenFakeFileManager) ShowRenameDialog() { f.showRenameCount++ }
+func (f *mainScreenFakeFileManager) ShowCopyDialog()    {}
+func (f *mainScreenFakeFileManager) ShowMoveDialog()    {}
+func (f *mainScreenFakeFileManager) ShowCompareDialog() { f.showCompareCount++ }
+func (f *mainScreenFakeFileManager) ShowRenameDialog()  { f.showRenameCount++ }
 func (f *mainScreenFakeFileManager) ShowDeleteDialog(permanent bool) {
 	f.showDeleteCount++
 	f.deletePermanent = permanent
@@ -796,6 +798,20 @@ func TestMainScreenVShowsFileViewer(t *testing.T) {
 	}
 	if fm.showViewerCount != 1 {
 		t.Fatalf("ShowFileViewer count = %d, want 1", fm.showViewerCount)
+	}
+}
+
+func TestMainScreenShiftCShowsCompareDialog(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyC}, ModifierState{ShiftPressed: true})
+
+	if !handled {
+		t.Fatal("Shift+C should be handled")
+	}
+	if fm.showCompareCount != 1 {
+		t.Fatalf("ShowCompareDialog count = %d, want 1", fm.showCompareCount)
 	}
 }
 

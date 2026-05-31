@@ -16,7 +16,8 @@ across local filesystems and SMB/UNC paths.
 - File list navigation with keyboard and mouse input.
 - Directory loading, sorting, filtering, incremental search, and navigation
   history.
-- File open, rename, delete, directory creation, and copy/move jobs.
+- File open, rename, delete, directory creation, directory comparison, and
+  copy/move jobs.
 - Multi-window operation.
 - Configurable theme, key bindings, external commands, and optional Starlark
   configuration.

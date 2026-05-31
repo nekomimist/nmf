@@ -111,6 +111,14 @@ Rename behavior:
 
 - Rename is a direct same-directory operation and does not use the copy/move job queue.
 
+Compare dialog:
+
+- `S-C` opens a direct-directory compare dialog through `compare.show`.
+- The source is the focused File Manager's current directory. Opening the dialog
+  clears any active file filter so all direct files are compared.
+- The destination picker reuses the same history/open-window candidate model as
+  Copy/Move, and the accepted comparison replaces the current mark set.
+
 Delete dialogs:
 
 - `Delete` opens a confirmation dialog that queues a trash/recycle-bin job.

@@ -305,7 +305,7 @@ Available main-screen commands:
 - `filter.show`, `filter.clear`, `filter.toggle`
 - `search.show`, `sort.show`, `jobs.show`
 - `path.edit`, `app.quit`
-- `copy.show`, `move.show`, `rename.show`
+- `copy.show`, `move.show`, `compare.show`, `rename.show`
 - `delete.trash`, `delete.permanent`
 - `explorerContext.show`
 - `externalCommand.menu`
