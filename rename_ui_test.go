@@ -16,10 +16,10 @@ func TestRenameInitialSelection(t *testing.T) {
 		{name: "simple extension", target: fileinfo.FileInfo{Name: "note.txt"}, wantEnd: 4},
 		{name: "last extension", target: fileinfo.FileInfo{Name: "archive.tar.gz"}, wantEnd: 11},
 		{name: "multibyte", target: fileinfo.FileInfo{Name: "日本語.txt"}, wantEnd: 3},
-		{name: "no extension", target: fileinfo.FileInfo{Name: "README"}, wantNil: true},
-		{name: "hidden file", target: fileinfo.FileInfo{Name: ".gitignore"}, wantNil: true},
-		{name: "trailing dot", target: fileinfo.FileInfo{Name: "file."}, wantNil: true},
-		{name: "directory", target: fileinfo.FileInfo{Name: "dir.name", IsDir: true}, wantNil: true},
+		{name: "no extension", target: fileinfo.FileInfo{Name: "README"}, wantEnd: 6},
+		{name: "hidden file", target: fileinfo.FileInfo{Name: ".gitignore"}, wantEnd: 10},
+		{name: "trailing dot", target: fileinfo.FileInfo{Name: "file."}, wantEnd: 5},
+		{name: "directory", target: fileinfo.FileInfo{Name: "dir.name", IsDir: true}, wantEnd: 8},
 	}
 
 	for _, tt := range tests {

@@ -36,13 +36,13 @@ func (fm *FileManager) ShowRenameDialog() {
 }
 
 func renameInitialSelection(target fileinfo.FileInfo) *ui.LineEditSelection {
-	if target.IsDir {
-		return nil
-	}
 	name := target.Name
 	dot := strings.LastIndex(name, ".")
-	if dot <= 0 || dot == len(name)-1 {
-		return nil
+	if target.IsDir || dot <= 0 || dot == len(name)-1 {
+		return &ui.LineEditSelection{
+			Start: 0,
+			End:   utf8.RuneCountInString(name),
+		}
 	}
 	return &ui.LineEditSelection{
 		Start: 0,
