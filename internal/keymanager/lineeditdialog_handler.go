@@ -18,6 +18,7 @@ type LineEditDialogInterface interface {
 	DeleteAtCursor()
 	DeleteBeforeCursorToStart()
 	DeleteAfterCursorToEnd()
+	PasteFromClipboard()
 	InsertRune(r rune) bool
 }
 
@@ -61,6 +62,9 @@ func (h *LineEditDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers Modifi
 			return true
 		case fyne.KeyK:
 			h.dialog.DeleteAfterCursorToEnd()
+			return true
+		case fyne.KeyY:
+			h.dialog.PasteFromClipboard()
 			return true
 		}
 	}

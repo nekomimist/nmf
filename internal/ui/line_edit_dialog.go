@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image/color"
+	"strings"
 	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
@@ -191,6 +192,10 @@ func (d *LineEditDialog) DeleteAfterCursorToEnd() {
 	d.focusEntry()
 	d.entry.DeleteAfterCursorToEnd()
 }
+func (d *LineEditDialog) PasteFromClipboard() {
+	d.focusEntry()
+	d.entry.PasteFromClipboard()
+}
 func (d *LineEditDialog) InsertRune(r rune) bool {
 	if d.entryIsFocused() {
 		return false
@@ -345,6 +350,8 @@ func (e *LineEditEntry) handleReadlineKey(name fyne.KeyName) bool {
 		e.DeleteBeforeCursorToStart()
 	case fyne.KeyK:
 		e.DeleteAfterCursorToEnd()
+	case fyne.KeyY:
+		e.PasteFromClipboard()
 	default:
 		return false
 	}
@@ -352,19 +359,25 @@ func (e *LineEditEntry) handleReadlineKey(name fyne.KeyName) bool {
 }
 
 func (e *LineEditEntry) MoveCursorStart() {
+	e.clearSelection()
 	e.setCursor(0)
 }
 
 func (e *LineEditEntry) MoveCursorEnd() {
+	e.clearSelection()
 	e.setCursor(utf8.RuneCountInString(e.Text))
 }
 
 func (e *LineEditEntry) MoveCursorLeft() {
-	e.setCursor(e.CursorColumn - 1)
+	pos := e.normalizedCursor()
+	e.clearSelection()
+	e.setCursor(pos - 1)
 }
 
 func (e *LineEditEntry) MoveCursorRight() {
-	e.setCursor(e.CursorColumn + 1)
+	pos := e.normalizedCursor()
+	e.clearSelection()
+	e.setCursor(pos + 1)
 }
 
 func (e *LineEditEntry) DeleteBeforeCursor() {
@@ -388,19 +401,33 @@ func (e *LineEditEntry) DeleteBeforeCursorToStart() {
 	if pos <= 0 {
 		return
 	}
+	e.setClipboardText(string([]rune(e.Text)[:pos]))
 	e.replaceRunes(0, pos, "")
 }
 
 func (e *LineEditEntry) DeleteAfterCursorToEnd() {
 	pos := e.normalizedCursor()
-	if pos >= utf8.RuneCountInString(e.Text) {
+	runes := []rune(e.Text)
+	if pos >= len(runes) {
 		return
 	}
-	e.replaceRunes(pos, utf8.RuneCountInString(e.Text), "")
+	e.setClipboardText(string(runes[pos:]))
+	e.replaceRunes(pos, len(runes), "")
 }
 
 func (e *LineEditEntry) InsertText(text string) {
 	e.replaceRunes(e.normalizedCursor(), e.normalizedCursor(), text)
+}
+
+func (e *LineEditEntry) PasteFromClipboard() {
+	text, ok := e.clipboardText()
+	if !ok {
+		return
+	}
+	if !e.MultiLine {
+		text = strings.ReplaceAll(text, "\n", " ")
+	}
+	e.InsertText(text)
 }
 
 // SelectRange selects text from start to end using rune offsets and places the
@@ -437,6 +464,31 @@ func (e *LineEditEntry) replaceRunes(start, end int, replacement string) {
 	next := string(runes[:start]) + replacement + string(runes[end:])
 	e.SetText(next)
 	e.setCursor(start + utf8.RuneCountInString(replacement))
+}
+
+func (e *LineEditEntry) clearSelection() {
+	if e.SelectedText() == "" {
+		return
+	}
+	e.KeyUp(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
+	e.TypedKey(&fyne.KeyEvent{Name: fyne.KeyLeft})
+}
+
+func (e *LineEditEntry) setClipboardText(text string) bool {
+	app := fyne.CurrentApp()
+	if app == nil || app.Clipboard() == nil {
+		return false
+	}
+	app.Clipboard().SetContent(text)
+	return true
+}
+
+func (e *LineEditEntry) clipboardText() (string, bool) {
+	app := fyne.CurrentApp()
+	if app == nil || app.Clipboard() == nil {
+		return "", false
+	}
+	return app.Clipboard().Content(), true
 }
 
 func clampLineEditOffset(pos, max int) int {

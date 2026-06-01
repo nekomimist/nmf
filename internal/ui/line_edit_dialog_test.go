@@ -154,6 +154,36 @@ func TestLineEditEntrySelectRangeUsesRuneOffsets(t *testing.T) {
 	}
 }
 
+func TestLineEditEntryMoveClearsSelection(t *testing.T) {
+	tests := []struct {
+		name       string
+		move       func(*LineEditEntry)
+		wantCursor int
+	}{
+		{name: "start", move: (*LineEditEntry).MoveCursorStart, wantCursor: 0},
+		{name: "end", move: (*LineEditEntry).MoveCursorEnd, wantCursor: 8},
+		{name: "left", move: (*LineEditEntry).MoveCursorLeft, wantCursor: 3},
+		{name: "right", move: (*LineEditEntry).MoveCursorRight, wantCursor: 5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entry := NewLineEditEntry(nil)
+			entry.SetText("note.txt")
+			entry.SelectRange(0, 4)
+
+			tt.move(entry)
+
+			if got := entry.SelectedText(); got != "" {
+				t.Fatalf("SelectedText() = %q, want empty", got)
+			}
+			if entry.CursorColumn != tt.wantCursor {
+				t.Fatalf("cursor = %d, want %d", entry.CursorColumn, tt.wantCursor)
+			}
+		})
+	}
+}
+
 func TestLineEditDialogDefaultsToEndCursorWithoutInitialSelection(t *testing.T) {
 	dialog := NewLineEditDialog(LineEditDialogOptions{InitialText: "abc"}, nil)
 
@@ -198,6 +228,82 @@ func TestLineEditEntryReadlineShortcutKeys(t *testing.T) {
 	entry.TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyH, Modifier: fyne.KeyModifierControl})
 	if entry.Text != "abc" {
 		t.Fatalf("text after ctrl-h = %q, want %q", entry.Text, "abc")
+	}
+}
+
+func TestLineEditEntryKillBeforeCursorCopiesToClipboard(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	entry := NewLineEditEntry(nil)
+	entry.SetText("abcd")
+	entry.setCursor(3)
+
+	entry.DeleteBeforeCursorToStart()
+
+	if got := app.Clipboard().Content(); got != "abc" {
+		t.Fatalf("clipboard = %q, want abc", got)
+	}
+	if entry.Text != "d" {
+		t.Fatalf("text = %q, want d", entry.Text)
+	}
+	if entry.CursorColumn != 0 {
+		t.Fatalf("cursor = %d, want 0", entry.CursorColumn)
+	}
+}
+
+func TestLineEditEntryKillAfterCursorCopiesToClipboard(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	entry := NewLineEditEntry(nil)
+	entry.SetText("abcd")
+	entry.setCursor(1)
+
+	entry.DeleteAfterCursorToEnd()
+
+	if got := app.Clipboard().Content(); got != "bcd" {
+		t.Fatalf("clipboard = %q, want bcd", got)
+	}
+	if entry.Text != "a" {
+		t.Fatalf("text = %q, want a", entry.Text)
+	}
+	if entry.CursorColumn != 1 {
+		t.Fatalf("cursor = %d, want 1", entry.CursorColumn)
+	}
+}
+
+func TestLineEditEntryCtrlYPastesClipboard(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	app.Clipboard().SetContent("bc")
+	entry := NewLineEditEntry(nil)
+	entry.SetText("ad")
+	entry.setCursor(1)
+
+	entry.TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyY, Modifier: fyne.KeyModifierControl})
+
+	if entry.Text != "abcd" {
+		t.Fatalf("text = %q, want abcd", entry.Text)
+	}
+	if entry.CursorColumn != 3 {
+		t.Fatalf("cursor = %d, want 3", entry.CursorColumn)
+	}
+}
+
+func TestLineEditEntryPasteFromClipboardFlattensNewlines(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	app.Clipboard().SetContent("b\nc")
+	entry := NewLineEditEntry(nil)
+	entry.SetText("ad")
+	entry.setCursor(1)
+
+	entry.PasteFromClipboard()
+
+	if entry.Text != "ab cd" {
+		t.Fatalf("text = %q, want ab cd", entry.Text)
+	}
+	if entry.CursorColumn != 4 {
+		t.Fatalf("cursor = %d, want 4", entry.CursorColumn)
 	}
 }
 

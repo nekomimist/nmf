@@ -17,6 +17,7 @@ type fakeLineEditDialog struct {
 	deleteAt     int
 	deleteStart  int
 	deleteEnd    int
+	paste        int
 	inserted     string
 }
 
@@ -30,6 +31,7 @@ func (f *fakeLineEditDialog) DeleteBeforeCursor()        { f.deleteBefore++ }
 func (f *fakeLineEditDialog) DeleteAtCursor()            { f.deleteAt++ }
 func (f *fakeLineEditDialog) DeleteBeforeCursorToStart() { f.deleteStart++ }
 func (f *fakeLineEditDialog) DeleteAfterCursorToEnd()    { f.deleteEnd++ }
+func (f *fakeLineEditDialog) PasteFromClipboard()        { f.paste++ }
 func (f *fakeLineEditDialog) InsertRune(r rune) bool {
 	f.inserted += string(r)
 	return true
@@ -49,6 +51,7 @@ func TestLineEditDialogHandlerReadlineKeys(t *testing.T) {
 		{name: "ctrl d", key: fyne.KeyD, want: func(f *fakeLineEditDialog) int { return f.deleteAt }},
 		{name: "ctrl u", key: fyne.KeyU, want: func(f *fakeLineEditDialog) int { return f.deleteStart }},
 		{name: "ctrl k", key: fyne.KeyK, want: func(f *fakeLineEditDialog) int { return f.deleteEnd }},
+		{name: "ctrl y", key: fyne.KeyY, want: func(f *fakeLineEditDialog) int { return f.paste }},
 	}
 
 	for _, tt := range tests {
