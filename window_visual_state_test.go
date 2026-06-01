@@ -6,8 +6,10 @@ import (
 
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
 
 	customtheme "nmf/internal/theme"
+	"nmf/internal/ui"
 )
 
 type visualStateTheme struct{}
@@ -30,6 +32,30 @@ func TestInactiveCursorThemeDimsCursorAlphaOnly(t *testing.T) {
 	other := theme.GetCustomColor(customtheme.ColorFileRegular)
 	if other.A != 0 {
 		t.Fatalf("non-cursor color = %#v, want unchanged zero color", other)
+	}
+}
+
+func TestFocusFileListRestoresWindowActive(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	window := app.NewWindow("active")
+	fileListView := ui.NewKeySink(widget.NewLabel("files"), nil)
+	window.SetContent(fileListView)
+	fm := &FileManager{
+		window:       window,
+		fileListView: fileListView,
+		windowActive: false,
+		currentPath:  "/tmp",
+	}
+
+	fm.focusFileList("test")
+
+	if !fm.windowActive {
+		t.Fatal("focusFileList should restore active state")
+	}
+	if window.Canvas().Focused() != fileListView {
+		t.Fatalf("focused object = %T, want fileListView", window.Canvas().Focused())
 	}
 }
 

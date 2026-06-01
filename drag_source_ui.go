@@ -51,6 +51,7 @@ func (fm *FileManager) StartFileDrag(dragged fileinfo.FileInfo) {
 		dragErr = shellmenu.StartFileDrag(winCtx.HWND, paths)
 	})
 	resetNativeDragState(fm.window)
+	fm.focusFileList("file-drag-finished")
 	if dragErr != nil && !errors.Is(dragErr, shellmenu.ErrUnsupported) {
 		debugPrint("FileManager: File drag source failed: %v", dragErr)
 		return

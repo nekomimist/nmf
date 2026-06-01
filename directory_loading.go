@@ -135,6 +135,7 @@ func (fm *FileManager) focusFileList(reason string) {
 		before := focusedObjectLabel(fm.window)
 		debugPrint("FileManager: FocusFileList start reason=%s focused=%s active=%t busy=%t path=%s", reason, before, fm.windowActive, fm.busyActive, fm.currentPath)
 		fm.window.Canvas().Focus(fm.fileListView)
+		fm.setWindowActive(true)
 		debugPrint("FileManager: FocusFileList done reason=%s focused=%s active=%t busy=%t path=%s", reason, focusedObjectLabel(fm.window), fm.windowActive, fm.busyActive, fm.currentPath)
 		return
 	}
