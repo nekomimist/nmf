@@ -842,6 +842,80 @@ func TestMainScreenCtrlAMarksAllSelectableFiles(t *testing.T) {
 	}
 }
 
+func TestMainScreenIInvertsFileMarksOnly(t *testing.T) {
+	fm := &mainScreenFakeFileManager{
+		files: []fileinfo.FileInfo{
+			{Name: "..", Path: "/parent"},
+			{Name: "a.txt", Path: "/dir/a.txt"},
+			{Name: "b.txt", Path: "/dir/b.txt"},
+			{Name: "gone.txt", Path: "/dir/gone.txt", Status: fileinfo.StatusDeleted},
+			{Name: "sub", Path: "/dir/sub", IsDir: true},
+		},
+		selectedFiles: map[string]bool{
+			"/dir/a.txt":    true,
+			"/dir/gone.txt": true,
+			"/dir/sub":      true,
+		},
+	}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyI}, ModifierState{})
+
+	if !handled {
+		t.Fatal("I should be handled")
+	}
+	if fm.selectedFiles["/dir/a.txt"] {
+		t.Fatalf("selected files = %+v, want a.txt unmarked", fm.selectedFiles)
+	}
+	if !fm.selectedFiles["/dir/b.txt"] {
+		t.Fatalf("selected files = %+v, want b.txt marked", fm.selectedFiles)
+	}
+	if fm.selectedFiles["/dir/sub"] {
+		t.Fatalf("selected files = %+v, want directory unmarked by file-only invert", fm.selectedFiles)
+	}
+	if !fm.selectedFiles["/dir/gone.txt"] {
+		t.Fatalf("selected files = %+v, deleted existing mark should be untouched", fm.selectedFiles)
+	}
+	if fm.refreshFileListCount != 1 {
+		t.Fatalf("RefreshFileList count = %d, want 1", fm.refreshFileListCount)
+	}
+}
+
+func TestMainScreenShiftIInvertsMarksIncludingDirectories(t *testing.T) {
+	fm := &mainScreenFakeFileManager{
+		files: []fileinfo.FileInfo{
+			{Name: "..", Path: "/parent"},
+			{Name: "a.txt", Path: "/dir/a.txt"},
+			{Name: "b.txt", Path: "/dir/b.txt"},
+			{Name: "gone.txt", Path: "/dir/gone.txt", Status: fileinfo.StatusDeleted},
+			{Name: "sub", Path: "/dir/sub", IsDir: true},
+		},
+		selectedFiles: map[string]bool{
+			"/dir/a.txt":    true,
+			"/dir/gone.txt": true,
+		},
+	}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyI}, ModifierState{ShiftPressed: true})
+
+	if !handled {
+		t.Fatal("Shift+I should be handled")
+	}
+	if fm.selectedFiles["/dir/a.txt"] {
+		t.Fatalf("selected files = %+v, want a.txt unmarked", fm.selectedFiles)
+	}
+	if !fm.selectedFiles["/dir/b.txt"] || !fm.selectedFiles["/dir/sub"] {
+		t.Fatalf("selected files = %+v, want b.txt and sub marked", fm.selectedFiles)
+	}
+	if !fm.selectedFiles["/dir/gone.txt"] {
+		t.Fatalf("selected files = %+v, deleted existing mark should be untouched", fm.selectedFiles)
+	}
+	if fm.refreshFileListCount != 1 {
+		t.Fatalf("RefreshFileList count = %d, want 1", fm.refreshFileListCount)
+	}
+}
+
 func TestMainScreenConfiguredBindingOverridesDefault(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{

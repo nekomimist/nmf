@@ -20,6 +20,8 @@ const (
 	CommandOpenDefaultApp      = "open.defaultApp"
 	CommandSelectToggle        = "selection.toggle"
 	CommandSelectAll           = "selection.markAll"
+	CommandSelectInvert        = "selection.invert"
+	CommandSelectInvertWithDir = "selection.invertWithDirectories"
 	CommandParentDirectory     = "directory.parent"
 	CommandRefresh             = "directory.refresh"
 	CommandHome                = "directory.home"
@@ -330,6 +332,8 @@ func defaultMainScreenBindings() []config.KeyBindingEntry {
 		{Key: "S-Return", Command: CommandOpenDefaultApp, Event: keyEventTyped},
 		{Key: "Space", Command: CommandSelectToggle, Event: keyEventTyped},
 		{Key: "C-A", Command: CommandSelectAll, Event: keyEventDown},
+		{Key: "I", Command: CommandSelectInvert, Event: keyEventTyped},
+		{Key: "S-I", Command: CommandSelectInvertWithDir, Event: keyEventTyped},
 		{Key: "Backspace", Command: CommandParentDirectory, Event: keyEventTyped},
 		{Key: "S-Comma", Command: CommandCursorFirst, Event: keyEventTyped},
 		{Key: "Period", Command: CommandRefresh, Event: keyEventTyped},
@@ -377,6 +381,8 @@ func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
 		CommandOpenDefaultApp:      mh.openCurrentDefaultApp,
 		CommandSelectToggle:        mh.toggleSelection,
 		CommandSelectAll:           mh.selectAll,
+		CommandSelectInvert:        func(CommandContext) { mh.invertSelection(false) },
+		CommandSelectInvertWithDir: func(CommandContext) { mh.invertSelection(true) },
 		CommandParentDirectory:     mh.parentDirectory,
 		CommandRefresh:             mh.refreshDirectory,
 		CommandHome:                mh.homeDirectory,
@@ -524,6 +530,28 @@ func (mh *MainScreenKeyHandler) selectAll(CommandContext) {
 		selected++
 	}
 	if selected > 0 {
+		mh.fileManager.RefreshFileList()
+	}
+}
+
+func (mh *MainScreenKeyHandler) invertSelection(includeDirectories bool) {
+	changed := false
+	selectedFiles := mh.fileManager.GetSelectedFiles()
+	for _, fileInfo := range mh.fileManager.GetFiles() {
+		if fileInfo.Name == ".." || fileInfo.Status == fileinfo.StatusDeleted {
+			continue
+		}
+		if fileInfo.IsDir && !includeDirectories {
+			if selectedFiles[fileInfo.Path] {
+				mh.fileManager.SetFileSelected(fileInfo.Path, false)
+				changed = true
+			}
+			continue
+		}
+		mh.fileManager.SetFileSelected(fileInfo.Path, !selectedFiles[fileInfo.Path])
+		changed = true
+	}
+	if changed {
 		mh.fileManager.RefreshFileList()
 	}
 }
