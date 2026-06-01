@@ -2,6 +2,8 @@ package fileinfo
 
 import (
 	"archive/zip"
+	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -58,6 +60,16 @@ func TestArchiveVFSReadDirStatAndOpen(t *testing.T) {
 	}
 	if string(data) != "hello archive" {
 		t.Fatalf("archive file content = %q, want %q", string(data), "hello archive")
+	}
+}
+
+func TestReadDirPortableContextCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, err := ReadDirPortableContext(ctx, t.TempDir())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("ReadDirPortableContext canceled error = %v, want context.Canceled", err)
 	}
 }
 

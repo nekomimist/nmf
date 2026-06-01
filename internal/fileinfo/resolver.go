@@ -2,6 +2,7 @@ package fileinfo
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"os"
 	"path"
@@ -41,13 +42,24 @@ type Parsed struct {
 // Minimal implementation: Windows supports UNC and smb:// to UNC conversion.
 // Other OS: only local paths are supported for now.
 func ResolveRead(input string) (VFS, Parsed, error) {
+	return ResolveReadContext(context.Background(), input)
+}
+
+// ResolveReadContext maps input into a VFS provider and native path for ReadDir.
+func ResolveReadContext(ctx context.Context, input string) (VFS, Parsed, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	raw := strings.TrimSpace(input)
 	if raw == "" {
 		return LocalFS{}, Parsed{Raw: input, Scheme: SchemeFile, Display: input, Native: input, Provider: "local"}, nil
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, Parsed{Raw: input, Display: raw}, err
+	}
 
 	if archiveFile, inner, ok := SplitArchivePath(raw); ok {
-		vfs, err := NewArchiveVFS(archiveFile)
+		vfs, err := NewArchiveVFSContext(ctx, archiveFile)
 		if err != nil {
 			return nil, Parsed{Raw: input, Scheme: SchemeArchive, Display: raw, Provider: "archive", Archive: archiveFile, Inner: inner}, err
 		}

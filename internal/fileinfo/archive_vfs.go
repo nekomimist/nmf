@@ -28,6 +28,14 @@ var archiveTempMu sync.Mutex
 
 // NewArchiveVFS opens archivePath as a read-only virtual file system.
 func NewArchiveVFS(archivePath string) (*ArchiveVFS, error) {
+	return NewArchiveVFSContext(context.Background(), archivePath)
+}
+
+// NewArchiveVFSContext opens archivePath as a read-only virtual file system.
+func NewArchiveVFSContext(ctx context.Context, archivePath string) (*ArchiveVFS, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if IsArchivePath(archivePath) {
 		return nil, fmt.Errorf("nested archive paths are not supported: %s", archivePath)
 	}
@@ -36,7 +44,7 @@ func NewArchiveVFS(archivePath string) (*ArchiveVFS, error) {
 	if err != nil {
 		return nil, err
 	}
-	fsys, err := archiveFileSystem(context.Background(), localPath, currentArchiveOptions())
+	fsys, err := archiveFileSystem(ctx, localPath, currentArchiveOptions())
 	if err != nil {
 		if tempPath != "" {
 			_ = os.Remove(tempPath)

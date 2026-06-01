@@ -4,6 +4,7 @@
 package fileinfo
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -224,6 +225,13 @@ func (s SMBFS) OpenSession() (SMBSession, error) {
 }
 
 func (s SMBFS) dialAndMount(relPath string) (*smb2.Share, *smb2.Session, net.Conn, Credentials, error) {
+	return s.dialAndMountContext(context.Background(), relPath)
+}
+
+func (s SMBFS) dialAndMountContext(ctx context.Context, relPath string) (*smb2.Share, *smb2.Session, net.Conn, Credentials, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	creds := s.credentialsFor(relPath)
 	d := &smb2.Dialer{
 		Initiator: &smb2.NTLMInitiator{
@@ -233,12 +241,13 @@ func (s SMBFS) dialAndMount(relPath string) (*smb2.Share, *smb2.Session, net.Con
 		},
 	}
 
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(s.host, "445"), 5*time.Second)
+	dialer := net.Dialer{Timeout: 5 * time.Second}
+	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(s.host, "445"))
 	if err != nil {
 		return nil, nil, nil, creds, err
 	}
 
-	sess, err := d.Dial(conn)
+	sess, err := d.DialContext(ctx, conn)
 	if err != nil {
 		if isAuthError(err) {
 			ClearCachedCredentials(s.host, s.share)
@@ -324,20 +333,42 @@ func normalizeSMBPathForStat(relPath string) string {
 }
 
 func (s SMBFS) ReadDir(relPath string) ([]os.DirEntry, error) {
-	share, sess, conn, _, err := s.dialAndMount(relPath)
+	return s.ReadDirContext(context.Background(), relPath)
+}
+
+func (s SMBFS) ReadDirContext(ctx context.Context, relPath string) ([]os.DirEntry, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	share, sess, conn, _, err := s.dialAndMountContext(ctx, relPath)
 	if err != nil {
 		return nil, err
 	}
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = conn.Close()
+		case <-done:
+		}
+	}()
 	defer func() {
+		close(done)
 		_ = closeSMBSession(nil, share, sess, conn)
 	}()
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	p := normalizeSMBPath(relPath)
 	fis, err := share.ReadDir(p)
 	if err != nil {
 		if isAuthError(err) {
 			ClearCachedCredentials(s.host, s.share)
 		}
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	out := make([]os.DirEntry, 0, len(fis))

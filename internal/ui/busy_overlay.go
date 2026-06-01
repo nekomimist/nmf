@@ -82,15 +82,17 @@ func NewBusyOverlay(themeProvider ThemeColorProvider) *BusyOverlay {
 
 func (bo *BusyOverlay) GetContainer() *fyne.Container { return bo.root }
 
-func (bo *BusyOverlay) Show(_ fyne.Window, text string) {
+func (bo *BusyOverlay) Show(parent fyne.Window, text string) {
 	if text != "" {
 		bo.label.SetText(text)
 	}
 	if bo.visible {
+		bo.refresh(parent)
 		return
 	}
 	bo.visible = true
 	bo.root.Show()
+	bo.refresh(parent)
 }
 
 func (bo *BusyOverlay) Hide() {
@@ -99,6 +101,14 @@ func (bo *BusyOverlay) Hide() {
 	}
 	bo.visible = false
 	bo.root.Hide()
+	canvas.Refresh(bo.root)
 }
 
 func (bo *BusyOverlay) IsVisible() bool { return bo.visible }
+
+func (bo *BusyOverlay) refresh(parent fyne.Window) {
+	canvas.Refresh(bo.root)
+	if parent != nil && parent.Canvas() != nil {
+		parent.Canvas().Refresh(bo.root)
+	}
+}

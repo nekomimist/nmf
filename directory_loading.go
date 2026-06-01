@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -159,20 +161,27 @@ func (fm *FileManager) LoadDirectory(path string) {
 	// Store the previous directory for parent navigation logic
 	previousPath := fm.currentPath
 	debugPrint("FileManager: LoadDirectory start path=%s previous=%s focused=%s active=%t", path, previousPath, focusedObjectLabel(fm.window), fm.windowActive)
+	ctx, loadID := fm.beginDirectoryLoad()
 
 	// Indicate busy and block input while loading
-	fm.beginBusy(fmt.Sprintf("Loading %s...", path))
+	fm.beginBusy(fmt.Sprintf("Loading %s...", path), fm.cancelActiveDirectoryLoad)
 
 	// Load directory asynchronously to avoid blocking UI (applies to both local and remote paths)
-	go fm.loadDirectoryAsync(path, previousPath)
+	go fm.loadDirectoryAsync(ctx, loadID, path, previousPath)
 }
 
 // loadDirectoryAsync lists a path in a background goroutine and applies UI updates on the main thread.
-func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
-	entries, err := fileinfo.ReadDirPortable(path)
+func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, path string, previousPath string) {
+	entries, err := fileinfo.ReadDirPortableContext(ctx, path)
 	if err != nil {
+		if fm.ignoreCanceledDirectoryLoad(ctx, loadID, err) {
+			return
+		}
 		log.Printf("Error reading directory: %v", err)
 		fyne.Do(func() {
+			if !fm.finishDirectoryLoad(loadID) {
+				return
+			}
 			// Clear busy state on error
 			fm.endBusy()
 			fm.ShowMessageDialog("フォルダを開けませんでした", err.Error())
@@ -188,10 +197,16 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 		})
 		return
 	}
+	if fm.ignoreCanceledDirectoryLoad(ctx, loadID, nil) {
+		return
+	}
 
 	// Build file list off the UI thread
 	files := make([]fileinfo.FileInfo, 0, len(entries)+1)
 	storage, storageErr := fileinfo.StatStoragePortable(path)
+	if fm.ignoreCanceledDirectoryLoad(ctx, loadID, nil) {
+		return
+	}
 	if storageErr != nil {
 		debugPrint("FileManager: Storage info unavailable for %s: %v", path, storageErr)
 	}
@@ -212,6 +227,9 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 	}
 
 	for _, entry := range entries {
+		if fm.ignoreCanceledDirectoryLoad(ctx, loadID, nil) {
+			return
+		}
 		fi, err := fileinfo.FileInfoFromDirEntry(path, entry)
 		if err != nil {
 			continue
@@ -221,6 +239,9 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 
 	// Apply UI updates on main thread
 	fyne.Do(func() {
+		if !fm.finishDirectoryLoad(loadID) {
+			return
+		}
 		// Clear busy state on success just before applying changes
 		fm.endBusy()
 		// Stop existing watcher (if any) before applying
@@ -298,8 +319,88 @@ func (fm *FileManager) loadDirectoryAsync(path string, previousPath string) {
 	})
 }
 
+func (fm *FileManager) beginDirectoryLoad() (context.Context, uint64) {
+	ctx, cancel := context.WithCancel(context.Background())
+	fm.loadMu.Lock()
+	if fm.loadCancel != nil {
+		fm.loadCancel()
+	}
+	fm.nextLoadID++
+	loadID := fm.nextLoadID
+	fm.activeLoadID = loadID
+	fm.loadCancel = cancel
+	fm.loadMu.Unlock()
+	return ctx, loadID
+}
+
+func (fm *FileManager) finishDirectoryLoad(loadID uint64) bool {
+	fm.loadMu.Lock()
+	defer fm.loadMu.Unlock()
+	if fm.activeLoadID != loadID {
+		return false
+	}
+	fm.activeLoadID = 0
+	fm.loadCancel = nil
+	return true
+}
+
+func (fm *FileManager) directoryLoadActive(loadID uint64) bool {
+	fm.loadMu.Lock()
+	defer fm.loadMu.Unlock()
+	return fm.activeLoadID == loadID
+}
+
+func (fm *FileManager) ignoreCanceledDirectoryLoad(ctx context.Context, loadID uint64, err error) bool {
+	if ctx != nil && ctx.Err() != nil {
+		debugPrint("FileManager: LoadDirectory canceled id=%d err=%v", loadID, ctx.Err())
+		return true
+	}
+	if err != nil && errors.Is(err, context.Canceled) {
+		debugPrint("FileManager: LoadDirectory canceled id=%d err=%v", loadID, err)
+		return true
+	}
+	if !fm.directoryLoadActive(loadID) {
+		debugPrint("FileManager: LoadDirectory stale id=%d path=%s", loadID, fm.currentPath)
+		return true
+	}
+	return false
+}
+
+func (fm *FileManager) cancelDirectoryLoad(loadID uint64) {
+	var cancel context.CancelFunc
+	fm.loadMu.Lock()
+	if fm.activeLoadID == 0 || fm.activeLoadID != loadID {
+		fm.loadMu.Unlock()
+		return
+	}
+	cancel = fm.loadCancel
+	fm.activeLoadID = 0
+	fm.loadCancel = nil
+	fm.loadMu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+	fm.endBusy()
+	if fm.dirWatcher != nil && fm.shouldWatchPath(fm.currentPath) {
+		fm.dirWatcher.SetPollInterval(fm.pollIntervalForPath(fm.currentPath))
+		fm.dirWatcher.Start()
+	}
+	fm.focusFileList("directory-load-cancel")
+	debugPrint("FileManager: LoadDirectory cancel id=%d path=%s", loadID, fm.currentPath)
+}
+
+func (fm *FileManager) cancelActiveDirectoryLoad() {
+	fm.loadMu.Lock()
+	loadID := fm.activeLoadID
+	fm.loadMu.Unlock()
+	if loadID != 0 {
+		fm.cancelDirectoryLoad(loadID)
+	}
+}
+
 // beginBusy shows the busy overlay and pushes a swallowing key handler.
-func (fm *FileManager) beginBusy(text string) {
+func (fm *FileManager) beginBusy(text string, onCancel ...func()) {
 	fm.busyMu.Lock()
 	defer fm.busyMu.Unlock()
 
@@ -316,7 +417,11 @@ func (fm *FileManager) beginBusy(text string) {
 	debugPrint("FileManager: busy begin text=%q focused=%s", text, focusedObjectLabel(fm.window))
 
 	// Block keys immediately to avoid reentrancy
-	fm.keyManager.PushHandler(keymanager.NewBusyKeyHandler())
+	var cancel func()
+	if len(onCancel) > 0 {
+		cancel = onCancel[0]
+	}
+	fm.keyManager.PushHandler(keymanager.NewBusyKeyHandler(cancel))
 
 	// Delay overlay to prevent flicker on very fast operations
 	if fm.busyTimer != nil {

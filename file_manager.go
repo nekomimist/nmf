@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -53,12 +54,16 @@ type FileManager struct {
 	searchMatchers    *search.Provider                        // Shared search matcher provider
 	iconSvc           *fileinfo.IconService                   // Async icon service
 	// Busy state while loading directories
-	busyOverlay *ui.BusyOverlay
-	busyActive  bool
-	busyTimer   *time.Timer
-	busyDelay   time.Duration
-	busyText    string
-	busyMu      sync.Mutex
+	busyOverlay  *ui.BusyOverlay
+	busyActive   bool
+	busyTimer    *time.Timer
+	busyDelay    time.Duration
+	busyText     string
+	busyMu       sync.Mutex
+	loadMu       sync.Mutex
+	nextLoadID   uint64
+	activeLoadID uint64
+	loadCancel   context.CancelFunc
 
 	// Jobs indicator
 	jobsButton    *widget.Button
