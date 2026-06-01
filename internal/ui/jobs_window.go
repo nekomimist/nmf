@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -145,6 +146,9 @@ func (jd *JobsWindow) refresh() {
 			target = string(it.DeleteMode)
 		}
 		lines[i] = fmt.Sprintf("[%s] %s %d/%d → %s  (%s)", ts, string(it.Type), it.DoneFiles, it.TotalFiles, target, status)
+		if summary := runningProgressSummary(it); summary != "" {
+			lines[i] += "  " + summary
+		}
 		if it.Status == jobs.StatusFailed && it.Error != "" {
 			lines[i] += "  ERROR"
 		}
@@ -185,7 +189,9 @@ func (jd *JobsWindow) updateDetails() {
 		target = string(it.DeleteMode)
 	}
 	fmt.Fprintf(b, "Job #%d %s → %s\nStatus: %s, %d/%d completed\n", it.ID, string(it.Type), target, string(it.Status), it.DoneFiles, it.TotalFiles)
-	if it.Status == jobs.StatusFailed {
+	if it.Status == jobs.StatusRunning {
+		writeRunningProgress(b, it)
+	} else if it.Status == jobs.StatusFailed {
 		if len(it.Failures) > 0 {
 			fmt.Fprintln(b, "Failures:")
 			for _, f := range it.Failures {
@@ -206,6 +212,116 @@ func (jd *JobsWindow) updateDetails() {
 		writeCompletedTargets(b, it.Sources)
 	}
 	jd.details.SetText(b.String())
+}
+
+func runningProgressSummary(it jobs.JobSnapshot) string {
+	if it.Status != jobs.StatusRunning || it.CurrentFile == "" {
+		return ""
+	}
+	parts := []string{}
+	if it.CurrentTotalBytes > 0 {
+		parts = append(parts, fmt.Sprintf("%.1f%%", progressPercent(it.CurrentBytes, it.CurrentTotalBytes)))
+	}
+	if eta := formatETA(it); eta != "" {
+		parts = append(parts, "ETA "+eta)
+	}
+	if len(parts) == 0 {
+		return formatBytes(it.CurrentBytes)
+	}
+	return strings.Join(parts, " ")
+}
+
+func writeRunningProgress(b *strings.Builder, it jobs.JobSnapshot) {
+	if it.CurrentFile == "" {
+		return
+	}
+	fmt.Fprintf(b, "Current: %s\n", fileinfo.BaseName(it.CurrentFile))
+	progress := formatBytes(it.CurrentBytes)
+	if it.CurrentTotalBytes > 0 {
+		progress += fmt.Sprintf(" / %s (%.1f%%)", formatBytes(it.CurrentTotalBytes), progressPercent(it.CurrentBytes, it.CurrentTotalBytes))
+	}
+	if rate := bytesPerSecond(it); rate > 0 {
+		progress += fmt.Sprintf(", %s/s", formatBytes(int64(rate)))
+	}
+	if eta := formatETA(it); eta != "" {
+		progress += ", ETA " + eta
+	}
+	fmt.Fprintf(b, "Progress: %s\n", progress)
+}
+
+func progressPercent(done, total int64) float64 {
+	if total <= 0 {
+		return 0
+	}
+	if done < 0 {
+		done = 0
+	}
+	if done > total {
+		done = total
+	}
+	return float64(done) * 100 / float64(total)
+}
+
+func bytesPerSecond(it jobs.JobSnapshot) float64 {
+	if it.CurrentBytes <= 0 || it.CurrentStartedAt.IsZero() {
+		return 0
+	}
+	end := it.CurrentUpdatedAt
+	if end.IsZero() {
+		end = time.Now()
+	}
+	elapsed := end.Sub(it.CurrentStartedAt).Seconds()
+	if elapsed <= 0 {
+		return 0
+	}
+	return float64(it.CurrentBytes) / elapsed
+}
+
+func formatETA(it jobs.JobSnapshot) string {
+	if it.CurrentTotalBytes <= 0 || it.CurrentBytes <= 0 || it.CurrentBytes >= it.CurrentTotalBytes {
+		return ""
+	}
+	rate := bytesPerSecond(it)
+	if rate <= 0 {
+		return ""
+	}
+	remaining := float64(it.CurrentTotalBytes-it.CurrentBytes) / rate
+	if remaining < 0 {
+		return ""
+	}
+	return formatDuration(time.Duration(remaining * float64(time.Second)))
+}
+
+func formatDuration(d time.Duration) string {
+	if d < time.Second {
+		return "00:01"
+	}
+	total := int(d.Round(time.Second).Seconds())
+	hours := total / 3600
+	minutes := (total % 3600) / 60
+	seconds := total % 60
+	if hours > 0 {
+		return fmt.Sprintf("%d:%02d:%02d", hours, minutes, seconds)
+	}
+	return fmt.Sprintf("%02d:%02d", minutes, seconds)
+}
+
+func formatBytes(n int64) string {
+	if n < 0 {
+		n = 0
+	}
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	value := float64(n)
+	for _, suffix := range []string{"KiB", "MiB", "GiB", "TiB", "PiB"} {
+		value /= unit
+		if value < unit {
+			return fmt.Sprintf("%.1f %s", value, suffix)
+		}
+	}
+	return fmt.Sprintf("%.1f EiB", value/unit)
 }
 
 func (jd *JobsWindow) acknowledgeSelectedFailure() {

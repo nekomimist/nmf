@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
@@ -89,5 +90,65 @@ func TestJobsWindowCompletedDetailsDoesNotAddMoreLineAtLimit(t *testing.T) {
 	}
 	if strings.Contains(got, "... and") {
 		t.Fatalf("completed details should not show a remaining count:\n%s", got)
+	}
+}
+
+func TestJobsWindowRunningDetailsShowsCurrentFileProgress(t *testing.T) {
+	started := time.Now().Add(-2 * time.Second)
+	updated := started.Add(2 * time.Second)
+	jw := &JobsWindow{
+		details: widget.NewLabel(""),
+		items: []jobs.JobSnapshot{{
+			ID:                9,
+			Type:              jobs.TypeCopy,
+			Status:            jobs.StatusRunning,
+			DestDir:           "/tmp/dst",
+			DoneFiles:         0,
+			TotalFiles:        1,
+			CurrentFile:       "/tmp/source/big.bin",
+			CurrentBytes:      1024,
+			CurrentTotalBytes: 2048,
+			CurrentStartedAt:  started,
+			CurrentUpdatedAt:  updated,
+		}},
+		selectedIdx: 0,
+	}
+
+	jw.updateDetails()
+	got := jw.details.Text
+
+	for _, want := range []string{"Current: big.bin", "1.0 KiB / 2.0 KiB (50.0%)", "512 B/s", "ETA 00:02"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("running details missing %q in:\n%s", want, got)
+		}
+	}
+}
+
+func TestRunningProgressSummaryIncludesPercentAndETA(t *testing.T) {
+	started := time.Now().Add(-4 * time.Second)
+	it := jobs.JobSnapshot{
+		Status:            jobs.StatusRunning,
+		CurrentFile:       "/tmp/source/big.bin",
+		CurrentBytes:      2048,
+		CurrentTotalBytes: 4096,
+		CurrentStartedAt:  started,
+		CurrentUpdatedAt:  started.Add(4 * time.Second),
+	}
+
+	got := runningProgressSummary(it)
+	if !strings.Contains(got, "50.0%") || !strings.Contains(got, "ETA 00:04") {
+		t.Fatalf("runningProgressSummary = %q, want percent and ETA", got)
+	}
+}
+
+func TestRunningProgressSummaryFallsBackToBytesWithoutTotal(t *testing.T) {
+	it := jobs.JobSnapshot{
+		Status:       jobs.StatusRunning,
+		CurrentFile:  "/tmp/source/stream.bin",
+		CurrentBytes: 1536,
+	}
+
+	if got := runningProgressSummary(it); got != "1.5 KiB" {
+		t.Fatalf("runningProgressSummary = %q, want byte fallback", got)
 	}
 }

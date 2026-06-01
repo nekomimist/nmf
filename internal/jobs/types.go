@@ -59,6 +59,13 @@ type Job struct {
 	EnqueuedAt          time.Time
 	StartedAt           time.Time
 	CompletedAt         time.Time
+	CurrentFile         string
+	CurrentBytes        int64
+	CurrentTotalBytes   int64
+	CurrentStartedAt    time.Time
+	CurrentUpdatedAt    time.Time
+	lastProgressNotify  time.Time
+	progressNotify      func()
 
 	// cancellation
 	ctx    context.Context
@@ -127,9 +134,78 @@ func (j *Job) Snapshot() JobSnapshot {
 		EnqueuedAt:          j.EnqueuedAt,
 		StartedAt:           j.StartedAt,
 		CompletedAt:         j.CompletedAt,
+		CurrentFile:         j.CurrentFile,
+		CurrentBytes:        j.CurrentBytes,
+		CurrentTotalBytes:   j.CurrentTotalBytes,
+		CurrentStartedAt:    j.CurrentStartedAt,
+		CurrentUpdatedAt:    j.CurrentUpdatedAt,
 		Sources:             append([]string(nil), j.Sources...),
 		Failures:            append([]JobFailure(nil), j.Failures...),
 	}
+}
+
+func (j *Job) beginFileProgress(path string, totalBytes int64) {
+	now := time.Now()
+	j.mu.Lock()
+	j.CurrentFile = path
+	j.CurrentBytes = 0
+	j.CurrentTotalBytes = totalBytes
+	j.CurrentStartedAt = now
+	j.CurrentUpdatedAt = now
+	j.lastProgressNotify = now
+	notify := j.progressNotify
+	j.mu.Unlock()
+
+	if notify != nil {
+		notify()
+	}
+}
+
+func (j *Job) addFileProgress(bytes int64, force bool) {
+	if bytes <= 0 && !force {
+		return
+	}
+	now := time.Now()
+	var notify func()
+	j.mu.Lock()
+	if bytes > 0 {
+		j.CurrentBytes += bytes
+		if j.CurrentTotalBytes > 0 && j.CurrentBytes > j.CurrentTotalBytes {
+			j.CurrentBytes = j.CurrentTotalBytes
+		}
+	}
+	j.CurrentUpdatedAt = now
+	if force || j.lastProgressNotify.IsZero() || now.Sub(j.lastProgressNotify) >= progressNotifyInterval {
+		j.lastProgressNotify = now
+		notify = j.progressNotify
+	}
+	j.mu.Unlock()
+
+	if notify != nil {
+		notify()
+	}
+}
+
+func (j *Job) completeFileProgress() {
+	j.mu.Lock()
+	total := j.CurrentTotalBytes
+	current := j.CurrentBytes
+	j.mu.Unlock()
+
+	if total > 0 && current < total {
+		j.addFileProgress(total-current, true)
+		return
+	}
+	j.addFileProgress(0, true)
+}
+
+func (j *Job) clearFileProgressLocked() {
+	j.CurrentFile = ""
+	j.CurrentBytes = 0
+	j.CurrentTotalBytes = 0
+	j.CurrentStartedAt = time.Time{}
+	j.CurrentUpdatedAt = time.Time{}
+	j.lastProgressNotify = time.Time{}
 }
 
 // JobSnapshot is a read-only view for UI.
@@ -150,6 +226,11 @@ type JobSnapshot struct {
 	EnqueuedAt          time.Time
 	StartedAt           time.Time
 	CompletedAt         time.Time
+	CurrentFile         string
+	CurrentBytes        int64
+	CurrentTotalBytes   int64
+	CurrentStartedAt    time.Time
+	CurrentUpdatedAt    time.Time
 }
 
 // JobFailure records a single failing path and error message.

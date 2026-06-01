@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -66,6 +67,32 @@ func TestSubscribeNilCallbackReturnsNoopUnsubscribe(t *testing.T) {
 	unsub()
 	// notify must remain safe even with no subscribers.
 	m.notify()
+}
+
+func TestJobSnapshotIncludesCurrentFileProgress(t *testing.T) {
+	started := time.Now().Add(-2 * time.Second)
+	updated := time.Now()
+	j := &Job{
+		ID:                9,
+		Type:              TypeCopy,
+		Status:            StatusRunning,
+		CurrentFile:       "/tmp/big.bin",
+		CurrentBytes:      64,
+		CurrentTotalBytes: 128,
+		CurrentStartedAt:  started,
+		CurrentUpdatedAt:  updated,
+	}
+
+	got := j.Snapshot()
+	if got.CurrentFile != j.CurrentFile {
+		t.Fatalf("CurrentFile = %q, want %q", got.CurrentFile, j.CurrentFile)
+	}
+	if got.CurrentBytes != 64 || got.CurrentTotalBytes != 128 {
+		t.Fatalf("progress bytes = %d/%d, want 64/128", got.CurrentBytes, got.CurrentTotalBytes)
+	}
+	if !got.CurrentStartedAt.Equal(started) || !got.CurrentUpdatedAt.Equal(updated) {
+		t.Fatalf("progress times = %v/%v, want %v/%v", got.CurrentStartedAt, got.CurrentUpdatedAt, started, updated)
+	}
 }
 
 func TestAcknowledgeFailureMarksOnlyFailedJobs(t *testing.T) {
@@ -373,6 +400,32 @@ func TestCopyToSameDirectoryUsesAutoSuffix(t *testing.T) {
 	}
 	if string(copied) != string(want) {
 		t.Fatalf("copy content changed: got %q want %q", copied, want)
+	}
+}
+
+func TestCopyFileRecordsCurrentFileProgress(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	src := filepath.Join(srcDir, "big.bin")
+	want := bytes.Repeat([]byte("x"), 2*1024*1024+17)
+	if err := os.WriteFile(src, want, 0644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	job := &Job{Type: TypeCopy, ctx: context.Background()}
+	if err := copyOrMovePath(job, src, dstDir); err != nil {
+		t.Fatalf("copyOrMovePath returned error: %v", err)
+	}
+
+	snap := job.Snapshot()
+	if snap.CurrentFile != src {
+		t.Fatalf("CurrentFile = %q, want %q", snap.CurrentFile, src)
+	}
+	if snap.CurrentBytes != int64(len(want)) || snap.CurrentTotalBytes != int64(len(want)) {
+		t.Fatalf("progress bytes = %d/%d, want %d/%d", snap.CurrentBytes, snap.CurrentTotalBytes, len(want), len(want))
+	}
+	if snap.CurrentStartedAt.IsZero() || snap.CurrentUpdatedAt.IsZero() {
+		t.Fatalf("progress timestamps should be set: started=%v updated=%v", snap.CurrentStartedAt, snap.CurrentUpdatedAt)
 	}
 }
 

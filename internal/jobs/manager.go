@@ -288,11 +288,13 @@ func (m *Manager) worker() {
 		j.mu.Lock()
 		j.Status = StatusRunning
 		j.StartedAt = time.Now()
+		j.progressNotify = m.notify
 		j.mu.Unlock()
 		dbg("start job id=%d", j.ID)
 		m.notify()
 		err := m.runJob(j)
 		j.mu.Lock()
+		j.progressNotify = nil
 		if err != nil {
 			if errors.Is(err, errCanceled) {
 				j.Status = StatusCanceled
@@ -340,6 +342,7 @@ func (m *Manager) runJob(j *Job) error {
 		j.mu.Lock()
 		j.CurrentSource = src
 		j.Message = ""
+		j.clearFileProgressLocked()
 		j.mu.Unlock()
 		dbg("job %d: process %s", j.ID, src)
 		m.notify()
@@ -348,6 +351,7 @@ func (m *Manager) runJob(j *Job) error {
 				dbg("job %d: skipped %s", j.ID, src)
 				j.mu.Lock()
 				j.DoneFiles = i + 1
+				j.clearFileProgressLocked()
 				j.mu.Unlock()
 				m.notify()
 				continue
@@ -361,6 +365,7 @@ func (m *Manager) runJob(j *Job) error {
 		}
 		j.mu.Lock()
 		j.DoneFiles = i + 1
+		j.clearFileProgressLocked()
 		j.mu.Unlock()
 		dbg("job %d: done %d/%d", j.ID, j.DoneFiles, j.TotalFiles)
 		m.notify()
@@ -414,6 +419,8 @@ var errSkipped = errors.New("job item skipped")
 var errUnsafeDeleteTarget = errors.New("unsafe delete target")
 
 var trashPath = fileinfo.TrashPath
+
+const progressNotifyInterval = 350 * time.Millisecond
 
 type executionBackend int
 
@@ -1418,6 +1425,12 @@ func copyFileWithCancel(j *Job, execCtx *executionContext, src, dst executionPat
 		return wrapPath(tmp.displayPath(), err)
 	}
 
+	totalBytes := fi.Size()
+	if totalBytes < 0 {
+		totalBytes = 0
+	}
+	j.beginFileProgress(src.displayPath(), totalBytes)
+
 	buf := make([]byte, 1<<20) // 1 MiB
 	for {
 		if canceled(j) {
@@ -1432,6 +1445,7 @@ func copyFileWithCancel(j *Job, execCtx *executionContext, src, dst executionPat
 				_ = removePath(execCtx, tmp)
 				return wrapPath(tmp.displayPath(), werr)
 			}
+			j.addFileProgress(int64(n), false)
 		}
 		if rerr == io.EOF {
 			break
@@ -1442,6 +1456,7 @@ func copyFileWithCancel(j *Job, execCtx *executionContext, src, dst executionPat
 			return wrapPath(src.displayPath(), rerr)
 		}
 	}
+	j.completeFileProgress()
 	if err := out.Close(); err != nil {
 		_ = removePath(execCtx, tmp)
 		return wrapPath(tmp.displayPath(), err)
