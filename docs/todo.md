@@ -27,6 +27,15 @@
 - Text/Hex表示のliteral検索はTextGrid上で対応した。
 - 未対応: Text/Hex表示のキーボード選択、Markdown高速化。
 
+## ファイルコピーの高速化を検討したい
+- 現状のCopy/Moveは進捗表示のために、汎用的なread -> writeループでコピーしている。
+- Linuxでは`os.File.ReadFrom`経由で`copy_file_range`/`splice`を使える可能性があり、
+  ローカル通常ファイル同士ならユーザ空間へデータを持ってこない高速化が期待できる。
+- Windowsでは現時点のGo標準`os.File.ReadFrom`にfile-to-file向けの独自高速化はなさそうなので、
+  Windows高速化は別途調査が必要。
+- ただしSMB、HDD、archive、progress表示との相性があるため、過度な並列化は避けたい。
+- 進捗表示は必須。高速化案はチャンク単位などで現在ファイルの進捗を維持できることを条件にする。
+
 # DONE 以下は一応終わったもの
 ## 内部で使っている色定数を設定可能にしたい
 - UI内で直接使っている色に名前をつけ、初期値は現在の内蔵値にした。
