@@ -159,6 +159,21 @@ func (fm *FileManager) normalizeNavigationHistoryForRuntimeState() {
 	}
 }
 
+func (fm *FileManager) recordNavigationHistory(path string) {
+	path = canonicalNavigationHistoryPath(path)
+	if path == "" || fm.config == nil {
+		return
+	}
+
+	fm.config.AddToNavigationHistory(path)
+	if fm.configManager != nil {
+		if err := fm.configManager.SaveAsync(fm.config); err != nil {
+			debugPrint("FileManager: Error saving navigation history: %v", err)
+		}
+	}
+	notifyNavigationHistoryChanged(path)
+}
+
 func (fm *FileManager) jumpToConfiguredDirectory(inputPath string) {
 	path := strings.TrimSpace(inputPath)
 	if path == "" {

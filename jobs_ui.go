@@ -136,12 +136,30 @@ func (fm *FileManager) showCopyMoveDialog(op ui.Operation) {
 	srcPaths := fm.collectTargetPaths()
 	dlg := ui.NewCopyMoveDialog(op, targets, dest, fm.config.UI.NavigationHistory.LastUsed, fm.config.UI.Copy.PreserveTimestamps, fm.keyManager, debugPrint, fm.searchMatchers)
 	openDest := destinationCandidateOpenMap(dest)
+	refreshDestinations := func(preferredPath string) {
+		dest = fm.buildDestinationCandidates()
+		openDest = destinationCandidateOpenMap(dest)
+		dlg.SetDestinations(dest, preferredPath)
+	}
+	unsubscribe := subscribeNavigationHistoryChanged(func(path string) {
+		fyne.Do(func() {
+			refreshDestinations(path)
+		})
+	})
 	dlg.SetOnSelectedPathChanged(func(path string) {
 		if openDest[path] {
 			highlightFileManagerWindowForPath(path)
 			return
 		}
 		clearFileManagerWindowHighlights()
+	})
+	dlg.SetOnOpenDestination(func(path string) {
+		fm.openWindowAtPath(path)
+		refreshDestinations(path)
+	})
+	dlg.SetOnClosed(func() {
+		clearFileManagerWindowHighlights()
+		unsubscribe()
 	})
 	dlg.ShowDialog(fm.window, func(result ui.CopyMoveResult) {
 		selectedDest := result.Destination

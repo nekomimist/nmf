@@ -29,6 +29,7 @@ type CopyMoveDialogInterface interface {
 	// Dialog control
 	AcceptSelection()
 	AcceptDirectPath() // Ctrl+Enter: use search text as destination directly
+	OpenDestination()
 	CancelDialog()
 }
 
@@ -54,6 +55,11 @@ func (h *CopyMoveDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers Modifi
 			h.dialog.AcceptDirectPath()
 		}
 		return true
+	case fyne.KeyN:
+		if modifiers.CtrlPressed {
+			h.dialog.OpenDestination()
+			return true
+		}
 	}
 	return false
 }

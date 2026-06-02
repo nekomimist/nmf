@@ -13,6 +13,7 @@ type fakeFilterSearchDialog struct {
 	search    string
 	right     int
 	left      int
+	open      int
 }
 
 func (f *fakeFilterSearchDialog) MoveUp()                       {}
@@ -29,6 +30,7 @@ func (f *fakeFilterSearchDialog) SelectCurrentItem()            {}
 func (f *fakeFilterSearchDialog) AcceptSelection()              {}
 func (f *fakeFilterSearchDialog) AcceptDirectPathNavigation()   {}
 func (f *fakeFilterSearchDialog) AcceptDirectPath()             {}
+func (f *fakeFilterSearchDialog) OpenDestination()              { f.open++ }
 func (f *fakeFilterSearchDialog) CancelDialog()                 {}
 func (f *fakeFilterSearchDialog) CopySelectedPathToSearch()     {}
 func (f *fakeFilterSearchDialog) CopySelectedShortcutToSearch() {}
@@ -66,6 +68,18 @@ func TestFilteringDialogsTreatCtrlHAsBackspace(t *testing.T) {
 				t.Fatalf("BackspaceSearch count = %d, want 1", dialog.backspace)
 			}
 		})
+	}
+}
+
+func TestCopyMoveDialogCtrlNOpensDestination(t *testing.T) {
+	dialog := &fakeFilterSearchDialog{}
+	handler := NewCopyMoveDialogKeyHandler(dialog, func(string, ...interface{}) {})
+
+	if !handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyN}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("Ctrl+N key down should be handled")
+	}
+	if dialog.open != 1 {
+		t.Fatalf("OpenDestination count = %d, want 1", dialog.open)
 	}
 }
 

@@ -135,6 +135,55 @@ func TestCopyMoveReportsSelectedPathChanges(t *testing.T) {
 	}
 }
 
+func TestCopyMoveSetDestinationsKeepsSearchAndSelectsPreferredPath(t *testing.T) {
+	dialog := NewCopyMoveDialog(
+		OpCopy,
+		[]string{"file.txt"},
+		[]DestinationCandidate{{Path: "/tmp/source"}},
+		map[string]time.Time{},
+		false,
+		nil,
+		func(string, ...interface{}) {},
+	)
+	dialog.AppendToSearch("project")
+
+	dialog.SetDestinations([]DestinationCandidate{
+		{Path: "/tmp/project/base"},
+		{Path: "/tmp/project/new"},
+		{Path: "/tmp/other"},
+	}, "/tmp/project/new")
+
+	if got := dialog.GetSearchText(); got != "project" {
+		t.Fatalf("search text = %q, want project", got)
+	}
+	if got := dialog.selectedPath; got != "/tmp/project/new" {
+		t.Fatalf("selected path = %q, want /tmp/project/new", got)
+	}
+	if len(dialog.filteredDest) != 2 {
+		t.Fatalf("filtered destinations = %#v, want two project paths", dialog.filteredDest)
+	}
+}
+
+func TestCopyMoveOpenDestinationUsesSelectedPath(t *testing.T) {
+	dialog := NewCopyMoveDialog(
+		OpCopy,
+		[]string{"file.txt"},
+		[]DestinationCandidate{{Path: "/tmp/one"}},
+		map[string]time.Time{},
+		false,
+		nil,
+		func(string, ...interface{}) {},
+	)
+	var got string
+	dialog.SetOnOpenDestination(func(path string) { got = path })
+
+	dialog.OpenDestination()
+
+	if got != "/tmp/one" {
+		t.Fatalf("open destination path = %q, want /tmp/one", got)
+	}
+}
+
 func TestCopyDialogPreserveTimestampsDefault(t *testing.T) {
 	dialog := NewCopyMoveDialog(
 		OpCopy,

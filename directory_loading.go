@@ -251,10 +251,7 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 
 		// Add previous path to navigation history before changing directory
 		if previousPath != "" && previousPath != path {
-			fm.config.AddToNavigationHistory(canonicalNavigationHistoryPath(previousPath))
-			if err := fm.configManager.SaveAsync(fm.config); err != nil {
-				debugPrint("FileManager: Error saving navigation history: %v", err)
-			}
+			fm.recordNavigationHistory(previousPath)
 		}
 
 		fm.currentPath = path

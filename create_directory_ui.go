@@ -27,6 +27,7 @@ func (fm *FileManager) CreateDirectory(name string) bool {
 	}
 
 	fm.applyCreatedPathToList(newPath, true)
+	fm.recordNavigationHistory(newPath)
 	debugPrint("FileManager: Created directory %s", newPath)
 	fm.FocusFileList()
 	return true

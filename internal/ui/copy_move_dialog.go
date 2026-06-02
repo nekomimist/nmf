@@ -63,10 +63,13 @@ type CopyMoveDialog struct {
 	sink        *KeySink
 	closed      bool
 	destScroll  *dialogListScroller
+	destEmpty   *widget.Label
 	scrollRight bool
 
 	onAccept      func(CopyMoveResult)
 	onPathChanged func(string)
+	onOpenDest    func(string)
+	onClosed      func()
 }
 
 // NewCopyMoveDialog creates a new dialog instance
@@ -179,10 +182,14 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveRe
 
 	// Destination search + list (fixed size like history dialog)
 	searchLabel := widget.NewLabel("Destination:")
-	searchSection := container.NewBorder(nil, nil, searchLabel, nil, d.searchEntry)
+	openButton := widget.NewButtonWithIcon("Open", fynetheme.FolderNewIcon(), func() {
+		d.OpenDestination()
+	})
+	searchSection := container.NewBorder(nil, nil, searchLabel, openButton, d.searchEntry)
 	destScroll := newDialogListScroller(d.destList, dialogDestinationTextWidth(d.allDest, searchDialogListWidth), searchDialogListWidth, copyMoveDestListHeight)
 	d.destScroll = destScroll
 	empty := widget.NewLabel("No matching destinations")
+	d.destEmpty = empty
 	empty.Alignment = fyne.TextAlignCenter
 	empty.Hide()
 	fixed := container.NewWithoutLayout(destScroll, empty)
@@ -193,13 +200,6 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveRe
 	empty.Move(fyne.NewPos(0, 0))
 	d.searchEntry.OnChanged = func(q string) {
 		d.updateFiltered(q)
-		if len(d.filteredDest) == 0 {
-			destScroll.Hide()
-			empty.Show()
-		} else {
-			empty.Hide()
-			destScroll.Show()
-		}
 	}
 
 	contentObjects := []fyne.CanvasObject{
@@ -274,6 +274,7 @@ func (d *CopyMoveDialog) updateFiltered(q string) {
 		d.notifySelectedPathChanged()
 	}
 	d.destList.Refresh()
+	d.updateDestinationEmptyState()
 }
 
 // SetOnSelectedPathChanged sets a callback for destination selection changes.
@@ -285,6 +286,32 @@ func (d *CopyMoveDialog) SetOnSelectedPathChanged(callback func(string)) {
 func (d *CopyMoveDialog) notifySelectedPathChanged() {
 	if d.onPathChanged != nil {
 		d.onPathChanged(d.selectedPath)
+	}
+}
+
+// SetOnOpenDestination sets a callback for opening the currently selected destination.
+func (d *CopyMoveDialog) SetOnOpenDestination(callback func(string)) {
+	d.onOpenDest = callback
+}
+
+// SetOnClosed sets a callback fired after the dialog is accepted or canceled.
+func (d *CopyMoveDialog) SetOnClosed(callback func()) {
+	d.onClosed = callback
+}
+
+// SetDestinations replaces destination candidates while preserving the current search.
+func (d *CopyMoveDialog) SetDestinations(candidates []DestinationCandidate, preferredPath string) {
+	previousPath := d.selectedPath
+	query := d.GetSearchText()
+	d.allDest = append([]DestinationCandidate(nil), candidates...)
+	d.openDest = destinationOpenMap(d.allDest)
+	d.updateFiltered(query)
+
+	if preferredPath != "" && d.selectFilteredPath(preferredPath) {
+		return
+	}
+	if previousPath != "" {
+		d.selectFilteredPath(previousPath)
 	}
 }
 
@@ -353,6 +380,23 @@ func (d *CopyMoveDialog) CopySelectedPathToSearch() {
 }
 func (d *CopyMoveDialog) SelectCurrentItem() {
 	d.debugPrint("CopyMoveDialog: Select current dest: %s", d.selectedPath)
+}
+
+func (d *CopyMoveDialog) OpenDestination() {
+	if d.onOpenDest == nil {
+		return
+	}
+	path := d.selectedPath
+	if path == "" {
+		if resolved, ok := d.resolveDirectoryPath(d.GetSearchText()); ok {
+			path = resolved
+		}
+	}
+	if path == "" {
+		return
+	}
+	d.debugPrint("CopyMoveDialog: Open destination: %s", path)
+	d.onOpenDest(path)
 }
 
 func (d *CopyMoveDialog) ScrollSelectedRight() {
@@ -455,6 +499,10 @@ func (d *CopyMoveDialog) notifyDialogClosed() {
 	if d.onPathChanged != nil {
 		d.onPathChanged("")
 	}
+	if d.onClosed != nil {
+		d.onClosed()
+		d.onClosed = nil
+	}
 }
 
 // Helpers
@@ -485,6 +533,29 @@ func destinationOpenMap(candidates []DestinationCandidate) map[string]bool {
 		}
 	}
 	return result
+}
+
+func (d *CopyMoveDialog) selectFilteredPath(path string) bool {
+	for i, candidate := range d.filteredDest {
+		if candidate.Path == path {
+			d.destList.Select(widget.ListItemID(i))
+			return true
+		}
+	}
+	return false
+}
+
+func (d *CopyMoveDialog) updateDestinationEmptyState() {
+	if d.destScroll == nil || d.destEmpty == nil {
+		return
+	}
+	if len(d.filteredDest) == 0 {
+		d.destScroll.Hide()
+		d.destEmpty.Show()
+	} else {
+		d.destEmpty.Hide()
+		d.destScroll.Show()
+	}
 }
 
 func destinationPaths(candidates []DestinationCandidate) []string {
