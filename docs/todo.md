@@ -14,11 +14,6 @@
 - 以上から、大規模なKeyDown/KeyUp全廃は複雑さの置き場所が変わるだけの可能性が高い。
   当面は全移行ではなく、repeatが必要な操作だけtyped/TypedShortcutへ寄せる方針が費用対効果よさそう。
 
-## OK/Cancel的な二択ボタン
-- あまり統一感がないかもしれない。CancelIconとConfirmIcon をつけて、Confirmのほうのアイコン色を
-  ThemeのPrimaryColorにした上でボタンサイズを揃えたほうがFyneのアプリっぽいかもしれない。
-  (優先度低)
-
 ## 簡易viewerのText表示をEntry以外に置き換えたい
 - 64KiB程度の表示でもFyneのmulti-line Entryは初期レイアウトが重い。
 - Text/Hex表示と移動だけはTextGrid PoCへ置き換えた。
@@ -37,6 +32,11 @@
 - 進捗表示は必須。高速化案はチャンク単位などで現在ファイルの進捗を維持できることを条件にする。
 
 # DONE 以下は一応終わったもの
+## OK/Cancel的な二択ボタン
+- 自作ボタン列をFyne標準のConfirm系に寄せ、CancelIcon/ConfirmIconとPrimary表示を揃えた。
+- 1行編集、削除確認、コンパクトメッセージ、Maintenance、Jobsのボタン表示を整理した。
+- Jobs WindowはEnterでCloseするようにした。
+
 ## 内部で使っている色定数を設定可能にしたい
 - UI内で直接使っている色に名前をつけ、初期値は現在の内蔵値にした。
 - `config.json` の `theme.colors` と Starlark の `nmf.color()` からカスタマイズできるようにした。

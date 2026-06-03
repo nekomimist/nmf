@@ -44,7 +44,7 @@ func ShowCompactMessageDialogWithOnClose(parent fyne.Window, title, message stri
 		messageBox := container.NewGridWrap(messageSize, container.NewPadded(label))
 		content := container.NewVBox(
 			messageBox,
-			container.NewGridWithColumns(1, widget.NewButton("OK", closeDialog)),
+			dialogOKButtonRow(closeDialog),
 		)
 		sink := newCompactMessageSink(content, closeDialog)
 

@@ -99,11 +99,7 @@ func (d *LineEditDialog) ShowDialog(parent fyne.Window, onAccept func(string) bo
 		content.Add(widget.NewLabel(d.opts.Prompt))
 	}
 	content.Add(lineEditThemeOverride(d.entry))
-	content.Add(container.NewGridWithColumns(
-		2,
-		widget.NewButton("Cancel", d.CancelDialog),
-		widget.NewButton(d.opts.ConfirmText, d.AcceptEdit),
-	))
+	content.Add(dialogButtonRow("Cancel", d.CancelDialog, d.opts.ConfirmText, d.AcceptEdit))
 
 	handler := keymanager.NewLineEditDialogKeyHandler(d)
 	d.keyManager.PushHandler(handler)

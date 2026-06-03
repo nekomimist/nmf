@@ -60,11 +60,7 @@ func (d *DeleteConfirmDialog) ShowDialog(parent fyne.Window, onAccept func()) {
 		content.Add(widget.NewLabel(fmt.Sprintf("Type %s to confirm:", deleteConfirmWord)))
 		content.Add(d.entry)
 	}
-	content.Add(container.NewGridWithColumns(
-		2,
-		widget.NewButton("Cancel", d.CancelDelete),
-		widget.NewButton(action, d.ConfirmDelete),
-	))
+	content.Add(dialogButtonRow("Cancel", d.CancelDelete, action, d.ConfirmDelete))
 
 	handler := keymanager.NewDeleteConfirmDialogKeyHandler(d)
 	d.keyManager.PushHandler(handler)

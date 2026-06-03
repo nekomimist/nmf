@@ -50,6 +50,9 @@ func (h *JobsDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierS
 	case fyne.KeyDelete:
 		h.dlg.CancelSelected()
 		return true
+	case fyne.KeyReturn, fyne.KeyEnter:
+		h.dlg.CloseDialog()
+		return true
 	case fyne.KeyEscape:
 		h.dlg.CloseDialog()
 		return true

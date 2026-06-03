@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/fileinfo"
@@ -70,8 +71,8 @@ func NewJobsWindow(app fyne.App, debugPrint func(format string, args ...interfac
 	}
 
 	// Buttons
-	cancelBtn := widget.NewButton("Cancel Selected", func() { jd.cancelSelected() })
-	closeBtn := widget.NewButton("Close", func() {
+	cancelBtn := widget.NewButtonWithIcon("Cancel Selected", theme.CancelIcon(), func() { jd.cancelSelected() })
+	closeBtn := dialogConfirmButton("Close", func() {
 		jd.Close()
 	})
 

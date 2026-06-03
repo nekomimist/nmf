@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/config"
@@ -78,8 +79,8 @@ func (d *MaintenanceDialog) createWidgets() {
 		},
 	)
 
-	d.scanButton = widget.NewButton("Scan", d.Scan)
-	d.applyButton = widget.NewButton("Apply Cleanup", d.Apply)
+	d.scanButton = widget.NewButtonWithIcon("Scan", theme.SearchIcon(), d.Scan)
+	d.applyButton = dialogConfirmButton("Apply Cleanup", d.Apply)
 	d.applyButton.Disable()
 }
 
@@ -122,7 +123,7 @@ func (d *MaintenanceDialog) createContent() fyne.CanvasObject {
 	buttons := container.NewHBox(
 		d.scanButton,
 		d.applyButton,
-		widget.NewButton("Close", d.Cancel),
+		dialogCancelButton("Close", d.Cancel),
 	)
 
 	return container.NewBorder(
