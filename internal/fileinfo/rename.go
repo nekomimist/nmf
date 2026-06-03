@@ -49,12 +49,6 @@ func RenamePortable(oldPath, newName string) (string, error) {
 	}
 
 	newDisplay := JoinPath(ParentPath(oldDisplay), name)
-	if _, err := StatPortable(newDisplay); err == nil {
-		return "", fmt.Errorf("target already exists: %s", newDisplay)
-	} else if !os.IsNotExist(err) {
-		return "", err
-	}
-
 	_, newParsed, err := ResolveRead(newDisplay)
 	if err != nil {
 		return "", err
@@ -68,6 +62,15 @@ func RenamePortable(oldPath, newName string) (string, error) {
 	if newNative == "" {
 		newNative = newDisplay
 	}
+	caseOnlyRename := BaseName(oldDisplay) != name && strings.EqualFold(BaseName(oldDisplay), name)
+
+	if _, err := StatPortable(newDisplay); err == nil {
+		if !caseOnlyRename || !sameNativeFile(oldNative, newNative) {
+			return "", fmt.Errorf("target already exists: %s", newDisplay)
+		}
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
 
 	if oldParsed.Scheme == SchemeSMB && oldParsed.Provider != "local" {
 		ops, ok := oldVFS.(SMBPathOps)
@@ -80,7 +83,7 @@ func RenamePortable(oldPath, newName string) (string, error) {
 		return newDisplay, nil
 	}
 
-	if err := os.Rename(oldNative, newNative); err != nil {
+	if err := renameNativeSameDir(oldNative, newNative, caseOnlyRename); err != nil {
 		return "", err
 	}
 	if oldParsed.Scheme == SchemeFile && !filepath.IsAbs(newDisplay) {
@@ -89,4 +92,16 @@ func RenamePortable(oldPath, newName string) (string, error) {
 		}
 	}
 	return newDisplay, nil
+}
+
+func sameNativeFile(a, b string) bool {
+	ai, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	bi, err := os.Stat(b)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(ai, bi)
 }

@@ -110,6 +110,26 @@ func TestRenamePortableSameNameNoop(t *testing.T) {
 	}
 }
 
+func TestRenamePortableCaseOnlyNameChange(t *testing.T) {
+	dir := t.TempDir()
+	oldPath := filepath.Join(dir, "case.txt")
+	wantPath := filepath.Join(dir, "CASE.txt")
+	if err := os.WriteFile(oldPath, []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	newPath, err := RenamePortable(oldPath, "CASE.txt")
+	if err != nil {
+		t.Fatalf("RenamePortable returned error: %v", err)
+	}
+	if newPath != wantPath {
+		t.Fatalf("newPath = %q, want %q", newPath, wantPath)
+	}
+	if _, err := os.Stat(wantPath); err != nil {
+		t.Fatalf("renamed file missing: %v", err)
+	}
+}
+
 func TestCreateDirectoryPortable(t *testing.T) {
 	dir := t.TempDir()
 
