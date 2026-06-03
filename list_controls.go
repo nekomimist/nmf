@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"fyne.io/fyne/v2/widget"
 
@@ -308,6 +309,10 @@ func (fm *FileManager) ShowPathEditDialog() {
 		Title:       "Edit Path",
 		Prompt:      "Path:",
 		InitialText: fm.currentPath,
+		InitialSelection: &ui.LineEditSelection{
+			Start: 0,
+			End:   utf8.RuneCountInString(fm.currentPath),
+		},
 		ConfirmText: "Open",
 		Width:       760,
 	}, fm.keyManager)
