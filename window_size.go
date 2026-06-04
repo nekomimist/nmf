@@ -6,6 +6,7 @@ func (fm *FileManager) ResetWindowSize() {
 	}
 
 	debugPrint("FileManager: reset window size width=%.0f height=%.0f", fm.initialWindowSize.Width, fm.initialWindowSize.Height)
+	resyncWindowScaleForReset(fm.window)
 	fm.window.Resize(fm.initialWindowSize)
 }
 
