@@ -14,6 +14,8 @@ type fakeFilterSearchDialog struct {
 	right     int
 	left      int
 	open      int
+	direct    int
+	deleted   int
 }
 
 func (f *fakeFilterSearchDialog) MoveUp()                       {}
@@ -28,7 +30,9 @@ func (f *fakeFilterSearchDialog) IsSearchFocused() bool         { return false }
 func (f *fakeFilterSearchDialog) FocusList()                    {}
 func (f *fakeFilterSearchDialog) SelectCurrentItem()            {}
 func (f *fakeFilterSearchDialog) AcceptSelection()              {}
-func (f *fakeFilterSearchDialog) AcceptDirectPathNavigation()   {}
+func (f *fakeFilterSearchDialog) AcceptDirectInput()            { f.direct++ }
+func (f *fakeFilterSearchDialog) DeleteSelectedEntry()          { f.deleted++ }
+func (f *fakeFilterSearchDialog) AcceptDirectPathNavigation()   { f.direct++ }
 func (f *fakeFilterSearchDialog) AcceptDirectPath()             {}
 func (f *fakeFilterSearchDialog) OpenDestination()              { f.open++ }
 func (f *fakeFilterSearchDialog) CancelDialog()                 {}
@@ -83,6 +87,79 @@ func TestCopyMoveDialogCtrlNOpensDestination(t *testing.T) {
 	}
 }
 
+func TestFilterDialogCtrlDDeletesSelectedEntry(t *testing.T) {
+	dialog := &fakeFilterSearchDialog{}
+	handler := NewFilterDialogKeyHandler(dialog, func(string, ...interface{}) {})
+
+	if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyD}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("Ctrl+D typed key should be handled")
+	}
+	if dialog.deleted != 1 {
+		t.Fatalf("DeleteSelectedEntry count = %d, want 1", dialog.deleted)
+	}
+}
+
+func TestFilterDialogCtrlDDeletesOnlyOnceAcrossKeyDownAndTypedKey(t *testing.T) {
+	dialog := &fakeFilterSearchDialog{}
+	handler := NewFilterDialogKeyHandler(dialog, func(string, ...interface{}) {})
+
+	if handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyD}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("Ctrl+D key down should not delete; typed key owns the shortcut")
+	}
+	if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyD}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("Ctrl+D typed key should be handled")
+	}
+	if dialog.deleted != 1 {
+		t.Fatalf("DeleteSelectedEntry count = %d, want 1", dialog.deleted)
+	}
+}
+
+func TestFilterDialogCtrlEnterAcceptsDirectInput(t *testing.T) {
+	dialog := &fakeFilterSearchDialog{}
+	handler := NewFilterDialogKeyHandler(dialog, func(string, ...interface{}) {})
+
+	if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("Ctrl+Enter typed key should be handled")
+	}
+	if dialog.direct != 1 {
+		t.Fatalf("AcceptDirectInput count = %d, want 1", dialog.direct)
+	}
+}
+
+func TestHistoryDialogCtrlEnterAcceptsDirectPathNavigation(t *testing.T) {
+	tests := []struct {
+		name string
+		call func(KeyHandler) bool
+	}{
+		{
+			name: "key down",
+			call: func(handler KeyHandler) bool {
+				return handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{CtrlPressed: true})
+			},
+		},
+		{
+			name: "typed key",
+			call: func(handler KeyHandler) bool {
+				return handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{CtrlPressed: true})
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dialog := &fakeFilterSearchDialog{}
+			handler := NewHistoryDialogKeyHandler(dialog, func(string, ...interface{}) {})
+
+			if !tt.call(handler) {
+				t.Fatal("Ctrl+Enter should be handled")
+			}
+			if dialog.direct != 1 {
+				t.Fatalf("AcceptDirectPathNavigation count = %d, want 1", dialog.direct)
+			}
+		})
+	}
+}
+
 func TestFilteringDialogsAcceptFirstTypedRune(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -116,6 +193,9 @@ func TestFilteringDialogsAcceptSpaceTypedRune(t *testing.T) {
 		name    string
 		handler func(*fakeFilterSearchDialog) KeyHandler
 	}{
+		{name: "filter", handler: func(d *fakeFilterSearchDialog) KeyHandler {
+			return NewFilterDialogKeyHandler(d, func(string, ...interface{}) {})
+		}},
 		{name: "history", handler: func(d *fakeFilterSearchDialog) KeyHandler {
 			return NewHistoryDialogKeyHandler(d, func(string, ...interface{}) {})
 		}},

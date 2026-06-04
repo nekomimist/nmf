@@ -122,6 +122,11 @@ func (hh *HistoryDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modif
 		return true
 
 	case fyne.KeyReturn:
+		if modifiers.CtrlPressed {
+			// Ctrl+Enter - Accept direct path navigation
+			hh.historyDialog.AcceptDirectPathNavigation()
+			return true
+		}
 		// Enter - Accept current selection and close dialog
 		hh.historyDialog.AcceptSelection()
 		return true

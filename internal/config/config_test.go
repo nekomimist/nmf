@@ -220,6 +220,88 @@ func TestAddToNavigationHistoryIncrementsUseCountAndPrunesByScore(t *testing.T) 
 	}
 }
 
+func TestEffectiveFilterPatternStripsComment(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{in: "*.go ;; Go files", want: "*.go"},
+		{in: "  *.{jpg,png}  ;; images ", want: "*.{jpg,png}"},
+		{in: "*.txt", want: "*.txt"},
+		{in: ";; comment only", want: ""},
+	}
+
+	for _, tt := range tests {
+		if got := EffectiveFilterPattern(tt.in); got != tt.want {
+			t.Fatalf("EffectiveFilterPattern(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestFileFilterHistoryUsesFrecencyOrdering(t *testing.T) {
+	now := time.Now()
+	cfg := getDefaultConfig()
+	cfg.UI.FileFilter.Entries = []FilterEntry{
+		{Pattern: "*.go", LastUsed: now.Add(-30 * time.Minute), UseCount: 1},
+		{Pattern: "*.md", LastUsed: now.Add(-2 * time.Hour), UseCount: 4},
+		{Pattern: "*.log", LastUsed: now.Add(-8 * 24 * time.Hour), UseCount: 100},
+	}
+
+	got := cfg.GetFileFilterEntries()
+	want := []string{"*.log", "*.md", "*.go"}
+	if len(got) != len(want) {
+		t.Fatalf("filter history length = %d, want %d: %#v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i].Pattern != want[i] {
+			t.Fatalf("filter history = %#v, want patterns %#v", got, want)
+		}
+	}
+}
+
+func TestAddToFileFilterHistoryIncrementsUseCountAndPrunesByScore(t *testing.T) {
+	now := time.Now()
+	cfg := getDefaultConfig()
+	cfg.UI.FileFilter.MaxEntries = 2
+	cfg.UI.FileFilter.Entries = []FilterEntry{
+		{Pattern: "*.keep", LastUsed: now.Add(-2 * time.Hour), UseCount: 4},
+		{Pattern: "*.drop", LastUsed: now.Add(-8 * 24 * time.Hour), UseCount: 1},
+	}
+
+	cfg.AddToFileFilterHistory(&FilterEntry{Pattern: "*.new ;; 日本語"})
+	cfg.AddToFileFilterHistory(&FilterEntry{Pattern: "*.keep"})
+
+	if len(cfg.UI.FileFilter.Entries) != 2 {
+		t.Fatalf("entries = %#v, want two entries", cfg.UI.FileFilter.Entries)
+	}
+	if cfg.UI.FileFilter.Entries[0].Pattern != "*.keep" || cfg.UI.FileFilter.Entries[0].UseCount != 5 {
+		t.Fatalf("first entry = %#v, want incremented *.keep", cfg.UI.FileFilter.Entries[0])
+	}
+	if cfg.UI.FileFilter.Entries[1].Pattern != "*.new ;; 日本語" {
+		t.Fatalf("entries = %#v, want new entry retained", cfg.UI.FileFilter.Entries)
+	}
+	for _, entry := range cfg.UI.FileFilter.Entries {
+		if entry.Pattern == "*.drop" {
+			t.Fatalf("entries = %#v, drop should be pruned", cfg.UI.FileFilter.Entries)
+		}
+	}
+}
+
+func TestRemoveFileFilterEntryRemovesExactPattern(t *testing.T) {
+	cfg := getDefaultConfig()
+	cfg.UI.FileFilter.Entries = []FilterEntry{
+		{Pattern: "*.go ;; Go"},
+		{Pattern: "*.go ;; Golang"},
+	}
+
+	if !cfg.RemoveFileFilterEntry("*.go ;; Go") {
+		t.Fatal("RemoveFileFilterEntry should report removal")
+	}
+	if len(cfg.UI.FileFilter.Entries) != 1 || cfg.UI.FileFilter.Entries[0].Pattern != "*.go ;; Golang" {
+		t.Fatalf("entries = %#v, want only exact non-deleted pattern", cfg.UI.FileFilter.Entries)
+	}
+}
+
 func TestMergeConfigs(t *testing.T) {
 	defaultConfig := getDefaultConfig()
 	trueVal := true

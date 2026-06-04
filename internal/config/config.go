@@ -1026,8 +1026,8 @@ func sortNavigationHistory(history *NavigationHistoryConfig, now time.Time) {
 
 func sortNavigationHistoryEntries(entries []string, lastUsed map[string]time.Time, useCount map[string]int, now time.Time) {
 	sort.SliceStable(entries, func(i, j int) bool {
-		scoreI := navigationHistoryScore(useCount[entries[i]], lastUsed[entries[i]], now)
-		scoreJ := navigationHistoryScore(useCount[entries[j]], lastUsed[entries[j]], now)
+		scoreI := frecencyScore(useCount[entries[i]], lastUsed[entries[i]], now)
+		scoreJ := frecencyScore(useCount[entries[j]], lastUsed[entries[j]], now)
 		if scoreI != scoreJ {
 			return scoreI > scoreJ
 		}
@@ -1052,7 +1052,7 @@ func pruneNavigationHistory(history *NavigationHistoryConfig, now time.Time) {
 	history.Entries = history.Entries[:history.MaxEntries]
 }
 
-func navigationHistoryScore(useCount int, lastUsed time.Time, now time.Time) float64 {
+func frecencyScore(useCount int, lastUsed time.Time, now time.Time) float64 {
 	if useCount <= 0 {
 		useCount = 1
 	}
@@ -1069,6 +1069,88 @@ func navigationHistoryScore(useCount int, lastUsed time.Time, now time.Time) flo
 	default:
 		return float64(useCount) * 0.25
 	}
+}
+
+// EffectiveFilterPattern returns the glob portion of a saved filter entry.
+// Text after ";;" is treated as a searchable user comment.
+func EffectiveFilterPattern(pattern string) string {
+	if idx := strings.Index(pattern, ";;"); idx >= 0 {
+		pattern = pattern[:idx]
+	}
+	return strings.TrimSpace(pattern)
+}
+
+// GetFileFilterEntries returns filter history sorted by frecency.
+func (c *Config) GetFileFilterEntries() []FilterEntry {
+	entries := c.UI.FileFilter.Entries
+	if len(entries) <= 1 {
+		return entries
+	}
+	sorted := make([]FilterEntry, len(entries))
+	copy(sorted, entries)
+	sortFileFilterEntries(sorted, time.Now())
+	return sorted
+}
+
+// AddToFileFilterHistory records a filter pattern use and prunes by frecency.
+func (c *Config) AddToFileFilterHistory(entry *FilterEntry) {
+	if entry == nil || strings.TrimSpace(entry.Pattern) == "" || EffectiveFilterPattern(entry.Pattern) == "" {
+		return
+	}
+	filter := &c.UI.FileFilter
+	now := time.Now()
+	for i := range filter.Entries {
+		if filter.Entries[i].Pattern == entry.Pattern {
+			filter.Entries[i].LastUsed = now
+			filter.Entries[i].UseCount++
+			sortFileFilterEntries(filter.Entries, now)
+			pruneFileFilterEntries(filter, now)
+			return
+		}
+	}
+
+	newEntry := *entry
+	newEntry.LastUsed = now
+	if newEntry.UseCount <= 0 {
+		newEntry.UseCount = 1
+	}
+	filter.Entries = append(filter.Entries, newEntry)
+	sortFileFilterEntries(filter.Entries, now)
+	pruneFileFilterEntries(filter, now)
+}
+
+// RemoveFileFilterEntry removes an exact saved filter pattern from history.
+func (c *Config) RemoveFileFilterEntry(pattern string) bool {
+	entries := c.UI.FileFilter.Entries
+	for i := range entries {
+		if entries[i].Pattern == pattern {
+			c.UI.FileFilter.Entries = append(entries[:i], entries[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
+func sortFileFilterEntries(entries []FilterEntry, now time.Time) {
+	sort.SliceStable(entries, func(i, j int) bool {
+		scoreI := frecencyScore(entries[i].UseCount, entries[i].LastUsed, now)
+		scoreJ := frecencyScore(entries[j].UseCount, entries[j].LastUsed, now)
+		if scoreI != scoreJ {
+			return scoreI > scoreJ
+		}
+		if !entries[i].LastUsed.Equal(entries[j].LastUsed) {
+			return entries[i].LastUsed.After(entries[j].LastUsed)
+		}
+		return entries[i].Pattern < entries[j].Pattern
+	})
+}
+
+func pruneFileFilterEntries(filter *FileFilterConfig, now time.Time) {
+	if filter.MaxEntries <= 0 || len(filter.Entries) <= filter.MaxEntries {
+		return
+	}
+	sortFileFilterEntries(filter.Entries, now)
+	filter.Entries = filter.Entries[:filter.MaxEntries]
 }
 
 // FilterNavigationHistory filters history entries by query (case-insensitive partial match)

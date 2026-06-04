@@ -100,8 +100,8 @@ func (fm *FileManager) UpdateFiles(files []fileinfo.FileInfo) {
 	copy(fm.originalFiles, files)
 
 	// Apply filter if one is active
-	if fm.currentFilter != nil && fm.currentFilter.Pattern != "" {
-		filtered, err := fileinfo.FilterFiles(files, fm.currentFilter.Pattern)
+	if fm.currentFilter != nil && config.EffectiveFilterPattern(fm.currentFilter.Pattern) != "" {
+		filtered, err := fileinfo.FilterFiles(files, config.EffectiveFilterPattern(fm.currentFilter.Pattern))
 		if err != nil {
 			debugPrint("FileManager: Filter error: %v", err)
 			fm.files = files // Fall back to showing all files

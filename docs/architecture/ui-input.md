@@ -95,9 +95,15 @@ Filter-style text input:
 
 - Dialogs that edit search text through key handlers remove the last UTF-8 rune
   for Backspace and `Ctrl-H`; they must not trim by byte.
-- Navigation History, Incremental Search, and Copy/Move destination search
-  build matchers through `internal/search`, which provides whitespace-separated
-  AND matching with substring and optional embedded migemo expansion per token.
+- Navigation History, Apply Filter, Incremental Search, and Copy/Move
+  destination search build matchers through `internal/search`, which provides
+  whitespace-separated AND matching with substring and optional embedded migemo
+  expansion per token.
+- Apply Filter stores comments after `;;` with the filter history entry. The
+  comment is searchable, while the applied glob is only the text before `;;`.
+- Navigation History and Apply Filter use `Ctrl+Enter` to apply the current
+  input directly. Apply Filter also uses `Ctrl+D` to delete the selected history
+  entry.
 - Directory Jump keeps shortcut-prefix matching separate from migemo so its
   unique-match auto-jump behavior stays deterministic.
 

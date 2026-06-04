@@ -200,14 +200,16 @@ If manually editing them, preserve their JSON shape:
 - navigation history `useCount` stores frecency usage counters; missing values
   are migrated to `1`.
 - `fileFilter.entries` and `fileFilter.current` use `pattern`, `lastUsed`, and
-  `useCount`.
+  `useCount`. For filter patterns, text after `;;` is treated as a searchable
+  comment; the glob matcher applies only the text before `;;`.
 - navigation history paths are normalized when recorded or shown; SMB/UNC forms
   are stored as canonical `smb://host/share/...` paths.
 
 ## Search Matching
 
-Navigation History, Incremental Search, and Copy/Move destination search use
-case-insensitive substring matching plus migemo expansion for Japanese names.
+Navigation History, Apply Filter, Incremental Search, and Copy/Move destination
+search use case-insensitive substring matching plus migemo expansion for
+Japanese names.
 Whitespace-separated query tokens are combined as unordered AND conditions.
 Migemo uses the embedded dictionary and is enabled automatically when it loads;
 if it is unavailable, the app falls back to substring matching.

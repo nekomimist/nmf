@@ -19,6 +19,8 @@ type FilterDialogInterface interface {
 	AppendToSearch(char string)
 	BackspaceSearch()
 	GetSearchText() string
+	AcceptDirectInput()
+	DeleteSelectedEntry()
 
 	// Focus management (deprecated in focusless design)
 	IsSearchFocused() bool
@@ -59,6 +61,11 @@ func (fh *FilterDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers Modifie
 		if modifiers.CtrlPressed {
 			return true
 		}
+	case fyne.KeyReturn:
+		if modifiers.CtrlPressed {
+			fh.filterDialog.AcceptDirectInput()
+			return true
+		}
 	}
 
 	return false
@@ -80,6 +87,11 @@ func (fh *FilterDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modifi
 			fh.filterDialog.BackspaceSearch()
 			return true
 		}
+	case fyne.KeyD:
+		if modifiers.CtrlPressed {
+			fh.filterDialog.DeleteSelectedEntry()
+			return true
+		}
 
 	case fyne.KeyUp:
 		if modifiers.ShiftPressed {
@@ -97,12 +109,11 @@ func (fh *FilterDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modifi
 		}
 		return true
 
-	case fyne.KeySpace:
-		// Select current item
-		fh.filterDialog.SelectCurrentItem()
-		return true
-
 	case fyne.KeyReturn:
+		if modifiers.CtrlPressed {
+			fh.filterDialog.AcceptDirectInput()
+			return true
+		}
 		// Accept current selection and close dialog
 		fh.filterDialog.AcceptSelection()
 		return true

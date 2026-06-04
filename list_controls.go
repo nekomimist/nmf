@@ -85,7 +85,7 @@ func (fm *FileManager) ApplyTemporarySort(sortConfig config.SortConfig) {
 // ShowFilterDialog displays the file filter dialog.
 func (fm *FileManager) ShowFilterDialog() {
 	// Get current filter entries from config
-	entries := fm.config.UI.FileFilter.Entries
+	entries := fm.config.GetFileFilterEntries()
 
 	// Use originalFiles if available, otherwise use current files
 	currentFiles := fm.originalFiles
@@ -93,7 +93,7 @@ func (fm *FileManager) ShowFilterDialog() {
 		currentFiles = fm.files
 	}
 
-	filterDialog := ui.NewFilterDialog(entries, currentFiles, fm.keyManager, debugPrint)
+	filterDialog := ui.NewFilterDialog(entries, currentFiles, fm.keyManager, debugPrint, fm.searchMatchers)
 	filterDialog.ShowDialog(fm.window, func(selectedEntry *config.FilterEntry) {
 		if selectedEntry != nil {
 			debugPrint("FileManager: filter dialog selected pattern=%s focused=%s", selectedEntry.Pattern, focusedObjectLabel(fm.window))
@@ -101,19 +101,26 @@ func (fm *FileManager) ShowFilterDialog() {
 			fm.saveFilterToHistory(selectedEntry)
 		}
 		fm.focusFileList("filter-dialog-closed")
+	}, func(pattern string) {
+		if fm.config.RemoveFileFilterEntry(pattern) {
+			if err := fm.configManager.SaveAsync(fm.config); err != nil {
+				debugPrint("FileManager: Error saving filter history deletion: %v", err)
+			}
+		}
 	})
 }
 
 // ApplyFilter applies a filter to the current file list.
 func (fm *FileManager) ApplyFilter(entry *config.FilterEntry) {
-	if entry == nil || entry.Pattern == "" {
+	if entry == nil || config.EffectiveFilterPattern(entry.Pattern) == "" {
 		fm.ClearFilter()
 		return
 	}
+	effectivePattern := config.EffectiveFilterPattern(entry.Pattern)
 
 	// Validate pattern first
-	if err := fileinfo.ValidatePattern(entry.Pattern); err != nil {
-		debugPrint("FileManager: Invalid filter pattern '%s': %v", entry.Pattern, err)
+	if err := fileinfo.ValidatePattern(effectivePattern); err != nil {
+		debugPrint("FileManager: Invalid filter pattern '%s': %v", effectivePattern, err)
 		return
 	}
 
@@ -130,7 +137,7 @@ func (fm *FileManager) ApplyFilter(entry *config.FilterEntry) {
 	}
 
 	// Apply filter
-	filtered, err := fileinfo.FilterFiles(baseFiles, entry.Pattern)
+	filtered, err := fileinfo.FilterFiles(baseFiles, effectivePattern)
 	if err != nil {
 		debugPrint("FileManager: Filter error: %v", err)
 		return
@@ -149,7 +156,7 @@ func (fm *FileManager) ApplyFilter(entry *config.FilterEntry) {
 		fm.RefreshCursor()
 	}
 
-	debugPrint("FileManager: Applied filter: %s (matched %d/%d files)", entry.Pattern, len(fm.files), len(baseFiles))
+	debugPrint("FileManager: Applied filter: %s (effective=%s matched %d/%d files)", entry.Pattern, effectivePattern, len(fm.files), len(baseFiles))
 }
 
 // ClearFilter completely removes the current filter (for Ctrl+Shift+F).
@@ -199,32 +206,11 @@ func (fm *FileManager) DisableFilter() {
 
 // saveFilterToHistory saves a filter entry to the history.
 func (fm *FileManager) saveFilterToHistory(entry *config.FilterEntry) {
-	if entry == nil || entry.Pattern == "" {
+	if entry == nil || entry.Pattern == "" || config.EffectiveFilterPattern(entry.Pattern) == "" {
 		return
 	}
 
-	filterConfig := &fm.config.UI.FileFilter
-
-	// Update existing entry or add new one
-	found := false
-	for i := range filterConfig.Entries {
-		if filterConfig.Entries[i].Pattern == entry.Pattern {
-			filterConfig.Entries[i].LastUsed = entry.LastUsed
-			filterConfig.Entries[i].UseCount = entry.UseCount
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		// Add new entry at the beginning
-		filterConfig.Entries = append([]config.FilterEntry{*entry}, filterConfig.Entries...)
-
-		// Trim to max entries
-		if len(filterConfig.Entries) > filterConfig.MaxEntries {
-			filterConfig.Entries = filterConfig.Entries[:filterConfig.MaxEntries]
-		}
-	}
+	fm.config.AddToFileFilterHistory(entry)
 
 	// Save config to disk
 	if err := fm.configManager.SaveAsync(fm.config); err != nil {

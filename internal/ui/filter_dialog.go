@@ -2,9 +2,7 @@ package ui
 
 import (
 	"fmt"
-	"sort"
 	"strings"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -15,6 +13,7 @@ import (
 	"nmf/internal/config"
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
+	"nmf/internal/search"
 )
 
 // FilterDialog represents a file filter dialog with pattern search
@@ -30,11 +29,13 @@ type FilterDialog struct {
 	keyManager      *keymanager.KeyManager    // Keyboard input manager
 	dialog          dialog.Dialog             // Reference to the actual dialog
 	callback        func(*config.FilterEntry) // Callback function for selection
+	deleteCallback  func(string)              // Callback function for deleting a history entry
 	parent          fyne.Window               // Parent window for focus management
 	closed          bool                      // Prevent double-close/pop
 	sink            *KeySink                  // Key capturing wrapper
 	previewLabel    *widget.Label             // Preview of match count
 	currentFiles    []fileinfo.FileInfo       // Current directory files for preview
+	matchers        *search.Provider
 }
 
 // NewFilterDialog creates a new filter dialog
@@ -43,12 +44,19 @@ func NewFilterDialog(
 	currentFiles []fileinfo.FileInfo,
 	keyManager *keymanager.KeyManager,
 	debugPrint func(format string, args ...interface{}),
+	matchers ...*search.Provider,
 ) *FilterDialog {
 	dialog := &FilterDialog{
 		allEntries:   entries,
 		currentFiles: currentFiles,
 		debugPrint:   debugPrint,
 		keyManager:   keyManager,
+	}
+	if len(matchers) > 0 {
+		dialog.matchers = matchers[0]
+	}
+	if dialog.matchers == nil {
+		dialog.matchers = search.NewPlainProvider()
 	}
 
 	dialog.createWidgets()
@@ -65,7 +73,7 @@ func (fd *FilterDialog) createWidgets() {
 	// Set up real-time search
 	fd.searchEntry.OnChanged = func(query string) {
 		fd.updateFilteredEntries(query)
-		fd.updatePreview(query)
+		fd.updatePreview(fd.previewPattern())
 	}
 
 	// Create preview label
@@ -103,6 +111,7 @@ func (fd *FilterDialog) createWidgets() {
 			entry := fd.filteredEntries[id]
 			fd.selectedPattern = entry.Pattern
 			fd.debugPrint("FilterDialog: Filter selected: %s (index: %d)", fd.selectedPattern, fd.selectedIndex)
+			fd.updatePreview(fd.previewPattern())
 			// Keep focus on sink so KeyManager continues to receive keys
 			if fd.parent != nil && fd.sink != nil {
 				fd.parent.Canvas().Focus(fd.sink)
@@ -119,34 +128,20 @@ func (fd *FilterDialog) updateFilteredEntries(query string) {
 	if query == "" {
 		fd.filteredEntries = fd.allEntries
 	} else {
-		query = strings.ToLower(query)
+		matcher := fd.matchers.Build(query)
 		fd.filteredEntries = []config.FilterEntry{}
 
 		for _, entry := range fd.allEntries {
-			if strings.Contains(strings.ToLower(entry.Pattern), query) {
+			if matcher.Match(entry.Pattern) {
 				fd.filteredEntries = append(fd.filteredEntries, entry)
 			}
 		}
 	}
 
-	// Sort entries by usage frequency and recency
-	sort.Slice(fd.filteredEntries, func(i, j int) bool {
-		// First priority: usage count
-		if fd.filteredEntries[i].UseCount != fd.filteredEntries[j].UseCount {
-			return fd.filteredEntries[i].UseCount > fd.filteredEntries[j].UseCount
-		}
-		// Second priority: most recent usage
-		return fd.filteredEntries[i].LastUsed.After(fd.filteredEntries[j].LastUsed)
-	})
-
-	// Format entries for display
+	// Format entries for display.
 	displayEntries := make([]string, len(fd.filteredEntries))
 	for i, entry := range fd.filteredEntries {
-		usageInfo := ""
-		if entry.UseCount > 0 {
-			usageInfo = fmt.Sprintf(" (used %d times)", entry.UseCount)
-		}
-		displayEntries[i] = entry.Pattern + usageInfo
+		displayEntries[i] = entry.Pattern
 	}
 
 	// Update data binding with the formatted entries
@@ -166,7 +161,8 @@ func (fd *FilterDialog) updateFilteredEntries(query string) {
 
 // updatePreview updates the preview label with match count
 func (fd *FilterDialog) updatePreview(pattern string) {
-	if pattern == "" {
+	effectivePattern := config.EffectiveFilterPattern(pattern)
+	if effectivePattern == "" {
 		fd.previewLabel.SetText("")
 		return
 	}
@@ -180,7 +176,7 @@ func (fd *FilterDialog) updatePreview(pattern string) {
 			continue   // Directories are always shown, so don't include in match count
 		}
 
-		matched, err := fileinfo.MatchesPattern(file.Name, pattern)
+		matched, err := fileinfo.MatchesPattern(file.Name, effectivePattern)
 		if err == nil && matched {
 			matchCount++
 		}
@@ -197,8 +193,18 @@ func (fd *FilterDialog) updatePreview(pattern string) {
 	}
 }
 
+func (fd *FilterDialog) previewPattern() string {
+	if fd.selectedIndex >= 0 && fd.selectedIndex < len(fd.filteredEntries) {
+		return fd.filteredEntries[fd.selectedIndex].Pattern
+	}
+	if fd.searchEntry != nil {
+		return fd.searchEntry.Text
+	}
+	return ""
+}
+
 // ShowDialog shows the file filter dialog
-func (fd *FilterDialog) ShowDialog(parent fyne.Window, callback func(*config.FilterEntry)) {
+func (fd *FilterDialog) ShowDialog(parent fyne.Window, callback func(*config.FilterEntry), deleteCallback func(string)) {
 	// Create title label
 	titleLabel := widget.NewLabel("File Filter")
 	titleLabel.TextStyle.Bold = true
@@ -230,7 +236,7 @@ func (fd *FilterDialog) ShowDialog(parent fyne.Window, callback func(*config.Fil
 	// Show/hide empty state based on filtered results
 	fd.searchEntry.OnChanged = func(query string) {
 		fd.updateFilteredEntries(query)
-		fd.updatePreview(query)
+		fd.updatePreview(fd.previewPattern())
 
 		// Only show "No matching patterns found" if:
 		// 1. We have history entries to search through AND
@@ -258,6 +264,7 @@ func (fd *FilterDialog) ShowDialog(parent fyne.Window, callback func(*config.Fil
 
 	// Store callback and parent for use by key handler
 	fd.callback = callback
+	fd.deleteCallback = deleteCallback
 	fd.parent = parent
 
 	// Create and push filter dialog key handler
@@ -369,20 +376,15 @@ func (fd *FilterDialog) AcceptSelection() {
 
 	var selectedEntry *config.FilterEntry
 
-	// Use current input as pattern if no existing selection
-	currentInput := fd.searchEntry.Text
-	if currentInput != "" {
-		// Create new filter entry from current input
-		selectedEntry = &config.FilterEntry{
-			Pattern:  currentInput,
-			LastUsed: time.Now(),
-			UseCount: 1,
-		}
-	} else if fd.selectedIndex >= 0 && fd.selectedIndex < len(fd.filteredEntries) {
+	if fd.selectedIndex >= 0 && fd.selectedIndex < len(fd.filteredEntries) {
 		// Use selected entry from list
-		selectedEntry = &fd.filteredEntries[fd.selectedIndex]
-		selectedEntry.LastUsed = time.Now()
-		selectedEntry.UseCount++
+		entry := fd.filteredEntries[fd.selectedIndex]
+		selectedEntry = &entry
+	} else if fd.searchEntry != nil && strings.TrimSpace(fd.searchEntry.Text) != "" {
+		// Create new filter entry from current input when no history item matches.
+		selectedEntry = &config.FilterEntry{
+			Pattern: strings.TrimSpace(fd.searchEntry.Text),
+		}
 	}
 
 	deferDialogClose(fd.keyManager, "filter.accept", func() {
@@ -395,6 +397,57 @@ func (fd *FilterDialog) AcceptSelection() {
 		}
 		unfocusIfDialogOwned(fd.parent, fd.sink, fd.searchEntry)
 	})
+}
+
+// AcceptDirectInput accepts the current search text as a new filter.
+func (fd *FilterDialog) AcceptDirectInput() {
+	if fd.closed {
+		return
+	}
+	if fd.searchEntry == nil || strings.TrimSpace(fd.searchEntry.Text) == "" {
+		return
+	}
+	fd.closed = true
+
+	selectedEntry := &config.FilterEntry{
+		Pattern: strings.TrimSpace(fd.searchEntry.Text),
+	}
+
+	deferDialogClose(fd.keyManager, "filter.acceptDirect", func() {
+		fd.keyManager.PopHandler()
+		if fd.callback != nil && selectedEntry != nil {
+			fd.callback(selectedEntry)
+		}
+		if fd.dialog != nil {
+			fd.dialog.Hide()
+		}
+		unfocusIfDialogOwned(fd.parent, fd.sink, fd.searchEntry)
+	})
+}
+
+// DeleteSelectedEntry removes the selected filter history entry.
+func (fd *FilterDialog) DeleteSelectedEntry() {
+	if fd.selectedIndex < 0 || fd.selectedIndex >= len(fd.filteredEntries) {
+		return
+	}
+	pattern := fd.filteredEntries[fd.selectedIndex].Pattern
+	fd.debugPrint("FilterDialog: Delete selected entry: %s", pattern)
+
+	for i := range fd.allEntries {
+		if fd.allEntries[i].Pattern == pattern {
+			fd.allEntries = append(fd.allEntries[:i], fd.allEntries[i+1:]...)
+			break
+		}
+	}
+	if fd.deleteCallback != nil {
+		fd.deleteCallback(pattern)
+	}
+	query := ""
+	if fd.searchEntry != nil {
+		query = fd.searchEntry.Text
+	}
+	fd.updateFilteredEntries(query)
+	fd.updatePreview(fd.previewPattern())
 }
 
 // CancelDialog cancels the dialog without selection

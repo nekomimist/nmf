@@ -1,6 +1,7 @@
 package main
 
 import (
+	"nmf/internal/config"
 	"nmf/internal/fileinfo"
 	"nmf/internal/ui"
 )
@@ -58,8 +59,8 @@ func (fm *FileManager) applyCreatedPathToList(path string, isDir bool) {
 
 	fm.mu.Lock()
 	fm.originalFiles = upsertFileInfo(fm.originalFiles, created)
-	if fm.currentFilter != nil && fm.currentFilter.Pattern != "" {
-		filtered, err := fileinfo.FilterFiles(fm.originalFiles, fm.currentFilter.Pattern)
+	if fm.currentFilter != nil && config.EffectiveFilterPattern(fm.currentFilter.Pattern) != "" {
+		filtered, err := fileinfo.FilterFiles(fm.originalFiles, config.EffectiveFilterPattern(fm.currentFilter.Pattern))
 		if err != nil {
 			debugPrint("FileManager: Filter error after create: %v", err)
 			fm.files = fm.originalFiles
