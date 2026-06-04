@@ -27,8 +27,10 @@ const (
 	sortDialogWidth  float32 = 400
 	sortDialogHeight float32 = 350
 
-	quitDialogWidth  float32 = 400
+	quitDialogWidth  float32 = 460
 	quitDialogHeight float32 = 100
+	quitDialogGap    float32 = 18
+	quitDialogBottom float32 = 14
 
 	smbLoginDialogWidth  float32 = 420
 	smbLoginDialogHeight float32 = 200

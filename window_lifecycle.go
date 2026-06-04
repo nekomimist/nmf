@@ -5,6 +5,7 @@ import (
 
 	"fyne.io/fyne/v2"
 
+	"nmf/internal/jobs"
 	"nmf/internal/ui"
 )
 
@@ -59,7 +60,8 @@ func (fm *FileManager) QuitApplication() {
 
 // showQuitConfirmationDialog shows a confirmation dialog before quitting.
 func (fm *FileManager) showQuitConfirmationDialog() {
-	dialog := ui.NewQuitConfirmDialog(fm.keyManager, debugPrint)
+	activeJobs := activeJobCount(jobs.GetManager().List())
+	dialog := ui.NewQuitConfirmDialog(fm.keyManager, debugPrint, activeJobs)
 	dialog.ShowDialog(fm.window, func(confirmed bool) {
 		if confirmed {
 			debugPrint("WindowLifecycle: User confirmed quit")
@@ -70,4 +72,15 @@ func (fm *FileManager) showQuitConfirmationDialog() {
 		// Return focus to file list after dialog closes
 		fm.FocusFileList()
 	})
+}
+
+func activeJobCount(snaps []jobs.JobSnapshot) int {
+	count := 0
+	for _, snap := range snaps {
+		switch snap.Status {
+		case jobs.StatusPending, jobs.StatusRunning:
+			count++
+		}
+	}
+	return count
 }

@@ -1,8 +1,14 @@
 package ui
 
 import (
+	"fmt"
+	"image/color"
+
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/keymanager"
@@ -17,13 +23,15 @@ type QuitConfirmDialog struct {
 	parent     fyne.Window
 	closed     bool // Prevent double-close/pop
 	sink       *KeySink
+	activeJobs int
 }
 
 // NewQuitConfirmDialog creates a new quit confirmation dialog
-func NewQuitConfirmDialog(keyManager *keymanager.KeyManager, debugPrint func(format string, args ...interface{})) *QuitConfirmDialog {
+func NewQuitConfirmDialog(keyManager *keymanager.KeyManager, debugPrint func(format string, args ...interface{}), activeJobs int) *QuitConfirmDialog {
 	return &QuitConfirmDialog{
 		keyManager: keyManager,
 		debugPrint: debugPrint,
+		activeJobs: activeJobs,
 	}
 }
 
@@ -38,39 +46,28 @@ func (qcd *QuitConfirmDialog) ShowDialog(parent fyne.Window, callback func(bool)
 	qcd.keyManager.PushHandler(quitHandler)
 
 	// Create message content
-	message := widget.NewLabel("Are you sure you want to quit the file manager?")
+	message := widget.NewLabel(qcd.message())
 	message.Alignment = fyne.TextAlignCenter
+	message.Wrapping = fyne.TextWrapWord
+
+	content := container.NewVBox(
+		message,
+		quitDialogSpacer(quitDialogGap),
+		qcd.buttonRow(),
+		quitDialogSpacer(quitDialogBottom),
+	)
+	fixedContent := container.NewGridWrap(metricsSize(quitDialogWidth, quitDialogHeight), content)
 
 	// Wrap content with KeySink to capture keys and forward to KeyManager
-	qcd.sink = NewKeySink(message, qcd.keyManager, WithTabCapture(false))
+	qcd.sink = NewKeySink(fixedContent, qcd.keyManager, WithTabCapture(false))
 
 	// Set appropriate content size
 	qcd.sink.Resize(metricsSize(quitDialogWidth, quitDialogHeight))
 
-	// Create custom confirm dialog
-	qcd.dialog = dialog.NewCustomConfirm(
-		"Quit Application",
-		"Yes",
-		"No",
-		qcd.sink,
-		func(confirmed bool) {
-			if qcd.closed {
-				return
-			}
-			qcd.closed = true
-
-			deferDialogClose(qcd.keyManager, "quit.close", func() {
-				// Pop the handler first
-				qcd.keyManager.PopHandler()
-
-				// Call the callback
-				if qcd.callback != nil {
-					qcd.callback(confirmed)
-				}
-			})
-		},
-		parent,
-	)
+	qcd.dialog = dialog.NewCustomWithoutButtons("Quit Application", qcd.sink, parent)
+	qcd.dialog.SetOnClosed(func() {
+		qcd.CancelQuit()
+	})
 
 	// Show the dialog
 	qcd.dialog.Show()
@@ -82,6 +79,56 @@ func (qcd *QuitConfirmDialog) ShowDialog(parent fyne.Window, callback func(bool)
 }
 
 // QuitDialogInterface implementation
+
+func (qcd *QuitConfirmDialog) message() string {
+	if qcd.activeJobs > 0 {
+		return fmt.Sprintf("There are %d pending or running job(s). Quit anyway?", qcd.activeJobs)
+	}
+	return "Are you sure you want to quit the file manager?"
+}
+
+func (qcd *QuitConfirmDialog) buttonTexts() (confirmText string, cancelText string) {
+	if qcd.activeJobs > 0 {
+		return "Quit Anyway", "No"
+	}
+	return "Yes", "No"
+}
+
+func (qcd *QuitConfirmDialog) buttonRow() fyne.CanvasObject {
+	confirmText, cancelText := qcd.buttonTexts()
+	if qcd.activeJobs <= 0 {
+		return container.NewGridWithColumns(
+			2,
+			dialogCancelButton(cancelText, qcd.CancelQuit),
+			dialogConfirmButton(confirmText, qcd.ConfirmQuit),
+		)
+	}
+	quitAnyway := widget.NewButtonWithIcon(confirmText, theme.WarningIcon(), qcd.ConfirmQuit)
+	quitAnyway.Importance = widget.WarningImportance
+	no := dialogCancelButton(cancelText, qcd.CancelQuit)
+	no.Importance = widget.HighImportance
+	return container.NewGridWithColumns(
+		2,
+		quitAnyway,
+		no,
+	)
+}
+
+func quitDialogSpacer(height float32) fyne.CanvasObject {
+	return container.NewGridWrap(
+		metricsSize(quitDialogWidth, height),
+		canvas.NewRectangle(color.Transparent),
+	)
+}
+
+// DefaultQuitAction runs the action assigned to Enter.
+func (qcd *QuitConfirmDialog) DefaultQuitAction() {
+	if qcd.activeJobs > 0 {
+		qcd.CancelQuit()
+		return
+	}
+	qcd.ConfirmQuit()
+}
 
 // ConfirmQuit confirms the quit action
 func (qcd *QuitConfirmDialog) ConfirmQuit() {

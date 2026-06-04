@@ -9,6 +9,7 @@ type QuitDialogInterface interface {
 	// Dialog control
 	ConfirmQuit()
 	CancelQuit()
+	DefaultQuitAction()
 }
 
 // QuitConfirmDialogKeyHandler handles keyboard events for the quit confirmation dialog
@@ -47,9 +48,14 @@ func (qh *QuitConfirmDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers M
 	switch ev.Name {
 	case fyne.KeyReturn:
 		fallthrough
+	case fyne.KeyEnter:
+		// Enter follows the dialog's current default action.
+		qh.debugPrint("QuitConfirmDialog: Enter detected - running default action")
+		qh.quitDialog.DefaultQuitAction()
+
 	case fyne.KeyY:
-		// Y/Enter - Confirm quit
-		qh.debugPrint("QuitConfirmDialog: Enter detected - confirming quit")
+		// Y - Confirm quit
+		qh.debugPrint("QuitConfirmDialog: Y detected - confirming quit")
 		qh.quitDialog.ConfirmQuit()
 
 	case fyne.KeyEscape:
