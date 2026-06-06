@@ -4,6 +4,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	customtheme "nmf/internal/theme"
@@ -43,28 +44,25 @@ func (b *busyBlocker) TappedSecondary(_ *fyne.PointEvent) {}
 type BusyOverlay struct {
 	blocker *busyBlocker
 	spinner *widget.ProgressBarInfinite
-	label   *widget.Label
+	label   *shrinkingTextLabel
 	root    *fyne.Container
 	visible bool
 }
 
 func NewBusyOverlay(themeProvider ThemeColorProvider) *BusyOverlay {
 	spinner := widget.NewProgressBarInfinite()
-	spinner.Start()
 
-	lbl := widget.NewLabel("Working...")
-	lbl.Alignment = fyne.TextAlignCenter
+	text := canvas.NewText("Working...", currentAppThemeColor(fynetheme.ColorNameForeground))
+	text.Alignment = fyne.TextAlignCenter
+	lbl := newShrinkingTextLabel(text)
 
 	// Semi-transparent backdrop
 	bg := canvas.NewRectangle(themeProvider.GetCustomColor(customtheme.ColorBusyOverlayBackground))
 
-	// Center panel
-	panel := container.NewVBox(spinner, lbl)
-	padded := container.NewPadded(panel)
-	centered := container.NewCenter(padded)
+	content := newBusyOverlayContent(spinner, lbl)
 
 	// Stack background + center content
-	max := container.NewMax(bg, centered)
+	max := container.NewMax(bg, content)
 	blk := newBusyBlocker(max)
 
 	// Root container holds the blocker (easy to Hide/Show)
@@ -86,6 +84,8 @@ func (bo *BusyOverlay) Show(parent fyne.Window, text string) {
 	if text != "" {
 		bo.label.SetText(text)
 	}
+	bo.spinner.Start()
+	bo.spinner.Refresh()
 	if bo.visible {
 		bo.refresh(parent)
 		return
@@ -100,6 +100,7 @@ func (bo *BusyOverlay) Hide() {
 		return
 	}
 	bo.visible = false
+	bo.spinner.Stop()
 	bo.root.Hide()
 	canvas.Refresh(bo.root)
 }
@@ -112,3 +113,69 @@ func (bo *BusyOverlay) refresh(parent fyne.Window) {
 		parent.Canvas().Refresh(bo.root)
 	}
 }
+
+type busyOverlayContent struct {
+	widget.BaseWidget
+	spinner *widget.ProgressBarInfinite
+	label   *shrinkingTextLabel
+}
+
+func newBusyOverlayContent(spinner *widget.ProgressBarInfinite, label *shrinkingTextLabel) *busyOverlayContent {
+	content := &busyOverlayContent{
+		spinner: spinner,
+		label:   label,
+	}
+	content.ExtendBaseWidget(content)
+	return content
+}
+
+func (c *busyOverlayContent) CreateRenderer() fyne.WidgetRenderer {
+	return &busyOverlayContentRenderer{content: c}
+}
+
+type busyOverlayContentRenderer struct {
+	content *busyOverlayContent
+}
+
+func (r *busyOverlayContentRenderer) Layout(size fyne.Size) {
+	padding := fynetheme.Padding()
+	availableWidth := size.Width - padding*4
+	if availableWidth < 0 {
+		availableWidth = 0
+	}
+
+	contentWidth := fyne.Min(availableWidth, 900)
+	spinnerMin := r.content.spinner.MinSize()
+	if contentWidth < spinnerMin.Width {
+		contentWidth = fyne.Min(availableWidth, spinnerMin.Width)
+	}
+
+	spinnerHeight := spinnerMin.Height
+	labelHeight := r.content.label.MinSize().Height
+	totalHeight := spinnerHeight + padding + labelHeight
+	x := (size.Width - contentWidth) / 2
+	y := (size.Height - totalHeight) / 2
+
+	r.content.spinner.Move(fyne.NewPos(x, y))
+	r.content.spinner.Resize(fyne.NewSize(contentWidth, spinnerHeight))
+	r.content.label.Move(fyne.NewPos(x, y+spinnerHeight+padding))
+	r.content.label.Resize(fyne.NewSize(contentWidth, labelHeight))
+}
+
+func (r *busyOverlayContentRenderer) MinSize() fyne.Size {
+	spinnerMin := r.content.spinner.MinSize()
+	labelMin := r.content.label.MinSize()
+	return fyne.NewSize(spinnerMin.Width, spinnerMin.Height+fynetheme.Padding()+labelMin.Height)
+}
+
+func (r *busyOverlayContentRenderer) Refresh() {
+	r.content.label.text.Color = currentAppThemeColor(fynetheme.ColorNameForeground)
+	r.Layout(r.content.Size())
+	canvas.Refresh(r.content)
+}
+
+func (r *busyOverlayContentRenderer) Objects() []fyne.CanvasObject {
+	return []fyne.CanvasObject{r.content.spinner, r.content.label}
+}
+
+func (r *busyOverlayContentRenderer) Destroy() {}
