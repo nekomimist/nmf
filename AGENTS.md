@@ -1,20 +1,31 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- Root: `main.go` (Fyne GUI entrypoint) and `go.mod`.
+- Root: `main.go` (startup/flag handling), `go.mod`, and split `*_ui.go` /
+  runtime files for `FileManager` behavior.
 - Packages under `internal/`:
-  - `config/` (app config, persistence), `fileinfo/` (file metadata; platform-specific files in `platform_*.go`. Icons: `icon_service.go` (async fetch + caches), `icon_windows.go` / `icon_unix.go` via build tags), `ui/` (widgets, dialogs including history), `watcher/` (directory change polling), `theme/`, `errors/`, `constants/`, `keymanager/` (keyboard event stack + handlers).
+  - `config/` (app config, persistence), `configscript/` (optional Starlark
+    config and user commands), `fileinfo/` (file metadata, portable
+    local/SMB/archive path handling; platform-specific files in
+    `platform_*.go`, `*_windows.go`, and `*_unix.go`. Icons:
+    `icon_service.go` (async fetch + caches), `icon_windows.go` /
+    `icon_unix.go` via build tags), `ui/` (widgets, dialogs including
+    history), `watcher/` (directory change polling), `jobs/` (copy/move/delete
+    queue), `keymanager/` (keyboard event stack + handlers), plus support
+    packages such as `display/`, `errors/`, `filecompare/`, `ime/`,
+    `maintenance/`, `search/`, `secret/`, `shellmenu/`, `theme/`, and
+    `constants/`.
   - `ui/` includes input wrappers: `key_sink.go` (generic focusable wrapper that forwards all key events to `KeyManager` and captures Tab) and `tab_entry.go` (an `Entry` that accepts Tab to suppress default focus traversal).
-- Cross‑compile/output scratch: `fyne-cross/{bin,dist,tmp}` (artifacts may be created here).
+- Build outputs are written under `dist/` by the Makefile.
 
 ## Build, Test, and Development Commands
 - Run app: `go run .` (flags: `-d` for debug, `-path /some/dir`).
 - Build Linux binary: `make build` or `make build-linux` (outputs `dist/nmf`).
-- Build Windows binary from Linux: `make build-windows` (uses `x86_64-w64-mingw32-gcc` with CGO; outputs `dist/nmf.exe`).
-- Unit tests: `make test` (runs `go test ./internal/...`; package tests live in `*_test.go`).
+- Build Windows binary from Linux: `make build-windows` (uses Fyne packaging with `x86_64-w64-mingw32-gcc` and CGO; outputs `dist/nmf.exe`).
+- Unit tests: `make test` (runs `go test ./internal/...`). Full repo test pass: `go test ./...`.
 - Lint/vet (recommended): `go vet ./...`; format: `gofmt -s -w .`.
 - Modules: `go mod tidy` after dependency changes.
-- Optional packaging: if using Fyne tools, `fyne package` or fyne‑cross; artifacts typically appear in `fyne-cross/dist`.
+- Optional packaging: use `fyne package` directly when needed; the Makefile's Windows target already invokes it.
 
 ## Coding Style & Naming Conventions
 - Language: Go 1.25; follow standard Go style (tabs; 1TBS braces via `gofmt`).
@@ -22,12 +33,14 @@
 - Names: exported `CamelCase`, unexported `camelCase`; constants `MixedCase` in Go style.
 - Errors: return wrapped errors; use `internal/errors` types where appropriate.
 - Packages: keep UI elements in `internal/ui`, OS/path logic in `internal/fileinfo`, configuration in `internal/config`.
- - Platform-specific files may use either `platform_*.go` or `*_windows.go` / `*_unix.go` with build tags, as appropriate.
+- Platform-specific files may use either `platform_*.go` or `*_windows.go` / `*_unix.go` with build tags, as appropriate.
 
 ## Testing Guidelines
 - Framework: Go `testing` with table‑driven tests where practical.
 - Location: `*_test.go` alongside sources (e.g., `internal/config/config_test.go`).
-- Run: `make test`; include edge cases (platform specifics in `platform_*.go`).
+- Run: `make test` for internal packages, or `go test ./...` before larger
+  commits; include edge cases (platform specifics in `platform_*.go`,
+  `*_windows.go`, and `*_unix.go`).
 - Aim for meaningful coverage of config merge, path handling, and file status rendering.
 
 ## Commit & Pull Request Guidelines
@@ -36,7 +49,7 @@
 
 ## Configuration Tips
 - Config file: OS‑specific path ending in `config.json` (XDG/AppData conventions). Use `internal/config.Manager` to load/save.
-- Debugging: run `./nmf -d` to enable verbose logs via `debugPrint`.
+- Debugging: run `go run . -d` or `./dist/nmf -d` after `make build` to enable verbose logs via `debugPrint`.
 - Config schema source of truth: `internal/config/config.go`.
 - Durable architecture details live under `docs/architecture/`.
 
