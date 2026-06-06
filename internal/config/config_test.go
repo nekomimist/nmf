@@ -89,6 +89,9 @@ func TestGetDefaultConfig(t *testing.T) {
 	if config.UI.NavigationHistory.UseCount == nil {
 		t.Error("Expected navigation history useCount to be initialized")
 	}
+	if config.UI.NavigationHistory.Pinned == nil {
+		t.Error("Expected navigation history pinned entries to be initialized")
+	}
 
 	// Test FileFilter defaults
 	if config.UI.FileFilter.MaxEntries != 30 {
@@ -132,6 +135,29 @@ func TestNavigationHistoryMigratesMissingUseCount(t *testing.T) {
 
 	if got := cfg.UI.NavigationHistory.UseCount["/tmp/one"]; got != 1 {
 		t.Fatalf("useCount = %d, want migrated 1", got)
+	}
+}
+
+func TestMergeConfigsPreservesPinnedNavigationHistory(t *testing.T) {
+	cfg := getDefaultConfig()
+	fileConfig := &rawConfig{
+		UI: rawUIConfig{
+			NavigationHistory: rawNavigationHistoryConfig{
+				Pinned: []string{"/rare", "/monthly"},
+			},
+		},
+	}
+
+	mergeConfigs(cfg, fileConfig)
+
+	want := []string{"/rare", "/monthly"}
+	if len(cfg.UI.NavigationHistory.Pinned) != len(want) {
+		t.Fatalf("pinned = %#v, want %#v", cfg.UI.NavigationHistory.Pinned, want)
+	}
+	for i := range want {
+		if cfg.UI.NavigationHistory.Pinned[i] != want[i] {
+			t.Fatalf("pinned = %#v, want %#v", cfg.UI.NavigationHistory.Pinned, want)
+		}
 	}
 }
 
@@ -217,6 +243,45 @@ func TestAddToNavigationHistoryIncrementsUseCountAndPrunesByScore(t *testing.T) 
 		if cfg.UI.NavigationHistory.Entries[i] != want[i] {
 			t.Fatalf("entries = %#v, want %#v", cfg.UI.NavigationHistory.Entries, want)
 		}
+	}
+}
+
+func TestPinnedNavigationHistoryDoesNotCountAgainstHistoryLimit(t *testing.T) {
+	cfg := getDefaultConfig()
+	cfg.UI.NavigationHistory.MaxEntries = 1
+	cfg.UI.NavigationHistory.Pinned = []string{"/rare"}
+
+	cfg.AddToNavigationHistory("/one")
+	cfg.AddToNavigationHistory("/two")
+
+	if len(cfg.UI.NavigationHistory.Entries) != 1 {
+		t.Fatalf("history entries = %#v, want one pruned entry", cfg.UI.NavigationHistory.Entries)
+	}
+	if len(cfg.UI.NavigationHistory.Pinned) != 1 || cfg.UI.NavigationHistory.Pinned[0] != "/rare" {
+		t.Fatalf("pinned = %#v, want /rare retained", cfg.UI.NavigationHistory.Pinned)
+	}
+}
+
+func TestPinAndUnpinNavigationPath(t *testing.T) {
+	cfg := getDefaultConfig()
+
+	if !cfg.PinNavigationPath("/rare") {
+		t.Fatal("first pin should add path")
+	}
+	if cfg.PinNavigationPath("/rare") {
+		t.Fatal("second pin should not duplicate path")
+	}
+	if !cfg.IsNavigationPathPinned("/rare") {
+		t.Fatal("/rare should be pinned")
+	}
+	if !cfg.UnpinNavigationPath("/rare") {
+		t.Fatal("unpin should remove existing path")
+	}
+	if cfg.IsNavigationPathPinned("/rare") {
+		t.Fatal("/rare should no longer be pinned")
+	}
+	if cfg.UnpinNavigationPath("/rare") {
+		t.Fatal("unpin should report false for missing path")
 	}
 }
 
@@ -692,6 +757,18 @@ func TestCloneConfigDeepCopiesDirectoryJumps(t *testing.T) {
 
 	if cfg.UI.DirectoryJumps.Entries[0].Directory != "/projects" {
 		t.Errorf("Expected original directory jump to remain unchanged, got %q", cfg.UI.DirectoryJumps.Entries[0].Directory)
+	}
+}
+
+func TestCloneConfigDeepCopiesPinnedNavigationHistory(t *testing.T) {
+	cfg := getDefaultConfig()
+	cfg.UI.NavigationHistory.Pinned = []string{"/rare"}
+
+	clone := cloneConfig(cfg)
+	clone.UI.NavigationHistory.Pinned[0] = "/changed"
+
+	if cfg.UI.NavigationHistory.Pinned[0] != "/rare" {
+		t.Errorf("Expected original pinned history path to remain unchanged, got %q", cfg.UI.NavigationHistory.Pinned[0])
 	}
 }
 

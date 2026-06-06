@@ -47,30 +47,12 @@ func (fm *FileManager) ShowNavigationHistoryDialog() {
 	historyPaths := fm.config.GetNavigationHistory()
 	openPathList, openPaths := fm.openPathsInOtherWindows()
 
-	// Add current path to the beginning of history list
-	enhancedPaths := []string{}
-	seen := map[string]bool{}
-	if fm.currentPath != "" {
-		enhancedPaths = append(enhancedPaths, fm.currentPath)
-		seen[fm.currentPath] = true
-	}
-
-	// Include paths currently open in other windows even if they have not reached history yet.
-	for _, path := range openPathList {
-		if path == "" || seen[path] {
-			continue
-		}
-		enhancedPaths = append(enhancedPaths, path)
-		seen[path] = true
-	}
-
-	// Add existing history paths, skipping duplicates.
-	for _, path := range historyPaths {
-		if !seen[path] {
-			enhancedPaths = append(enhancedPaths, path)
-			seen[path] = true
-		}
-	}
+	enhancedPaths, unpinRemovesPath := buildEnhancedNavigationHistoryPaths(
+		fm.currentPath,
+		openPathList,
+		fm.config.UI.NavigationHistory.Pinned,
+		historyPaths,
+	)
 
 	if len(enhancedPaths) == 0 {
 		debugPrint("FileManager: No navigation history available")
@@ -80,6 +62,8 @@ func (fm *FileManager) ShowNavigationHistoryDialog() {
 	dialog := ui.NewNavigationHistoryDialog(
 		enhancedPaths,
 		openPaths,
+		pinnedNavigationPathMap(fm.config.UI.NavigationHistory.Pinned),
+		unpinRemovesPath,
 		fm.config.UI.NavigationHistory.LastUsed,
 		fm.keyManager,
 		debugPrint,
@@ -96,7 +80,102 @@ func (fm *FileManager) ShowNavigationHistoryDialog() {
 		debugPrint("FileManager: history dialog selected path=%s focused=%s", selectedPath, focusedObjectLabel(fm.window))
 		fm.LoadDirectory(selectedPath)
 		fm.focusFileList("history-dialog-selected")
-	})
+	}, fm.UnpinHistoryPath)
+}
+
+func pinnedNavigationPathMap(paths []string) map[string]bool {
+	result := make(map[string]bool, len(paths))
+	for _, path := range paths {
+		if path != "" {
+			result[path] = true
+		}
+	}
+	return result
+}
+
+func buildEnhancedNavigationHistoryPaths(currentPath string, openPaths []string, pinnedPaths []string, historyPaths []string) ([]string, map[string]bool) {
+	enhancedPaths := []string{}
+	seen := map[string]bool{}
+	if currentPath != "" {
+		enhancedPaths = append(enhancedPaths, currentPath)
+		seen[currentPath] = true
+	}
+
+	for _, path := range openPaths {
+		if path == "" || seen[path] {
+			continue
+		}
+		enhancedPaths = append(enhancedPaths, path)
+		seen[path] = true
+	}
+
+	pinnedVisibleOnlyBecausePinned := map[string]bool{}
+	for _, path := range pinnedPaths {
+		if path == "" || seen[path] {
+			continue
+		}
+		enhancedPaths = append(enhancedPaths, path)
+		seen[path] = true
+		pinnedVisibleOnlyBecausePinned[path] = true
+	}
+
+	for _, path := range historyPaths {
+		if path == "" {
+			continue
+		}
+		if pinnedVisibleOnlyBecausePinned[path] {
+			delete(pinnedVisibleOnlyBecausePinned, path)
+		}
+		if !seen[path] {
+			enhancedPaths = append(enhancedPaths, path)
+			seen[path] = true
+		}
+	}
+
+	return enhancedPaths, pinnedVisibleOnlyBecausePinned
+}
+
+func (fm *FileManager) PinCurrentHistoryPath() {
+	path := canonicalNavigationHistoryPath(fm.currentPath)
+	if path == "" || fm.config == nil {
+		return
+	}
+
+	if !fm.config.PinNavigationPath(path) {
+		debugPrint("FileManager: History path already pinned path=%s", path)
+		fm.ShowMessageDialog("History Jump", "Already saved:\n"+path)
+		return
+	}
+	if fm.configManager != nil {
+		if err := fm.configManager.SaveAsync(fm.config); err != nil {
+			debugPrint("FileManager: Error saving pinned history path: %v", err)
+			fm.ShowMessageDialog("History Jump", err.Error())
+			return
+		}
+	}
+	debugPrint("FileManager: Pinned history path=%s", path)
+	notifyNavigationHistoryChanged(path)
+	fm.ShowMessageDialog("History Jump", "Saved:\n"+path)
+}
+
+func (fm *FileManager) UnpinHistoryPath(path string) bool {
+	path = canonicalNavigationHistoryPath(path)
+	if path == "" || fm.config == nil {
+		return false
+	}
+	if !fm.config.UnpinNavigationPath(path) {
+		return false
+	}
+	if fm.configManager != nil {
+		if err := fm.configManager.SaveAsync(fm.config); err != nil {
+			debugPrint("FileManager: Error saving unpinned history path: %v", err)
+			fm.ShowMessageDialog("History Jump", err.Error())
+			return false
+		}
+	}
+	debugPrint("FileManager: Unpinned history path=%s", path)
+	notifyNavigationHistoryChanged(path)
+	return true
 }
 
 func (fm *FileManager) openPathsInOtherWindows() ([]string, map[string]bool) {

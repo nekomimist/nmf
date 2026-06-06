@@ -54,3 +54,24 @@ func TestNormalizeNavigationHistoryDeduplicatesCanonicalPaths(t *testing.T) {
 		t.Fatalf("useCount = %d, want summed 5", got)
 	}
 }
+
+func TestNormalizeNavigationHistoryDeduplicatesPinnedPaths(t *testing.T) {
+	cfg := &config.Config{
+		UI: config.UIConfig{
+			NavigationHistory: config.NavigationHistoryConfig{
+				Pinned: []string{
+					`\\wsl$\Ubuntu\home\neko`,
+					"smb://wsl.localhost/Ubuntu/home/neko",
+				},
+			},
+		},
+	}
+
+	if !normalizeNavigationHistory(cfg) {
+		t.Fatal("normalizeNavigationHistory should report pinned changes")
+	}
+	want := []string{"smb://wsl.localhost/Ubuntu/home/neko"}
+	if len(cfg.UI.NavigationHistory.Pinned) != len(want) || cfg.UI.NavigationHistory.Pinned[0] != want[0] {
+		t.Fatalf("pinned = %#v, want %#v", cfg.UI.NavigationHistory.Pinned, want)
+	}
+}

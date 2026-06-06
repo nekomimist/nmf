@@ -348,6 +348,7 @@ func TestKeyManagerDoesNotDrainAfterTransientStackChange(t *testing.T) {
 type mainScreenFakeFileManager struct {
 	showJobsCount            int
 	showHistoryCount         int
+	pinCurrentHistoryCount   int
 	showSearchCount          int
 	showDirectoryJumpCount   int
 	reopenClosedCount        int
@@ -431,6 +432,7 @@ func (f *mainScreenFakeFileManager) ResetWindowSize()                  { f.reset
 func (f *mainScreenFakeFileManager) ResetAllWindowSizes()              { f.resetAllWindowSizesCount++ }
 func (f *mainScreenFakeFileManager) ShowDirectoryTreeDialog()          {}
 func (f *mainScreenFakeFileManager) ShowNavigationHistoryDialog()      { f.showHistoryCount++ }
+func (f *mainScreenFakeFileManager) PinCurrentHistoryPath()            { f.pinCurrentHistoryCount++ }
 func (f *mainScreenFakeFileManager) ShowDirectoryJumpDialog() {
 	f.showDirectoryJumpCount++
 }
@@ -572,6 +574,20 @@ func TestMainScreenJShowsDirectoryJumpDialog(t *testing.T) {
 	}
 	if fm.showJobsCount != 0 {
 		t.Fatalf("ShowJobsDialog count = %d, want 0", fm.showJobsCount)
+	}
+}
+
+func TestMainScreenShiftBPinsCurrentHistoryPath(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyB}, ModifierState{ShiftPressed: true})
+
+	if !handled {
+		t.Fatal("Shift+B should be handled")
+	}
+	if fm.pinCurrentHistoryCount != 1 {
+		t.Fatalf("PinCurrentHistoryPath count = %d, want 1", fm.pinCurrentHistoryCount)
 	}
 }
 

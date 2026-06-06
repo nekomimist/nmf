@@ -35,6 +35,7 @@ const (
 	CommandWindowResetAllSizes = "window.resetAllSizes"
 	CommandTreeShow            = "tree.show"
 	CommandHistoryShow         = "history.show"
+	CommandHistoryPinCurrent   = "history.pinCurrent"
 	CommandDirectoryJumpShow   = "directoryJump.show"
 	CommandFilterShow          = "filter.show"
 	CommandFilterClear         = "filter.clear"
@@ -86,6 +87,7 @@ type FileManagerInterface interface {
 	ResetAllWindowSizes()
 	ShowDirectoryTreeDialog()
 	ShowNavigationHistoryDialog()
+	PinCurrentHistoryPath()
 	ShowDirectoryJumpDialog()
 
 	ShowFilterDialog()
@@ -268,6 +270,7 @@ func (mh *MainScreenKeyHandler) shouldDeferCommand(commandID string) bool {
 		CommandWindowFocusRight,
 		CommandTreeShow,
 		CommandHistoryShow,
+		CommandHistoryPinCurrent,
 		CommandDirectoryJumpShow,
 		CommandFilterShow,
 		CommandSearchShow,
@@ -358,6 +361,7 @@ func defaultMainScreenBindings() []config.KeyBindingEntry {
 		{Key: "C-N", Command: CommandWindowNew, Event: keyEventDown},
 		{Key: "C-T", Command: CommandTreeShow, Event: keyEventDown},
 		{Key: "C-H", Command: CommandHistoryShow, Event: keyEventDown},
+		{Key: "S-B", Command: CommandHistoryPinCurrent, Event: keyEventTyped},
 		{Key: "C-F", Command: CommandFilterShow, Event: keyEventDown},
 		{Key: "C-S", Command: CommandSearchShow, Event: keyEventDown},
 		{Key: "S-S", Command: CommandSortShow, Event: keyEventTyped},
@@ -394,6 +398,7 @@ func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
 		CommandWindowResetAllSizes: func(CommandContext) { mh.fileManager.ResetAllWindowSizes() },
 		CommandTreeShow:            func(CommandContext) { mh.fileManager.ShowDirectoryTreeDialog() },
 		CommandHistoryShow:         func(CommandContext) { mh.fileManager.ShowNavigationHistoryDialog() },
+		CommandHistoryPinCurrent:   func(CommandContext) { mh.fileManager.PinCurrentHistoryPath() },
 		CommandDirectoryJumpShow:   func(CommandContext) { mh.fileManager.ShowDirectoryJumpDialog() },
 		CommandFilterShow:          func(CommandContext) { mh.fileManager.ShowFilterDialog() },
 		CommandFilterClear:         func(CommandContext) { mh.fileManager.ClearFilter() },

@@ -102,8 +102,8 @@ Filter-style text input:
 - Apply Filter stores comments after `;;` with the filter history entry. The
   comment is searchable, while the applied glob is only the text before `;;`.
 - Navigation History and Apply Filter use `Ctrl+Enter` to apply the current
-  input directly. Apply Filter also uses `Ctrl+D` to delete the selected history
-  entry.
+  input directly. Apply Filter uses `Ctrl+D` to delete the selected history
+  entry; Navigation History uses `Ctrl+D` to unpin a saved path.
 - Directory Jump keeps shortcut-prefix matching separate from migemo so its
   unique-match auto-jump behavior stays deterministic.
 

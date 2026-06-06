@@ -1852,6 +1852,7 @@ func (f *configScriptFakeFileManager) ResetWindowSize()                  {}
 func (f *configScriptFakeFileManager) ResetAllWindowSizes()              {}
 func (f *configScriptFakeFileManager) ShowDirectoryTreeDialog()          {}
 func (f *configScriptFakeFileManager) ShowNavigationHistoryDialog()      {}
+func (f *configScriptFakeFileManager) PinCurrentHistoryPath()            {}
 func (f *configScriptFakeFileManager) ShowDirectoryJumpDialog()          {}
 func (f *configScriptFakeFileManager) ShowFilterDialog()                 {}
 func (f *configScriptFakeFileManager) ClearFilter()                      {}

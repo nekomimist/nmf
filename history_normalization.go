@@ -57,7 +57,7 @@ func normalizeNavigationHistory(cfg *config.Config) bool {
 		changed = true
 	}
 	if !changed {
-		return false
+		return normalizePinnedNavigationHistory(cfg)
 	}
 
 	newLastUsed := make(map[string]time.Time, len(normalizedLastUsed))
@@ -67,9 +67,43 @@ func normalizeNavigationHistory(cfg *config.Config) bool {
 	cfg.UI.NavigationHistory.Entries = normalized
 	cfg.UI.NavigationHistory.LastUsed = newLastUsed
 	cfg.UI.NavigationHistory.UseCount = normalizedUseCount
+	normalizePinnedNavigationHistory(cfg)
 	return true
 }
 
 type timeValue struct {
 	Time time.Time
+}
+
+func normalizePinnedNavigationHistory(cfg *config.Config) bool {
+	if cfg == nil {
+		return false
+	}
+	pinned := cfg.UI.NavigationHistory.Pinned
+	if pinned == nil {
+		cfg.UI.NavigationHistory.Pinned = make([]string, 0)
+		return true
+	}
+	normalized := make([]string, 0, len(pinned))
+	seen := make(map[string]bool, len(pinned))
+	changed := false
+	for _, entry := range pinned {
+		canonical := canonicalNavigationHistoryPath(entry)
+		if canonical != entry {
+			changed = true
+		}
+		if canonical == "" || seen[canonical] {
+			changed = true
+			continue
+		}
+		seen[canonical] = true
+		normalized = append(normalized, canonical)
+	}
+	if len(normalized) != len(pinned) {
+		changed = true
+	}
+	if changed {
+		cfg.UI.NavigationHistory.Pinned = normalized
+	}
+	return changed
 }

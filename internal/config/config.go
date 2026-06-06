@@ -96,6 +96,7 @@ type rawNavigationHistoryConfig struct {
 	Entries    []string             `json:"entries"`
 	LastUsed   map[string]time.Time `json:"lastUsed"`
 	UseCount   map[string]int       `json:"useCount"`
+	Pinned     []string             `json:"pinned"`
 }
 
 type rawFileFilterConfig struct {
@@ -311,6 +312,7 @@ type NavigationHistoryConfig struct {
 	Entries    []string             `json:"entries"`    // Path history (frecency order)
 	LastUsed   map[string]time.Time `json:"lastUsed"`   // Last usage timestamp
 	UseCount   map[string]int       `json:"useCount"`   // Usage frequency counter
+	Pinned     []string             `json:"pinned"`     // Saved paths that do not count against history pruning
 }
 
 // FilterEntry represents a single filter pattern with metadata
@@ -686,6 +688,10 @@ func cloneNavigationHistoryConfig(src NavigationHistoryConfig) NavigationHistory
 			clone.UseCount[k] = v
 		}
 	}
+	if src.Pinned != nil {
+		clone.Pinned = make([]string, len(src.Pinned))
+		copy(clone.Pinned, src.Pinned)
+	}
 	return clone
 }
 
@@ -787,6 +793,7 @@ func getDefaultConfig() *Config {
 				Entries:    make([]string, 0),
 				LastUsed:   make(map[string]time.Time),
 				UseCount:   make(map[string]int),
+				Pinned:     make([]string, 0),
 			},
 			FileFilter: FileFilterConfig{
 				MaxEntries: 30,
@@ -938,7 +945,11 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) {
 	if fileConfig.UI.NavigationHistory.UseCount != nil {
 		defaultConfig.UI.NavigationHistory.UseCount = fileConfig.UI.NavigationHistory.UseCount
 	}
+	if fileConfig.UI.NavigationHistory.Pinned != nil {
+		defaultConfig.UI.NavigationHistory.Pinned = fileConfig.UI.NavigationHistory.Pinned
+	}
 	ensureNavigationHistoryStats(&defaultConfig.UI.NavigationHistory)
+	ensureNavigationHistoryPinned(&defaultConfig.UI.NavigationHistory)
 
 	// Merge FileFilter config
 	if fileConfig.UI.FileFilter.MaxEntries != nil && *fileConfig.UI.FileFilter.MaxEntries != 0 {
@@ -1018,6 +1029,53 @@ func ensureNavigationHistoryStats(history *NavigationHistoryConfig) {
 			history.UseCount[path] = 1
 		}
 	}
+}
+
+func ensureNavigationHistoryPinned(history *NavigationHistoryConfig) {
+	if history.Pinned == nil {
+		history.Pinned = make([]string, 0)
+	}
+}
+
+// PinNavigationPath saves a path for History Jump without adding it to prunable history.
+func (c *Config) PinNavigationPath(path string) bool {
+	if path == "" {
+		return false
+	}
+	history := &c.UI.NavigationHistory
+	ensureNavigationHistoryPinned(history)
+	for _, entry := range history.Pinned {
+		if entry == path {
+			return false
+		}
+	}
+	history.Pinned = append(history.Pinned, path)
+	return true
+}
+
+// UnpinNavigationPath removes a saved History Jump path.
+func (c *Config) UnpinNavigationPath(path string) bool {
+	history := &c.UI.NavigationHistory
+	ensureNavigationHistoryPinned(history)
+	for i, entry := range history.Pinned {
+		if entry == path {
+			history.Pinned = append(history.Pinned[:i], history.Pinned[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
+// IsNavigationPathPinned reports whether a path is saved for History Jump.
+func (c *Config) IsNavigationPathPinned(path string) bool {
+	history := &c.UI.NavigationHistory
+	ensureNavigationHistoryPinned(history)
+	for _, entry := range history.Pinned {
+		if entry == path {
+			return true
+		}
+	}
+	return false
 }
 
 func sortNavigationHistory(history *NavigationHistoryConfig, now time.Time) {

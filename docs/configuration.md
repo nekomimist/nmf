@@ -191,7 +191,7 @@ default even when `value` is set.
 These fields are managed by the app and normally do not need manual editing:
 
 - `ui.cursorMemory`: remembered cursor positions per directory.
-- `ui.navigationHistory`: recent navigation paths.
+- `ui.navigationHistory`: recent navigation paths plus saved History Jump paths.
 - `ui.fileFilter`: filter history and current filter state.
 
 If manually editing them, preserve their JSON shape:
@@ -199,6 +199,8 @@ If manually editing them, preserve their JSON shape:
 - history timestamps use Go's JSON `time.Time` format.
 - navigation history `useCount` stores frecency usage counters; missing values
   are migrated to `1`.
+- `navigationHistory.pinned` stores saved History Jump paths. They are shown
+  before regular history and are not pruned by `maxEntries`.
 - `fileFilter.entries` and `fileFilter.current` use `pattern`, `lastUsed`, and
   `useCount`. For filter patterns, text after `;;` is treated as a searchable
   comment; the glob matcher applies only the text before `;;`.
@@ -213,6 +215,8 @@ Japanese names.
 Whitespace-separated query tokens are combined as unordered AND conditions.
 Migemo uses the embedded dictionary and is enabled automatically when it loads;
 if it is unavailable, the app falls back to substring matching.
+History Jump also includes `navigationHistory.pinned` paths; saved rows are
+marked with `*`.
 
 Directory Jump is intentionally separate: it filters only by configured shortcut
 prefix and does not use migemo.
@@ -299,6 +303,8 @@ default to `typed`.
 
 Built-in window-size reset bindings are `S-Q` for the current File Manager
 window and `C-S-Q` for all File Manager windows.
+The built-in History Jump save binding is `S-B`, which pins the current
+directory in `navigationHistory.pinned`.
 
 Available main-screen commands:
 
@@ -310,7 +316,7 @@ Available main-screen commands:
 - `clipboard.createTextFile`
 - `window.new`, `window.reopen`, `window.focusLeft`, `window.focusRight`
 - `window.resetSize`, `window.resetAllSizes`
-- `tree.show`, `history.show`, `directoryJump.show`
+- `tree.show`, `history.show`, `history.pinCurrent`, `directoryJump.show`
 - `filter.show`, `filter.clear`, `filter.toggle`
 - `search.show`, `sort.show`, `jobs.show`
 - `path.edit`, `app.quit`

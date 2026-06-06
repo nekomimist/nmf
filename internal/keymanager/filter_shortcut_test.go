@@ -16,6 +16,7 @@ type fakeFilterSearchDialog struct {
 	open      int
 	direct    int
 	deleted   int
+	unpinned  int
 }
 
 func (f *fakeFilterSearchDialog) MoveUp()                       {}
@@ -32,6 +33,7 @@ func (f *fakeFilterSearchDialog) SelectCurrentItem()            {}
 func (f *fakeFilterSearchDialog) AcceptSelection()              {}
 func (f *fakeFilterSearchDialog) AcceptDirectInput()            { f.direct++ }
 func (f *fakeFilterSearchDialog) DeleteSelectedEntry()          { f.deleted++ }
+func (f *fakeFilterSearchDialog) UnpinSelectedPath()            { f.unpinned++ }
 func (f *fakeFilterSearchDialog) AcceptDirectPathNavigation()   { f.direct++ }
 func (f *fakeFilterSearchDialog) AcceptDirectPath()             {}
 func (f *fakeFilterSearchDialog) OpenDestination()              { f.open++ }
@@ -111,6 +113,21 @@ func TestFilterDialogCtrlDDeletesOnlyOnceAcrossKeyDownAndTypedKey(t *testing.T) 
 	}
 	if dialog.deleted != 1 {
 		t.Fatalf("DeleteSelectedEntry count = %d, want 1", dialog.deleted)
+	}
+}
+
+func TestHistoryDialogCtrlDUnpinsSelectedPath(t *testing.T) {
+	dialog := &fakeFilterSearchDialog{}
+	handler := NewHistoryDialogKeyHandler(dialog, func(string, ...interface{}) {})
+
+	if handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyD}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("Ctrl+D key down should not unpin; typed key owns the shortcut")
+	}
+	if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyD}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("Ctrl+D typed key should be handled")
+	}
+	if dialog.unpinned != 1 {
+		t.Fatalf("UnpinSelectedPath count = %d, want 1", dialog.unpinned)
 	}
 }
 

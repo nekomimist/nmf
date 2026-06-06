@@ -104,6 +104,8 @@ Operational notes:
 - Call `Manager.Close` on shutdown to flush pending writes.
 - Navigation history keeps `lastUsed` and `useCount` runtime stats, sorts saved
   entries by zoxide-style frecency, and defaults to retaining 10000 paths.
+  `navigationHistory.pinned` stores saved History Jump paths outside that
+  pruning limit.
 
 ## Architecture Invariants
 

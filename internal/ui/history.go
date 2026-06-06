@@ -68,43 +68,50 @@ func (c *CustomSearchEntry) updateIMEAnchor() {
 
 // NavigationHistoryDialog represents a navigation history dialog with search
 type NavigationHistoryDialog struct {
-	searchEntry   *CustomSearchEntry
-	historyList   *widget.List
-	selectedPath  string
-	selectedIndex int // Currently selected list index
-	filteredPaths []string
-	allPaths      []string
-	openPaths     map[string]bool
-	lastUsed      map[string]time.Time
-	dataBinding   binding.StringList
-	debugPrint    func(format string, args ...interface{})
-	keyManager    *keymanager.KeyManager // Keyboard input manager
-	dialog        dialog.Dialog          // Reference to the actual dialog
-	callback      func(string)           // Callback function for selection
-	onPathChanged func(string)
-	parent        fyne.Window // Parent window for focus management
-	closed        bool        // Prevent double-close/pop
-	sink          *KeySink    // Key capturing wrapper
-	matchers      *search.Provider
-	listScroller  *dialogListScroller
-	scrollRight   bool
+	searchEntry      *CustomSearchEntry
+	historyList      *widget.List
+	selectedPath     string
+	selectedIndex    int // Currently selected list index
+	filteredPaths    []string
+	allPaths         []string
+	openPaths        map[string]bool
+	pinnedPaths      map[string]bool
+	unpinRemovesPath map[string]bool
+	lastUsed         map[string]time.Time
+	dataBinding      binding.StringList
+	debugPrint       func(format string, args ...interface{})
+	keyManager       *keymanager.KeyManager // Keyboard input manager
+	dialog           dialog.Dialog          // Reference to the actual dialog
+	callback         func(string)           // Callback function for selection
+	unpinCallback    func(string) bool
+	onPathChanged    func(string)
+	parent           fyne.Window // Parent window for focus management
+	closed           bool        // Prevent double-close/pop
+	sink             *KeySink    // Key capturing wrapper
+	matchers         *search.Provider
+	listScroller     *dialogListScroller
+	scrollRight      bool
 }
 
 // NewNavigationHistoryDialog creates a new navigation history dialog
 func NewNavigationHistoryDialog(
 	paths []string,
 	openPaths map[string]bool,
+	pinnedPaths map[string]bool,
+	unpinRemovesPath map[string]bool,
 	lastUsed map[string]time.Time,
 	keyManager *keymanager.KeyManager,
 	debugPrint func(format string, args ...interface{}),
 	matchers ...*search.Provider,
 ) *NavigationHistoryDialog {
 	dialog := &NavigationHistoryDialog{
-		allPaths:   paths,
-		openPaths:  openPaths,
-		lastUsed:   lastUsed,
-		debugPrint: debugPrint,
-		keyManager: keyManager,
+		allPaths:         paths,
+		openPaths:        openPaths,
+		pinnedPaths:      pinnedPaths,
+		unpinRemovesPath: unpinRemovesPath,
+		lastUsed:         lastUsed,
+		debugPrint:       debugPrint,
+		keyManager:       keyManager,
 	}
 	if len(matchers) > 0 {
 		dialog.matchers = matchers[0]
@@ -138,15 +145,15 @@ func (nhd *NavigationHistoryDialog) createWidgets() {
 			return text
 		},
 		func(item binding.DataItem, obj fyne.CanvasObject) {
-			str, _ := item.(binding.String).Get()
-			if str == "" {
+			path, _ := item.(binding.String).Get()
+			if path == "" {
 				return
 			}
 
 			if text, ok := obj.(*canvas.Text); ok {
-				text.Text = str
+				text.Text = nhd.displayPath(path)
 				text.TextSize = fynetheme.TextSize()
-				text.Color = nhd.historyTextColor(str)
+				text.Color = nhd.historyTextColor(path)
 				text.Refresh()
 			}
 		},
@@ -216,8 +223,8 @@ func (nhd *NavigationHistoryDialog) notifySelectedPathChanged() {
 	}
 }
 
-// ShowDialog shows the navigation history dialog
-func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func(string)) {
+// ShowDialog shows the navigation history dialog.
+func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func(string), unpinCallback ...func(string) bool) {
 	// Create title label
 	titleLabel := widget.NewLabel("Navigation History")
 	titleLabel.TextStyle.Bold = true
@@ -274,6 +281,9 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 
 	// Store callback and parent for use by key handler
 	nhd.callback = callback
+	if len(unpinCallback) > 0 {
+		nhd.unpinCallback = unpinCallback[0]
+	}
 	nhd.parent = parent
 
 	// Create and push history dialog key handler
@@ -523,6 +533,31 @@ func (nhd *NavigationHistoryDialog) CopySelectedPathToSearch() {
 	}
 }
 
+func (nhd *NavigationHistoryDialog) UnpinSelectedPath() {
+	if nhd.selectedPath == "" || !nhd.pinnedPaths[nhd.selectedPath] {
+		return
+	}
+	path := nhd.selectedPath
+	nhd.debugPrint("HistoryDialog: Unpin selected path: %s", path)
+	if nhd.unpinCallback != nil && !nhd.unpinCallback(path) {
+		return
+	}
+	delete(nhd.pinnedPaths, path)
+	if nhd.unpinRemovesPath[path] {
+		nhd.removePath(path)
+	}
+	query := ""
+	if nhd.searchEntry != nil {
+		query = nhd.searchEntry.Text
+	}
+	nhd.updateFilteredPaths(query)
+}
+
+func (nhd *NavigationHistoryDialog) removePath(path string) {
+	nhd.allPaths = removeString(nhd.allPaths, path)
+	nhd.filteredPaths = removeString(nhd.filteredPaths, path)
+}
+
 func (nhd *NavigationHistoryDialog) ScrollSelectedRight() {
 	nhd.scrollRight = true
 	nhd.applyHorizontalScroll()
@@ -559,4 +594,20 @@ func (nhd *NavigationHistoryDialog) historyTextColor(path string) color.Color {
 		}
 	}
 	return currentAppThemeColor(fynetheme.ColorNameForeground)
+}
+
+func (nhd *NavigationHistoryDialog) displayPath(path string) string {
+	if nhd.pinnedPaths[path] {
+		return "* " + path
+	}
+	return path
+}
+
+func removeString(values []string, value string) []string {
+	for i, entry := range values {
+		if entry == value {
+			return append(values[:i], values[i+1:]...)
+		}
+	}
+	return values
 }
