@@ -139,6 +139,45 @@ func TestArchiveVFSKeepsValidUTF8ZipNamesWithoutUTF8Flag(t *testing.T) {
 	}
 }
 
+func TestArchiveVFSRejectsUnsafeEntryNames(t *testing.T) {
+	tests := []string{
+		"../evil.txt",
+		"dir/../../evil.txt",
+		"/abs.txt",
+		"C:/evil.txt",
+		`dir\evil.txt`,
+	}
+	for _, name := range tests {
+		t.Run(name, func(t *testing.T) {
+			archivePath := writeTestZip(t, map[string]string{name: "bad"})
+			_, err := ReadDirPortable(ArchiveRootPath(archivePath))
+			if !errors.Is(err, ErrUnsafeArchiveEntry) {
+				t.Fatalf("ReadDirPortable unsafe archive error = %v, want ErrUnsafeArchiveEntry", err)
+			}
+		})
+	}
+}
+
+func TestArchiveVFSAllowsDotPrefixedSafeEntryNames(t *testing.T) {
+	archivePath := writeTestZip(t, map[string]string{
+		"./dir/file.txt": "safe",
+	})
+
+	entries, err := ReadDirPortable(ArchiveRootPath(archivePath))
+	if err != nil {
+		t.Fatalf("ReadDirPortable returned error: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "dir" {
+		t.Fatalf("root entries = %v, want dir", entryNames(entries))
+	}
+}
+
+func TestValidateArchiveEntryPathRejectsNUL(t *testing.T) {
+	if err := ValidateArchiveEntryPath("bad\x00name.txt", false); !errors.Is(err, ErrUnsafeArchiveEntry) {
+		t.Fatalf("ValidateArchiveEntryPath NUL error = %v, want ErrUnsafeArchiveEntry", err)
+	}
+}
+
 func TestResolveArchiveZipNameEncoding(t *testing.T) {
 	tests := []string{"", "shift_jis", "sjis", "cp932", "cp437", "ibm437", "utf-8", "UTF8"}
 	for _, tt := range tests {

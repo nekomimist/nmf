@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -25,6 +26,10 @@ type ArchiveVFS struct {
 }
 
 var archiveTempMu sync.Mutex
+
+// ErrUnsafeArchiveEntry reports an archive entry name that could escape or
+// confuse a destination filesystem if materialized.
+var ErrUnsafeArchiveEntry = errors.New("unsafe archive entry")
 
 // NewArchiveVFS opens archivePath as a read-only virtual file system.
 func NewArchiveVFS(archivePath string) (*ArchiveVFS, error) {
@@ -71,13 +76,45 @@ func archiveFileSystem(ctx context.Context, localPath string, opts ArchiveOption
 		return nil, fmt.Errorf("identify format: %w", err)
 	}
 	if _, ok := format.(archives.Zip); ok {
+		format = archives.Zip{TextEncoding: archiveZipNameEncoding(opts)}
+	}
+	extractor, ok := format.(archives.Extractor)
+	if !ok {
+		return nil, fmt.Errorf("format is not extractable: %s", localPath)
+	}
+	if err := validateArchiveFileSystem(ctx, localPath, extractor); err != nil {
+		return nil, err
+	}
+	if zipFormat, ok := format.(archives.Zip); ok {
 		return &archives.ArchiveFS{
 			Path:    localPath,
-			Format:  archives.Zip{TextEncoding: archiveZipNameEncoding(opts)},
+			Format:  zipFormat,
 			Context: ctx,
 		}, nil
 	}
 	return archives.FileSystem(ctx, localPath, nil)
+}
+
+func validateArchiveFileSystem(ctx context.Context, localPath string, extractor archives.Extractor) error {
+	file, err := os.Open(localPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	err = extractor.Extract(ctx, file, func(ctx context.Context, entry archives.FileInfo) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := ValidateArchiveEntryPath(entry.NameInArchive, entry.IsDir()); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("validate archive entries: %w", err)
+	}
+	return nil
 }
 
 // IsSupportedArchive reports whether p can be opened as an archive-like FS.
@@ -106,15 +143,28 @@ func IsSupportedArchive(p string) bool {
 }
 
 func (a *ArchiveVFS) ReadDir(p string) ([]os.DirEntry, error) {
-	entries, err := fs.ReadDir(a.fsys, archiveNativePath(p))
+	native, err := safeArchiveNativePath(p)
 	if err != nil {
 		return nil, err
+	}
+	entries, err := fs.ReadDir(a.fsys, native)
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range entries {
+		if err := ValidateArchiveEntryBaseName(entry.Name()); err != nil {
+			return nil, err
+		}
 	}
 	return entries, nil
 }
 
 func (a *ArchiveVFS) Stat(p string) (os.FileInfo, error) {
-	return fs.Stat(a.fsys, archiveNativePath(p))
+	native, err := safeArchiveNativePath(p)
+	if err != nil {
+		return nil, err
+	}
+	return fs.Stat(a.fsys, native)
 }
 
 func (a *ArchiveVFS) Capabilities() Capabilities {
@@ -130,7 +180,11 @@ func (a *ArchiveVFS) Base(p string) string {
 }
 
 func (a *ArchiveVFS) Open(p string) (io.ReadCloser, error) {
-	f, err := a.fsys.Open(archiveNativePath(p))
+	native, err := safeArchiveNativePath(p)
+	if err != nil {
+		return nil, err
+	}
+	f, err := a.fsys.Open(native)
 	if err != nil {
 		return nil, err
 	}
@@ -213,8 +267,8 @@ func ExtractArchiveEntryToTemp(displayPath string) (string, error) {
 	if info.IsDir() {
 		return "", fmt.Errorf("archive entry is a directory: %s", displayPath)
 	}
-	if !safeArchiveEntryName(inner) {
-		return "", fmt.Errorf("unsafe archive entry path: %s", inner)
+	if err := ValidateArchiveEntryPath(inner, false); err != nil {
+		return "", err
 	}
 
 	in, err := vfs.Open(inner)
@@ -268,18 +322,71 @@ func CleanupOldArchiveOpenTemps() {
 	}
 }
 
-func safeArchiveEntryName(p string) bool {
-	if p == "" || p == "." || strings.ContainsRune(p, 0) {
+func safeArchiveNativePath(p string) (string, error) {
+	native := archiveNativePath(p)
+	if native == "." {
+		return native, nil
+	}
+	if err := ValidateArchiveEntryPath(native, false); err != nil {
+		return "", err
+	}
+	return native, nil
+}
+
+// ValidateArchiveEntryPath rejects archive paths that could escape or be
+// reinterpreted when copied to local or SMB filesystems.
+func ValidateArchiveEntryPath(p string, isDir bool) error {
+	raw := strings.TrimSpace(p)
+	if raw == "" || strings.ContainsRune(raw, 0) {
+		return unsafeArchiveEntryError(p)
+	}
+	if strings.ContainsAny(raw, `\:`) {
+		return unsafeArchiveEntryError(p)
+	}
+	if path.IsAbs(raw) || filepath.IsAbs(raw) || hasWindowsVolumePrefix(raw) {
+		return unsafeArchiveEntryError(p)
+	}
+
+	cleaned := path.Clean(raw)
+	if cleaned == "." {
+		if isDir {
+			return nil
+		}
+		return unsafeArchiveEntryError(p)
+	}
+	for _, part := range strings.Split(cleaned, "/") {
+		if part == "" || part == "." || part == ".." {
+			return unsafeArchiveEntryError(p)
+		}
+	}
+	return nil
+}
+
+// ValidateArchiveEntryBaseName rejects names returned by ReadDir that are not
+// single path elements on every supported platform.
+func ValidateArchiveEntryBaseName(name string) error {
+	if err := ValidateArchiveEntryPath(name, false); err != nil {
+		return err
+	}
+	if strings.Contains(name, "/") || strings.Contains(name, `\`) {
+		return unsafeArchiveEntryError(name)
+	}
+	return nil
+}
+
+func unsafeArchiveEntryError(p string) error {
+	return fmt.Errorf("%w: %q", ErrUnsafeArchiveEntry, p)
+}
+
+func hasWindowsVolumePrefix(p string) bool {
+	if len(p) >= 2 && p[1] == ':' {
+		c := p[0]
+		return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z')
+	}
+	if runtime.GOOS != "windows" {
 		return false
 	}
-	cleaned := cleanArchiveInnerPath(p)
-	if strings.HasPrefix(cleaned, "../") || cleaned == ".." {
-		return false
-	}
-	if filepath.IsAbs(p) || strings.Contains(p, ":") {
-		return false
-	}
-	return true
+	return filepath.VolumeName(p) != ""
 }
 
 func pathJoin(elem ...string) string {

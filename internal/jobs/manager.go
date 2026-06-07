@@ -681,6 +681,9 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 		return wrapPath(src.displayPath(), err)
 	}
 	base := baseName(src)
+	if err := validateArchiveSourceName(src, base); err != nil {
+		return wrapPath(src.displayPath(), err)
+	}
 	dst := joinPath(destDir, base)
 	dst, skipped, overwrite, err := resolveDestinationConflict(j, execCtx, src, dst, fi)
 	if err != nil {
@@ -756,6 +759,9 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 			if canceled(j) {
 				return errCanceled
 			}
+			if err := validateArchiveSourceName(src, e.Name()); err != nil {
+				return wrapPath(src.displayPath(), err)
+			}
 			child := joinPath(src, e.Name())
 			dbg("job %d: recurse %s -> %s", j.ID, child.displayPath(), dst.displayPath())
 			if err := copyOrMovePathResolved(j, execCtx, child, dst); err != nil {
@@ -802,6 +808,13 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 		}
 	}
 	return nil
+}
+
+func validateArchiveSourceName(src executionPath, name string) error {
+	if src.backend != backendArchive {
+		return nil
+	}
+	return fileinfo.ValidateArchiveEntryBaseName(name)
 }
 
 func shouldPreserveTimestamps(j *Job) bool {

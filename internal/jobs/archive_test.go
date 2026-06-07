@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"archive/zip"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -38,6 +39,26 @@ func TestMoveFromArchiveIsRejected(t *testing.T) {
 	src := fileinfo.JoinPath(fileinfo.ArchiveRootPath(archivePath), "file.txt")
 	if err := copyOrMovePath(job, src, dstDir); err == nil {
 		t.Fatal("copyOrMovePath move from archive returned nil error")
+	}
+}
+
+func TestCopyFromArchiveRejectsUnsafeEntryName(t *testing.T) {
+	archivePath := writeJobTestZip(t, map[string]string{
+		`dir\evil.txt`: "bad",
+	})
+	dstDir := t.TempDir()
+	job := &Job{Type: TypeCopy, ctx: t.Context()}
+
+	src := fileinfo.ArchiveRootPath(archivePath)
+	err := copyOrMovePath(job, src, dstDir)
+	if !errors.Is(err, fileinfo.ErrUnsafeArchiveEntry) {
+		t.Fatalf("copyOrMovePath unsafe archive error = %v, want ErrUnsafeArchiveEntry", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dstDir, "evil.txt")); !os.IsNotExist(statErr) {
+		t.Fatalf("unsafe destination was created or stat failed unexpectedly: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(dstDir, "dir", "evil.txt")); !os.IsNotExist(statErr) {
+		t.Fatalf("unsafe nested destination was created or stat failed unexpectedly: %v", statErr)
 	}
 }
 
