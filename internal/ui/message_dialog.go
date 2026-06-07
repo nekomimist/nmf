@@ -2,6 +2,7 @@ package ui
 
 import (
 	"math"
+	"net/url"
 	"strings"
 	"unicode/utf8"
 
@@ -55,6 +56,98 @@ func ShowCompactMessageDialogWithOnClose(parent fyne.Window, title, message stri
 			parent.Canvas().Focus(sink)
 		}
 	})
+}
+
+// ShowCompactVersionDialog displays app metadata with a clickable repository URL.
+func ShowCompactVersionDialog(parent fyne.Window, software, repository, version string) {
+	fyne.Do(func() {
+		var d *dialog.CustomDialog
+		closed := false
+		closeDialog := func() {
+			if closed {
+				return
+			}
+			closed = true
+			if d != nil {
+				d.Hide()
+			}
+		}
+
+		rows := versionDialogRows(software, repository, version)
+		messageSize, dialogSize := versionDialogSizes(software, repository, version)
+		messageBox := container.NewGridWrap(messageSize, container.NewPadded(rows))
+		content := container.NewVBox(
+			messageBox,
+			dialogOKButtonRow(closeDialog),
+		)
+		sink := newCompactMessageSink(content, closeDialog)
+
+		d = dialog.NewCustomWithoutButtons("Version", sink, parent)
+		d.Show()
+		d.Resize(dialogSize)
+		if parent != nil {
+			parent.Canvas().Focus(sink)
+		}
+	})
+}
+
+func versionDialogRepositoryValue(repository string) fyne.CanvasObject {
+	parsed, err := url.Parse(repository)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return versionDialogValueLabel(repository)
+	}
+	link := widget.NewHyperlink(repository, parsed)
+	link.Wrapping = fyne.TextWrapBreak
+	return link
+}
+
+func versionDialogRows(software, repository, version string) fyne.CanvasObject {
+	return container.NewVBox(
+		versionDialogRow("Software:", versionDialogValueLabel(software), versionDialogValueHeight(software)),
+		versionDialogRow("Repository:", versionDialogRepositoryValue(repository), versionDialogValueHeight(repository)),
+		versionDialogRow("Version:", versionDialogValueLabel(version), versionDialogValueHeight(version)),
+	)
+}
+
+func versionDialogRow(label string, value fyne.CanvasObject, height float32) fyne.CanvasObject {
+	labelWidget := widget.NewLabel(label)
+	return container.NewBorder(
+		nil,
+		nil,
+		container.NewGridWrap(fyne.NewSize(versionDialogLabelWidth, height), labelWidget),
+		nil,
+		container.NewGridWrap(fyne.NewSize(versionDialogValueWidth, height), value),
+	)
+}
+
+func versionDialogValueLabel(text string) *widget.Label {
+	label := widget.NewLabel(text)
+	label.Wrapping = fyne.TextWrapBreak
+	return label
+}
+
+func versionDialogSizes(software, repository, version string) (fyne.Size, fyne.Size) {
+	contentHeight := versionDialogValueHeight(software) +
+		versionDialogValueHeight(repository) +
+		versionDialogValueHeight(version) +
+		compactMessageVPadding
+	messageHeight := maxFloat32(
+		compactMessageMinHeight,
+		contentHeight,
+	)
+	messageSize := metricsSize(compactMessageWidth, messageHeight)
+	return messageSize, metricsSize(compactMessageWidth+compactDialogExtraWidth, messageHeight+compactDialogExtraHeight)
+}
+
+func versionDialogValueHeight(text string) float32 {
+	lines := compactMessageEstimatedLineCount(text, versionDialogValueCharsPerLine)
+	return maxFloat32(versionDialogRowHeight, float32(lines)*versionDialogWrappedLineHeight)
+}
+
+func versionDialogMessageText(software, repository, version string) string {
+	return "Software: " + software +
+		"\nRepository: " + repository +
+		"\nVersion: " + version
 }
 
 func compactMessageDialogSizes(message string) (fyne.Size, fyne.Size) {

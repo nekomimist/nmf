@@ -66,6 +66,12 @@ const (
 	compactDialogExtraWidth    float32 = 40
 	compactDialogExtraHeight   float32 = 92
 	compactMessageCharsPerLine         = 52
+
+	versionDialogLabelWidth        float32 = 135
+	versionDialogValueWidth        float32 = compactMessageWidth - versionDialogLabelWidth - 20
+	versionDialogRowHeight         float32 = 34
+	versionDialogWrappedLineHeight float32 = 28
+	versionDialogValueCharsPerLine         = 34
 )
 
 func metricsSize(width, height float32) fyne.Size {

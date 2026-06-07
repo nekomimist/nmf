@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"fyne.io/fyne/v2"
@@ -39,5 +40,23 @@ func TestShowMessageDialogRunsImmediatelyWithoutKeyManager(t *testing.T) {
 
 	if !ran {
 		t.Fatal("message show should run immediately without a key manager")
+	}
+}
+
+func TestVersionDialogMessageIncludesAppMetadata(t *testing.T) {
+	oldVersion := version
+	version = "test-version"
+	t.Cleanup(func() {
+		version = oldVersion
+	})
+
+	got := versionDialogMessage()
+	want := strings.Join([]string{
+		"Software: Nekomimist Filer (nmf)",
+		"Repository: https://github.com/nekomimist/nmf",
+		"Version: test-version",
+	}, "\n")
+	if got != want {
+		t.Fatalf("versionDialogMessage() = %q, want %q", got, want)
 	}
 }

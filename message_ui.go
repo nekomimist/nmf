@@ -9,7 +9,15 @@ func (fm *FileManager) ShowMessageDialog(title string, message string) {
 }
 
 func (fm *FileManager) ShowVersionDialog() {
-	fm.ShowMessageDialog("Version", appVersion())
+	fm.showMessageDialog(func() {
+		ui.ShowCompactVersionDialog(fm.window, appFullName, appRepository, appVersion())
+	})
+}
+
+func versionDialogMessage() string {
+	return "Software: " + appFullName +
+		"\nRepository: " + appRepository +
+		"\nVersion: " + appVersion()
 }
 
 func (fm *FileManager) showMessageDialog(show func()) {

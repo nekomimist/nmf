@@ -9,6 +9,8 @@ import (
 const (
 	appID          = "io.github.nekomimist.nmf"
 	appDisplayName = "NMF"
+	appFullName    = "Nekomimist Filer (nmf)"
+	appRepository  = "https://github.com/nekomimist/nmf"
 )
 
 //go:embed nmf-icon.png
