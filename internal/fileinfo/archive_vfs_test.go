@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"golang.org/x/text/encoding"
@@ -155,6 +156,195 @@ func TestArchiveVFSRejectsUnsafeEntryNames(t *testing.T) {
 				t.Fatalf("ReadDirPortable unsafe archive error = %v, want ErrUnsafeArchiveEntry", err)
 			}
 		})
+	}
+}
+
+func TestArchiveVFSPromptsForEncryptedSevenZip(t *testing.T) {
+	provider := setArchivePasswordProviderForTest(t, "secret")
+	archivePath := filepath.Join("testdata", "encrypted.7z")
+
+	entries, err := ReadDirPortable(ArchiveRootPath(archivePath))
+	if err != nil {
+		t.Fatalf("ReadDirPortable encrypted 7z returned error: %v", err)
+	}
+	if got := entryNames(entries); len(got) != 1 || got[0] != "secret.txt" {
+		t.Fatalf("encrypted 7z entries = %v, want [secret.txt]", got)
+	}
+
+	entryPath := JoinPath(ArchiveRootPath(archivePath), "secret.txt")
+	vfs, parsed, err := ResolveRead(entryPath)
+	if err != nil {
+		t.Fatalf("ResolveRead encrypted 7z returned error: %v", err)
+	}
+	rc, err := vfs.Open(parsed.Native)
+	if err != nil {
+		t.Fatalf("OpenPortable encrypted 7z returned error: %v", err)
+	}
+	defer rc.Close()
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("ReadAll encrypted 7z returned error: %v", err)
+	}
+	if string(data) != "secret archive data\n" {
+		t.Fatalf("encrypted 7z content = %q", string(data))
+	}
+	if provider.callsFor(archivePath) != 1 {
+		t.Fatalf("encrypted 7z prompt count = %d, want 1", provider.callsFor(archivePath))
+	}
+}
+
+func TestArchiveVFSPromptsForEncryptedRar(t *testing.T) {
+	provider := setArchivePasswordProviderForTest(t, "secret")
+	archivePath := filepath.Join("testdata", "encrypted.rar")
+
+	entries, err := ReadDirPortable(ArchiveRootPath(archivePath))
+	if err != nil {
+		t.Fatalf("ReadDirPortable encrypted rar returned error: %v", err)
+	}
+	if got := entryNames(entries); len(got) != 1 || got[0] != "secret.txt" {
+		t.Fatalf("encrypted rar entries = %v, want [secret.txt]", got)
+	}
+	if provider.callsFor(archivePath) != 1 {
+		t.Fatalf("encrypted rar prompt count = %d, want 1", provider.callsFor(archivePath))
+	}
+}
+
+func TestArchiveVFSPromptsForContentEncryptedVisibleNames(t *testing.T) {
+	tests := []struct {
+		name        string
+		archivePath string
+	}{
+		{name: "7z", archivePath: filepath.Join("testdata", "encrypted-names-visible.7z")},
+		{name: "rar", archivePath: filepath.Join("testdata", "encrypted-names-visible.rar")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			provider := setArchivePasswordProviderForTest(t, "secret")
+
+			entries, err := ReadDirPortable(ArchiveRootPath(tt.archivePath))
+			if err != nil {
+				t.Fatalf("ReadDirPortable content-encrypted %s returned error: %v", tt.name, err)
+			}
+			if got := entryNames(entries); len(got) != 1 || got[0] != "secret.txt" {
+				t.Fatalf("content-encrypted %s entries = %v, want [secret.txt]", tt.name, got)
+			}
+
+			entryPath := JoinPath(ArchiveRootPath(tt.archivePath), "secret.txt")
+			vfs, parsed, err := ResolveRead(entryPath)
+			if err != nil {
+				t.Fatalf("ResolveRead content-encrypted %s returned error: %v", tt.name, err)
+			}
+			rc, err := vfs.Open(parsed.Native)
+			if err != nil {
+				t.Fatalf("Open content-encrypted %s returned error: %v", tt.name, err)
+			}
+			defer rc.Close()
+			data, err := io.ReadAll(rc)
+			if err != nil {
+				t.Fatalf("ReadAll content-encrypted %s returned error: %v", tt.name, err)
+			}
+			if string(data) != "secret archive data\n" {
+				t.Fatalf("content-encrypted %s content = %q", tt.name, string(data))
+			}
+			if provider.callsFor(tt.archivePath) != 1 {
+				t.Fatalf("content-encrypted %s prompt count = %d, want 1", tt.name, provider.callsFor(tt.archivePath))
+			}
+		})
+	}
+}
+
+func TestExtractArchivePromptsForEncryptedArchives(t *testing.T) {
+	tests := []struct {
+		name        string
+		archivePath string
+	}{
+		{name: "7z", archivePath: filepath.Join("testdata", "encrypted.7z")},
+		{name: "rar", archivePath: filepath.Join("testdata", "encrypted.rar")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			provider := setArchivePasswordProviderForTest(t, "secret")
+			got := make(map[string]string)
+
+			err := ExtractArchive(t.Context(), tt.archivePath, func(_ context.Context, entry ArchiveEntry) error {
+				if entry.Info.IsDir() {
+					return nil
+				}
+				rc, err := entry.Open()
+				if err != nil {
+					return err
+				}
+				defer rc.Close()
+				data, err := io.ReadAll(rc)
+				if err != nil {
+					return err
+				}
+				got[entry.Name] = string(data)
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("ExtractArchive encrypted %s returned error: %v", tt.name, err)
+			}
+			if got["secret.txt"] != "secret archive data\n" {
+				t.Fatalf("ExtractArchive encrypted %s content = %#v", tt.name, got)
+			}
+			if provider.callsFor(tt.archivePath) != 1 {
+				t.Fatalf("ExtractArchive encrypted %s prompt count = %d, want 1", tt.name, provider.callsFor(tt.archivePath))
+			}
+		})
+	}
+}
+
+func TestArchivePasswordProviderRetriesWrongPassword(t *testing.T) {
+	provider := setArchivePasswordProviderForTest(t, "wrong", "secret")
+	archivePath := filepath.Join("testdata", "encrypted.7z")
+
+	_, err := ReadDirPortable(ArchiveRootPath(archivePath))
+	if err != nil {
+		t.Fatalf("ReadDirPortable retry encrypted 7z returned error: %v", err)
+	}
+	if provider.callsFor(archivePath) != 2 {
+		t.Fatalf("encrypted 7z retry prompt count = %d, want 2", provider.callsFor(archivePath))
+	}
+	if !provider.sawRetry(archivePath) {
+		t.Fatalf("encrypted 7z provider did not receive retry request")
+	}
+}
+
+func TestArchivePasswordProviderCachesPassword(t *testing.T) {
+	provider := setArchivePasswordProviderForTest(t, "secret")
+	archivePath := filepath.Join("testdata", "encrypted.7z")
+
+	if _, err := ReadDirPortable(ArchiveRootPath(archivePath)); err != nil {
+		t.Fatalf("first ReadDirPortable encrypted 7z returned error: %v", err)
+	}
+	if _, err := ReadDirPortable(ArchiveRootPath(archivePath)); err != nil {
+		t.Fatalf("second ReadDirPortable encrypted 7z returned error: %v", err)
+	}
+	if provider.callsFor(archivePath) != 1 {
+		t.Fatalf("encrypted 7z cached prompt count = %d, want 1", provider.callsFor(archivePath))
+	}
+}
+
+func TestArchivePasswordProviderCancel(t *testing.T) {
+	setArchivePasswordProviderForTest(t)
+	archivePath := filepath.Join("testdata", "encrypted.7z")
+
+	_, err := ReadDirPortable(ArchiveRootPath(archivePath))
+	if !errors.Is(err, ErrArchivePasswordRequired) {
+		t.Fatalf("ReadDirPortable cancelled password error = %v, want ErrArchivePasswordRequired", err)
+	}
+}
+
+func TestArchiveVFSDoesNotPromptForPlainZip(t *testing.T) {
+	provider := setArchivePasswordProviderForTest(t, "secret")
+	archivePath := writeTestZip(t, map[string]string{"plain.txt": "plain"})
+
+	if _, err := ReadDirPortable(ArchiveRootPath(archivePath)); err != nil {
+		t.Fatalf("ReadDirPortable plain zip returned error: %v", err)
+	}
+	if provider.totalCalls() != 0 {
+		t.Fatalf("plain zip prompt count = %d, want 0", provider.totalCalls())
 	}
 }
 
@@ -324,4 +514,63 @@ func entryNames(entries []os.DirEntry) []string {
 		names = append(names, entry.Name())
 	}
 	return names
+}
+
+type fakeArchivePasswordProvider struct {
+	mu      sync.Mutex
+	answers []string
+	calls   map[string]int
+	retried map[string]bool
+}
+
+func setArchivePasswordProviderForTest(t *testing.T, answers ...string) *fakeArchivePasswordProvider {
+	t.Helper()
+	previous := archivePasswordProvider
+	provider := &fakeArchivePasswordProvider{
+		answers: append([]string(nil), answers...),
+		calls:   make(map[string]int),
+		retried: make(map[string]bool),
+	}
+	SetArchivePasswordProvider(NewCachedArchivePasswordProvider(provider))
+	t.Cleanup(func() {
+		SetArchivePasswordProvider(previous)
+	})
+	return provider
+}
+
+func (p *fakeArchivePasswordProvider) GetArchivePassword(_ context.Context, req ArchivePasswordRequest) (string, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.calls[req.ArchivePath]++
+	if req.Retry {
+		p.retried[req.ArchivePath] = true
+	}
+	if len(p.answers) == 0 {
+		return "", errors.New("cancelled")
+	}
+	answer := p.answers[0]
+	p.answers = p.answers[1:]
+	return answer, nil
+}
+
+func (p *fakeArchivePasswordProvider) callsFor(path string) int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.calls[path]
+}
+
+func (p *fakeArchivePasswordProvider) totalCalls() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	total := 0
+	for _, n := range p.calls {
+		total += n
+	}
+	return total
+}
+
+func (p *fakeArchivePasswordProvider) sawRetry(path string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.retried[path]
 }

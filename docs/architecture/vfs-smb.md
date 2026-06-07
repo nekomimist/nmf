@@ -27,6 +27,9 @@ Archive paths are read-only. The root display path for an archive is
 ZIP entry names without the UTF-8 flag use the configured fallback charset
 (`ui.archive.zipNameEncoding`, default `shift_jis`); valid UTF-8 names are kept
 as UTF-8 even when the flag is absent.
+Password-protected 7z/RAR archives prompt for a password and cache it in memory
+for the current session. Password-protected ZIP archives are not supported by
+the current archive backend.
 
 ## Provider Selection Rules
 

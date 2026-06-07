@@ -35,6 +35,9 @@ const (
 	smbLoginDialogWidth  float32 = 420
 	smbLoginDialogHeight float32 = 200
 
+	archivePasswordDialogWidth  float32 = 420
+	archivePasswordDialogHeight float32 = 140
+
 	lineEditDialogWidth  float32 = 640
 	lineEditDialogHeight float32 = 180
 

@@ -14,7 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bodgit/sevenzip"
 	"github.com/mholt/archives"
+	"github.com/nwaples/rardecode/v2"
 )
 
 // ArchiveVFS exposes a read-only archive as a VFS.
@@ -23,6 +25,7 @@ type ArchiveVFS struct {
 	localPath   string
 	tempPath    string
 	fsys        fs.FS
+	mu          sync.Mutex
 }
 
 // ArchiveEntry describes one entry streamed from an archive.
@@ -57,7 +60,7 @@ func NewArchiveVFSContext(ctx context.Context, archivePath string) (*ArchiveVFS,
 	if err != nil {
 		return nil, err
 	}
-	fsys, err := archiveFileSystem(ctx, localPath, currentArchiveOptions())
+	fsys, err := archiveFileSystem(ctx, archivePath, localPath, currentArchiveOptions())
 	if err != nil {
 		if tempPath != "" {
 			_ = os.Remove(tempPath)
@@ -72,29 +75,30 @@ func NewArchiveVFSContext(ctx context.Context, archivePath string) (*ArchiveVFS,
 	}, nil
 }
 
-func archiveFileSystem(ctx context.Context, localPath string, opts ArchiveOptions) (fs.FS, error) {
-	format, err := identifyArchiveFormat(ctx, localPath, opts)
+func archiveFileSystem(ctx context.Context, archivePath, localPath string, opts ArchiveOptions) (fs.FS, error) {
+	var fsys fs.FS
+	err := withArchivePasswordRetry(ctx, archivePath, localPath, opts, true, func(format archives.Format) error {
+		extractor, ok := format.(archives.Extractor)
+		if !ok {
+			return fmt.Errorf("format is not extractable: %s", localPath)
+		}
+		if err := validateArchiveFileSystem(ctx, localPath, extractor, false); err != nil {
+			return err
+		}
+		fsys = &archives.ArchiveFS{
+			Path:    localPath,
+			Format:  extractor,
+			Context: ctx,
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	extractor, ok := format.(archives.Extractor)
-	if !ok {
-		return nil, fmt.Errorf("format is not extractable: %s", localPath)
-	}
-	if err := validateArchiveFileSystem(ctx, localPath, extractor); err != nil {
-		return nil, err
-	}
-	if zipFormat, ok := format.(archives.Zip); ok {
-		return &archives.ArchiveFS{
-			Path:    localPath,
-			Format:  zipFormat,
-			Context: ctx,
-		}, nil
-	}
-	return archives.FileSystem(ctx, localPath, nil)
+	return fsys, nil
 }
 
-func identifyArchiveFormat(ctx context.Context, localPath string, opts ArchiveOptions) (archives.Format, error) {
+func identifyArchiveFormat(ctx context.Context, localPath string) (archives.Format, error) {
 	file, err := os.Open(localPath)
 	if err != nil {
 		return nil, err
@@ -105,13 +109,162 @@ func identifyArchiveFormat(ctx context.Context, localPath string, opts ArchiveOp
 	if err != nil {
 		return nil, fmt.Errorf("identify format: %w", err)
 	}
-	if _, ok := format.(archives.Zip); ok {
-		format = archives.Zip{TextEncoding: archiveZipNameEncoding(opts)}
-	}
 	return format, nil
 }
 
-func validateArchiveFileSystem(ctx context.Context, localPath string, extractor archives.Extractor) error {
+func withArchivePasswordRetry(ctx context.Context, archivePath, localPath string, opts ArchiveOptions, probeReadable bool, op func(archives.Format) error) error {
+	format, err := identifyArchiveFormat(ctx, localPath)
+	if err != nil {
+		return err
+	}
+	if !archiveFormatSupportsPassword(format) {
+		return op(applyArchiveFormatOptions(format, opts, ""))
+	}
+
+	var lastErr error
+	password, cached := cachedArchivePassword(archivePath)
+	retry := false
+	for attempt := 0; attempt < 4; attempt++ {
+		configured := applyArchiveFormatOptions(format, opts, password)
+		if probeReadable {
+			if extractor, ok := configured.(archives.Extractor); ok {
+				if err := validateArchiveFileSystem(ctx, localPath, extractor, false); err != nil {
+					lastErr = err
+					if !isArchivePasswordError(err) {
+						return err
+					}
+				} else if err := probeArchiveReadable(ctx, localPath, extractor); err != nil {
+					lastErr = err
+					if !isArchivePasswordError(err) {
+						return err
+					}
+				} else if err := op(configured); err != nil {
+					lastErr = err
+					if !isArchivePasswordError(err) {
+						return err
+					}
+				} else {
+					if password != "" {
+						putCachedArchivePassword(archivePath, password)
+					}
+					return nil
+				}
+			} else if err := op(configured); err != nil {
+				return err
+			} else {
+				return nil
+			}
+		} else if err := op(configured); err != nil {
+			lastErr = err
+			if !isArchivePasswordError(err) {
+				return err
+			}
+		} else {
+			if password != "" {
+				putCachedArchivePassword(archivePath, password)
+			}
+			return nil
+		}
+
+		if password != "" || cached {
+			clearCachedArchivePassword(archivePath)
+		}
+		password, err = getArchivePassword(ctx, ArchivePasswordRequest{
+			ArchivePath: archivePath,
+			Format:      archivePasswordFormatName(format),
+			Retry:       retry || password != "" || cached,
+		})
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrArchivePasswordRequired, err)
+		}
+		cached = false
+		retry = true
+	}
+	if lastErr == nil {
+		lastErr = ErrArchivePasswordRequired
+	}
+	return lastErr
+}
+
+func applyArchiveFormatOptions(format archives.Format, opts ArchiveOptions, password string) archives.Format {
+	switch f := format.(type) {
+	case archives.Zip:
+		return archives.Zip{
+			SelectiveCompression: f.SelectiveCompression,
+			Compression:          f.Compression,
+			ContinueOnError:      f.ContinueOnError,
+			TextEncoding:         archiveZipNameEncoding(opts),
+		}
+	case archives.SevenZip:
+		f.Password = password
+		return f
+	case archives.Rar:
+		f.Password = password
+		return f
+	case archives.CompressedArchive:
+		if f.Extraction != nil {
+			if extraction, ok := applyArchiveFormatOptions(f.Extraction, opts, password).(archives.Extraction); ok {
+				f.Extraction = extraction
+			}
+		}
+		if f.Archival != nil {
+			if archival, ok := applyArchiveFormatOptions(f.Archival, opts, password).(archives.Archival); ok {
+				f.Archival = archival
+			}
+		}
+		return f
+	default:
+		return format
+	}
+}
+
+func archiveFormatSupportsPassword(format archives.Format) bool {
+	switch f := format.(type) {
+	case archives.SevenZip, archives.Rar:
+		return true
+	case archives.CompressedArchive:
+		if f.Extraction != nil && archiveFormatSupportsPassword(f.Extraction) {
+			return true
+		}
+		if f.Archival != nil && archiveFormatSupportsPassword(f.Archival) {
+			return true
+		}
+	}
+	return false
+}
+
+func archivePasswordFormatName(format archives.Format) string {
+	switch f := format.(type) {
+	case archives.SevenZip:
+		return "7z"
+	case archives.Rar:
+		return "RAR"
+	case archives.CompressedArchive:
+		if f.Extraction != nil {
+			return archivePasswordFormatName(f.Extraction)
+		}
+		if f.Archival != nil {
+			return archivePasswordFormatName(f.Archival)
+		}
+	}
+	return "archive"
+}
+
+func isArchivePasswordError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrArchivePasswordRequired) ||
+		errors.Is(err, rardecode.ErrArchiveEncrypted) ||
+		errors.Is(err, rardecode.ErrArchivedFileEncrypted) ||
+		errors.Is(err, rardecode.ErrBadPassword) {
+		return true
+	}
+	var readErr *sevenzip.ReadError
+	return errors.As(err, &readErr) && readErr.Encrypted
+}
+
+func validateArchiveFileSystem(ctx context.Context, localPath string, extractor archives.Extractor, probeReadable bool) error {
 	file, err := os.Open(localPath)
 	if err != nil {
 		return err
@@ -125,10 +278,65 @@ func validateArchiveFileSystem(ctx context.Context, localPath string, extractor 
 		if err := ValidateArchiveEntryPath(entry.NameInArchive, entry.IsDir()); err != nil {
 			return err
 		}
+		if probeReadable && !entry.IsDir() {
+			if err := probeArchiveEntry(entry); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("validate archive entries: %w", err)
+	}
+	return nil
+}
+
+func probeArchiveEntry(entry archives.FileInfo) error {
+	if entry.Open == nil {
+		return nil
+	}
+	f, err := entry.Open()
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	var buf [1]byte
+	_, err = f.Read(buf[:])
+	if err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
+}
+
+func probeArchiveReadable(ctx context.Context, localPath string, extractor archives.Extractor) error {
+	file, err := os.Open(localPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	probed := false
+	err = extractor.Extract(ctx, file, func(ctx context.Context, entry archives.FileInfo) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if err := ValidateArchiveEntryPath(entry.NameInArchive, false); err != nil {
+			return err
+		}
+		probed = true
+		if err := probeArchiveEntry(entry); err != nil {
+			return err
+		}
+		return fs.SkipAll
+	})
+	if err != nil {
+		return fmt.Errorf("probe archive readability: %w", err)
+	}
+	if !probed {
+		return nil
 	}
 	return nil
 }
@@ -154,49 +362,47 @@ func ExtractArchive(ctx context.Context, archivePath string, handler func(contex
 		defer os.Remove(tempPath)
 	}
 
-	format, err := identifyArchiveFormat(ctx, localPath, currentArchiveOptions())
-	if err != nil {
-		return err
-	}
-	extractor, ok := format.(archives.Extractor)
-	if !ok {
-		return fmt.Errorf("format is not extractable: %s", archivePath)
-	}
+	err = withArchivePasswordRetry(ctx, archivePath, localPath, currentArchiveOptions(), true, func(format archives.Format) error {
+		extractor, ok := format.(archives.Extractor)
+		if !ok {
+			return fmt.Errorf("format is not extractable: %s", archivePath)
+		}
 
-	file, err := os.Open(localPath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	err = extractor.Extract(ctx, file, func(ctx context.Context, entry archives.FileInfo) error {
-		if err := ctx.Err(); err != nil {
+		file, err := os.Open(localPath)
+		if err != nil {
 			return err
 		}
-		name := path.Clean(entry.NameInArchive)
-		if err := ValidateArchiveEntryPath(entry.NameInArchive, entry.IsDir()); err != nil {
-			return err
-		}
-		info := entry.FileInfo
-		if info == nil {
-			return fmt.Errorf("archive entry has no file info: %s", name)
-		}
-		out := ArchiveEntry{
-			Name:       name,
-			Info:       info,
-			LinkTarget: entry.LinkTarget,
-			Open: func() (io.ReadCloser, error) {
-				if entry.Open == nil {
-					return nil, fmt.Errorf("archive entry is not readable: %s", name)
-				}
-				f, err := entry.Open()
-				if err != nil {
-					return nil, err
-				}
-				return f, nil
-			},
-		}
-		return handler(ctx, out)
+		defer file.Close()
+
+		return extractor.Extract(ctx, file, func(ctx context.Context, entry archives.FileInfo) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			name := path.Clean(entry.NameInArchive)
+			if err := ValidateArchiveEntryPath(entry.NameInArchive, entry.IsDir()); err != nil {
+				return err
+			}
+			info := entry.FileInfo
+			if info == nil {
+				return fmt.Errorf("archive entry has no file info: %s", name)
+			}
+			out := ArchiveEntry{
+				Name:       name,
+				Info:       info,
+				LinkTarget: entry.LinkTarget,
+				Open: func() (io.ReadCloser, error) {
+					if entry.Open == nil {
+						return nil, fmt.Errorf("archive entry is not readable: %s", name)
+					}
+					f, err := entry.Open()
+					if err != nil {
+						return nil, err
+					}
+					return f, nil
+				},
+			}
+			return handler(ctx, out)
+		})
 	})
 	if err != nil {
 		return fmt.Errorf("extract archive entries: %w", err)
@@ -271,7 +477,16 @@ func (a *ArchiveVFS) Open(p string) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	f, err := a.fsys.Open(native)
+	var f fs.File
+	for attempt := 0; attempt < 4; attempt++ {
+		f, err = a.fsys.Open(native)
+		if err == nil || !isArchivePasswordError(err) {
+			break
+		}
+		if retryErr := a.retryWithArchivePassword(context.Background(), attempt > 0); retryErr != nil {
+			return nil, retryErr
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -280,6 +495,43 @@ func (a *ArchiveVFS) Open(p string) (io.ReadCloser, error) {
 	}
 	_ = f.Close()
 	return nil, fmt.Errorf("archive entry is not readable: %s", p)
+}
+
+func (a *ArchiveVFS) retryWithArchivePassword(ctx context.Context, retry bool) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	format, err := identifyArchiveFormat(ctx, a.localPath)
+	if err != nil {
+		return err
+	}
+	if retry {
+		clearCachedArchivePassword(a.archivePath)
+	}
+	password, err := getArchivePassword(ctx, ArchivePasswordRequest{
+		ArchivePath: a.archivePath,
+		Format:      archivePasswordFormatName(format),
+		Retry:       retry,
+	})
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrArchivePasswordRequired, err)
+	}
+	format = applyArchiveFormatOptions(format, currentArchiveOptions(), password)
+	extractor, ok := format.(archives.Extractor)
+	if !ok {
+		return fmt.Errorf("format is not extractable: %s", a.localPath)
+	}
+	if err := validateArchiveFileSystem(ctx, a.localPath, extractor, false); err != nil {
+		return err
+	}
+	fsys := &archives.ArchiveFS{
+		Path:    a.localPath,
+		Format:  extractor,
+		Context: ctx,
+	}
+	a.fsys = fsys
+	putCachedArchivePassword(a.archivePath, password)
+	return nil
 }
 
 func (a *ArchiveVFS) Close() error {

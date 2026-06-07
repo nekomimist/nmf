@@ -6,6 +6,7 @@ require (
 	fyne.io/fyne/v2 v2.7.3
 	github.com/99designs/keyring v1.2.2
 	github.com/bmatcuk/doublestar/v4 v4.10.0
+	github.com/bodgit/sevenzip v1.6.1
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20260406072232-3ac4aa2bb164
 	github.com/go-text/typesetting v0.3.4
 	github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f
@@ -13,6 +14,7 @@ require (
 	github.com/jeandeaual/go-locale v0.0.0-20250612000132-0ef82f21eade
 	github.com/koron/gomigemo v1.0.3
 	github.com/mholt/archives v0.1.5
+	github.com/nwaples/rardecode/v2 v2.2.0
 	github.com/nziu/lnk v0.1.2
 	go.starlark.net v0.0.0-20260326113308-fadfc96def35
 	golang.org/x/sys v0.43.0
@@ -26,7 +28,6 @@ require (
 	github.com/STARRY-S/zip v0.2.3 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/bodgit/plumbing v1.3.0 // indirect
-	github.com/bodgit/sevenzip v1.6.1 // indirect
 	github.com/bodgit/windows v1.0.1 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -59,7 +60,6 @@ require (
 	github.com/mtibben/percent v0.2.1 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/nicksnyder/go-i18n/v2 v2.6.1 // indirect
-	github.com/nwaples/rardecode/v2 v2.2.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rymdport/portal v0.4.2 // indirect
