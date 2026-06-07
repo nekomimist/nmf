@@ -10,9 +10,10 @@ import (
 type Type string
 
 const (
-	TypeCopy   Type = "copy"
-	TypeMove   Type = "move"
-	TypeDelete Type = "delete"
+	TypeCopy    Type = "copy"
+	TypeMove    Type = "move"
+	TypeDelete  Type = "delete"
+	TypeExtract Type = "extract"
 )
 
 // DeleteMode controls whether a delete job uses OS trash or permanent removal.

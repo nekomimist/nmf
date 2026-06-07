@@ -24,8 +24,9 @@ import (
 type Operation string
 
 const (
-	OpCopy Operation = "copy"
-	OpMove Operation = "move"
+	OpCopy    Operation = "copy"
+	OpMove    Operation = "move"
+	OpExtract Operation = "extract"
 )
 
 // DestinationCandidate describes a copy/move destination and where it came from.
@@ -92,7 +93,7 @@ func NewCopyMoveDialog(
 		keyManager: km,
 		debugPrint: debugPrint,
 	}
-	if op == OpCopy {
+	if op == OpCopy || op == OpExtract {
 		d.preserveCB = widget.NewCheck("Preserve timestamps", nil)
 		d.preserveCB.SetChecked(preserveTimestamps)
 	}

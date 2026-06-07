@@ -25,6 +25,14 @@ type ArchiveVFS struct {
 	fsys        fs.FS
 }
 
+// ArchiveEntry describes one entry streamed from an archive.
+type ArchiveEntry struct {
+	Name       string
+	Info       os.FileInfo
+	LinkTarget string
+	Open       func() (io.ReadCloser, error)
+}
+
 var archiveTempMu sync.Mutex
 
 // ErrUnsafeArchiveEntry reports an archive entry name that could escape or
@@ -65,18 +73,9 @@ func NewArchiveVFSContext(ctx context.Context, archivePath string) (*ArchiveVFS,
 }
 
 func archiveFileSystem(ctx context.Context, localPath string, opts ArchiveOptions) (fs.FS, error) {
-	file, err := os.Open(localPath)
+	format, err := identifyArchiveFormat(ctx, localPath, opts)
 	if err != nil {
 		return nil, err
-	}
-	defer file.Close()
-
-	format, _, err := archives.Identify(ctx, filepath.Base(localPath), file)
-	if err != nil {
-		return nil, fmt.Errorf("identify format: %w", err)
-	}
-	if _, ok := format.(archives.Zip); ok {
-		format = archives.Zip{TextEncoding: archiveZipNameEncoding(opts)}
 	}
 	extractor, ok := format.(archives.Extractor)
 	if !ok {
@@ -93,6 +92,23 @@ func archiveFileSystem(ctx context.Context, localPath string, opts ArchiveOption
 		}, nil
 	}
 	return archives.FileSystem(ctx, localPath, nil)
+}
+
+func identifyArchiveFormat(ctx context.Context, localPath string, opts ArchiveOptions) (archives.Format, error) {
+	file, err := os.Open(localPath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	format, _, err := archives.Identify(ctx, filepath.Base(localPath), file)
+	if err != nil {
+		return nil, fmt.Errorf("identify format: %w", err)
+	}
+	if _, ok := format.(archives.Zip); ok {
+		format = archives.Zip{TextEncoding: archiveZipNameEncoding(opts)}
+	}
+	return format, nil
 }
 
 func validateArchiveFileSystem(ctx context.Context, localPath string, extractor archives.Extractor) error {
@@ -113,6 +129,77 @@ func validateArchiveFileSystem(ctx context.Context, localPath string, extractor 
 	})
 	if err != nil {
 		return fmt.Errorf("validate archive entries: %w", err)
+	}
+	return nil
+}
+
+// ExtractArchive streams entries from archivePath without building an archive
+// filesystem index. The callback must consume file contents before returning.
+func ExtractArchive(ctx context.Context, archivePath string, handler func(context.Context, ArchiveEntry) error) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if handler == nil {
+		return errors.New("archive extract handler is nil")
+	}
+	if IsArchivePath(archivePath) {
+		return fmt.Errorf("nested archive paths are not supported: %s", archivePath)
+	}
+
+	localPath, tempPath, err := archiveLocalPath(archivePath)
+	if err != nil {
+		return err
+	}
+	if tempPath != "" {
+		defer os.Remove(tempPath)
+	}
+
+	format, err := identifyArchiveFormat(ctx, localPath, currentArchiveOptions())
+	if err != nil {
+		return err
+	}
+	extractor, ok := format.(archives.Extractor)
+	if !ok {
+		return fmt.Errorf("format is not extractable: %s", archivePath)
+	}
+
+	file, err := os.Open(localPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	err = extractor.Extract(ctx, file, func(ctx context.Context, entry archives.FileInfo) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		name := path.Clean(entry.NameInArchive)
+		if err := ValidateArchiveEntryPath(entry.NameInArchive, entry.IsDir()); err != nil {
+			return err
+		}
+		info := entry.FileInfo
+		if info == nil {
+			return fmt.Errorf("archive entry has no file info: %s", name)
+		}
+		out := ArchiveEntry{
+			Name:       name,
+			Info:       info,
+			LinkTarget: entry.LinkTarget,
+			Open: func() (io.ReadCloser, error) {
+				if entry.Open == nil {
+					return nil, fmt.Errorf("archive entry is not readable: %s", name)
+				}
+				f, err := entry.Open()
+				if err != nil {
+					return nil, err
+				}
+				return f, nil
+			},
+		}
+		return handler(ctx, out)
+	})
+	if err != nil {
+		return fmt.Errorf("extract archive entries: %w", err)
 	}
 	return nil
 }

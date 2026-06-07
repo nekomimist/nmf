@@ -47,6 +47,7 @@ const (
 	CommandQuit                = "app.quit"
 	CommandCopyShow            = "copy.show"
 	CommandMoveShow            = "move.show"
+	CommandArchiveExtract      = "archive.extract"
 	CommandCompareShow         = "compare.show"
 	CommandRenameShow          = "rename.show"
 	CommandDeleteTrash         = "delete.trash"
@@ -109,6 +110,7 @@ type FileManagerInterface interface {
 	OpenFileDefaultApp(file *fileinfo.FileInfo)
 	ShowCopyDialog()
 	ShowMoveDialog()
+	ShowExtractArchiveDialog()
 	ShowCompareDialog()
 	ShowRenameDialog()
 	ShowDeleteDialog(permanent bool)
@@ -354,6 +356,7 @@ func defaultMainScreenBindings() []config.KeyBindingEntry {
 		{Key: "F3", Command: CommandFilterToggle, Event: keyEventTyped},
 		{Key: "Q", Command: CommandQuit, Event: keyEventTyped},
 		{Key: "C", Command: CommandCopyShow, Event: keyEventTyped},
+		{Key: "U", Command: CommandArchiveExtract, Event: keyEventTyped},
 		{Key: "S-C", Command: CommandCompareShow, Event: keyEventTyped},
 		{Key: "M", Command: CommandMoveShow, Event: keyEventTyped},
 		{Key: "X", Command: CommandExternalCommandMenu, Event: keyEventTyped},
@@ -412,6 +415,7 @@ func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
 		CommandQuit:                func(CommandContext) { mh.fileManager.QuitApplication() },
 		CommandCopyShow:            func(CommandContext) { mh.fileManager.ShowCopyDialog() },
 		CommandMoveShow:            func(CommandContext) { mh.fileManager.ShowMoveDialog() },
+		CommandArchiveExtract:      func(CommandContext) { mh.fileManager.ShowExtractArchiveDialog() },
 		CommandCompareShow:         func(CommandContext) { mh.fileManager.ShowCompareDialog() },
 		CommandRenameShow:          mh.rename,
 		CommandDeleteTrash:         func(CommandContext) { mh.fileManager.ShowDeleteDialog(false) },

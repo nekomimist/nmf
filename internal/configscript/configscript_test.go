@@ -1881,6 +1881,7 @@ func (f *configScriptFakeFileManager) OpenFile(file *fileinfo.FileInfo)         
 func (f *configScriptFakeFileManager) OpenFileDefaultApp(file *fileinfo.FileInfo) {}
 func (f *configScriptFakeFileManager) ShowCopyDialog()                            {}
 func (f *configScriptFakeFileManager) ShowMoveDialog()                            {}
+func (f *configScriptFakeFileManager) ShowExtractArchiveDialog()                  {}
 func (f *configScriptFakeFileManager) ShowCompareDialog()                         {}
 func (f *configScriptFakeFileManager) ShowRenameDialog()                          {}
 func (f *configScriptFakeFileManager) ShowDeleteDialog(permanent bool)            {}

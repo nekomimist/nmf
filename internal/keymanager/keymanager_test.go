@@ -473,10 +473,11 @@ func (f *mainScreenFakeFileManager) OpenFileDefaultApp(file *fileinfo.FileInfo) 
 		f.openDefaultAppPath = file.Path
 	}
 }
-func (f *mainScreenFakeFileManager) ShowCopyDialog()    {}
-func (f *mainScreenFakeFileManager) ShowMoveDialog()    {}
-func (f *mainScreenFakeFileManager) ShowCompareDialog() { f.showCompareCount++ }
-func (f *mainScreenFakeFileManager) ShowRenameDialog()  { f.showRenameCount++ }
+func (f *mainScreenFakeFileManager) ShowCopyDialog()           {}
+func (f *mainScreenFakeFileManager) ShowMoveDialog()           {}
+func (f *mainScreenFakeFileManager) ShowExtractArchiveDialog() {}
+func (f *mainScreenFakeFileManager) ShowCompareDialog()        { f.showCompareCount++ }
+func (f *mainScreenFakeFileManager) ShowRenameDialog()         { f.showRenameCount++ }
 func (f *mainScreenFakeFileManager) ShowDeleteDialog(permanent bool) {
 	f.showDeleteCount++
 	f.deletePermanent = permanent

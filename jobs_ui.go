@@ -117,6 +117,20 @@ func (fm *FileManager) ShowCopyDialog() { fm.showCopyMoveDialog(ui.OpCopy) }
 // ShowMoveDialog shows the move UI (simulation only)
 func (fm *FileManager) ShowMoveDialog() { fm.showCopyMoveDialog(ui.OpMove) }
 
+// ShowExtractArchiveDialog shows the archive extraction UI.
+func (fm *FileManager) ShowExtractArchiveDialog() {
+	targets, srcPaths := fm.collectArchiveTargets()
+	if len(targets) == 0 {
+		debugPrint("FileManager: No archive target for extract")
+		fm.ShowMessageDialog("Extract failed", "Select a supported archive file to extract.")
+		return
+	}
+	fm.showTransferDestinationDialog(ui.OpExtract, targets, func(result ui.CopyMoveResult) {
+		jobs.GetManager().EnqueueExtractWithOptions(srcPaths, result.Destination, fm.conflictResolver(), jobs.TransferOptions{PreserveTimestamps: result.PreserveTimestamps})
+		fm.FocusFileList()
+	})
+}
+
 // showCopyMoveDialog builds targets and destination candidates then shows dialog
 func (fm *FileManager) showCopyMoveDialog(op ui.Operation) {
 	// Determine targets: marked files if any; otherwise cursor item
@@ -126,14 +140,32 @@ func (fm *FileManager) showCopyMoveDialog(op ui.Operation) {
 		return
 	}
 
-	// Build destination candidates: other windows' directories first, then history without duplicates
+	// We need full source paths for jobs, not only names — compute now
+	srcPaths := fm.collectTargetPaths()
+	fm.showTransferDestinationDialog(op, targets, func(result ui.CopyMoveResult) {
+		selectedDest := result.Destination
+		if op == ui.OpMove && sameDirectoryPath(selectedDest, fm.currentPath) {
+			debugPrint("FileManager: %s destination is current directory; no-op dest=%s", strings.Title(string(op)), selectedDest)
+			fm.FocusFileList()
+			return
+		}
+
+		mgr := jobs.GetManager()
+		resolver := fm.conflictResolver()
+		if op == ui.OpCopy {
+			mgr.EnqueueCopyWithOptions(srcPaths, selectedDest, resolver, jobs.TransferOptions{PreserveTimestamps: result.PreserveTimestamps})
+		} else {
+			mgr.EnqueueMoveWithResolver(srcPaths, selectedDest, resolver)
+		}
+		fm.FocusFileList()
+	})
+}
+
+func (fm *FileManager) showTransferDestinationDialog(op ui.Operation, targets []string, onAccept func(ui.CopyMoveResult)) {
 	dest := fm.buildDestinationCandidates()
 	if len(dest) == 0 {
 		debugPrint("FileManager: No destination candidates available")
 	}
-
-	// We need full source paths for jobs, not only names — compute now
-	srcPaths := fm.collectTargetPaths()
 	dlg := ui.NewCopyMoveDialog(op, targets, dest, fm.config.UI.NavigationHistory.LastUsed, fm.config.UI.Copy.PreserveTimestamps, fm.keyManager, debugPrint, fm.searchMatchers)
 	openDest := destinationCandidateOpenMap(dest)
 	refreshDestinations := func(preferredPath string) {
@@ -161,23 +193,7 @@ func (fm *FileManager) showCopyMoveDialog(op ui.Operation) {
 		clearFileManagerWindowHighlights()
 		unsubscribe()
 	})
-	dlg.ShowDialog(fm.window, func(result ui.CopyMoveResult) {
-		selectedDest := result.Destination
-		if op == ui.OpMove && sameDirectoryPath(selectedDest, fm.currentPath) {
-			debugPrint("FileManager: %s destination is current directory; no-op dest=%s", strings.Title(string(op)), selectedDest)
-			fm.FocusFileList()
-			return
-		}
-
-		mgr := jobs.GetManager()
-		resolver := fm.conflictResolver()
-		if op == ui.OpCopy {
-			mgr.EnqueueCopyWithOptions(srcPaths, selectedDest, resolver, jobs.TransferOptions{PreserveTimestamps: result.PreserveTimestamps})
-		} else {
-			mgr.EnqueueMoveWithResolver(srcPaths, selectedDest, resolver)
-		}
-		fm.FocusFileList()
-	})
+	dlg.ShowDialog(fm.window, onAccept)
 }
 
 func (fm *FileManager) conflictResolver() jobs.ConflictResolver {
@@ -276,6 +292,34 @@ func (fm *FileManager) collectTargetPaths() []string {
 		}
 	}
 	return nil
+}
+
+func (fm *FileManager) collectArchiveTargets() ([]string, []string) {
+	selectedFiles := fm.selectedFileInfos()
+	if len(selectedFiles) > 0 {
+		return archiveTargetNamesAndPaths(selectedFiles)
+	}
+	idx := fm.GetCurrentCursorIndex()
+	if idx >= 0 && idx < len(fm.files) {
+		fi := fm.files[idx]
+		if isTargetFileInfo(fi) {
+			return archiveTargetNamesAndPaths([]fileinfo.FileInfo{fi})
+		}
+	}
+	return nil, nil
+}
+
+func archiveTargetNamesAndPaths(files []fileinfo.FileInfo) ([]string, []string) {
+	names := make([]string, 0, len(files))
+	paths := make([]string, 0, len(files))
+	for _, fi := range files {
+		if fi.IsDir || fileinfo.IsArchivePath(fi.Path) || !fileinfo.IsSupportedArchive(fi.Path) {
+			continue
+		}
+		names = append(names, fi.Name)
+		paths = append(paths, fi.Path)
+	}
+	return names, paths
 }
 
 // ShowJobsDialog opens the job queue view
