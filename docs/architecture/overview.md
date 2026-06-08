@@ -8,8 +8,8 @@ This document describes runtime composition, package boundaries, and core state 
 
 1. `main.go`
    - Parse CLI flags (`-d`, `-path`) and normalize startup path via `resolveDirectoryPath` (`internal/fileinfo.ResolveDirectoryPath`).
-   - Load config via `internal/config.Manager`, then apply optional
-     `init.star` via `internal/configscript`.
+   - Load config via `internal/config.Manager`, set up configured debug logging,
+     then apply optional `init.star` via `internal/configscript`.
    - Create Fyne app and apply custom theme.
    - Install jobs debug hook (`internal/jobs.SetDebug`).
 2. `bootstrap.go` (`NewFileManager`)
@@ -75,6 +75,7 @@ Top-level config sections:
 
 - `window`: `width`, `height`
 - `theme`: `dark`, `fontSize`, `fontName`, `fontPath`, `colors`
+- `debug`: `enabled`, `logDirectory`, `maxLogFiles`
 - `ui`:
   - `showHiddenFiles`, `sort`, `itemSpacing`
   - `cursorStyle`
@@ -97,6 +98,11 @@ configuration fields, append or replace list-style configuration, and register
 `user.*` command IDs for key bindings. Config saves pass through a transform
 that restores Starlark-owned fields to the pre-overlay JSON values while
 preserving runtime state.
+
+Configured debug logging creates one `nmf-*.log` file per startup under the
+configured log directory and prunes old matching logs. When enabled, the main
+toolbar exposes a mouse-accessible KeyManager state dump for diagnosing input
+routing failures.
 
 Operational notes:
 

@@ -41,6 +41,7 @@ type Runtime struct {
 	configDir  string
 	display    display.Info
 	debugPrint func(format string, args ...interface{})
+	debugHook  func(config.DebugConfig) error
 	loaded     bool
 	saveMask   saveMask
 
@@ -67,6 +68,7 @@ type MenuItem struct {
 }
 
 type saveMask struct {
+	debug                       bool
 	window                      bool
 	theme                       bool
 	uiShowHiddenFiles           bool
@@ -96,7 +98,14 @@ func Load(path string, cfg *config.Config, debugPrint func(format string, args .
 
 // LoadWithDisplay reads and executes init.star with startup display information.
 func LoadWithDisplay(path string, cfg *config.Config, displayInfo display.Info, debugPrint func(format string, args ...interface{})) (*Runtime, error) {
+	return LoadWithDisplayAndDebugHook(path, cfg, displayInfo, debugPrint, nil)
+}
+
+// LoadWithDisplayAndDebugHook reads and executes init.star with startup display
+// information and an optional hook for debug logging changes.
+func LoadWithDisplayAndDebugHook(path string, cfg *config.Config, displayInfo display.Info, debugPrint func(format string, args ...interface{}), debugHook func(config.DebugConfig) error) (*Runtime, error) {
 	rt := newRuntime(path, cfg, displayInfo, debugPrint)
+	rt.debugHook = debugHook
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -156,6 +165,9 @@ func (rt *Runtime) SaveTransform(base *config.Config) config.SaveTransform {
 		}
 		if mask.theme {
 			current.Theme = baseCopy.Theme
+		}
+		if mask.debug {
+			current.Debug = baseCopy.Debug
 		}
 		if mask.uiShowHiddenFiles {
 			current.UI.ShowHiddenFiles = baseCopy.UI.ShowHiddenFiles
@@ -297,6 +309,7 @@ func (rt *Runtime) predeclared() starlark.StringDict {
 			"theme":              starlark.NewBuiltin("nmf.theme", rt.builtinTheme),
 			"color":              starlark.NewBuiltin("nmf.color", rt.builtinColor),
 			"dark_theme":         starlark.NewBuiltin("nmf.dark_theme", rt.builtinDarkTheme),
+			"debug_logging":      starlark.NewBuiltin("nmf.debug_logging", rt.builtinDebugLogging),
 			"ui":                 starlark.NewBuiltin("nmf.ui", rt.builtinUI),
 			"copy":               starlark.NewBuiltin("nmf.copy", rt.builtinCopy),
 			"viewer":             starlark.NewBuiltin("nmf.viewer", rt.builtinViewer),
@@ -454,6 +467,35 @@ func (rt *Runtime) builtinDarkTheme(_ *starlark.Thread, fn *starlark.Builtin, ar
 		return nil, err
 	}
 	return starlark.Bool(rt.cfg.Theme.Dark), nil
+}
+
+func (rt *Runtime) builtinDebugLogging(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	enabled := rt.cfg.Debug.Enabled
+	logDirectory := rt.cfg.Debug.LogDirectory
+	maxFiles := rt.cfg.Debug.MaxLogFiles
+	if err := starlark.UnpackArgs(
+		fn.Name(),
+		args,
+		kwargs,
+		"enabled?", &enabled,
+		"log_directory?", &logDirectory,
+		"max_files?", &maxFiles,
+	); err != nil {
+		return nil, err
+	}
+	if maxFiles <= 0 {
+		return nil, fmt.Errorf("max_files must be positive")
+	}
+	rt.cfg.Debug.Enabled = enabled
+	rt.cfg.Debug.LogDirectory = strings.TrimSpace(logDirectory)
+	rt.cfg.Debug.MaxLogFiles = maxFiles
+	rt.saveMask.debug = true
+	if rt.debugHook != nil {
+		if err := rt.debugHook(rt.cfg.Debug); err != nil {
+			return nil, err
+		}
+	}
+	return starlark.None, nil
 }
 
 func (rt *Runtime) builtinUI(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

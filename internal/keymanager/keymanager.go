@@ -1,6 +1,9 @@
 package keymanager
 
 import (
+	"fmt"
+	"sort"
+	"strings"
 	"sync"
 
 	"fyne.io/fyne/v2"
@@ -454,4 +457,50 @@ func (km *KeyManager) ListHandlers() []string {
 	}
 
 	return names
+}
+
+// DumpState returns a stable multi-line snapshot of the key routing state.
+func (km *KeyManager) DumpState() string {
+	km.mutex.RLock()
+	defer km.mutex.RUnlock()
+
+	handlers := make([]string, len(km.handlers))
+	for i, handler := range km.handlers {
+		handlers[i] = handler.GetName()
+	}
+	pending := make([]string, len(km.pending))
+	for i, transition := range km.pending {
+		pending[i] = transition.label
+	}
+
+	lines := []string{
+		fmt.Sprintf("stackVersion=%d", km.stackVersion),
+		fmt.Sprintf("handlers=%s", formatStateList(handlers)),
+		fmt.Sprintf("modifiers=shift:%t ctrl:%t alt:%t", km.modifierState.ShiftPressed, km.modifierState.CtrlPressed, km.modifierState.AltPressed),
+		fmt.Sprintf("pressedKeys=%s", formatKeySet(km.pressedKeys)),
+		fmt.Sprintf("pendingTransitions=%s", formatStateList(pending)),
+		fmt.Sprintf("suppressTyped=%s", formatKeySet(km.suppressTyped)),
+		fmt.Sprintf("suppressRune=%t", km.suppressRune),
+		fmt.Sprintf("activeTypedKey=%s", km.activeTypedKey),
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatKeySet(keys map[fyne.KeyName]struct{}) string {
+	if len(keys) == 0 {
+		return "[]"
+	}
+	names := make([]string, 0, len(keys))
+	for key := range keys {
+		names = append(names, string(key))
+	}
+	sort.Strings(names)
+	return formatStateList(names)
+}
+
+func formatStateList(values []string) string {
+	if len(values) == 0 {
+		return "[]"
+	}
+	return "[" + strings.Join(values, ",") + "]"
 }

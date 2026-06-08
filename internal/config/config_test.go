@@ -33,6 +33,15 @@ func TestGetDefaultConfig(t *testing.T) {
 	if config.Theme.FontName != "" {
 		t.Errorf("Expected empty font name, got '%s'", config.Theme.FontName)
 	}
+	if config.Debug.Enabled {
+		t.Error("Expected debug logging to be disabled by default")
+	}
+	if config.Debug.LogDirectory != "" {
+		t.Errorf("Expected empty debug log directory, got '%s'", config.Debug.LogDirectory)
+	}
+	if config.Debug.MaxLogFiles != 10 {
+		t.Errorf("Expected default debug max log files 10, got %d", config.Debug.MaxLogFiles)
+	}
 
 	// Test UI defaults
 	if config.UI.ShowHiddenFiles {
@@ -179,6 +188,47 @@ func TestMergeConfigsIgnoresNegativeViewerMaxSize(t *testing.T) {
 
 	if cfg.UI.Viewer.MaxWidth != 1000 || cfg.UI.Viewer.MaxHeight != 800 {
 		t.Fatalf("viewer max size = %dx%d, want unchanged 1000x800", cfg.UI.Viewer.MaxWidth, cfg.UI.Viewer.MaxHeight)
+	}
+}
+
+func TestMergeConfigsDebugLogging(t *testing.T) {
+	cfg := getDefaultConfig()
+	enabled := true
+	logDirectory := "debug-logs"
+	maxLogFiles := 3
+
+	mergeConfigs(cfg, &rawConfig{
+		Debug: rawDebugConfig{
+			Enabled:      &enabled,
+			LogDirectory: &logDirectory,
+			MaxLogFiles:  &maxLogFiles,
+		},
+	})
+
+	if !cfg.Debug.Enabled {
+		t.Fatal("debug enabled = false, want true")
+	}
+	if cfg.Debug.LogDirectory != "debug-logs" {
+		t.Fatalf("debug log directory = %q, want debug-logs", cfg.Debug.LogDirectory)
+	}
+	if cfg.Debug.MaxLogFiles != 3 {
+		t.Fatalf("debug max log files = %d, want 3", cfg.Debug.MaxLogFiles)
+	}
+}
+
+func TestMergeConfigsIgnoresInvalidDebugMaxLogFiles(t *testing.T) {
+	cfg := getDefaultConfig()
+	cfg.Debug.MaxLogFiles = 7
+	maxLogFiles := 0
+
+	mergeConfigs(cfg, &rawConfig{
+		Debug: rawDebugConfig{
+			MaxLogFiles: &maxLogFiles,
+		},
+	})
+
+	if cfg.Debug.MaxLogFiles != 7 {
+		t.Fatalf("debug max log files = %d, want unchanged 7", cfg.Debug.MaxLogFiles)
 	}
 }
 

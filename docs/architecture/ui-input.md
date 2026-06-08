@@ -12,6 +12,8 @@ Core model:
 
 - `KeyManager` maintains a stack of handlers.
 - Active handler is the top of stack.
+- `DumpState` returns handler stack, modifier state, pressed keys, pending
+  transitions, and suppression flags for debug logs.
 - The main-screen handler maps key events to stable internal command IDs before
   executing file-manager behavior.
 - Events routed by type:
@@ -58,6 +60,8 @@ Main file list:
 - Wrap list with `ui.KeySink`.
 - Keep focus on sink to ensure all keyboard events route through `KeyManager`.
 - Enable tab capture (`WithTabCapture(true)`) to suppress default focus traversal.
+- When debug logging is enabled, the toolbar includes a mouse action that writes
+  `KeyManager.DumpState()` to the debug log without opening another input owner.
 
 Text entries that must not steal Tab:
 

@@ -35,6 +35,11 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
       "selectionBackground": "selection"
     }
   },
+  "debug": {
+    "enabled": false,
+    "logDirectory": "",
+    "maxLogFiles": 10
+  },
   "ui": {
     "showHiddenFiles": false,
     "sort": {
@@ -98,6 +103,15 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
 - `colors`: optional app-specific color overrides. Values can be RGBA arrays,
   Fyne theme color names, or Fyne primary color names.
 
+`debug`
+
+- `enabled`: enable persistent debug logging for normal startup.
+- `logDirectory`: directory for per-startup log files. Empty creates a `logs`
+  directory next to `config.json` and `init.star`. Relative paths are resolved
+  from that same config directory.
+- `maxLogFiles`: number of `nmf-*.log` session files to keep. Older matching
+  files are deleted after a new log is opened.
+
 `ui`
 
 - `showHiddenFiles`: show dotfiles and hidden files when supported.
@@ -119,6 +133,21 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
 - `cursorStyle.type`: one of `underline`, `border`, `background`, `icon`, or
   `font`.
 - `cursorStyle.thickness`: underline or border thickness.
+
+## Debug Logging
+
+For one-off debugging, `-d` still enables debug output to stderr and
+`-debug-log /path/to/debug.log` writes to the specified file.
+
+For long-running reproduction work, set `debug.enabled` in `config.json`.
+NMF creates a new session log on each startup using names like
+`nmf-20260608-213000-12345.log` and prunes old `nmf-*.log` files in that
+directory according to `maxLogFiles`.
+
+When debug logging is enabled, the main toolbar shows a debug action that dumps
+the current KeyManager stack, modifiers, pressed keys, and pending input
+transitions into the log. It is intended for cases where keyboard input stops
+responding but mouse clicks still work.
 
 ## Colors
 

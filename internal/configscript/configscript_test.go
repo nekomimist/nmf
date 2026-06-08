@@ -29,6 +29,7 @@ nmf.color("selectionBackground", value = "selection", dark = None)
 nmf.color("lineEditCursor", value = "primary")
 nmf.color("lineEditSelection", value = [5, 6, 7, 8])
 nmf.color("dialogListCursor", value = "selection")
+nmf.debug_logging(enabled = True, log_directory = "logs/debug", max_files = 4)
 nmf.ui(show_hidden_files = True, item_spacing = 2)
 nmf.copy(preserve_timestamps = True)
 nmf.viewer(max_width = 1200, max_height = 900)
@@ -95,6 +96,9 @@ nmf.command("user.parent", parent)
 	}
 	if got := cfg.Theme.Colors["dialogListCursor"].Value.Name; got != "selection" {
 		t.Fatalf("dialog list cursor color = %q, want selection", got)
+	}
+	if !cfg.Debug.Enabled || cfg.Debug.LogDirectory != "logs/debug" || cfg.Debug.MaxLogFiles != 4 {
+		t.Fatalf("debug = %+v, want enabled logs/debug max 4", cfg.Debug)
 	}
 	if !cfg.UI.ShowHiddenFiles || cfg.UI.ItemSpacing != 2 {
 		t.Fatalf("ui = %+v, want hidden=true spacing=2", cfg.UI)
@@ -263,8 +267,10 @@ func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T
 	base.UI.Archive.ZipNameEncoding = "shift_jis"
 	base.UI.CursorMemory.MaxEntries = 100
 	base.UI.KeyBindings = []config.KeyBindingEntry{{Key: "X", Command: "jobs.show"}}
+	base.Debug = config.DebugConfig{Enabled: false, LogDirectory: "", MaxLogFiles: 10}
 
 	rt := &Runtime{saveMask: saveMask{
+		debug:                    true,
 		window:                   true,
 		uiSort:                   true,
 		uiCopy:                   true,
@@ -274,6 +280,7 @@ func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T
 		uiKeyBindings:            true,
 	}}
 	current := config.Clone(base)
+	current.Debug = config.DebugConfig{Enabled: true, LogDirectory: "logs", MaxLogFiles: 2}
 	current.Window.Width = 1200
 	current.UI.Sort.SortBy = "size"
 	current.UI.Copy.PreserveTimestamps = true
@@ -290,6 +297,9 @@ func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T
 	saved := rt.SaveTransform(base)(current)
 	if saved.Window.Width != 900 {
 		t.Fatalf("saved window width = %d, want base 900", saved.Window.Width)
+	}
+	if saved.Debug.Enabled || saved.Debug.LogDirectory != "" || saved.Debug.MaxLogFiles != 10 {
+		t.Fatalf("saved debug = %+v, want base debug config", saved.Debug)
 	}
 	if saved.UI.Sort.SortBy != "name" {
 		t.Fatalf("saved sort = %s, want base name", saved.UI.Sort.SortBy)
@@ -311,6 +321,52 @@ func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T
 	}
 	if len(saved.UI.KeyBindings) != 1 || saved.UI.KeyBindings[0].Command != "jobs.show" {
 		t.Fatalf("saved key bindings = %+v, want base binding only", saved.UI.KeyBindings)
+	}
+}
+
+func TestDebugLoggingCallsHook(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+nmf.debug_logging(enabled = True, log_directory = "logs", max_files = 2)
+nmf.debug("after enable")
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	var hookCalls []config.DebugConfig
+	var logs []string
+	cfg := testConfig()
+	rt, err := LoadWithDisplayAndDebugHook(path, cfg, display.Info{}, func(format string, args ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}, func(debugCfg config.DebugConfig) error {
+		hookCalls = append(hookCalls, debugCfg)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("LoadWithDisplayAndDebugHook returned error: %v", err)
+	}
+	if !rt.Loaded() {
+		t.Fatal("runtime should report loaded init.star")
+	}
+	if len(hookCalls) != 1 || !hookCalls[0].Enabled || hookCalls[0].LogDirectory != "logs" || hookCalls[0].MaxLogFiles != 2 {
+		t.Fatalf("hook calls = %+v, want one enabled logs max 2", hookCalls)
+	}
+	if !strings.Contains(strings.Join(logs, "\n"), "ConfigScript: after enable") {
+		t.Fatalf("logs = %#v, want nmf.debug output after hook", logs)
+	}
+}
+
+func TestDebugLoggingRejectsInvalidMaxFiles(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	if err := os.WriteFile(path, []byte(`nmf.debug_logging(max_files = 0)`), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	if _, err := Load(path, testConfig(), func(string, ...interface{}) {}); err == nil || !strings.Contains(err.Error(), "max_files must be positive") {
+		t.Fatalf("Load error = %v, want max_files validation", err)
 	}
 }
 

@@ -127,6 +127,27 @@ func (h *transientStackChangeOnTypedKeyHandler) GetName() string {
 	return "transientStackChange"
 }
 
+func TestDumpStateIncludesRoutingState(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	km.PushHandler(noopHandler{})
+	km.HandleKeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyA})
+	km.DeferUntilKeysReleased("test.transition", func() {})
+
+	dump := km.DumpState()
+	for _, want := range []string{
+		"handlers=[noop]",
+		"modifiers=shift:false ctrl:true alt:false",
+		"pressedKeys=[A," + string(desktop.KeyControlLeft) + "]",
+		"pendingTransitions=[test.transition]",
+		"stackVersion=1",
+	} {
+		if !strings.Contains(dump, want) {
+			t.Fatalf("DumpState() =\n%s\nwant substring %q", dump, want)
+		}
+	}
+}
+
 func TestKeyManagerTracksAltModifier(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	km.PushHandler(noopHandler{})

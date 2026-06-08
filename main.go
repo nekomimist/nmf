@@ -73,7 +73,9 @@ func main() {
 	flag.StringVar(&debugLogPath, "debug-log", "", "Write debug logs to the specified file")
 	flag.StringVar(&startPath, "path", "", "Starting directory path")
 	flag.Parse()
+	cliDebugMode := debugMode
 
+	var debugLogFile *os.File
 	debugLogFile, err := setupDebugLogging(debugLogPath)
 	if err != nil {
 		log.Fatalf("Error opening debug log '%s': %v", debugLogPath, err)
@@ -81,13 +83,13 @@ func main() {
 	if debugLogFile == nil {
 		debugPrint("App: version=%s", appVersion())
 	}
-	if debugLogFile != nil {
-		defer func() {
+	defer func() {
+		if debugLogFile != nil {
 			if err := debugLogFile.Close(); err != nil {
 				log.Printf("Error closing debug log: %v", err)
 			}
-		}()
-	}
+		}
+	}()
 
 	// If no path specified via flag, check remaining arguments
 	if startPath == "" && flag.NArg() > 0 {
@@ -122,9 +124,44 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error loading configuration: %v", err)
 	}
+	activeConfigLogDir := ""
+	activeConfigLogMax := 0
+	applyConfigDebug := func(debugCfg config.DebugConfig) error {
+		if debugLogPath != "" {
+			return nil
+		}
+		logDir := resolveDebugLogDirectory(configManager.ConfigPath(), debugCfg.LogDirectory)
+		if debugCfg.Enabled && debugLogFile != nil && logDir == activeConfigLogDir && debugCfg.MaxLogFiles == activeConfigLogMax {
+			return nil
+		}
+		if debugLogFile != nil {
+			if err := debugLogFile.Close(); err != nil {
+				return fmt.Errorf("closing debug log: %w", err)
+			}
+			debugLogFile = nil
+			activeConfigLogDir = ""
+			activeConfigLogMax = 0
+		}
+		if !debugCfg.Enabled {
+			debugMode = cliDebugMode
+			log.SetOutput(os.Stderr)
+			return nil
+		}
+		file, _, err := setupRotatingDebugLogging(configManager.ConfigPath(), debugCfg)
+		if err != nil {
+			return err
+		}
+		debugLogFile = file
+		activeConfigLogDir = logDir
+		activeConfigLogMax = debugCfg.MaxLogFiles
+		return nil
+	}
+	if err := applyConfigDebug(cfg.Debug); err != nil {
+		log.Fatalf("Error opening configured debug log: %v", err)
+	}
 	persistentConfig := config.Clone(cfg)
 	displayInfo := display.Primary(debugPrint)
-	configScript, err := configscript.LoadWithDisplay(configscript.ScriptPath(configManager.ConfigPath()), cfg, displayInfo, debugPrint)
+	configScript, err := configscript.LoadWithDisplayAndDebugHook(configscript.ScriptPath(configManager.ConfigPath()), cfg, displayInfo, debugPrint, applyConfigDebug)
 	if err != nil {
 		log.Printf("Error loading Starlark configuration: %v", err)
 		showStartupConfigScriptErrorAndExit(cfg, err)

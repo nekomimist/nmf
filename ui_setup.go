@@ -210,7 +210,7 @@ func (fm *FileManager) setupUI() {
 	}
 
 	// Create toolbar (left side)
-	toolbar := widget.NewToolbar(
+	toolbarItems := []widget.ToolbarItem{
 		widget.NewToolbarAction(theme.NavigateBackIcon(), func() {
 			parent := fileinfo.ParentPath(fm.currentPath)
 			if parent != fm.currentPath {
@@ -235,11 +235,19 @@ func (fm *FileManager) setupUI() {
 			fm.OpenNewWindow()
 			fm.FocusFileList()
 		}),
+	}
+	if debugMode {
+		toolbarItems = append(toolbarItems, widget.NewToolbarAction(theme.SettingsIcon(), func() {
+			fm.DumpKeyManagerState()
+		}))
+	}
+	toolbarItems = append(toolbarItems,
 		widget.NewToolbarAction(theme.InfoIcon(), func() {
 			fm.ShowVersionDialog()
 			fm.FocusFileList()
 		}),
 	)
+	toolbar := widget.NewToolbar(toolbarItems...)
 
 	// Jobs button on the right
 	fm.jobsButton = widget.NewButton("Jobs", func() {

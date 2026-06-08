@@ -54,6 +54,7 @@ else:
     nmf.color("cursor", value = [0, 0, 0, 255])
 
 nmf.ui(show_hidden_files = True, item_spacing = 2)
+nmf.debug_logging(enabled = True, log_directory = "logs", max_files = 10)
 nmf.copy(preserve_timestamps = False)
 nmf.archive(zip_name_encoding = "shift_jis")
 nmf.sort(by = "extension", order = "asc", directories_first = True)
@@ -155,6 +156,7 @@ Scalar sections:
 - `nmf.window(width = int, height = int)`
 - `nmf.theme(dark = bool, font_size = int, font_name = str, font_path = str)`
 - `nmf.color(name, value = color|None, dark = color|None, light = color|None)`
+- `nmf.debug_logging(enabled = bool, log_directory = str, max_files = int)`
 - `nmf.ui(show_hidden_files = bool, item_spacing = int)`
 - `nmf.copy(preserve_timestamps = bool)`
 - `nmf.viewer(max_width = int, max_height = int)`
@@ -185,6 +187,11 @@ List APIs append to values already loaded from `config.json`. Use the matching
 `clear_*` function when the Starlark file should own the whole list.
 Directory jump shortcuts may be empty or multiple characters; the dialog filters
 them by case-insensitive prefix.
+`nmf.debug_logging(enabled = True, log_directory = "logs", max_files = 10)`
+enables per-startup debug log files for the current run. Empty `log_directory`
+uses a `logs` directory next to `config.json` and `init.star`; relative paths
+are resolved from that config directory. The setting is treated as a Starlark
+overlay and is not written back to `config.json` by routine saves.
 `nmf.copy(preserve_timestamps = True)` sets the default state for the Copy
 dialog checkbox. The checkbox choice applies only to the copy being queued and
 is not written back to `config.json`.
@@ -213,7 +220,8 @@ Utility API:
   the physical pixel resolution for users that need it.
 - `nmf.debug(value, ...)` writes values to NMF's debug log with the
   `ConfigScript:` prefix. It is visible only when debug logging is enabled,
-  such as with `-d` or `-debug-log`.
+  such as with `-d`, `-debug-log`, `config.json` debug settings, or an earlier
+  `nmf.debug_logging(enabled = True)` call in `init.star`.
 - `nmf.os()` returns the Go runtime OS name, such as `windows`, `linux`, or
   `darwin`.
 - `nmf.hostname()` returns the current host name, or an empty string if it

@@ -17,6 +17,7 @@ import (
 type Config struct {
 	Window WindowConfig `json:"window"`
 	Theme  ThemeConfig  `json:"theme"`
+	Debug  DebugConfig  `json:"debug"`
 	UI     UIConfig     `json:"ui"`
 }
 
@@ -24,6 +25,7 @@ type Config struct {
 type rawConfig struct {
 	Window rawWindowConfig `json:"window"`
 	Theme  rawThemeConfig  `json:"theme"`
+	Debug  rawDebugConfig  `json:"debug"`
 	UI     rawUIConfig     `json:"ui"`
 }
 
@@ -38,6 +40,12 @@ type rawThemeConfig struct {
 	FontName *string                     `json:"fontName"`
 	FontPath *string                     `json:"fontPath"`
 	Colors   map[string]ThemeColorConfig `json:"colors"`
+}
+
+type rawDebugConfig struct {
+	Enabled      *bool   `json:"enabled"`
+	LogDirectory *string `json:"logDirectory"`
+	MaxLogFiles  *int    `json:"maxLogFiles"`
 }
 
 type rawUIConfig struct {
@@ -123,6 +131,13 @@ type ThemeConfig struct {
 	FontName string                      `json:"fontName"`
 	FontPath string                      `json:"fontPath"`
 	Colors   map[string]ThemeColorConfig `json:"colors,omitempty"`
+}
+
+// DebugConfig controls persistent debug logging.
+type DebugConfig struct {
+	Enabled      bool   `json:"enabled"`      // Whether debug logging is enabled for normal startup
+	LogDirectory string `json:"logDirectory"` // Empty means a logs directory next to config.json/init.star
+	MaxLogFiles  int    `json:"maxLogFiles"`  // Maximum rotating session log files to retain
 }
 
 // ThemeColorValue is a color override expressed as either an RGBA tuple or a
@@ -758,6 +773,11 @@ func getDefaultConfig() *Config {
 			FontName: "",
 			FontPath: "",
 		},
+		Debug: DebugConfig{
+			Enabled:      false,
+			LogDirectory: "",
+			MaxLogFiles:  10,
+		},
 		UI: UIConfig{
 			ShowHiddenFiles: false,
 			Sort: SortConfig{
@@ -879,6 +899,17 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) {
 		for k, v := range fileConfig.Theme.Colors {
 			defaultConfig.Theme.Colors[strings.TrimSpace(k)] = cloneThemeColorConfig(v)
 		}
+	}
+
+	// Merge Debug config
+	if fileConfig.Debug.Enabled != nil {
+		defaultConfig.Debug.Enabled = *fileConfig.Debug.Enabled
+	}
+	if fileConfig.Debug.LogDirectory != nil {
+		defaultConfig.Debug.LogDirectory = strings.TrimSpace(*fileConfig.Debug.LogDirectory)
+	}
+	if fileConfig.Debug.MaxLogFiles != nil && *fileConfig.Debug.MaxLogFiles > 0 {
+		defaultConfig.Debug.MaxLogFiles = *fileConfig.Debug.MaxLogFiles
 	}
 
 	// Merge UI config

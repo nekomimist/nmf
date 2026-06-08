@@ -47,6 +47,9 @@ Run with debug logging:
 go run . -d
 ```
 
+Persistent per-startup debug logs can also be enabled from `config.json` or
+`init.star`; see [Configuration](docs/configuration.md).
+
 Start in a specific directory:
 
 ```sh
