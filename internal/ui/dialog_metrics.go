@@ -28,7 +28,7 @@ const (
 	sortDialogHeight float32 = 350
 
 	quitDialogWidth  float32 = 460
-	quitDialogHeight float32 = 100
+	quitDialogHeight float32 = 64
 	quitDialogGap    float32 = 18
 	quitDialogBottom float32 = 14
 
@@ -39,7 +39,7 @@ const (
 	archivePasswordDialogHeight float32 = 140
 
 	lineEditDialogWidth  float32 = 640
-	lineEditDialogHeight float32 = 180
+	lineEditDialogHeight float32 = 160
 
 	conflictDialogWidth float32 = 620
 
