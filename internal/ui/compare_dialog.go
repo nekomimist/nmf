@@ -91,6 +91,7 @@ func (d *CompareDialog) createWidgets() {
 		d.dataBinding,
 		func() fyne.CanvasObject {
 			text := canvas.NewText("", currentAppThemeColor(fynetheme.ColorNameForeground))
+			text.TextStyle = fyne.TextStyle{Monospace: true}
 			text.TextSize = fynetheme.TextSize()
 			return text
 		},

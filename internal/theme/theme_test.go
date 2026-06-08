@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"testing"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/theme"
 
@@ -112,6 +113,40 @@ func TestCustomThemeCopyMoveOpenDestinationColor(t *testing.T) {
 	}
 	if !IsAppColorName(ColorCopyMoveOpenDestination) {
 		t.Fatalf("%s should be an app color name", ColorCopyMoveOpenDestination)
+	}
+}
+
+func TestCustomThemeMonospaceFontFallsBackToCustomFont(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	cfg := &config.Config{
+		Theme: config.ThemeConfig{
+			FontPath: theme.DefaultTextFont().Name(),
+		},
+	}
+	customTheme := NewCustomTheme(cfg, func(string, ...interface{}) {})
+	customTheme.customFont = fyne.NewStaticResource("ui.ttf", theme.DefaultTextFont().Content())
+
+	if got := customTheme.Font(fyne.TextStyle{Monospace: true}); got == nil || got.Name() != "ui.ttf" {
+		t.Fatalf("monospace font = %v, want custom UI fallback", got)
+	}
+}
+
+func TestCustomThemeMonospaceFontOverridesCustomFont(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	cfg := &config.Config{}
+	customTheme := NewCustomTheme(cfg, func(string, ...interface{}) {})
+	customTheme.customFont = fyne.NewStaticResource("ui.ttf", theme.DefaultTextFont().Content())
+	customTheme.monospaceFont = fyne.NewStaticResource("mono.ttf", theme.DefaultTextFont().Content())
+
+	if got := customTheme.Font(fyne.TextStyle{Monospace: true}); got == nil || got.Name() != "mono.ttf" {
+		t.Fatalf("monospace font = %v, want mono override", got)
+	}
+	if got := customTheme.Font(fyne.TextStyle{}); got == nil || got.Name() != "ui.ttf" {
+		t.Fatalf("regular font = %v, want UI font", got)
 	}
 }
 

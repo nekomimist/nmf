@@ -40,6 +40,7 @@ nmf.theme(
     dark = True,
     font_size = 14,
     font_name = nmf.getenv("NMF_FONT", "Noto Sans CJK JP"),
+    monospace_font_name = nmf.getenv("NMF_MONO_FONT", ""),
 )
 
 display = nmf.display()
@@ -154,7 +155,8 @@ nmf.key("T", "user.show_tools")
 Scalar sections:
 
 - `nmf.window(width = int, height = int)`
-- `nmf.theme(dark = bool, font_size = int, font_name = str, font_path = str)`
+- `nmf.theme(dark = bool, font_size = int, font_name = str, font_path = str,
+  monospace_font_name = str, monospace_font_path = str)`
 - `nmf.color(name, value = color|None, dark = color|None, light = color|None)`
 - `nmf.debug_logging(enabled = bool, log_directory = str, max_files = int)`
 - `nmf.ui(show_hidden_files = bool, item_spacing = int)`

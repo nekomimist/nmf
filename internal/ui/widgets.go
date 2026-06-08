@@ -126,6 +126,7 @@ func NewFileNameLabel(name string, textColor color.RGBA) *FileNameLabel {
 		color: textColor,
 		text:  canvas.NewText(name, textColor),
 	}
+	label.text.TextStyle = fyne.TextStyle{Monospace: true}
 	label.text.TextSize = fyne.CurrentApp().Settings().Theme().Size(theme.SizeNameText)
 	label.ExtendBaseWidget(label)
 	return label

@@ -379,6 +379,8 @@ func (rt *Runtime) builtinTheme(_ *starlark.Thread, fn *starlark.Builtin, args s
 	fontSize := rt.cfg.Theme.FontSize
 	fontName := rt.cfg.Theme.FontName
 	fontPath := rt.cfg.Theme.FontPath
+	monospaceFontName := rt.cfg.Theme.MonospaceFontName
+	monospaceFontPath := rt.cfg.Theme.MonospaceFontPath
 	if err := starlark.UnpackArgs(
 		fn.Name(),
 		args,
@@ -387,6 +389,8 @@ func (rt *Runtime) builtinTheme(_ *starlark.Thread, fn *starlark.Builtin, args s
 		"font_size?", &fontSize,
 		"font_name?", &fontName,
 		"font_path?", &fontPath,
+		"monospace_font_name?", &monospaceFontName,
+		"monospace_font_path?", &monospaceFontPath,
 	); err != nil {
 		return nil, err
 	}
@@ -397,6 +401,8 @@ func (rt *Runtime) builtinTheme(_ *starlark.Thread, fn *starlark.Builtin, args s
 	rt.cfg.Theme.FontSize = fontSize
 	rt.cfg.Theme.FontName = strings.TrimSpace(fontName)
 	rt.cfg.Theme.FontPath = fontPath
+	rt.cfg.Theme.MonospaceFontName = strings.TrimSpace(monospaceFontName)
+	rt.cfg.Theme.MonospaceFontPath = monospaceFontPath
 	rt.saveMask.theme = true
 	return starlark.None, nil
 }

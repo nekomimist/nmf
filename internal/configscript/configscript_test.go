@@ -1738,7 +1738,7 @@ font = nmf.getenv("NMF_TEST_CONFIGSCRIPT_FONT")
 fallback = nmf.getenv("NMF_TEST_CONFIGSCRIPT_MISSING", "fallback.ttf")
 missing = nmf.getenv("NMF_TEST_CONFIGSCRIPT_MISSING")
 
-nmf.theme(font_name = font, font_path = fallback)
+nmf.theme(font_name = font, font_path = fallback, monospace_font_name = "Mono Env", monospace_font_path = "mono.ttf")
 if missing == None:
     nmf.ui(show_hidden_files = True)
 `
@@ -1755,6 +1755,12 @@ if missing == None:
 	}
 	if cfg.Theme.FontPath != "fallback.ttf" {
 		t.Fatalf("font path = %q, want fallback.ttf", cfg.Theme.FontPath)
+	}
+	if cfg.Theme.MonospaceFontName != "Mono Env" {
+		t.Fatalf("monospace font name = %q, want Mono Env", cfg.Theme.MonospaceFontName)
+	}
+	if cfg.Theme.MonospaceFontPath != "mono.ttf" {
+		t.Fatalf("monospace font path = %q, want mono.ttf", cfg.Theme.MonospaceFontPath)
 	}
 	if !cfg.UI.ShowHiddenFiles {
 		t.Fatal("missing env without default should return None")

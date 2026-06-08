@@ -7,19 +7,29 @@ import (
 	"testing"
 
 	fynetheme "fyne.io/fyne/v2/theme"
+	"github.com/go-text/typesetting/font"
+	"github.com/go-text/typesetting/fontscan"
 )
 
 func TestConfiguredFontNames(t *testing.T) {
-	if got := configuredFontNames("Custom Font"); len(got) < 2 || got[0] != "Custom Font" {
+	if got := configuredFontNames("Custom Font", true); len(got) < 2 || got[0] != "Custom Font" {
 		t.Fatalf("configuredFontNames returned %#v", got)
 	}
 
-	if got := configuredFontNames(" auto "); len(got) == 0 {
+	if got := configuredFontNames(" auto ", true); len(got) == 0 {
 		t.Fatal("configuredFontNames should return default names for auto")
 	}
 
-	if got := configuredFontNames(""); len(got) == 0 {
+	if got := configuredFontNames("", true); len(got) == 0 {
 		t.Fatal("configuredFontNames should return default names for empty input")
+	}
+
+	if got := configuredFontNames("", false); len(got) != 0 {
+		t.Fatalf("configuredFontNames without defaults returned %#v, want empty", got)
+	}
+
+	if got := configuredFontNames("Custom Mono", false); len(got) != 1 || got[0] != "Custom Mono" {
+		t.Fatalf("configuredFontNames without defaults returned %#v, want only configured name", got)
 	}
 }
 
@@ -55,6 +65,62 @@ func TestLoadFontResourceFromPath(t *testing.T) {
 	}
 	if res.Name() != "font.ttf" {
 		t.Fatalf("resource name = %q, want font.ttf", res.Name())
+	}
+}
+
+func TestSortFontLocationsByRegularPreference(t *testing.T) {
+	locations := []fontscan.Location{
+		{File: "family-bold.ttf"},
+		{File: "family-italic.ttf"},
+		{File: "family-regular.ttf"},
+		{File: "family-medium.ttf"},
+	}
+	descriptions := map[string]font.Description{
+		"family-bold.ttf": {
+			Family: "Family",
+			Aspect: font.Aspect{
+				Style:   font.StyleNormal,
+				Weight:  font.WeightBold,
+				Stretch: font.StretchNormal,
+			},
+		},
+		"family-italic.ttf": {
+			Family: "Family",
+			Aspect: font.Aspect{
+				Style:   font.StyleItalic,
+				Weight:  font.WeightNormal,
+				Stretch: font.StretchNormal,
+			},
+		},
+		"family-regular.ttf": {
+			Family: "Family",
+			Aspect: font.Aspect{
+				Style:   font.StyleNormal,
+				Weight:  font.WeightNormal,
+				Stretch: font.StretchNormal,
+			},
+		},
+		"family-medium.ttf": {
+			Family: "Family",
+			Aspect: font.Aspect{
+				Style:   font.StyleNormal,
+				Weight:  font.WeightMedium,
+				Stretch: font.StretchNormal,
+			},
+		},
+	}
+
+	sortFontLocationsByRegularPreference(locations, func(location fontscan.Location) (font.Description, bool) {
+		desc, ok := descriptions[location.File]
+		return desc, ok
+	})
+
+	got := []string{locations[0].File, locations[1].File, locations[2].File, locations[3].File}
+	want := []string{"family-regular.ttf", "family-medium.ttf", "family-bold.ttf", "family-italic.ttf"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("sorted locations = %#v, want %#v", got, want)
+		}
 	}
 }
 

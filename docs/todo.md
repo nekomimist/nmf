@@ -5,15 +5,6 @@
 ### File Managerのタイトル
 - Nekomimist File Managerにしたい
 
-### フォント指定を分ける
-- 現状config.jsonやnmf.theme(font_name)で指定されたフォントで全ての表示がされている。
-- ファイルリストを固定幅フォントでにしたくて固定幅フォントにすると、
-  ダイヤログのパーツなども全部固定幅になってしまう。
-- そこで
-  - UI用(DialogのTitle/文言/ポタン)のフォント 
-  - ファイル名・パス名を表示するためのフォント
-  を分けて設定できるようにしたい。
-
 ### 起動時のウィンドウ位置を設定できるようにしたい
 - Windows限定で、起動時の最初のウィンドウ位置を指定できるようにしたい
 - 2画面目の座標を選択していて、1画面の環境からRDPで接続したり、
@@ -57,6 +48,13 @@
 - 進捗表示は必須。高速化案はチャンク単位などで現在ファイルの進捗を維持できることを条件にする。
 
 # DONE 以下は一応終わったもの
+## フォント指定を分ける
+- 既存の `fontName` / `fontPath` はUI用フォントとして残した。
+- `monospaceFontName` / `monospaceFontPath` と Starlark の
+  `monospace_font_name` / `monospace_font_path` を追加した。
+- `TextStyle.Monospace` の表示はmonospace用フォントを使い、未指定ならUI用フォントを継承する。
+- ファイルリスト、パス表示、ステータス、履歴/コピー/比較/ディレクトリジャンプのパス候補表示をmonospace対象にした。
+
 ## デバッグログの強化
 - `config.json` か `init.star` でログディレクトリを設定できるようにした。
   デフォルトは `config.json` と `init.star` と同じ場所の `logs` フォルダ。

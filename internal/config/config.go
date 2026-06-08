@@ -35,11 +35,13 @@ type rawWindowConfig struct {
 }
 
 type rawThemeConfig struct {
-	Dark     *bool                       `json:"dark"`
-	FontSize *int                        `json:"fontSize"`
-	FontName *string                     `json:"fontName"`
-	FontPath *string                     `json:"fontPath"`
-	Colors   map[string]ThemeColorConfig `json:"colors"`
+	Dark              *bool                       `json:"dark"`
+	FontSize          *int                        `json:"fontSize"`
+	FontName          *string                     `json:"fontName"`
+	FontPath          *string                     `json:"fontPath"`
+	MonospaceFontName *string                     `json:"monospaceFontName"`
+	MonospaceFontPath *string                     `json:"monospaceFontPath"`
+	Colors            map[string]ThemeColorConfig `json:"colors"`
 }
 
 type rawDebugConfig struct {
@@ -126,11 +128,13 @@ type WindowConfig struct {
 
 // ThemeConfig represents theme-related settings
 type ThemeConfig struct {
-	Dark     bool                        `json:"dark"`
-	FontSize int                         `json:"fontSize"`
-	FontName string                      `json:"fontName"`
-	FontPath string                      `json:"fontPath"`
-	Colors   map[string]ThemeColorConfig `json:"colors,omitempty"`
+	Dark              bool                        `json:"dark"`
+	FontSize          int                         `json:"fontSize"`
+	FontName          string                      `json:"fontName"`
+	FontPath          string                      `json:"fontPath"`
+	MonospaceFontName string                      `json:"monospaceFontName,omitempty"`
+	MonospaceFontPath string                      `json:"monospaceFontPath,omitempty"`
+	Colors            map[string]ThemeColorConfig `json:"colors,omitempty"`
 }
 
 // DebugConfig controls persistent debug logging.
@@ -768,10 +772,12 @@ func getDefaultConfig() *Config {
 			Height: 600,
 		},
 		Theme: ThemeConfig{
-			Dark:     true,
-			FontSize: 14,
-			FontName: "",
-			FontPath: "",
+			Dark:              true,
+			FontSize:          14,
+			FontName:          "",
+			FontPath:          "",
+			MonospaceFontName: "",
+			MonospaceFontPath: "",
 		},
 		Debug: DebugConfig{
 			Enabled:      false,
@@ -893,6 +899,12 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) {
 	}
 	if fileConfig.Theme.FontPath != nil && *fileConfig.Theme.FontPath != "" {
 		defaultConfig.Theme.FontPath = *fileConfig.Theme.FontPath
+	}
+	if fileConfig.Theme.MonospaceFontName != nil {
+		defaultConfig.Theme.MonospaceFontName = strings.TrimSpace(*fileConfig.Theme.MonospaceFontName)
+	}
+	if fileConfig.Theme.MonospaceFontPath != nil && *fileConfig.Theme.MonospaceFontPath != "" {
+		defaultConfig.Theme.MonospaceFontPath = *fileConfig.Theme.MonospaceFontPath
 	}
 	if fileConfig.Theme.Colors != nil {
 		defaultConfig.Theme.Colors = make(map[string]ThemeColorConfig, len(fileConfig.Theme.Colors))

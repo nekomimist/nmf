@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -24,35 +25,46 @@ type fontResolverLogger struct{}
 func (fontResolverLogger) Printf(string, ...interface{}) {}
 
 func resolveThemeFont(themeConfig config.ThemeConfig, debugPrint func(format string, args ...interface{})) fyne.Resource {
+	return resolveConfiguredFont(themeConfig.FontPath, themeConfig.FontName, true, "Font", debugPrint)
+}
+
+func resolveThemeMonospaceFont(themeConfig config.ThemeConfig, debugPrint func(format string, args ...interface{})) fyne.Resource {
+	return resolveConfiguredFont(themeConfig.MonospaceFontPath, themeConfig.MonospaceFontName, false, "MonospaceFont", debugPrint)
+}
+
+func resolveConfiguredFont(pathConfig, nameConfig string, useDefaults bool, logPrefix string, debugPrint func(format string, args ...interface{})) fyne.Resource {
 	if debugPrint == nil {
 		debugPrint = func(string, ...interface{}) {}
 	}
 
-	if path := strings.TrimSpace(themeConfig.FontPath); path != "" {
+	if path := strings.TrimSpace(pathConfig); path != "" {
 		res, err := loadFontResourceFromPath(path)
 		if err == nil {
-			debugPrint("Theme: Loaded custom font path=%s", path)
+			debugPrint("Theme: Loaded custom %s path=%s", logPrefix, path)
 			return res
 		}
-		debugPrint("Theme: FontPath unavailable path=%s err=%v", path, err)
+		debugPrint("Theme: %sPath unavailable path=%s err=%v", logPrefix, path, err)
 	}
 
-	for _, name := range configuredFontNames(themeConfig.FontName) {
+	for _, name := range configuredFontNames(nameConfig, useDefaults) {
 		res, source, err := loadFontResourceByName(name)
 		if err == nil {
-			debugPrint("Theme: Loaded font name=%s source=%s", name, source)
+			debugPrint("Theme: Loaded %s name=%s source=%s", logPrefix, name, source)
 			return res
 		}
-		debugPrint("Theme: FontName unavailable name=%s err=%v", name, err)
+		debugPrint("Theme: %sName unavailable name=%s err=%v", logPrefix, name, err)
 	}
 
 	return nil
 }
 
-func configuredFontNames(configured string) []string {
+func configuredFontNames(configured string, useDefaults bool) []string {
 	name := strings.TrimSpace(configured)
 	if name != "" && !strings.EqualFold(name, "auto") {
 		names := []string{name}
+		if !useDefaults {
+			return names
+		}
 		for _, fallback := range defaultFontNames(runtime.GOOS) {
 			if strings.EqualFold(name, fallback) {
 				continue
@@ -60,6 +72,9 @@ func configuredFontNames(configured string) []string {
 			names = append(names, fallback)
 		}
 		return names
+	}
+	if !useDefaults {
+		return nil
 	}
 	return defaultFontNames(runtime.GOOS)
 }
@@ -106,6 +121,8 @@ func loadFontResourceByName(name string) (fyne.Resource, string, error) {
 		return nil, "", fmt.Errorf("font family not found")
 	}
 
+	sortFontLocationsByRegularPreference(locations, describeFontLocation)
+
 	var lastErr error
 	for _, location := range locations {
 		res, source, err := loadFontResourceFromLocation(name, location)
@@ -118,6 +135,65 @@ func loadFontResourceByName(name string) (fyne.Resource, string, error) {
 		return nil, "", lastErr
 	}
 	return nil, "", fmt.Errorf("no usable font files found")
+}
+
+func sortFontLocationsByRegularPreference(locations []fontscan.Location, describe func(fontscan.Location) (font.Description, bool)) {
+	sort.SliceStable(locations, func(i, j int) bool {
+		leftDesc, leftOK := describe(locations[i])
+		rightDesc, rightOK := describe(locations[j])
+		if leftOK != rightOK {
+			return leftOK
+		}
+		if !leftOK {
+			return false
+		}
+		leftScore := regularFontScore(leftDesc.Aspect)
+		rightScore := regularFontScore(rightDesc.Aspect)
+		return leftScore < rightScore
+	})
+}
+
+func regularFontScore(aspect font.Aspect) float32 {
+	score := fontWeightDistance(aspect.Weight, font.WeightNormal)
+	if aspect.Style != font.StyleNormal {
+		score += 1000
+	}
+	score += fontStretchDistance(aspect.Stretch, font.StretchNormal) * 100
+	return score
+}
+
+func fontWeightDistance(value, target font.Weight) float32 {
+	diff := float32(value - target)
+	if diff < 0 {
+		return -diff
+	}
+	return diff
+}
+
+func fontStretchDistance(value, target font.Stretch) float32 {
+	diff := float32(value - target)
+	if diff < 0 {
+		return -diff
+	}
+	return diff
+}
+
+func describeFontLocation(location fontscan.Location) (font.Description, bool) {
+	file, err := os.Open(location.File)
+	if err != nil {
+		return font.Description{}, false
+	}
+	defer file.Close()
+
+	loaders, err := ot.NewLoaders(file)
+	if err != nil {
+		return font.Description{}, false
+	}
+	if int(location.Index) >= len(loaders) {
+		return font.Description{}, false
+	}
+	desc, _ := font.Describe(loaders[location.Index], nil)
+	return desc, true
 }
 
 func scanFontLocationsByName(name string) []fontscan.Location {

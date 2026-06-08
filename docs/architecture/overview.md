@@ -74,7 +74,8 @@ User-facing `config.json` syntax and examples are documented in
 Top-level config sections:
 
 - `window`: `width`, `height`
-- `theme`: `dark`, `fontSize`, `fontName`, `fontPath`, `colors`
+- `theme`: `dark`, `fontSize`, `fontName`, `fontPath`,
+  `monospaceFontName`, `monospaceFontPath`, `colors`
 - `debug`: `enabled`, `logDirectory`, `maxLogFiles`
 - `ui`:
   - `showHiddenFiles`, `sort`, `itemSpacing`

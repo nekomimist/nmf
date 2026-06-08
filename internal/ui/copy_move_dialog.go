@@ -114,6 +114,7 @@ func (d *CopyMoveDialog) createWidgets() {
 		d.dataBinding,
 		func() fyne.CanvasObject {
 			text := canvas.NewText("", currentAppThemeColor(fynetheme.ColorNameForeground))
+			text.TextStyle = fyne.TextStyle{Monospace: true}
 			text.TextSize = fynetheme.TextSize()
 			return text
 		},
@@ -169,6 +170,7 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveRe
 			if i >= 0 && int(i) < len(toShow) {
 				name := toShow[i]
 				if label, ok := obj.(*widget.Label); ok {
+					label.TextStyle = fyne.TextStyle{Monospace: true}
 					label.SetText(name)
 				}
 			}

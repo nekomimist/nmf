@@ -37,6 +37,7 @@ func (fm *FileManager) setupUI() {
 			icon := ui.NewTappableIcon(theme.FolderIcon(), nil)
 			nameLabel := ui.NewFileNameLabel("filename", fm.customTheme.GetCustomColor(customtheme.ColorFileRegular))
 			info := widget.NewLabel("info")
+			info.TextStyle = fyne.TextStyle{Monospace: true}
 
 			// Size icon based on text height for consistency
 			textSize := fyne.CurrentApp().Settings().Theme().Size(theme.SizeNameText)

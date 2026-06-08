@@ -27,6 +27,8 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
     "fontSize": 14,
     "fontName": "Noto Sans CJK JP",
     "fontPath": "",
+    "monospaceFontName": "UDEV Gothic",
+    "monospaceFontPath": "",
     "colors": {
       "cursor": {
         "dark": "foreground",
@@ -100,6 +102,10 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
 - `fontSize`: base text size. `0` keeps the default.
 - `fontName`: preferred system font name. Empty uses the built-in fallback list.
 - `fontPath`: explicit font file path. Empty disables explicit file loading.
+- `monospaceFontName`: preferred system font name for file/path style text.
+  Empty inherits the regular font.
+- `monospaceFontPath`: explicit font file path for file/path style text. Empty
+  inherits the regular font.
 - `colors`: optional app-specific color overrides. Values can be RGBA arrays,
   Fyne theme color names, or Fyne primary color names.
 

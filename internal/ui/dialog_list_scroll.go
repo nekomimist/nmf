@@ -48,8 +48,9 @@ func dialogTextWidth(values []string, minimum float32) float32 {
 	width := minimum
 	textSize := theme.TextSize()
 	padding := theme.Padding()
+	style := fyne.TextStyle{Monospace: true}
 	for _, value := range values {
-		measured := fyne.MeasureText(value, textSize, fyne.TextStyle{}).Width + padding*4
+		measured := fyne.MeasureText(value, textSize, style).Width + padding*4
 		if measured > width {
 			width = measured
 		}

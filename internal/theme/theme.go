@@ -123,9 +123,10 @@ func IsAppColorName(name string) bool {
 
 // CustomTheme implements fyne.Theme with configurable font settings
 type CustomTheme struct {
-	config     *config.Config
-	customFont fyne.Resource
-	debugPrint func(format string, args ...interface{})
+	config        *config.Config
+	customFont    fyne.Resource
+	monospaceFont fyne.Resource
+	debugPrint    func(format string, args ...interface{})
 }
 
 // NewCustomTheme creates a new custom theme with the given configuration
@@ -143,6 +144,7 @@ func NewCustomTheme(config *config.Config, debugPrint func(format string, args .
 // loadCustomFont resolves and loads the configured font.
 func (t *CustomTheme) loadCustomFont() {
 	t.customFont = resolveThemeFont(t.config.Theme, t.debugPrint)
+	t.monospaceFont = resolveThemeMonospaceFont(t.config.Theme, t.debugPrint)
 }
 
 // Color methods from default theme
@@ -163,6 +165,10 @@ func (t *CustomTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
 
 // Font method with custom font support
 func (t *CustomTheme) Font(style fyne.TextStyle) fyne.Resource {
+	if style.Monospace && t.monospaceFont != nil {
+		return t.monospaceFont
+	}
+
 	// Return custom font if loaded and available
 	if t.customFont != nil {
 		return t.customFont

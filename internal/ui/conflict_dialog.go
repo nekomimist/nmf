@@ -49,8 +49,10 @@ func (d *ConflictDialog) ShowDialog(parent fyne.Window, callback func(jobs.Confl
 	d.callback = callback
 
 	source := widget.NewLabel(middleEllipsizeFileName(d.req.SourcePath, conflictDisplayedPathMax))
+	source.TextStyle = fyne.TextStyle{Monospace: true}
 	source.Wrapping = fyne.TextWrapWord
 	dest := widget.NewLabel(middleEllipsizeFileName(d.req.Destination, conflictDisplayedPathMax))
+	dest.TextStyle = fyne.TextStyle{Monospace: true}
 	dest.Wrapping = fyne.TextWrapWord
 	sourceModified := widget.NewLabel(formatConflictModified(d.req.SourceModified))
 	destModified := widget.NewLabel(formatConflictModified(d.req.DestModified))
@@ -335,6 +337,7 @@ type conflictNameEntry struct {
 func newConflictNameEntry(km *keymanager.KeyManager, onCancel func()) *conflictNameEntry {
 	e := &conflictNameEntry{km: km, onCancel: onCancel}
 	e.acceptTab = true
+	e.TextStyle = fyne.TextStyle{Monospace: true}
 	e.Wrapping = fyne.TextWrap(fyne.TextTruncateClip)
 	e.ExtendBaseWidget(e)
 	return e

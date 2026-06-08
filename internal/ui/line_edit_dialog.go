@@ -92,6 +92,7 @@ func (d *LineEditDialog) ShowDialog(parent fyne.Window, onAccept func(string) bo
 	if d.opts.CurrentText != "" {
 		currentLabel := widget.NewLabel("Current:")
 		currentName := widget.NewLabel(middleEllipsizeFileName(d.opts.CurrentText, renameDisplayedNameMax))
+		currentName.TextStyle = fyne.TextStyle{Monospace: true}
 		currentName.Truncation = fyne.TextTruncateClip
 		content.Add(container.NewBorder(nil, nil, currentLabel, nil, currentName))
 	}
@@ -224,6 +225,7 @@ type LineEditEntry struct {
 func NewLineEditEntry(onCancel func()) *LineEditEntry {
 	e := &LineEditEntry{onCancel: onCancel}
 	e.acceptTab = true
+	e.TextStyle = fyne.TextStyle{Monospace: true}
 	e.Wrapping = fyne.TextWrap(fyne.TextTruncateClip)
 	e.ExtendBaseWidget(e)
 	return e

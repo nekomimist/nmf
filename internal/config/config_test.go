@@ -33,6 +33,12 @@ func TestGetDefaultConfig(t *testing.T) {
 	if config.Theme.FontName != "" {
 		t.Errorf("Expected empty font name, got '%s'", config.Theme.FontName)
 	}
+	if config.Theme.MonospaceFontPath != "" {
+		t.Errorf("Expected empty monospace font path, got '%s'", config.Theme.MonospaceFontPath)
+	}
+	if config.Theme.MonospaceFontName != "" {
+		t.Errorf("Expected empty monospace font name, got '%s'", config.Theme.MonospaceFontName)
+	}
 	if config.Debug.Enabled {
 		t.Error("Expected debug logging to be disabled by default")
 	}
@@ -426,6 +432,8 @@ func TestMergeConfigs(t *testing.T) {
 	border := "border"
 	path := "/path/to/font.ttf"
 	fontName := "Noto Sans CJK JP"
+	monospacePath := "/path/to/mono.ttf"
+	monospaceFontName := "UDEV Gothic"
 	itemSpacing := 8
 	preserveTimestamps := true
 	viewerMaxWidth := 1200
@@ -448,11 +456,13 @@ func TestMergeConfigs(t *testing.T) {
 			Height: &height,
 		},
 		Theme: rawThemeConfig{
-			Dark:     &falseVal,
-			FontSize: &fontSize,
-			FontName: &fontName,
-			FontPath: &path,
-			Colors:   colors,
+			Dark:              &falseVal,
+			FontSize:          &fontSize,
+			FontName:          &fontName,
+			FontPath:          &path,
+			MonospaceFontName: &monospaceFontName,
+			MonospaceFontPath: &monospacePath,
+			Colors:            colors,
 		},
 		UI: rawUIConfig{
 			ShowHiddenFiles: &trueVal,
@@ -512,6 +522,12 @@ func TestMergeConfigs(t *testing.T) {
 	}
 	if defaultConfig.Theme.FontName != "Noto Sans CJK JP" {
 		t.Errorf("Expected merged font name 'Noto Sans CJK JP', got '%s'", defaultConfig.Theme.FontName)
+	}
+	if defaultConfig.Theme.MonospaceFontName != "UDEV Gothic" {
+		t.Errorf("Expected merged monospace font name 'UDEV Gothic', got '%s'", defaultConfig.Theme.MonospaceFontName)
+	}
+	if defaultConfig.Theme.MonospaceFontPath != "/path/to/mono.ttf" {
+		t.Errorf("Expected merged monospace font path '/path/to/mono.ttf', got '%s'", defaultConfig.Theme.MonospaceFontPath)
 	}
 	if got := defaultConfig.Theme.Colors["cursor"].Dark.RGBA; got != [4]uint8{1, 2, 3, 4} {
 		t.Errorf("Expected merged cursor dark color, got %+v", got)

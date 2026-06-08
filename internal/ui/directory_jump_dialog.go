@@ -111,9 +111,11 @@ func (d *DirectoryJumpDialog) createWidgets() {
 		},
 		func() fyne.CanvasObject {
 			shortcut := widget.NewLabel("")
+			shortcut.TextStyle = fyne.TextStyle{Monospace: true}
 			shortcut.Wrapping = fyne.TextTruncate
 			shortcutBox := container.NewGridWrap(directoryJumpShortcutCellSize(), shortcut)
 			path := widget.NewLabel("")
+			path.TextStyle = fyne.TextStyle{Monospace: true}
 			return container.NewHBox(shortcutBox, path)
 		},
 		func(id widget.ListItemID, obj fyne.CanvasObject) {
