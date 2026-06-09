@@ -183,6 +183,65 @@ func TestKeyManagerDefersTransitionUntilKeysReleased(t *testing.T) {
 	}
 }
 
+func TestKeyManagerForceReleaseRunsPendingTransition(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	main := &recordingHandler{}
+	km.PushHandler(main)
+	km.PushHandler(&deferPopOnKeyDownHandler{km: km})
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.ForceReleaseAllKeys("test.force")
+
+	if got := km.GetCurrentHandler(); got != main {
+		t.Fatalf("current handler = %T, want main handler", got)
+	}
+	dump := km.DumpState()
+	for _, want := range []string{
+		"pressedKeys=[]",
+		"pendingTransitions=[]",
+		"modifiers=shift:false ctrl:false alt:false",
+		"suppressTyped=[Return]",
+	} {
+		if !strings.Contains(dump, want) {
+			t.Fatalf("DumpState() =\n%s\nwant substring %q", dump, want)
+		}
+	}
+}
+
+func TestKeyManagerForceReleaseSuppressesLateTypedKey(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	main := &recordingHandler{}
+	km.PushHandler(main)
+	km.PushHandler(&deferPopOnKeyDownHandler{km: km})
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.ForceReleaseAllKeys("test.force")
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	if len(main.typedKeys) != 0 {
+		t.Fatalf("late typed key leaked to main after force release: %v", main.typedKeys)
+	}
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+
+	if len(main.typedKeys) != 1 || main.typedKeys[0] != fyne.KeyReturn {
+		t.Fatalf("next typed key = %v, want [Return]", main.typedKeys)
+	}
+}
+
+func TestKeyManagerForceReleaseClearsModifiers(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	km.PushHandler(noopHandler{})
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
+	km.ForceReleaseAllKeys("test.force")
+
+	if km.GetModifierState().CtrlPressed {
+		t.Fatal("CtrlPressed should be false after force release")
+	}
+}
+
 func TestKeyManagerSuppressesLateTypedKeyAfterDeferredTransition(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	main := &recordingHandler{}

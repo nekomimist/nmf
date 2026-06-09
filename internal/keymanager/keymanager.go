@@ -205,6 +205,29 @@ func (km *KeyManager) runPendingTransitions(pending []pendingTransition) {
 	}
 }
 
+// ForceReleaseAllKeys clears tracked key state and runs pending transitions.
+func (km *KeyManager) ForceReleaseAllKeys(label string) {
+	km.mutex.Lock()
+	pressed := len(km.pressedKeys)
+	pendingCount := len(km.pending)
+	if pressed > 0 {
+		if km.suppressTyped == nil {
+			km.suppressTyped = make(map[fyne.KeyName]struct{})
+		}
+		for key := range km.pressedKeys {
+			km.suppressTyped[key] = struct{}{}
+		}
+	}
+	km.pressedKeys = nil
+	km.modifierState = ModifierState{}
+	km.activeTypedKey = ""
+	pendingTransitions := km.flushPendingTransitionsLocked()
+	km.mutex.Unlock()
+
+	km.debugPrint("KeyManager: force release label=%s pressed=%d pending=%d", label, pressed, pendingCount)
+	km.runPendingTransitions(pendingTransitions)
+}
+
 // DeferUntilKeysReleased runs action after all currently pressed keys are released.
 func (km *KeyManager) DeferUntilKeysReleased(label string, action func()) {
 	if action == nil {

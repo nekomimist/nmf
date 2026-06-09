@@ -422,6 +422,7 @@ func (fm *FileManager) OpenFile(file *fileinfo.FileInfo) {
 	// Regular file: try to open with associated application
 	if err := fileinfo.OpenWithDefaultApp(file.Path); err != nil {
 		debugPrint("FileManager: Failed to open file '%s': %v", file.Path, err)
+		fm.forceReleaseKeysAfterExternalOpen("open-file-error")
 		fm.ShowMessageDialog("ファイルを開けませんでした", err.Error())
 		return
 	}
@@ -438,9 +439,17 @@ func (fm *FileManager) OpenFileDefaultApp(file *fileinfo.FileInfo) {
 	}
 	if err := fileinfo.OpenWithDefaultApp(file.Path); err != nil {
 		debugPrint("FileManager: Failed to open file with default app '%s': %v", file.Path, err)
+		fm.forceReleaseKeysAfterExternalOpen("open-default-app-error")
 		fm.ShowMessageDialog("ファイルを開けませんでした", err.Error())
 		return
 	}
+}
+
+func (fm *FileManager) forceReleaseKeysAfterExternalOpen(label string) {
+	if fm == nil || fm.keyManager == nil {
+		return
+	}
+	fm.keyManager.ForceReleaseAllKeys(label)
 }
 
 // SetCursorToFile sets the cursor to the specified file.

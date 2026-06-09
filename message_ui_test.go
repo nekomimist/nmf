@@ -30,6 +30,22 @@ func TestShowMessageDialogDefersUntilKeysReleased(t *testing.T) {
 	}
 }
 
+func TestShowMessageDialogRunsAfterExternalOpenForceRelease(t *testing.T) {
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	fm := &FileManager{keyManager: km}
+	ran := false
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	fm.forceReleaseKeysAfterExternalOpen("test.open-error")
+	fm.showMessageDialog(func() {
+		ran = true
+	})
+
+	if !ran {
+		t.Fatal("message show should run after external open force release")
+	}
+}
+
 func TestShowMessageDialogRunsImmediatelyWithoutKeyManager(t *testing.T) {
 	fm := &FileManager{}
 	ran := false
