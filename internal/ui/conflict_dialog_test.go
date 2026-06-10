@@ -8,8 +8,10 @@ import (
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/test"
 	fynetheme "fyne.io/fyne/v2/theme"
+	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/config"
+	"nmf/internal/jobs"
 	"nmf/internal/keymanager"
 	customtheme "nmf/internal/theme"
 )
@@ -29,6 +31,46 @@ func (conflictEntryTestHandler) OnTypedRune(_ rune, _ keymanager.ModifierState) 
 	return false
 }
 func (conflictEntryTestHandler) GetName() string { return "test" }
+
+func TestConflictDialogSelectOverwriteUsesExactOption(t *testing.T) {
+	dialog := &ConflictDialog{}
+	dialog.choice = widget.NewRadioGroup([]string{
+		conflictOverwriteIfNewerLabel,
+		conflictOverwriteLabel,
+	}, nil)
+	dialog.choice.SetSelected(conflictOverwriteIfNewerLabel)
+
+	dialog.SelectOverwrite()
+
+	if got := dialog.choice.Selected; got != conflictOverwriteLabel {
+		t.Fatalf("SelectOverwrite selected %q, want %q", got, conflictOverwriteLabel)
+	}
+}
+
+func TestConflictDialogChoiceRequiresSelection(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	parent := test.NewWindow(widget.NewLabel(""))
+	defer parent.Close()
+
+	dialog := NewConflictDialog(jobs.ConflictRequest{
+		SuggestedName: "file (1)",
+		DefaultAction: jobs.ConflictOverwriteIfNewer,
+	}, nil)
+	dialog.ShowDialog(parent, func(jobs.ConflictResolution) {})
+	defer dialog.CancelJob()
+
+	if dialog.choice == nil {
+		t.Fatal("conflict choice radio group was not created")
+	}
+	if !dialog.choice.Required {
+		t.Fatal("conflict choice radio group should require one selected option")
+	}
+	if got := dialog.choice.Selected; got == "" {
+		t.Fatal("conflict choice radio group should have a default selection")
+	}
+}
 
 func TestConflictNameEntryKeyUpClearsShortcutKeys(t *testing.T) {
 	km := keymanager.NewKeyManager(func(string, ...interface{}) {})

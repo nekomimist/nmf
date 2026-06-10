@@ -20,6 +20,11 @@ import (
 
 const (
 	conflictDisplayedPathMax = 72
+
+	conflictOverwriteIfNewerLabel = "Overwrite if newer (Alt+N)"
+	conflictOverwriteLabel        = "Overwrite (Alt+O)"
+	conflictSkipLabel             = "Skip this item (Alt+S)"
+	conflictRenameLabel           = "Rename to (Alt+R):"
 )
 
 // ConflictDialog resolves one copy/move destination name collision.
@@ -62,11 +67,11 @@ func (d *ConflictDialog) ShowDialog(parent fyne.Window, callback func(jobs.Confl
 	}
 
 	options := []string{
-		"Overwrite if newer (Alt+N)",
-		"Overwrite (Alt+O)",
+		conflictOverwriteIfNewerLabel,
+		conflictOverwriteLabel,
 		fmt.Sprintf("Auto name (Alt+A): %s", suggested),
-		"Skip this item (Alt+S)",
-		"Rename to (Alt+R):",
+		conflictSkipLabel,
+		conflictRenameLabel,
 	}
 	d.choice = widget.NewRadioGroup(options, func(string) {
 		d.updateEntryState()
@@ -74,6 +79,7 @@ func (d *ConflictDialog) ShowDialog(parent fyne.Window, callback func(jobs.Confl
 			d.focusCurrent()
 		}
 	})
+	d.choice.Required = true
 	switch d.req.DefaultAction {
 	case jobs.ConflictOverwriteIfNewer:
 		d.choice.SetSelected(options[0])
@@ -206,12 +212,12 @@ func (d *ConflictDialog) CancelJob() {
 
 // SelectOverwriteIfNewer selects conditional overwrite.
 func (d *ConflictDialog) SelectOverwriteIfNewer() {
-	d.selectChoiceByPrefix("Overwrite if newer")
+	d.selectChoiceExact(conflictOverwriteIfNewerLabel)
 }
 
 // SelectOverwrite selects unconditional overwrite.
 func (d *ConflictDialog) SelectOverwrite() {
-	d.selectChoiceByPrefix("Overwrite")
+	d.selectChoiceExact(conflictOverwriteLabel)
 }
 
 // SelectAutoName selects automatic suffix naming.
@@ -267,6 +273,19 @@ func (d *ConflictDialog) selectChoiceByPrefix(prefix string) {
 	}
 	for _, option := range d.choice.Options {
 		if strings.HasPrefix(option, prefix) {
+			d.choice.SetSelected(option)
+			d.updateEntryState()
+			return
+		}
+	}
+}
+
+func (d *ConflictDialog) selectChoiceExact(label string) {
+	if d.choice == nil {
+		return
+	}
+	for _, option := range d.choice.Options {
+		if option == label {
 			d.choice.SetSelected(option)
 			d.updateEntryState()
 			return
