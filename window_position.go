@@ -27,6 +27,11 @@ func selectWindowPlacement(parentRect windowSwitchRect, childWidth, childHeight 
 	return fallbackX, y, windowPlacementFallback
 }
 
+func selectWindowPositionInWorkRect(requestX, requestY, windowWidth, windowHeight int32, workRect windowSwitchRect) (int32, int32) {
+	return clampInt32(requestX, workRect.Left, workRect.Right-windowWidth),
+		clampInt32(requestY, workRect.Top, workRect.Bottom-windowHeight)
+}
+
 func windowPlacementOccupied(x, y int32, occupied []windowSwitchRect) bool {
 	for _, rect := range occupied {
 		if absInt32(x-rect.Left) <= windowPlacementNearThreshold && absInt32(y-rect.Top) <= windowPlacementNearThreshold {

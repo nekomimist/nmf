@@ -19,6 +19,12 @@ func TestGetDefaultConfig(t *testing.T) {
 	if config.Window.Height != 600 {
 		t.Errorf("Expected default window height 600, got %d", config.Window.Height)
 	}
+	if config.Window.X != nil || config.Window.Y != nil {
+		t.Errorf("Expected default window position to be unset, got x=%v y=%v", config.Window.X, config.Window.Y)
+	}
+	if config.Startup.Directory != "" {
+		t.Errorf("Expected default startup directory empty, got %q", config.Startup.Directory)
+	}
 
 	// Test Theme defaults
 	if !config.Theme.Dark {
@@ -131,6 +137,30 @@ func TestGetDefaultConfig(t *testing.T) {
 	}
 	if config.UI.ExternalCommands == nil {
 		t.Error("Expected external commands to be initialized")
+	}
+}
+
+func TestMergeConfigsWindowPositionAndStartupDirectory(t *testing.T) {
+	cfg := getDefaultConfig()
+	x := 1920
+	y := -40
+	directory := "  ~/work  "
+
+	mergeConfigs(cfg, &rawConfig{
+		Window: rawWindowConfig{
+			X: &x,
+			Y: &y,
+		},
+		Startup: rawStartupConfig{
+			Directory: &directory,
+		},
+	})
+
+	if cfg.Window.X == nil || *cfg.Window.X != 1920 || cfg.Window.Y == nil || *cfg.Window.Y != -40 {
+		t.Fatalf("window position = x=%v y=%v, want 1920,-40", cfg.Window.X, cfg.Window.Y)
+	}
+	if cfg.Startup.Directory != "~/work" {
+		t.Fatalf("startup directory = %q, want ~/work", cfg.Startup.Directory)
 	}
 }
 

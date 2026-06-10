@@ -80,3 +80,23 @@ func TestWindowPlacementOccupiedUsesLeftTopNearThreshold(t *testing.T) {
 		t.Fatal("position 33px away on y should not be occupied")
 	}
 }
+
+func TestSelectWindowPositionInWorkRectKeepsVisible(t *testing.T) {
+	work := windowSwitchRect{Left: 0, Top: 0, Right: 1920, Bottom: 1040}
+
+	x, y := selectWindowPositionInWorkRect(1800, 1000, 800, 600, work)
+
+	if x != 1120 || y != 440 {
+		t.Fatalf("position = %d,%d; want 1120,440", x, y)
+	}
+}
+
+func TestSelectWindowPositionInWorkRectSupportsNegativeMonitorCoordinates(t *testing.T) {
+	work := windowSwitchRect{Left: -1280, Top: -200, Right: 0, Bottom: 800}
+
+	x, y := selectWindowPositionInWorkRect(-1400, -300, 900, 700, work)
+
+	if x != -1280 || y != -200 {
+		t.Fatalf("position = %d,%d; want -1280,-200", x, y)
+	}
+}

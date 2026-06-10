@@ -34,7 +34,8 @@ configuration.
 ## Example
 
 ```python
-nmf.window(width = 1000, height = 720)
+nmf.window(width = 1000, height = 720, x = 100, y = 80)
+nmf.startup(directory = "~/projects")
 
 nmf.theme(
     dark = True,
@@ -154,7 +155,8 @@ nmf.key("T", "user.show_tools")
 
 Scalar sections:
 
-- `nmf.window(width = int, height = int)`
+- `nmf.window(width = int, height = int, x = int, y = int)`
+- `nmf.startup(directory = str)`
 - `nmf.theme(dark = bool, font_size = int, font_name = str, font_path = str,
   monospace_font_name = str, monospace_font_path = str)`
 - `nmf.color(name, value = color|None, dark = color|None, light = color|None)`
@@ -189,6 +191,11 @@ List APIs append to values already loaded from `config.json`. Use the matching
 `clear_*` function when the Starlark file should own the whole list.
 Directory jump shortcuts may be empty or multiple characters; the dialog filters
 them by case-insensitive prefix.
+`nmf.window(x = ..., y = ...)` configures the first window position on Windows;
+the position is clamped into the nearest monitor work area when applied. Set
+`x` and `y` together. Other platforms currently ignore the position fields.
+`nmf.startup(directory = "...")` sets the fallback startup directory used only
+when no command-line path is supplied.
 `nmf.debug_logging(enabled = True, log_directory = "logs", max_files = 10)`
 enables per-startup debug log files for the current run. Empty `log_directory`
 uses a `logs` directory next to `config.json` and `init.star`; relative paths

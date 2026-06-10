@@ -95,23 +95,7 @@ func main() {
 	if startPath == "" && flag.NArg() > 0 {
 		startPath = flag.Arg(0)
 	}
-
-	// If still no path, use current working directory
-	if startPath == "" {
-		pwd, err := os.Getwd()
-		if err != nil {
-			log.Fatalf("Error getting current directory: %v", err)
-		}
-		startPath = pwd
-	} else {
-		if strings.HasPrefix(startPath, "~") {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				log.Fatalf("Error getting home directory: %v", err)
-			}
-			startPath = strings.Replace(startPath, "~", home, 1)
-		}
-	}
+	cliStartPath := startPath != ""
 
 	// Load configuration
 	configManager := config.NewManager(debugPrint)
@@ -174,6 +158,10 @@ func main() {
 		debugPrint("Config: Invalid archive ZIP name encoding %q: %v; using %s", cfg.UI.Archive.ZipNameEncoding, err, fileinfo.DefaultArchiveZipNameEncoding)
 		_ = fileinfo.SetArchiveOptions(fileinfo.ArchiveOptions{ZipNameEncoding: fileinfo.DefaultArchiveZipNameEncoding})
 	}
+	startPath, err = selectStartupPath(startPath, cliStartPath, cfg)
+	if err != nil {
+		log.Fatalf("Error selecting startup path: %v", err)
+	}
 	resolvedStartPath, _, err := resolveDirectoryPath(startPath)
 	if err != nil {
 		log.Fatalf("Error accessing path '%s': %v", startPath, err)
@@ -182,23 +170,50 @@ func main() {
 	ime.SetEnabled(cfg.UI.IME.Enabled)
 	debugPrint("Config: IME integration enabled=%t", cfg.UI.IME.Enabled)
 
-	app := app.NewWithID(appID)
-	app.SetIcon(appIconResource)
+	fyneApp := app.NewWithID(appID)
+	fyneApp.SetIcon(appIconResource)
 
 	// Apply custom theme
 	customTheme := customtheme.NewCustomTheme(cfg, debugPrint)
-	app.Settings().SetTheme(customTheme)
+	fyneApp.Settings().SetTheme(customTheme)
 
 	// Install debug logger for jobs package (prints only in -d mode)
 	jobs.SetDebug(debugPrint)
 	shellmenu.Debugf = debugPrint
 
-	fm := NewFileManager(app, startPath, cfg, configManager, customTheme, configScript)
-	fm.window.ShowAndRun()
+	fm := NewFileManager(fyneApp, startPath, cfg, configManager, customTheme, configScript)
+	fm.window.Show()
+	applyInitialWindowPosition(fm.window, cfg.Window)
+	fyneApp.Run()
 }
 
 // resolveDirectoryPath resolves user input into a path suitable for LoadDirectory.
 // Local paths are validated as existing directories. SMB paths are normalized to canonical smb:// form.
 func resolveDirectoryPath(input string) (string, fileinfo.Parsed, error) {
 	return fileinfo.ResolveDirectoryPath(input)
+}
+
+func selectStartupPath(cliPath string, cliSpecified bool, cfg *config.Config) (string, error) {
+	if cliSpecified {
+		return expandHomePath(cliPath)
+	}
+	if cfg != nil && strings.TrimSpace(cfg.Startup.Directory) != "" {
+		return expandHomePath(cfg.Startup.Directory)
+	}
+	pwd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("getting current directory: %w", err)
+	}
+	return pwd, nil
+}
+
+func expandHomePath(path string) (string, error) {
+	if !strings.HasPrefix(path, "~") {
+		return path, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("getting home directory: %w", err)
+	}
+	return strings.Replace(path, "~", home, 1), nil
 }

@@ -70,6 +70,7 @@ type MenuItem struct {
 type saveMask struct {
 	debug                       bool
 	window                      bool
+	startup                     bool
 	theme                       bool
 	uiShowHiddenFiles           bool
 	uiSort                      bool
@@ -162,6 +163,9 @@ func (rt *Runtime) SaveTransform(base *config.Config) config.SaveTransform {
 		}
 		if mask.window {
 			current.Window = baseCopy.Window
+		}
+		if mask.startup {
+			current.Startup = baseCopy.Startup
 		}
 		if mask.theme {
 			current.Theme = baseCopy.Theme
@@ -306,6 +310,7 @@ func (rt *Runtime) predeclared() starlark.StringDict {
 	return starlark.StringDict{
 		"nmf": starlarkstruct.FromStringDict(starlark.String("nmf"), starlark.StringDict{
 			"window":             starlark.NewBuiltin("nmf.window", rt.builtinWindow),
+			"startup":            starlark.NewBuiltin("nmf.startup", rt.builtinStartup),
 			"theme":              starlark.NewBuiltin("nmf.theme", rt.builtinTheme),
 			"color":              starlark.NewBuiltin("nmf.color", rt.builtinColor),
 			"dark_theme":         starlark.NewBuiltin("nmf.dark_theme", rt.builtinDarkTheme),
@@ -360,9 +365,27 @@ func (rt *Runtime) predeclared() starlark.StringDict {
 }
 
 func (rt *Runtime) builtinWindow(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	width := rt.cfg.Window.Width
-	height := rt.cfg.Window.Height
-	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "width?", &width, "height?", &height); err != nil {
+	var widthValue starlark.Value
+	var heightValue starlark.Value
+	var xValue starlark.Value
+	var yValue starlark.Value
+	if err := starlark.UnpackArgs(
+		fn.Name(),
+		args,
+		kwargs,
+		"width?", &widthValue,
+		"height?", &heightValue,
+		"x?", &xValue,
+		"y?", &yValue,
+	); err != nil {
+		return nil, err
+	}
+	width, err := optionalStarlarkInt("width", widthValue, rt.cfg.Window.Width)
+	if err != nil {
+		return nil, err
+	}
+	height, err := optionalStarlarkInt("height", heightValue, rt.cfg.Window.Height)
+	if err != nil {
 		return nil, err
 	}
 	if width <= 0 || height <= 0 {
@@ -370,8 +393,44 @@ func (rt *Runtime) builtinWindow(_ *starlark.Thread, fn *starlark.Builtin, args 
 	}
 	rt.cfg.Window.Width = width
 	rt.cfg.Window.Height = height
+	if xValue != nil || yValue != nil {
+		if xValue == nil || yValue == nil {
+			return nil, fmt.Errorf("window x and y must be set together")
+		}
+		x, err := optionalStarlarkInt("x", xValue, 0)
+		if err != nil {
+			return nil, err
+		}
+		y, err := optionalStarlarkInt("y", yValue, 0)
+		if err != nil {
+			return nil, err
+		}
+		rt.cfg.Window.X = &x
+		rt.cfg.Window.Y = &y
+	}
 	rt.saveMask.window = true
 	return starlark.None, nil
+}
+
+func (rt *Runtime) builtinStartup(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	directory := rt.cfg.Startup.Directory
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "directory?", &directory); err != nil {
+		return nil, err
+	}
+	rt.cfg.Startup.Directory = strings.TrimSpace(directory)
+	rt.saveMask.startup = true
+	return starlark.None, nil
+}
+
+func optionalStarlarkInt(name string, value starlark.Value, fallback int) (int, error) {
+	if value == nil {
+		return fallback, nil
+	}
+	i, err := starlark.AsInt32(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be an int", name)
+	}
+	return int(i), nil
 }
 
 func (rt *Runtime) builtinTheme(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

@@ -8,6 +8,8 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver"
 	"golang.org/x/sys/windows"
+
+	"nmf/internal/config"
 )
 
 const (
@@ -26,6 +28,7 @@ var (
 	procShowWindow         = winUser32.NewProc("ShowWindow")
 	procSetWindowPos       = winUser32.NewProc("SetWindowPos")
 	procMonitorFromWindow  = winUser32.NewProc("MonitorFromWindow")
+	procMonitorFromPoint   = winUser32.NewProc("MonitorFromPoint")
 	procGetMonitorInfoW    = winUser32.NewProc("GetMonitorInfoW")
 )
 
@@ -55,6 +58,41 @@ type winWindowPlacement struct {
 	PtMinPosition    winPoint
 	PtMaxPosition    winPoint
 	RcNormalPosition winRect
+}
+
+func applyInitialWindowPosition(window fyne.Window, cfg config.WindowConfig) {
+	if cfg.X == nil || cfg.Y == nil {
+		return
+	}
+	hwnd, ok := windowHWND(window)
+	if !ok {
+		debugPrint("FileManager: HWND unavailable for configured window position")
+		return
+	}
+	rect, ok := getWindowRect(hwnd)
+	if !ok {
+		debugPrint("FileManager: Window rect unavailable for configured window position")
+		return
+	}
+	width := rect.Right - rect.Left
+	height := rect.Bottom - rect.Top
+	workRect := monitorWorkRectForPoint(int32(*cfg.X), int32(*cfg.Y))
+	x, y := selectWindowPositionInWorkRect(int32(*cfg.X), int32(*cfg.Y), width, height, windowSwitchRectFromWinRect(workRect))
+
+	ret, _, err := procSetWindowPos.Call(
+		hwnd,
+		0,
+		uintptr(x),
+		uintptr(y),
+		0,
+		0,
+		swpNoSize|swpNoZOrder,
+	)
+	if ret == 0 {
+		debugPrint("FileManager: SetWindowPos for configured position failed: %v", err)
+		return
+	}
+	debugPrint("FileManager: applied configured window position requested_x=%d requested_y=%d x=%d y=%d", *cfg.X, *cfg.Y, x, y)
 }
 
 func positionWindowNextTo(parent, child fyne.Window) {
@@ -178,6 +216,16 @@ func isWindowIconic(hwnd uintptr) bool {
 
 func monitorWorkRect(hwnd uintptr) winRect {
 	monitor, _, _ := procMonitorFromWindow.Call(hwnd, monitorDefaultToNearest)
+	return monitorWorkRectFromHandle(monitor)
+}
+
+func monitorWorkRectForPoint(x, y int32) winRect {
+	point := winPoint{X: x, Y: y}
+	monitor, _, _ := procMonitorFromPoint.Call(uintptr(*(*uint64)(unsafe.Pointer(&point))), monitorDefaultToNearest)
+	return monitorWorkRectFromHandle(monitor)
+}
+
+func monitorWorkRectFromHandle(monitor uintptr) winRect {
 	if monitor == 0 {
 		return winRect{
 			Left:   -32000,

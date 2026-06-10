@@ -15,23 +15,31 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	Window WindowConfig `json:"window"`
-	Theme  ThemeConfig  `json:"theme"`
-	Debug  DebugConfig  `json:"debug"`
-	UI     UIConfig     `json:"ui"`
+	Window  WindowConfig  `json:"window"`
+	Startup StartupConfig `json:"startup"`
+	Theme   ThemeConfig   `json:"theme"`
+	Debug   DebugConfig   `json:"debug"`
+	UI      UIConfig      `json:"ui"`
 }
 
 // rawConfig mirrors Config but uses pointer fields to detect presence in JSON.
 type rawConfig struct {
-	Window rawWindowConfig `json:"window"`
-	Theme  rawThemeConfig  `json:"theme"`
-	Debug  rawDebugConfig  `json:"debug"`
-	UI     rawUIConfig     `json:"ui"`
+	Window  rawWindowConfig  `json:"window"`
+	Startup rawStartupConfig `json:"startup"`
+	Theme   rawThemeConfig   `json:"theme"`
+	Debug   rawDebugConfig   `json:"debug"`
+	UI      rawUIConfig      `json:"ui"`
 }
 
 type rawWindowConfig struct {
 	Width  *int `json:"width"`
 	Height *int `json:"height"`
+	X      *int `json:"x"`
+	Y      *int `json:"y"`
+}
+
+type rawStartupConfig struct {
+	Directory *string `json:"directory"`
 }
 
 type rawThemeConfig struct {
@@ -122,8 +130,15 @@ type rawDirectoryJumpsConfig struct {
 
 // WindowConfig represents window-related settings
 type WindowConfig struct {
-	Width  int `json:"width"`
-	Height int `json:"height"`
+	Width  int  `json:"width"`
+	Height int  `json:"height"`
+	X      *int `json:"x,omitempty"`
+	Y      *int `json:"y,omitempty"`
+}
+
+// StartupConfig represents startup-related settings.
+type StartupConfig struct {
+	Directory string `json:"directory,omitempty"` // Starting directory used when no command-line path is supplied
 }
 
 // ThemeConfig represents theme-related settings
@@ -620,6 +635,7 @@ func cloneConfig(cfg *Config) *Config {
 	}
 
 	copyConfig := *cfg
+	copyConfig.Window = cloneWindowConfig(cfg.Window)
 	copyConfig.Theme = cloneThemeConfig(cfg.Theme)
 	copyConfig.UI = cloneUIConfig(cfg.UI)
 	return &copyConfig
@@ -628,6 +644,19 @@ func cloneConfig(cfg *Config) *Config {
 // Clone returns a deep copy of cfg suitable for independent mutation.
 func Clone(cfg *Config) *Config {
 	return cloneConfig(cfg)
+}
+
+func cloneWindowConfig(src WindowConfig) WindowConfig {
+	clone := src
+	if src.X != nil {
+		x := *src.X
+		clone.X = &x
+	}
+	if src.Y != nil {
+		y := *src.Y
+		clone.Y = &y
+	}
+	return clone
 }
 
 func cloneThemeConfig(src ThemeConfig) ThemeConfig {
@@ -771,6 +800,9 @@ func getDefaultConfig() *Config {
 			Width:  800,
 			Height: 600,
 		},
+		Startup: StartupConfig{
+			Directory: "",
+		},
 		Theme: ThemeConfig{
 			Dark:              true,
 			FontSize:          14,
@@ -885,6 +917,19 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) {
 	}
 	if fileConfig.Window.Height != nil {
 		defaultConfig.Window.Height = *fileConfig.Window.Height
+	}
+	if fileConfig.Window.X != nil {
+		x := *fileConfig.Window.X
+		defaultConfig.Window.X = &x
+	}
+	if fileConfig.Window.Y != nil {
+		y := *fileConfig.Window.Y
+		defaultConfig.Window.Y = &y
+	}
+
+	// Merge Startup config
+	if fileConfig.Startup.Directory != nil {
+		defaultConfig.Startup.Directory = strings.TrimSpace(*fileConfig.Startup.Directory)
 	}
 
 	// Merge Theme config

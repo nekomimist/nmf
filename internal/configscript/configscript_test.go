@@ -20,7 +20,8 @@ func TestLoadAppliesStarlarkConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, FileName)
 	src := `
-nmf.window(width = 1000, height = 720)
+nmf.window(width = 1000, height = 720, x = 200, y = 120)
+nmf.startup(directory = "~/work")
 nmf.theme(dark = False, font_size = 16, font_name = "Noto Sans")
 if nmf.dark_theme():
     nmf.theme(font_name = "wrong")
@@ -70,8 +71,11 @@ nmf.command("user.parent", parent)
 	if !rt.Loaded() {
 		t.Fatal("runtime should report loaded init.star")
 	}
-	if cfg.Window.Width != 1000 || cfg.Window.Height != 720 {
-		t.Fatalf("window = %+v, want 1000x720", cfg.Window)
+	if cfg.Window.Width != 1000 || cfg.Window.Height != 720 || cfg.Window.X == nil || *cfg.Window.X != 200 || cfg.Window.Y == nil || *cfg.Window.Y != 120 {
+		t.Fatalf("window = %+v, want 1000x720 at 200,120", cfg.Window)
+	}
+	if cfg.Startup.Directory != "~/work" {
+		t.Fatalf("startup directory = %q, want ~/work", cfg.Startup.Directory)
 	}
 	if cfg.Theme.Dark || cfg.Theme.FontSize != 16 || cfg.Theme.FontName != "Noto Sans" {
 		t.Fatalf("theme = %+v, want light 16 Noto Sans", cfg.Theme)
@@ -261,6 +265,7 @@ nmf.debug("font_size=" + str(18))
 func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T) {
 	base := testConfig()
 	base.Window.Width = 900
+	base.Startup.Directory = "/base"
 	base.UI.Sort.SortBy = "name"
 	base.UI.Copy.PreserveTimestamps = false
 	base.UI.Viewer = config.ViewerConfig{MaxWidth: 0, MaxHeight: 0}
@@ -272,6 +277,7 @@ func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T
 	rt := &Runtime{saveMask: saveMask{
 		debug:                    true,
 		window:                   true,
+		startup:                  true,
 		uiSort:                   true,
 		uiCopy:                   true,
 		uiViewer:                 true,
@@ -282,6 +288,7 @@ func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T
 	current := config.Clone(base)
 	current.Debug = config.DebugConfig{Enabled: true, LogDirectory: "logs", MaxLogFiles: 2}
 	current.Window.Width = 1200
+	current.Startup.Directory = "/overlay"
 	current.UI.Sort.SortBy = "size"
 	current.UI.Copy.PreserveTimestamps = true
 	current.UI.Viewer = config.ViewerConfig{MaxWidth: 1200, MaxHeight: 900}
@@ -300,6 +307,9 @@ func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T
 	}
 	if saved.Debug.Enabled || saved.Debug.LogDirectory != "" || saved.Debug.MaxLogFiles != 10 {
 		t.Fatalf("saved debug = %+v, want base debug config", saved.Debug)
+	}
+	if saved.Startup.Directory != "/base" {
+		t.Fatalf("saved startup directory = %q, want /base", saved.Startup.Directory)
 	}
 	if saved.UI.Sort.SortBy != "name" {
 		t.Fatalf("saved sort = %s, want base name", saved.UI.Sort.SortBy)

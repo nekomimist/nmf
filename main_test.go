@@ -40,6 +40,44 @@ func TestSetupDebugLoggingEmptyPathNoop(t *testing.T) {
 	}
 }
 
+func TestSelectStartupPathUsesCLIPathFirst(t *testing.T) {
+	got, err := selectStartupPath("/cli", true, &config.Config{
+		Startup: config.StartupConfig{Directory: "/config"},
+	})
+	if err != nil {
+		t.Fatalf("selectStartupPath returned error: %v", err)
+	}
+	if got != "/cli" {
+		t.Fatalf("startup path = %q, want /cli", got)
+	}
+}
+
+func TestSelectStartupPathUsesConfiguredDirectory(t *testing.T) {
+	got, err := selectStartupPath("", false, &config.Config{
+		Startup: config.StartupConfig{Directory: "/config"},
+	})
+	if err != nil {
+		t.Fatalf("selectStartupPath returned error: %v", err)
+	}
+	if got != "/config" {
+		t.Fatalf("startup path = %q, want /config", got)
+	}
+}
+
+func TestSelectStartupPathFallsBackToWorkingDirectory(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd failed: %v", err)
+	}
+	got, err := selectStartupPath("", false, &config.Config{})
+	if err != nil {
+		t.Fatalf("selectStartupPath returned error: %v", err)
+	}
+	if got != wd {
+		t.Fatalf("startup path = %q, want working directory %q", got, wd)
+	}
+}
+
 func TestSetupDebugLoggingCreatesParentAndEnablesDebug(t *testing.T) {
 	oldDebugMode := debugMode
 	oldOutput := log.Writer()

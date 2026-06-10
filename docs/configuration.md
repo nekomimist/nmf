@@ -20,7 +20,12 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
 {
   "window": {
     "width": 1000,
-    "height": 720
+    "height": 720,
+    "x": 100,
+    "y": 80
+  },
+  "startup": {
+    "directory": "~/projects"
   },
   "theme": {
     "dark": true,
@@ -95,6 +100,15 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
 `window`
 
 - `width`, `height`: initial window size in pixels.
+- `x`, `y`: optional initial window position. On Windows, NMF moves the first
+  window to this position after startup and clamps it into the nearest monitor's
+  work area if monitor layout changes would otherwise put it off-screen. Other
+  platforms currently ignore these fields.
+
+`startup`
+
+- `directory`: starting directory used when no `-path` flag or positional path
+  argument is supplied. Command-line paths always take precedence.
 
 `theme`
 
