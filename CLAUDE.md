@@ -9,111 +9,87 @@ Cross-platform GUI file manager "nmf" built with Go + Fyne v2.7.3. Features keyb
 ### Package Structure (Go Way Compliant)
 ```
 nmf/
-├── main.go                         # Application entry point with multi-window management
-├── docs/unc-smb-status.md          # SMB/UNC implementation roadmap and status
+├── *.go                            # main package: FileManager controller split by feature
+│                                   # (bootstrap, ui_setup, directory_loading, list_controls,
+│                                   #  window_*, jobs_*, drag/drop, clipboard, rename, viewer, ...)
+├── docs/                           # Documentation (todo.md, configuration.md,
+│                                   #  starlark-configuration.md, unc-smb-status.md, architecture/)
 └── internal/
-    ├── config/                     # Configuration management
-    │   ├── config.go              # Settings, defaults, file I/O, cursor memory
-    │   ├── interfaces.go          # ManagerInterface for testability
-    │   └── config_test.go         # Unit tests
-    ├── fileinfo/                   # File operations, metadata, and network file systems
-    │   ├── fileinfo.go            # FileInfo, colors, formatting
-    │   ├── interfaces.go          # FileSystem interface
-    │   ├── vfs.go                 # Virtual filesystem abstraction (VFS interface)
-    │   ├── credentials.go         # SMB credential management and caching
-    │   ├── credentials_test.go    # Credential management tests
-    │   ├── resolver.go            # Path resolution for SMB/UNC normalization
-    │   ├── resolver_test.go       # Path resolver tests
-    │   ├── resolver_unix_test.go  # Unix-specific resolver tests
-    │   ├── resolver_windows_test.go # Windows-specific resolver tests
-    │   ├── pathutil.go            # Path utilities for SMB/UNC handling
-    │   ├── pathutil_test.go       # Path utility tests
-    │   ├── portable_read.go       # Portable file reading across VFS providers
-    │   ├── portable_stat.go       # Portable file stat operations
-    │   ├── icon_service.go        # Icon service with async fetch and batching
-    │   ├── icon_unix.go           # Unix icon implementation
-    │   ├── icon_windows.go        # Windows icon implementation with async service
-    │   ├── smb_direntry.go        # SMB directory entry handling
-    │   ├── smb_provider_linux.go  # Linux SMB provider using go-smb2
-    │   ├── smb_provider_stub.go   # Stub SMB provider for non-Linux platforms
-    │   ├── smbfs_linux.go         # Linux SMB filesystem implementation
-    │   ├── win_connect_stub.go    # Stub Windows UNC connection for non-Windows
-    │   ├── win_connect_windows.go # Windows UNC connection helper
-    │   ├── platform_windows.go    # Windows hidden file detection
-    │   ├── platform_unix.go       # Unix/Linux compatibility
-    │   ├── platform_test.go       # Platform tests
-    │   └── fileinfo_test.go       # Core file info tests
-    ├── secret/                     # Secure credential storage
-    │   ├── store.go               # Store interface for credential storage
-    │   └── keyring_store.go       # OS keyring implementation
-    ├── ui/                         # UI components
-    │   ├── cursor.go              # Cursor renderers
-    │   ├── widgets.go             # TappableIcon custom widget
-    │   ├── tree_dialog.go         # Directory tree dialog with key handling
-    │   ├── tree_platform_windows.go # Windows drive enumeration and virtual root handling
-    │   ├── tree_platform_unix.go  # Unix filesystem root handling
-    │   ├── history.go             # Navigation history dialog with search
-    │   ├── filter_dialog.go       # File filter dialog with glob pattern matching
-    │   ├── incremental_search.go  # Incremental search overlay with real-time filtering
-    │   ├── sort_dialog.go         # File sorting configuration dialog with shortcuts
-    │   ├── quit_dialog.go         # Quit confirmation dialog with keyboard shortcuts
-    │   ├── message_dialog.go      # Generic message dialog component
-    │   ├── smb_login_dialog.go    # SMB credential input dialog with keyring option
-    │   ├── key_sink.go            # Generic KeySink wrapper for focus & key forwarding
-    │   └── tab_entry.go           # TabEntry widget with Tab capture capability
-    ├── keymanager/                 # Stack-based keyboard input management
-    │   ├── keymanager.go          # KeyManager core, handler stack management
-    │   ├── mainscreen_handler.go  # Main file list keyboard handling
-    │   ├── treedialog_handler.go  # Tree dialog keyboard navigation
-    │   ├── historydialog_handler.go # History dialog keyboard navigation
-    │   ├── filterdialog_handler.go # Filter dialog keyboard navigation
-    │   ├── incremental_search_handler.go # Incremental search keyboard handling
-    │   ├── sortdialog_handler.go  # Sort dialog keyboard navigation
-    │   └── quitdialog_handler.go  # Quit confirmation dialog keyboard handling
-    ├── watcher/                    # Real-time directory monitoring
-    │   ├── watcher.go             # FileManager interface, change detection
-    │   └── watcher_test.go        # Watcher unit tests
-    ├── theme/                      # Custom theming
-    │   └── theme.go               # Font, colors, sizing
-    ├── errors/                     # Structured error handling
-    │   ├── errors.go              # AppError types
-    │   └── errors_test.go         # Error tests
-    └── constants/                  # Application constants
-        └── constants.go           # Sizes, colors, timing values
+    ├── config/                     # Configuration management (settings, defaults, file I/O,
+    │                               #  cursor memory, key binding entries)
+    ├── configscript/               # Starlark configuration language (init.star: settings overlay,
+    │                               #  user commands, menus, external commands)
+    ├── constants/                  # Application constants (sizes, colors, timing values)
+    ├── display/                    # Monitor/display info and scaling (GLFW)
+    ├── errors/                     # Structured error handling (AppError types)
+    ├── filecompare/                # File comparison logic for the compare dialog
+    ├── fileinfo/                   # File operations & metadata: VFS abstraction (local/SMB/archive),
+    │                               #  path resolution & normalization, SMB providers & credentials,
+    │                               #  icons, open/rename/mkdir/trash, storage info, platform glue
+    ├── ime/                        # IME anchor positioning helpers
+    ├── jobs/                       # Background job manager (copy/move/delete/archive) with
+    │                               #  progress reporting and cancellation
+    ├── keymanager/                 # Stack-based keyboard input management: KeyManager core,
+    │                               #  configurable key bindings + command registry (keybinding.go),
+    │                               #  per-screen/per-dialog key handlers
+    ├── maintenance/                # Maintenance/cleanup tasks
+    ├── search/                     # Search matchers (substring + migemo) for incremental search
+    ├── secret/                     # Secure credential storage (OS keyring)
+    ├── shellmenu/                  # Windows Explorer context menu integration
+    ├── theme/                      # Custom theming (UI/monospace fonts, colors, sizing)
+    ├── ui/                         # UI components: dialogs (tree, history, filter, sort, quit,
+    │                               #  copy/move, conflict, delete, rename, line edit, compare,
+    │                               #  directory jump, file viewer, jobs window, SMB login, ...),
+    │                               #  KeySink, overlays (incremental search, busy), custom widgets
+    └── watcher/                    # Real-time directory monitoring (polling)
 ```
 
 ### Core Components
 
-- **FileManager**: Main controller (main.go) - manages window, UI, navigation, file operations
-- **KeyManager**: Stack-based keyboard input system - handles context-aware key routing
+- **FileManager**: Main controller (main package, split across feature files) - manages window, UI, navigation, file operations
+- **KeyManager**: Stack-based keyboard input system - handles context-aware key routing; main screen uses a declarative key binding + command registry, dialogs use dedicated handlers
+- **KeySink**: Focusable wrapper widget that forwards key events to KeyManager and captures Tab
+- **JobsManager**: Background job queue (copy/move/delete/archive) with progress, cancellation, and a Jobs window
+- **ConfigScript**: Starlark-based configuration (`init.star`) layered over `config.json`; user commands, menus, external commands
 - **DirectoryWatcher**: Real-time change detection via filesystem polling (2s interval, extended for SMB paths)
-- **VFS (Virtual File System)**: Abstraction layer supporting local and SMB/UNC file systems
+- **VFS (Virtual File System)**: Abstraction layer supporting local, SMB/UNC, and archive file systems
 - **Resolver**: Path normalization and conversion (Windows UNC ⇔ `smb://`, Linux mount detection)
 - **CredentialsProvider**: SMB authentication with memory cache, OS keyring, and UI fallback
 - **TappableIcon**: Custom widget for icon-based directory navigation
 - **DirectoryTreeDialog**: Lazy-loading tree navigation with platform-specific root handling (Windows drives, Unix filesystem)
-- **NavigationHistoryDialog**: Searchable directory history with filtering
+- **NavigationHistoryDialog**: Searchable directory history with filtering and pinning
+- **DirectoryJumpDialog**: Quick jump to directories with incremental matching
 - **FilterDialog**: File filtering with glob pattern matching and real-time preview
-- **IncrementalSearchOverlay**: Real-time file search with substring matching
+- **IncrementalSearchOverlay**: Real-time file search with substring and migemo matching
 - **SortDialog**: File sorting configuration with keyboard shortcuts
+- **CopyMoveDialog / ConflictDialog**: File copy/move with conflict resolution, backed by JobsManager
+- **LineEditDialog**: Generic single-line editor with readline-style key bindings (rename, path edit, mkdir, command edit)
+- **FileViewerDialog**: Built-in text/hex viewer (TextGrid-based)
 - **SMBLoginDialog**: SMB credential input with optional keyring persistence
-- **QuitConfirmDialog**: Application quit confirmation with keyboard shortcuts
+- **QuitConfirmDialog**: Application quit confirmation with keyboard shortcuts (warns about active jobs)
+- **BusyOverlay**: Input-blocking overlay with a key-swallowing handler during long operations
 
 ### Key Features
 
 - **Network File Systems**: SMB/CIFS support for Windows UNC (`\\server\share`) and Linux `smb://` paths
 - **Cross-Platform SMB**: Windows uses native UNC with connection helper; Linux uses go-smb2 library or existing mounts
 - **Credential Management**: Multi-tier auth (URL → memory → OS keyring → UI prompt) with optional persistence
-- **VFS Abstraction**: Unified interface for local and network filesystems with capability detection
+- **VFS Abstraction**: Unified interface for local, network, and archive filesystems with capability detection
+- **Archive Browsing**: Archives can be browsed via VFS and extracted as background jobs
+- **Background Jobs**: Copy/move/delete/extract run as cancellable jobs with progress and a Jobs window
+- **File Operations**: Copy/move with conflict resolution, rename, mkdir, trash & permanent delete, drag & drop
 - **Path Normalization**: Automatic conversion between platform-native paths and canonical `smb://` display format
 - **Real-time Monitoring**: Green=added, orange=modified, gray+⊠=deleted files (extended polling for SMB)
 - **Cursor Position Memory**: Remembers cursor position per directory (up to 100 dirs with LRU)
 - **Smart Navigation**: Parent directory navigation returns to originating folder
 - **Context-Aware Keys**: Stack-based keyboard handling prevents dialog/main conflicts
-- **Incremental Search**: Real-time file search with substring matching and visual overlay
-- **Keyboard Navigation**: Arrow keys, Shift+Arrow (fast), Space (select), Enter (open)
+- **Configurable Key Bindings**: Main screen keys map to named commands; rebindable via `config.json` / Starlark, including user-defined commands
+- **Starlark Configuration**: `init.star` overlays `config.json` (theme, keys, menus, external commands)
+- **Incremental Search**: Real-time file search with substring/migemo matching and visual overlay
+- **Built-in Viewer**: Text/hex file viewer
+- **External Commands**: Per-extension command menus and pre-execution command line editing
 - **Mouse Navigation**: Icon clicks navigate, name clicks select
-- **Multi-window**: Independent file manager instances with smart quit handling
+- **Multi-window**: Independent file manager instances with smart quit handling and side-by-side placement (Windows)
 
 ## Common Commands
 
@@ -125,51 +101,78 @@ nmf/
 
 ## Development
 
-- **Debug Mode**: `./nmf -d` enables debug output via `debugPrint()`
-- **Testing**: Unit tests for config, fileinfo, errors packages
+- **Debug Mode**: `./nmf -d` enables debug output via `debugPrint()`; persistent debug logging is configurable via `config.json` / `init.star`
+- **Testing**: Unit tests across most packages (config, configscript, fileinfo, jobs, keymanager, ui, watcher, errors, ...) plus main package feature tests
 - **Platform Support**: Windows hidden file detection & drive enumeration, Unix filesystem compatibility
 
 ## Keyboard Shortcuts
 
 ### Main File List
-- `↑/↓` - Navigate files
-- `Shift+↑/↓` - Fast navigation (20 items)
-- `Shift+,/Shift+.` - First/last item
-- `Space` - Toggle selection
-- `Enter` - Open directory
+Defaults from `defaultMainScreenBindings()` (`internal/keymanager/mainscreen_handler.go`); rebindable via `config.json` / Starlark.
+
+Navigation:
+- `↑/↓` - Navigate files (`Shift` for 20-item jumps)
+- `Shift+,` / `Shift+.` - First/last item
+- `Enter` - Open directory/file (`Shift+Enter` - open with default app)
 - `Backspace` - Parent directory
-- `Delete` - Move selected/current item(s) to Trash/Recycling Bin
-- `Shift+Delete` - Permanently delete selected/current item(s) after strong confirmation
+- `Shift+@` (Backtick) - Home directory
+- `.` (Period) - Refresh directory
+- `J` - Directory jump dialog
 - `Ctrl+T` - Tree navigation dialog
-- `Ctrl+H` - Navigation history dialog
-- `Ctrl+F` - Filter dialog
-- `Ctrl+Shift+F` - Clear filter
-- `F3` - Toggle filter on/off
+- `Ctrl+H` - Navigation history dialog (`Shift+B` - pin current path)
+
+Selection:
+- `Space` - Toggle selection
+- `Ctrl+A` - Mark all
+- `I` - Invert selection (files only), `Shift+I` - invert including directories
+
+File operations:
+- `C` - Copy dialog, `M` - Move dialog
+- `F2` or `R` - Rename
+- `K` - Create directory, `P` - Create text file from clipboard
+- `U` - Extract archive
+- `Delete` - Move to Trash/Recycling Bin, `Shift+Delete` - Permanent delete with confirmation
+- `Shift+C` - Compare dialog
+- `V` - Built-in file viewer
+- `X` - External command menu
+- `Tab` - Explorer context menu
+
+Filtering/search/sort:
+- `Ctrl+F` - Filter dialog, `F3` - Toggle filter on/off
 - `Ctrl+S` - Incremental search
 - `Shift+S` - Sort dialog
+
+Windows/app:
 - `Ctrl+N` - New window
+- `←/→` - Focus window left/right
+- `Shift+Q` - Reset window size, `Ctrl+Shift+Q` - Reset all window sizes
+- `Ctrl+L` - Path edit dialog
+- `Shift+J` - Jobs window
 - `Q` - Quit application (confirmation dialog for last window)
 
 ### Tree Dialog
-- `↑/↓` - Navigate nodes (Shift for fast) *[TODO: implementation]*
-- `←/→` - Collapse/expand nodes *[TODO: implementation]*
+- `↑/↓` - Navigate nodes (Shift for fast, 5 nodes) ✅
+- `←/→` - Collapse/expand nodes ✅
+- `Space` - Select current node ✅
 - `Tab` or `Ctrl+R` - Toggle root mode ✅
 - `Enter` - Accept selection ✅
 - `Esc` - Cancel dialog ✅
 
 ### History Dialog  
-- `↑/↓` - Navigate list (Shift for top/bottom) *[TODO: implementation]*
-- `/` - Focus search (vim-like) ✅
-- `Ctrl+F` - Focus search ✅
+- `↑/↓` - Navigate list (Shift for top/bottom) ✅
+- `←/→` - Horizontal scroll of long paths ✅
+- `Type characters` - Filter list incrementally ✅
+- `Ctrl+H` / `Backspace` - Remove last search character ✅
 - `Del` - Clear search ✅
-- `Enter` - Accept selection ✅
+- `Ctrl+D` - Unpin selected path ✅
+- `Enter` - Accept selection (Ctrl+Enter - direct path navigation) ✅
 - `Esc` - Cancel dialog ✅
 
 ### Filter Dialog
 - `↑/↓` - Navigate pattern list (Shift for top/bottom) ✅
 - `Ctrl+F` - Focus search ✅
 - `Del` - Clear search ✅
-- `Backspace` - Remove last search character ✅
+- `Ctrl+H` / `Backspace` - Remove last search character ✅
 - `Enter` - Apply selected filter ✅
 - `Esc` - Cancel dialog ✅
 - Real-time preview showing match count ✅

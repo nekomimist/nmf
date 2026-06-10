@@ -5,6 +5,25 @@
 ### File Managerのタイトル
 - Nekomimist File Managerにしたい
 
+### KeyManagerのPopHandlerに所有権チェックを入れたい
+- 現状の`PopHandler()`は無条件に最上段を外すだけで、呼び出し側(全dialog + busy handler、20カ所以上)は
+  「自分が最上段にいるはず」という暗黙の前提で呼んでいる。
+- busy handler(`directory_loading.go`の`beginBusy`/`endBusy`)はタイマーや非同期処理と絡むため、
+  dialogの開閉とインターリーブすると別のhandlerをpopして入力ルーティングが壊れる構造的リスクがある。
+  (8d216bf "release stuck keys after open failures" はこのクラスのバグの後始末に見える)
+- 案: `PushHandler`がtoken(またはhandler自身)を返し、`Remove(token)`で「自分だけを外す」APIにする。
+  最上段でなければdebugログで警告。スタックずれ系のバグの土壌を構造的に潰せる。
+
+### KeyDown/KeyUpの二重配送経路を整理したい
+- KeyManagerへの配送経路が2つある:
+  canvasレベル(`ui_setup.go`の`SetOnKeyDown/Up`)とフォーカスwidget経由(`KeySink.KeyDown/KeyUp`)。
+- 重複回避は`ui_setup.go`の `Focused() == fm.fileListView` というハードコードのみ。
+  同一window内の別のKeySink(quit dialogのsink等)にフォーカスがあるときは
+  KeyDown/KeyUpがKeyManagerへ二重配送される。
+  今はdialog系handlerがOnTypedKey中心で反応するため偶然無害だが、
+  dialog側で`keyEventDown` bindingを使った瞬間にコマンド二重実行になる地雷。
+- 案: 除外条件を「FocusedがKeySinkならcanvas側はスキップ」に一般化するか、配送経路をKeySinkに一本化する。
+
 ## 簡易viewerの高速化
 - Text/Hex表示はTextからTextGridに置きかえたけどまだ遅い。
 - 別windowに表示したほうが早いかもしれない。
@@ -12,6 +31,37 @@
 - TextGridで未対応項目がある。Text/Hex表示のキーボードによる範囲選択、MarkdownはTextのままで遅い、など。
 
 ## 優先度低めのもの
+
+## KeyManagerまわりの小さめの設計改善
+- `shouldDeferCommand`のハードコードswitch(`mainscreen_handler.go`)をコマンド定義側の属性
+  (`TransitionsInput bool`のような)へ移したい。コマンド追加時に登録を忘れると
+  stuck-keyバグが再発する構造になっている。
+- `stackVersion`は加算されているが、`currentHandlerAndVersion`の戻り値は全呼び出し元で捨てられている。
+  不変条件チェックとして使うか、消すか決めたい。
+- `pressedKeys`/`pending`/`suppressTyped`/`suppressRune`/`activeTypedKey`の5状態は
+  いずれも「画面遷移時のキーイベント漏れ」への個別対症療法。
+  「ゲート中のイベントはキューせず破棄する」等の仕様を明文化しつつ、状態を整理できないか検討したい。
+- handler取得(RLock内)→呼び出し(ロック外)のTOCTOUがある。
+  全部UIスレッドで呼ばれるならmutex自体が過剰。スレッディング前提を決めて片方に寄せたい。
+- modifier状態は観測したKeyDown/KeyUp頼みのため、修飾キー押下中のフォーカスロストで状態が残留しうる。
+  `ForceReleaseAllKeys`がウィンドウのフォーカスロスト時に確実に呼ばれる配線か確認したい。
+
+## ダイアログ系KeyHandlerの共通化
+- keymanagerパッケージにdialog毎のhandlerが16ファイルあり、
+  Esc=cancel / Enter=accept / ↑↓=移動 のパターンがほぼ重複している。
+- メイン画面だけ宣言的binding+command registry(`keybinding.go`)へ移行済みなので、
+  dialog側にも横展開して共通ベースhandler化したい。
+
+## keymanager.FileManagerInterfaceの縮小
+- 50超メソッドの神インターフェースになっていて、keymanagerがFileManagerの全機能に依存している。
+- `NewMainScreenKeyHandlerWithCommands`のクロージャ登録の仕組みが既にあるので、
+  `Show○○Dialog`系はクロージャ注入へ寄せてインターフェースを削りたい。
+
+## main packageの構造整理(メモ)
+- FileManagerが70ファイル超に分割されているが、全部`fm *FileManager`のメソッドで
+  分割が「ファイル単位」であって「責務単位」になっていない。
+- `jobs_window_controller.go`のパッケージグローバル`jobsWindow`だけシングルトンで、
+  他のインスタンス指向な作りと不揃い。テスタビリティの穴にもなっている。
 
 ## KeyDown/KeyUp系キーバインドのrepeat適性を棚卸ししたい
 - Fyne/GLFWではキーリピートがKeyDownではなくTypedKey/TypedShortcut側へ流れる。
