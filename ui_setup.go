@@ -306,28 +306,41 @@ func (fm *FileManager) setupUI() {
 		fm.window.Close()
 	})
 
-	// Setup keyboard handling via KeyManager
+	// Setup keyboard handling via KeyManager.
+	// Fyne's GLFW driver delivers each key event either to the focused object
+	// or, only when nothing has focus, to these canvas-level callbacks. While
+	// a KeySink (file list, dialog sinks) is focused it forwards events to the
+	// KeyManager itself, so the callbacks below act purely as the no-focus
+	// fallback. The focus guards are defensive: they keep delivery single per
+	// event even if a future Fyne version invokes canvas callbacks alongside
+	// the focused object.
 	dc, ok := (fm.window.Canvas()).(desktop.Canvas)
 	if ok {
 		dc.SetOnKeyDown(func(ev *fyne.KeyEvent) {
-			if fm.window.Canvas().Focused() == fm.fileListView {
-				return // KeySink経由で処理済み
+			if fm.window.Canvas().Focused() != nil {
+				return // delivered through the focused object (e.g. KeySink)
 			}
 			fm.keyManager.HandleKeyDown(ev)
 		})
 
 		dc.SetOnKeyUp(func(ev *fyne.KeyEvent) {
-			if fm.window.Canvas().Focused() == fm.fileListView {
-				return // KeySink経由で処理済み
+			if fm.window.Canvas().Focused() != nil {
+				return // delivered through the focused object (e.g. KeySink)
 			}
 			fm.keyManager.HandleKeyUp(ev)
 		})
 
 		fm.window.Canvas().SetOnTypedKey(func(ev *fyne.KeyEvent) {
+			if fm.window.Canvas().Focused() != nil {
+				return // delivered through the focused object (e.g. KeySink)
+			}
 			fm.keyManager.HandleTypedKey(ev)
 		})
 
 		fm.window.Canvas().SetOnTypedRune(func(r rune) {
+			if fm.window.Canvas().Focused() != nil {
+				return // delivered through the focused object (e.g. KeySink)
+			}
 			fm.keyManager.HandleTypedRune(r)
 		})
 	}

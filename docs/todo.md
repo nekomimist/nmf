@@ -5,16 +5,6 @@
 ### File Managerのタイトル
 - Nekomimist File Managerにしたい
 
-### KeyDown/KeyUpの二重配送経路を整理したい
-- KeyManagerへの配送経路が2つある:
-  canvasレベル(`ui_setup.go`の`SetOnKeyDown/Up`)とフォーカスwidget経由(`KeySink.KeyDown/KeyUp`)。
-- 重複回避は`ui_setup.go`の `Focused() == fm.fileListView` というハードコードのみ。
-  同一window内の別のKeySink(quit dialogのsink等)にフォーカスがあるときは
-  KeyDown/KeyUpがKeyManagerへ二重配送される。
-  今はdialog系handlerがOnTypedKey中心で反応するため偶然無害だが、
-  dialog側で`keyEventDown` bindingを使った瞬間にコマンド二重実行になる地雷。
-- 案: 除外条件を「FocusedがKeySinkならcanvas側はスキップ」に一般化するか、配送経路をKeySinkに一本化する。
-
 ## 簡易viewerの高速化
 - Text/Hex表示はTextからTextGridに置きかえたけどまだ遅い。
 - 別windowに表示したほうが早いかもしれない。
@@ -78,6 +68,20 @@
 - 進捗表示は必須。高速化案はチャンク単位などで現在ファイルの進捗を維持できることを条件にする。
 
 # DONE 以下は一応終わったもの
+## KeyDown/KeyUpの二重配送経路を整理したい
+- Fyne v2.7.3のGLFW driver(`internal/driver/glfw/window.go`)を確認した結果、
+  キーイベントの配送は排他だった: フォーカスがあれば focused object のみ、
+  canvasレベルのcallbackは「何もフォーカスされていないとき」だけ呼ばれる(else if)。
+  懸念していた「KeySink + canvas の二重配送」はこのバージョンでは起きない。
+- したがって`ui_setup.go`の `Focused() == fm.fileListView` ガードは到達不能なデッドコードだった。
+  これを一般形の防御ガード(`Focused() != nil` ならskip)に置き換え、4つのcallback全部
+  (KeyDown/KeyUp/TypedKey/TypedRune)に適用した。将来Fyneが両方に配る仕様へ変わっても
+  単一配送が保たれる。
+- canvas callbackの役割は「フォーカス喪失時のフォールバック」であることを
+  `docs/architecture/ui-input.md` に明文化した。
+- Entry系widget(conflict dialogのname entry等)が必要なイベントだけKeyManagerへ
+  転送するのは正しいパターン(排他配送なので重複しない)であることも確認した。
+
 ## KeyManagerのPopHandlerに所有権チェックを入れたい
 - `PushHandler`が`HandlerToken`を返し、`PopHandler()`を廃止して`RemoveHandler(token)`に置き換えた。
 - tokenは自分のスタックエントリだけを除去する。最上段以外の除去はWARNINGログ付きでその場から除去し、

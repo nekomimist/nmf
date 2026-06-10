@@ -24,6 +24,20 @@ Core model:
 
 Modifier keys (`Shift`, `Ctrl`, `Alt`) are tracked centrally in `KeyManager` and passed to handlers.
 
+Event delivery paths:
+
+- Fyne's GLFW driver delivers each key event exclusively: the focused object
+  receives it when focus exists, and the canvas-level callbacks fire only when
+  nothing has focus (verified in Fyne v2.7.3, `internal/driver/glfw/window.go`).
+- A focused `KeySink` forwards all four event types to `KeyManager`. Widgets
+  that legitimately own text input (entries) consume events themselves and
+  forward to `KeyManager` only what the active handler needs (for example the
+  conflict dialog name entry forwards `KeyDown`/`KeyUp` for modifier tracking).
+- `ui_setup.go` registers the canvas-level callbacks as the no-focus fallback.
+  Each callback carries a defensive `Focused() != nil` guard so delivery stays
+  single per event even if a future Fyne version invokes canvas callbacks
+  alongside the focused object.
+
 Input-owner transitions:
 
 - Commands that open a dialog/menu, enter an input mode, or create a new window
