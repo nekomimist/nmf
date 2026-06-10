@@ -42,6 +42,7 @@ type CompareDialog struct {
 
 	debugPrint  func(format string, args ...interface{})
 	keyManager  *keymanager.KeyManager
+	kmToken     keymanager.HandlerToken
 	matchers    *search.Provider
 	parent      fyne.Window
 	dialog      dialog.Dialog
@@ -173,7 +174,7 @@ func (d *CompareDialog) ShowDialog(parent fyne.Window, onAccept func(CompareResu
 	)
 
 	handler := keymanager.NewCompareDialogKeyHandler(d, d.debugPrint)
-	d.keyManager.PushHandler(handler)
+	d.kmToken = d.keyManager.PushHandler(handler)
 	d.sink = NewKeySink(content, d.keyManager, WithTabCapture(true))
 	d.searchEntry.SetFocusRedirect(parent, d.sink)
 
@@ -421,7 +422,7 @@ func (d *CompareDialog) accept(direct bool) {
 	method := d.selectedMethod()
 	deferDialogClose(d.keyManager, "compare.accept", func() {
 		d.notifyDialogClosed()
-		d.keyManager.PopHandler()
+		d.keyManager.RemoveHandler(d.kmToken)
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}
@@ -446,7 +447,7 @@ func (d *CompareDialog) CancelDialog() {
 	d.closed = true
 	deferDialogClose(d.keyManager, "compare.cancel", func() {
 		d.notifyDialogClosed()
-		d.keyManager.PopHandler()
+		d.keyManager.RemoveHandler(d.kmToken)
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}

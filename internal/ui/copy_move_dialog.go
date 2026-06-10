@@ -58,6 +58,7 @@ type CopyMoveDialog struct {
 
 	debugPrint  func(format string, args ...interface{})
 	keyManager  *keymanager.KeyManager
+	kmToken     keymanager.HandlerToken
 	matchers    *search.Provider
 	parent      fyne.Window
 	dialog      dialog.Dialog
@@ -220,7 +221,7 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveRe
 
 	// Push key handler and wrap content with KeySink
 	handler := keymanager.NewCopyMoveDialogKeyHandler(d, d.debugPrint)
-	d.keyManager.PushHandler(handler)
+	d.kmToken = d.keyManager.PushHandler(handler)
 	d.sink = NewKeySink(content, d.keyManager, WithTabCapture(true))
 	d.searchEntry.SetFocusRedirect(parent, d.sink)
 
@@ -440,7 +441,7 @@ func (d *CopyMoveDialog) AcceptSelection() {
 	}
 	deferDialogClose(d.keyManager, "copyMove.accept", func() {
 		d.notifyDialogClosed()
-		d.keyManager.PopHandler()
+		d.keyManager.RemoveHandler(d.kmToken)
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}
@@ -472,7 +473,7 @@ func (d *CopyMoveDialog) AcceptDirectPath() {
 	}
 	deferDialogClose(d.keyManager, "copyMove.acceptDirect", func() {
 		d.notifyDialogClosed()
-		d.keyManager.PopHandler()
+		d.keyManager.RemoveHandler(d.kmToken)
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}
@@ -490,7 +491,7 @@ func (d *CopyMoveDialog) CancelDialog() {
 	d.closed = true
 	deferDialogClose(d.keyManager, "copyMove.cancel", func() {
 		d.notifyDialogClosed()
-		d.keyManager.PopHandler()
+		d.keyManager.RemoveHandler(d.kmToken)
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}

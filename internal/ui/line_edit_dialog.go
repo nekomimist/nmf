@@ -48,6 +48,7 @@ type LineEditDialog struct {
 	opts       LineEditDialogOptions
 	entry      *LineEditEntry
 	keyManager *keymanager.KeyManager
+	kmToken    keymanager.HandlerToken
 	parent     fyne.Window
 	dialog     dialog.Dialog
 	closed     bool
@@ -103,7 +104,7 @@ func (d *LineEditDialog) ShowDialog(parent fyne.Window, onAccept func(string) bo
 	content.Add(dialogButtonRow("Cancel", d.CancelDialog, d.opts.ConfirmText, d.AcceptEdit))
 
 	handler := keymanager.NewLineEditDialogKeyHandler(d)
-	d.keyManager.PushHandler(handler)
+	d.kmToken = d.keyManager.PushHandler(handler)
 
 	title := d.opts.Title
 	if title == "" {
@@ -149,7 +150,7 @@ func (d *LineEditDialog) CancelDialog() {
 func (d *LineEditDialog) close() {
 	d.closed = true
 	deferDialogClose(d.keyManager, "lineEdit.close", func() {
-		d.keyManager.PopHandler()
+		d.keyManager.RemoveHandler(d.kmToken)
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}

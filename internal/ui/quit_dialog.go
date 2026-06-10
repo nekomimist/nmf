@@ -17,6 +17,7 @@ import (
 // QuitConfirmDialog represents a quit confirmation dialog
 type QuitConfirmDialog struct {
 	keyManager *keymanager.KeyManager
+	kmToken    keymanager.HandlerToken
 	debugPrint func(format string, args ...interface{})
 	dialog     dialog.Dialog
 	callback   func(bool) // Callback function for quit confirmation
@@ -43,7 +44,7 @@ func (qcd *QuitConfirmDialog) ShowDialog(parent fyne.Window, callback func(bool)
 
 	// Create quit dialog key handler
 	quitHandler := keymanager.NewQuitConfirmDialogKeyHandler(qcd, qcd.debugPrint)
-	qcd.keyManager.PushHandler(quitHandler)
+	qcd.kmToken = qcd.keyManager.PushHandler(quitHandler)
 
 	// Create message content
 	message := widget.NewLabel(qcd.message())
@@ -141,7 +142,7 @@ func (qcd *QuitConfirmDialog) ConfirmQuit() {
 
 	deferDialogClose(qcd.keyManager, "quit.confirm", func() {
 		// Pop the handler first
-		qcd.keyManager.PopHandler()
+		qcd.keyManager.RemoveHandler(qcd.kmToken)
 
 		// Hide the dialog
 		if qcd.dialog != nil {
@@ -166,7 +167,7 @@ func (qcd *QuitConfirmDialog) CancelQuit() {
 
 	deferDialogClose(qcd.keyManager, "quit.cancel", func() {
 		// Pop the handler first
-		qcd.keyManager.PopHandler()
+		qcd.keyManager.RemoveHandler(qcd.kmToken)
 
 		// Hide the dialog
 		if qcd.dialog != nil {

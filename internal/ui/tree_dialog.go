@@ -23,6 +23,7 @@ type DirectoryTreeDialog struct {
 	rootMode     bool                                     // true = filesystem root "/", false = parent directory
 	debugPrint   func(format string, args ...interface{}) // Debug function
 	keyManager   *keymanager.KeyManager                   // Keyboard input manager
+	kmToken      keymanager.HandlerToken                  // Token of the pushed key handler
 	dialog       dialog.Dialog                            // Reference to the actual dialog
 	callback     func(string)                             // Callback function for selection
 	parent       fyne.Window                              // Parent window for focus management
@@ -271,7 +272,7 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 
 	// Create and push tree dialog key handler
 	treeHandler := keymanager.NewTreeDialogKeyHandler(dtd, dtd.debugPrint)
-	dtd.keyManager.PushHandler(treeHandler)
+	dtd.kmToken = dtd.keyManager.PushHandler(treeHandler)
 
 	// Wrap content with KeySink to capture Tab and forward keys
 	dtd.sink = NewKeySink(content, dtd.keyManager, WithTabCapture(true))
@@ -421,7 +422,7 @@ func (dtd *DirectoryTreeDialog) AcceptSelection() {
 
 	selectedPath := dtd.selectedPath
 	deferDialogClose(dtd.keyManager, "tree.accept", func() {
-		dtd.keyManager.PopHandler()
+		dtd.keyManager.RemoveHandler(dtd.kmToken)
 		if dtd.callback != nil && selectedPath != "" {
 			dtd.callback(selectedPath)
 		}
@@ -440,7 +441,7 @@ func (dtd *DirectoryTreeDialog) CancelDialog() {
 	dtd.closed = true
 
 	deferDialogClose(dtd.keyManager, "tree.cancel", func() {
-		dtd.keyManager.PopHandler()
+		dtd.keyManager.RemoveHandler(dtd.kmToken)
 		if dtd.dialog != nil {
 			dtd.dialog.Hide()
 		}

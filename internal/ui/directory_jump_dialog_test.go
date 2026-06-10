@@ -104,7 +104,7 @@ func TestDirectoryJumpUniqueShortcutDefersAcceptUntilKeyUp(t *testing.T) {
 	dialog.callback = func(path string) {
 		acceptedPath = path
 	}
-	km.PushHandler(keymanager.NewDirectoryJumpDialogKeyHandler(dialog, func(string, ...interface{}) {}))
+	dialog.kmToken = km.PushHandler(keymanager.NewDirectoryJumpDialogKeyHandler(dialog, func(string, ...interface{}) {}))
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyE})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyE})
@@ -143,7 +143,7 @@ func TestDirectoryJumpManualAcceptDefersCloseUntilKeyUp(t *testing.T) {
 	dialog.callback = func(path string) {
 		acceptedPath = path
 	}
-	km.PushHandler(keymanager.NewDirectoryJumpDialogKeyHandler(dialog, func(string, ...interface{}) {}))
+	dialog.kmToken = km.PushHandler(keymanager.NewDirectoryJumpDialogKeyHandler(dialog, func(string, ...interface{}) {}))
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	dialog.AcceptSelection()

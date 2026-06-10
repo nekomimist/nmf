@@ -26,7 +26,8 @@ type FilterDialog struct {
 	allEntries      []config.FilterEntry
 	dataBinding     binding.StringList
 	debugPrint      func(format string, args ...interface{})
-	keyManager      *keymanager.KeyManager    // Keyboard input manager
+	keyManager      *keymanager.KeyManager // Keyboard input manager
+	kmToken         keymanager.HandlerToken
 	dialog          dialog.Dialog             // Reference to the actual dialog
 	callback        func(*config.FilterEntry) // Callback function for selection
 	deleteCallback  func(string)              // Callback function for deleting a history entry
@@ -269,7 +270,7 @@ func (fd *FilterDialog) ShowDialog(parent fyne.Window, callback func(*config.Fil
 
 	// Create and push filter dialog key handler
 	filterHandler := keymanager.NewFilterDialogKeyHandler(fd, fd.debugPrint)
-	fd.keyManager.PushHandler(filterHandler)
+	fd.kmToken = fd.keyManager.PushHandler(filterHandler)
 
 	// Wrap content with KeySink to capture Tab and forward keys
 	fd.sink = NewKeySink(content, fd.keyManager, WithTabCapture(true))
@@ -388,7 +389,7 @@ func (fd *FilterDialog) AcceptSelection() {
 	}
 
 	deferDialogClose(fd.keyManager, "filter.accept", func() {
-		fd.keyManager.PopHandler()
+		fd.keyManager.RemoveHandler(fd.kmToken)
 		if fd.callback != nil && selectedEntry != nil {
 			fd.callback(selectedEntry)
 		}
@@ -414,7 +415,7 @@ func (fd *FilterDialog) AcceptDirectInput() {
 	}
 
 	deferDialogClose(fd.keyManager, "filter.acceptDirect", func() {
-		fd.keyManager.PopHandler()
+		fd.keyManager.RemoveHandler(fd.kmToken)
 		if fd.callback != nil && selectedEntry != nil {
 			fd.callback(selectedEntry)
 		}
@@ -458,7 +459,7 @@ func (fd *FilterDialog) CancelDialog() {
 	fd.closed = true
 
 	deferDialogClose(fd.keyManager, "filter.cancel", func() {
-		fd.keyManager.PopHandler()
+		fd.keyManager.RemoveHandler(fd.kmToken)
 		if fd.dialog != nil {
 			fd.dialog.Hide()
 		}

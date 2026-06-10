@@ -25,6 +25,7 @@ type DirectoryJumpDialog struct {
 	selectedPath    string
 	debugPrint      func(format string, args ...interface{})
 	keyManager      *keymanager.KeyManager
+	kmToken         keymanager.HandlerToken
 	dialog          dialog.Dialog
 	callback        func(string)
 	parent          fyne.Window
@@ -243,7 +244,7 @@ func (d *DirectoryJumpDialog) ShowDialog(parent fyne.Window, callback func(strin
 	d.parent = parent
 
 	handler := keymanager.NewDirectoryJumpDialogKeyHandler(d, d.debugPrint)
-	d.keyManager.PushHandler(handler)
+	d.kmToken = d.keyManager.PushHandler(handler)
 
 	d.sink = NewKeySink(content, d.keyManager, WithTabCapture(true))
 	d.searchEntry.SetFocusRedirect(parent, d.sink)
@@ -388,7 +389,7 @@ func (d *DirectoryJumpDialog) acceptPath(path string) {
 	d.closed = true
 
 	deferDialogClose(d.keyManager, "directoryJump.accept", func() {
-		d.keyManager.PopHandler()
+		d.keyManager.RemoveHandler(d.kmToken)
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}
@@ -407,7 +408,7 @@ func (d *DirectoryJumpDialog) CancelDialog() {
 	d.closed = true
 
 	deferDialogClose(d.keyManager, "directoryJump.cancel", func() {
-		d.keyManager.PopHandler()
+		d.keyManager.RemoveHandler(d.kmToken)
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}

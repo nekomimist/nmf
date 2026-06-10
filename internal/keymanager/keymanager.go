@@ -35,9 +35,19 @@ type KeyHandler interface {
 	GetName() string
 }
 
+// HandlerToken identifies one pushed stack entry. The zero value is never
+// issued, so removing a zero token is a safe no-op.
+type HandlerToken uint64
+
+type handlerEntry struct {
+	token   HandlerToken
+	handler KeyHandler
+}
+
 // KeyManager manages a stack of key handlers
 type KeyManager struct {
-	handlers       []KeyHandler
+	handlers       []handlerEntry
+	nextToken      HandlerToken
 	modifierState  ModifierState
 	mutex          sync.RWMutex
 	debugPrint     func(format string, args ...interface{})
@@ -57,41 +67,56 @@ type pendingTransition struct {
 // NewKeyManager creates a new KeyManager instance
 func NewKeyManager(debugPrint func(format string, args ...interface{})) *KeyManager {
 	return &KeyManager{
-		handlers:   make([]KeyHandler, 0),
+		handlers:   make([]handlerEntry, 0),
 		debugPrint: debugPrint,
 	}
 }
 
-// PushHandler adds a new key handler to the top of the stack
-func (km *KeyManager) PushHandler(handler KeyHandler) {
+// PushHandler adds a new key handler to the top of the stack and returns a
+// token that removes exactly this entry via RemoveHandler.
+func (km *KeyManager) PushHandler(handler KeyHandler) HandlerToken {
 	km.mutex.Lock()
 	defer km.mutex.Unlock()
 
-	km.handlers = append(km.handlers, handler)
+	km.nextToken++
+	token := km.nextToken
+	km.handlers = append(km.handlers, handlerEntry{token: token, handler: handler})
 	km.stackVersion++
-	km.debugPrint("KeyManager: push %s stack=%d", handler.GetName(), len(km.handlers))
+	km.debugPrint("KeyManager: push %s token=%d stack=%d", handler.GetName(), token, len(km.handlers))
+	return token
 }
 
-// PopHandler removes the top key handler from the stack
-func (km *KeyManager) PopHandler() KeyHandler {
+// RemoveHandler removes the stack entry identified by token, wherever it is.
+// Unlike a blind pop, an out-of-order or duplicate removal cannot evict a
+// handler owned by someone else; such calls only log a warning.
+func (km *KeyManager) RemoveHandler(token HandlerToken) KeyHandler {
 	km.mutex.Lock()
 	defer km.mutex.Unlock()
 
-	if len(km.handlers) == 0 {
-		km.debugPrint("KeyManager: pop empty stack")
+	idx := -1
+	for i := len(km.handlers) - 1; i >= 0; i-- {
+		if km.handlers[i].token == token {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		km.debugPrint("KeyManager: WARNING remove unknown token=%d stack=%d", token, len(km.handlers))
 		return nil
 	}
 
-	// Get the last handler
-	handler := km.handlers[len(km.handlers)-1]
-
-	// Remove it from the slice
-	km.handlers = km.handlers[:len(km.handlers)-1]
+	entry := km.handlers[idx]
+	wasTop := idx == len(km.handlers)-1
+	km.handlers = append(km.handlers[:idx], km.handlers[idx+1:]...)
 	km.stackVersion++
-	km.modifierState = ModifierState{}
-
-	km.debugPrint("KeyManager: pop %s stack=%d", handler.GetName(), len(km.handlers))
-	return handler
+	if wasTop {
+		// The active input owner changed; modifier state belongs to it.
+		km.modifierState = ModifierState{}
+		km.debugPrint("KeyManager: remove %s token=%d stack=%d", entry.handler.GetName(), token, len(km.handlers))
+	} else {
+		km.debugPrint("KeyManager: WARNING out-of-order remove %s token=%d index=%d stack=%d", entry.handler.GetName(), token, idx, len(km.handlers))
+	}
+	return entry.handler
 }
 
 // GetCurrentHandler returns the top handler without removing it
@@ -103,7 +128,7 @@ func (km *KeyManager) GetCurrentHandler() KeyHandler {
 		return nil
 	}
 
-	return km.handlers[len(km.handlers)-1]
+	return km.handlers[len(km.handlers)-1].handler
 }
 
 func (km *KeyManager) currentHandlerAndVersion() (KeyHandler, uint64) {
@@ -113,7 +138,7 @@ func (km *KeyManager) currentHandlerAndVersion() (KeyHandler, uint64) {
 	if len(km.handlers) == 0 {
 		return nil, km.stackVersion
 	}
-	return km.handlers[len(km.handlers)-1], km.stackVersion
+	return km.handlers[len(km.handlers)-1].handler, km.stackVersion
 }
 
 func normalizeDrainKey(name fyne.KeyName) fyne.KeyName {
@@ -440,7 +465,7 @@ func (km *KeyManager) HandleTypedRune(r rune) {
 	modifiers := km.modifierState
 	var currentHandler KeyHandler
 	if len(km.handlers) > 0 {
-		currentHandler = km.handlers[len(km.handlers)-1]
+		currentHandler = km.handlers[len(km.handlers)-1].handler
 	}
 	km.mutex.Unlock()
 
@@ -475,8 +500,8 @@ func (km *KeyManager) ListHandlers() []string {
 	defer km.mutex.RUnlock()
 
 	names := make([]string, len(km.handlers))
-	for i, handler := range km.handlers {
-		names[i] = handler.GetName()
+	for i, entry := range km.handlers {
+		names[i] = entry.handler.GetName()
 	}
 
 	return names
@@ -488,8 +513,8 @@ func (km *KeyManager) DumpState() string {
 	defer km.mutex.RUnlock()
 
 	handlers := make([]string, len(km.handlers))
-	for i, handler := range km.handlers {
-		handlers[i] = handler.GetName()
+	for i, entry := range km.handlers {
+		handlers[i] = entry.handler.GetName()
 	}
 	pending := make([]string, len(km.pending))
 	for i, transition := range km.pending {

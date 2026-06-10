@@ -18,6 +18,7 @@ import (
 type MaintenanceDialog struct {
 	config     *config.Config
 	keyManager *keymanager.KeyManager
+	kmToken    keymanager.HandlerToken
 	debugPrint func(format string, args ...interface{})
 
 	cursorMemoryCheck      *widget.Check
@@ -92,7 +93,7 @@ func (d *MaintenanceDialog) ShowDialog(parent fyne.Window, onApply func(maintena
 	d.sink = NewKeySink(content, d.keyManager, WithTabCapture(false))
 
 	handler := keymanager.NewMaintenanceDialogKeyHandler(d)
-	d.keyManager.PushHandler(handler)
+	d.kmToken = d.keyManager.PushHandler(handler)
 
 	d.dialog = dialog.NewCustomWithoutButtons("Maintenance", d.sink, parent)
 	d.dialog.SetOnClosed(func() {
@@ -185,7 +186,7 @@ func (d *MaintenanceDialog) Cancel() {
 	}
 	d.closed = true
 	deferDialogClose(d.keyManager, "maintenance.close", func() {
-		d.keyManager.PopHandler()
+		d.keyManager.RemoveHandler(d.kmToken)
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}

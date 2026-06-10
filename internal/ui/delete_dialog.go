@@ -20,6 +20,7 @@ type DeleteConfirmDialog struct {
 	permanent  bool
 	entry      *deleteConfirmEntry
 	keyManager *keymanager.KeyManager
+	kmToken    keymanager.HandlerToken
 	parent     fyne.Window
 	dialog     dialog.Dialog
 	closed     bool
@@ -63,7 +64,7 @@ func (d *DeleteConfirmDialog) ShowDialog(parent fyne.Window, onAccept func()) {
 	content.Add(dialogButtonRow("Cancel", d.CancelDelete, action, d.ConfirmDelete))
 
 	handler := keymanager.NewDeleteConfirmDialogKeyHandler(d)
-	d.keyManager.PushHandler(handler)
+	d.kmToken = d.keyManager.PushHandler(handler)
 
 	d.dialog = dialog.NewCustomWithoutButtons(title, content, parent)
 	d.dialog.SetOnClosed(func() {
@@ -117,7 +118,7 @@ func (d *DeleteConfirmDialog) ConfirmDelete() {
 	}
 	d.closed = true
 	deferDialogClose(d.keyManager, "delete.confirm", func() {
-		d.keyManager.PopHandler()
+		d.keyManager.RemoveHandler(d.kmToken)
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}
@@ -134,7 +135,7 @@ func (d *DeleteConfirmDialog) CancelDelete() {
 	}
 	d.closed = true
 	deferDialogClose(d.keyManager, "delete.cancel", func() {
-		d.keyManager.PopHandler()
+		d.keyManager.RemoveHandler(d.kmToken)
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}

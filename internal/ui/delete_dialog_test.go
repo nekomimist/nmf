@@ -45,7 +45,7 @@ func TestPermanentDeleteAcceptsConfirmWord(t *testing.T) {
 func TestPermanentDeleteWrongReturnDoesNotTrapLaterCancel(t *testing.T) {
 	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
 	d := NewDeleteConfirmDialog([]string{"file.txt"}, true, km)
-	km.PushHandler(keymanager.NewDeleteConfirmDialogKeyHandler(d))
+	d.kmToken = km.PushHandler(keymanager.NewDeleteConfirmDialogKeyHandler(d))
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
@@ -69,7 +69,7 @@ func TestPermanentDeleteWrongReturnDoesNotTrapLaterAccept(t *testing.T) {
 	d := NewDeleteConfirmDialog([]string{"file.txt"}, true, km)
 	accepted := false
 	d.onAccept = func() { accepted = true }
-	km.PushHandler(keymanager.NewDeleteConfirmDialogKeyHandler(d))
+	d.kmToken = km.PushHandler(keymanager.NewDeleteConfirmDialogKeyHandler(d))
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})

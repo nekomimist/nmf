@@ -51,6 +51,7 @@ type FileManager struct {
 	currentFilter     *config.FilterEntry                     // Currently applied filter
 	searchOverlay     *ui.IncrementalSearchOverlay            // Incremental search overlay
 	searchHandler     *keymanager.IncrementalSearchKeyHandler // Search key handler
+	searchToken       keymanager.HandlerToken                 // Token of the pushed search handler
 	searchMatchers    *search.Provider                        // Shared search matcher provider
 	iconSvc           *fileinfo.IconService                   // Async icon service
 	// Busy state while loading directories
@@ -59,6 +60,7 @@ type FileManager struct {
 	busyTimer    *time.Timer
 	busyDelay    time.Duration
 	busyText     string
+	busyToken    keymanager.HandlerToken
 	busyMu       sync.Mutex
 	loadMu       sync.Mutex
 	nextLoadID   uint64

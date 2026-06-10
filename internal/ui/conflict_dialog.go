@@ -31,6 +31,7 @@ const (
 type ConflictDialog struct {
 	req        jobs.ConflictRequest
 	km         *keymanager.KeyManager
+	kmToken    keymanager.HandlerToken
 	parent     fyne.Window
 	dialog     dialog.Dialog
 	closed     bool
@@ -124,7 +125,7 @@ func (d *ConflictDialog) ShowDialog(parent fyne.Window, callback func(jobs.Confl
 
 	handler := keymanager.NewConflictDialogKeyHandler(d)
 	if d.km != nil {
-		d.km.PushHandler(handler)
+		d.kmToken = d.km.PushHandler(handler)
 		d.sink = NewKeySink(content, d.km, WithTabCapture(false))
 	}
 	dialogContent := fyne.CanvasObject(content)
@@ -244,7 +245,7 @@ func (d *ConflictDialog) finish(res jobs.ConflictResolution) {
 	d.unregisterShortcuts()
 	deferDialogClose(d.km, "conflict.close", func() {
 		if d.km != nil {
-			d.km.PopHandler()
+			d.km.RemoveHandler(d.kmToken)
 		}
 		if d.dialog != nil {
 			d.dialog.Hide()

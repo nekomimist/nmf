@@ -28,6 +28,7 @@ const (
 type FileViewerDialog struct {
 	preview *fileinfo.PreviewFile
 	km      *keymanager.KeyManager
+	kmToken keymanager.HandlerToken
 	parent  fyne.Window
 	dialog  dialog.Dialog
 
@@ -155,7 +156,7 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	stepStart = time.Now()
 
 	if d.km != nil {
-		d.km.PushHandler(keymanager.NewFileViewerKeyHandler(d))
+		d.kmToken = d.km.PushHandler(keymanager.NewFileViewerKeyHandler(d))
 		d.handlerSet = true
 	}
 	d.debug("FileViewer: handler elapsed=%s", time.Since(stepStart))
@@ -363,7 +364,7 @@ func (d *FileViewerDialog) CancelDialog() {
 	d.closed = true
 	deferDialogClose(d.km, "viewer.close", func() {
 		if d.handlerSet && d.km != nil {
-			d.km.PopHandler()
+			d.km.RemoveHandler(d.kmToken)
 			d.handlerSet = false
 		}
 		if d.dialog != nil {

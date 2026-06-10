@@ -81,8 +81,9 @@ type NavigationHistoryDialog struct {
 	dataBinding      binding.StringList
 	debugPrint       func(format string, args ...interface{})
 	keyManager       *keymanager.KeyManager // Keyboard input manager
-	dialog           dialog.Dialog          // Reference to the actual dialog
-	callback         func(string)           // Callback function for selection
+	kmToken          keymanager.HandlerToken
+	dialog           dialog.Dialog // Reference to the actual dialog
+	callback         func(string)  // Callback function for selection
 	unpinCallback    func(string) bool
 	onPathChanged    func(string)
 	parent           fyne.Window // Parent window for focus management
@@ -289,7 +290,7 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 
 	// Create and push history dialog key handler
 	historyHandler := keymanager.NewHistoryDialogKeyHandler(nhd, nhd.debugPrint)
-	nhd.keyManager.PushHandler(historyHandler)
+	nhd.kmToken = nhd.keyManager.PushHandler(historyHandler)
 
 	// Wrap content with KeySink to capture Tab and forward keys
 	nhd.sink = NewKeySink(content, nhd.keyManager, WithTabCapture(true))
@@ -409,7 +410,7 @@ func (nhd *NavigationHistoryDialog) AcceptSelection() {
 
 	deferDialogClose(nhd.keyManager, "history.accept", func() {
 		nhd.notifyDialogClosed()
-		nhd.keyManager.PopHandler()
+		nhd.keyManager.RemoveHandler(nhd.kmToken)
 		if nhd.callback != nil && selectedPath != "" {
 			nhd.callback(selectedPath)
 		}
@@ -446,7 +447,7 @@ func (nhd *NavigationHistoryDialog) AcceptDirectPathNavigation() {
 
 	deferDialogClose(nhd.keyManager, "history.acceptDirect", func() {
 		nhd.notifyDialogClosed()
-		nhd.keyManager.PopHandler()
+		nhd.keyManager.RemoveHandler(nhd.kmToken)
 		if nhd.callback != nil && selectedPath != "" {
 			nhd.callback(selectedPath)
 		}
@@ -466,7 +467,7 @@ func (nhd *NavigationHistoryDialog) CancelDialog() {
 
 	deferDialogClose(nhd.keyManager, "history.cancel", func() {
 		nhd.notifyDialogClosed()
-		nhd.keyManager.PopHandler()
+		nhd.keyManager.RemoveHandler(nhd.kmToken)
 		if nhd.dialog != nil {
 			nhd.dialog.Hide()
 		}

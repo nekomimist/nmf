@@ -418,7 +418,7 @@ func (fm *FileManager) beginBusy(text string, onCancel ...func()) {
 	if len(onCancel) > 0 {
 		cancel = onCancel[0]
 	}
-	fm.keyManager.PushHandler(keymanager.NewBusyKeyHandler(cancel))
+	fm.busyToken = fm.keyManager.PushHandler(keymanager.NewBusyKeyHandler(cancel))
 
 	// Delay overlay to prevent flicker on very fast operations
 	if fm.busyTimer != nil {
@@ -450,11 +450,13 @@ func (fm *FileManager) endBusy() {
 		fm.busyTimer.Stop()
 		fm.busyTimer = nil
 	}
+	busyToken := fm.busyToken
+	fm.busyToken = 0
 	fm.busyMu.Unlock()
 
-	// Hide overlay (if visible) and pop guard
+	// Hide overlay (if visible) and remove guard
 	fm.busyOverlay.Hide()
-	fm.keyManager.PopHandler()
+	fm.keyManager.RemoveHandler(busyToken)
 	debugPrint("FileManager: busy end focused=%s active=%t path=%s", focusedObjectLabel(fm.window), fm.windowActive, fm.currentPath)
 }
 

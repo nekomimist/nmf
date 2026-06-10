@@ -38,13 +38,20 @@ func (h *recordingHandler) OnTypedRune(r rune, _ ModifierState) bool {
 func (h *recordingHandler) GetName() string { return "recording" }
 
 type deferPopOnKeyDownHandler struct {
-	km *KeyManager
+	km    *KeyManager
+	token HandlerToken
+}
+
+func pushDeferPopOnKeyDown(km *KeyManager) *deferPopOnKeyDownHandler {
+	h := &deferPopOnKeyDownHandler{km: km}
+	h.token = km.PushHandler(h)
+	return h
 }
 
 func (h *deferPopOnKeyDownHandler) OnKeyDown(ev *fyne.KeyEvent, _ ModifierState) bool {
 	if ev.Name == fyne.KeyReturn || ev.Name == fyne.KeyEnter {
 		h.km.DeferUntilKeysReleased("test.pop", func() {
-			h.km.PopHandler()
+			h.km.RemoveHandler(h.token)
 		})
 		return true
 	}
@@ -82,7 +89,8 @@ func (h *deferPushOnTypedKeyHandler) OnTypedRune(_ rune, _ ModifierState) bool {
 func (h *deferPushOnTypedKeyHandler) GetName() string                          { return "deferPushOnTypedKey" }
 
 type deferPopOnTypedKeyHandler struct {
-	km *KeyManager
+	km    *KeyManager
+	token HandlerToken
 }
 
 func (h *deferPopOnTypedKeyHandler) OnKeyDown(_ *fyne.KeyEvent, _ ModifierState) bool {
@@ -94,7 +102,7 @@ func (h *deferPopOnTypedKeyHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) b
 func (h *deferPopOnTypedKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState) bool {
 	if ev.Name == fyne.KeyReturn || ev.Name == fyne.KeyEscape {
 		h.km.DeferUntilKeysReleased("test.typedPop", func() {
-			h.km.PopHandler()
+			h.km.RemoveHandler(h.token)
 		})
 		return true
 	}
@@ -116,8 +124,8 @@ func (h *transientStackChangeOnTypedKeyHandler) OnKeyUp(_ *fyne.KeyEvent, _ Modi
 }
 func (h *transientStackChangeOnTypedKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState) bool {
 	h.typedKeys = append(h.typedKeys, ev.Name)
-	h.km.PushHandler(noopHandler{})
-	h.km.PopHandler()
+	token := h.km.PushHandler(noopHandler{})
+	h.km.RemoveHandler(token)
 	return true
 }
 func (h *transientStackChangeOnTypedKeyHandler) OnTypedRune(_ rune, _ ModifierState) bool {
@@ -167,7 +175,7 @@ func TestKeyManagerDefersTransitionUntilKeysReleased(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	main := &recordingHandler{}
 	km.PushHandler(main)
-	km.PushHandler(&deferPopOnKeyDownHandler{km: km})
+	pushDeferPopOnKeyDown(km)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyEnter})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
@@ -187,7 +195,7 @@ func TestKeyManagerForceReleaseRunsPendingTransition(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	main := &recordingHandler{}
 	km.PushHandler(main)
-	km.PushHandler(&deferPopOnKeyDownHandler{km: km})
+	pushDeferPopOnKeyDown(km)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	km.ForceReleaseAllKeys("test.force")
@@ -212,7 +220,7 @@ func TestKeyManagerForceReleaseSuppressesLateTypedKey(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	main := &recordingHandler{}
 	km.PushHandler(main)
-	km.PushHandler(&deferPopOnKeyDownHandler{km: km})
+	pushDeferPopOnKeyDown(km)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	km.ForceReleaseAllKeys("test.force")
@@ -246,7 +254,7 @@ func TestKeyManagerSuppressesLateTypedKeyAfterDeferredTransition(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	main := &recordingHandler{}
 	km.PushHandler(main)
-	km.PushHandler(&deferPopOnKeyDownHandler{km: km})
+	pushDeferPopOnKeyDown(km)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyEnter})
 	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyReturn})
@@ -268,7 +276,7 @@ func TestKeyManagerGatesRepeatedTypedKeyDuringDeferredTransition(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	main := &recordingHandler{}
 	km.PushHandler(main)
-	km.PushHandler(&deferPopOnKeyDownHandler{km: km})
+	pushDeferPopOnKeyDown(km)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
@@ -292,7 +300,7 @@ func TestKeyManagerDefersTypedKeyPopUntilKeyRelease(t *testing.T) {
 	main := &recordingHandler{}
 	dialog := &deferPopOnTypedKeyHandler{km: km}
 	km.PushHandler(main)
-	km.PushHandler(dialog)
+	dialog.token = km.PushHandler(dialog)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
@@ -395,19 +403,62 @@ func TestKeyManagerSuppressesLateTypedRuneAfterDeferredTransition(t *testing.T) 
 	}
 }
 
-func TestKeyManagerPopClearsModifiers(t *testing.T) {
+func TestKeyManagerRemoveTopClearsModifiers(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
-	km.PushHandler(noopHandler{})
+	token := km.PushHandler(noopHandler{})
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
 	if !km.GetModifierState().CtrlPressed {
 		t.Fatal("CtrlPressed should be true after Ctrl key down")
 	}
 
-	km.PopHandler()
+	km.RemoveHandler(token)
 
 	if km.GetModifierState().CtrlPressed {
-		t.Fatal("CtrlPressed should be false after PopHandler")
+		t.Fatal("CtrlPressed should be false after removing the top handler")
+	}
+}
+
+func TestKeyManagerRemoveHandlerOutOfOrder(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	bottomToken := km.PushHandler(noopHandler{})
+	dialog := &recordingHandler{}
+	dialogToken := km.PushHandler(dialog)
+
+	// Removing a non-top entry must not evict the current top handler.
+	if got := km.RemoveHandler(bottomToken); got == nil {
+		t.Fatal("RemoveHandler(bottomToken) should return the removed handler")
+	}
+	if got := km.GetCurrentHandler(); got != dialog {
+		t.Fatalf("current handler = %T, want dialog handler", got)
+	}
+
+	// Removing the same token again is a warning no-op.
+	if got := km.RemoveHandler(bottomToken); got != nil {
+		t.Fatalf("duplicate remove returned %T, want nil", got)
+	}
+	if got := km.GetStackSize(); got != 1 {
+		t.Fatalf("stack size = %d, want 1", got)
+	}
+
+	if got := km.RemoveHandler(dialogToken); got == nil {
+		t.Fatal("RemoveHandler(dialogToken) should return the removed handler")
+	}
+	if got := km.GetStackSize(); got != 0 {
+		t.Fatalf("stack size = %d, want 0", got)
+	}
+}
+
+func TestKeyManagerRemoveNonTopKeepsModifiers(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	bottomToken := km.PushHandler(noopHandler{})
+	km.PushHandler(noopHandler{})
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
+	km.RemoveHandler(bottomToken)
+
+	if !km.GetModifierState().CtrlPressed {
+		t.Fatal("CtrlPressed should survive removal of a non-top handler")
 	}
 }
 

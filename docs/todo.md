@@ -5,15 +5,6 @@
 ### File Managerのタイトル
 - Nekomimist File Managerにしたい
 
-### KeyManagerのPopHandlerに所有権チェックを入れたい
-- 現状の`PopHandler()`は無条件に最上段を外すだけで、呼び出し側(全dialog + busy handler、20カ所以上)は
-  「自分が最上段にいるはず」という暗黙の前提で呼んでいる。
-- busy handler(`directory_loading.go`の`beginBusy`/`endBusy`)はタイマーや非同期処理と絡むため、
-  dialogの開閉とインターリーブすると別のhandlerをpopして入力ルーティングが壊れる構造的リスクがある。
-  (8d216bf "release stuck keys after open failures" はこのクラスのバグの後始末に見える)
-- 案: `PushHandler`がtoken(またはhandler自身)を返し、`Remove(token)`で「自分だけを外す」APIにする。
-  最上段でなければdebugログで警告。スタックずれ系のバグの土壌を構造的に潰せる。
-
 ### KeyDown/KeyUpの二重配送経路を整理したい
 - KeyManagerへの配送経路が2つある:
   canvasレベル(`ui_setup.go`の`SetOnKeyDown/Up`)とフォーカスwidget経由(`KeySink.KeyDown/KeyUp`)。
@@ -87,6 +78,13 @@
 - 進捗表示は必須。高速化案はチャンク単位などで現在ファイルの進捗を維持できることを条件にする。
 
 # DONE 以下は一応終わったもの
+## KeyManagerのPopHandlerに所有権チェックを入れたい
+- `PushHandler`が`HandlerToken`を返し、`PopHandler()`を廃止して`RemoveHandler(token)`に置き換えた。
+- tokenは自分のスタックエントリだけを除去する。最上段以外の除去はWARNINGログ付きでその場から除去し、
+  他のhandlerを誤って外すことはなくなった。未知のtoken(二重除去含む)はWARNINGログのみのno-op。
+- 最上段除去時のみmodifier状態をリセットする(非最上段除去では入力オーナーが変わらないため維持)。
+- 全dialog・busy handler・incremental search・sort dialogの呼び出し側をtoken方式に移行した。
+
 ## 起動時のウィンドウ位置を設定できるようにしたい
 - `config.json` の `window.x` / `window.y` と Starlark の
   `nmf.window(x = ..., y = ...)` を追加した。

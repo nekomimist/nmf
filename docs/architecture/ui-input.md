@@ -72,9 +72,11 @@ Text entries that must not steal Tab:
 Required sequence for keyboard-driven dialogs:
 
 1. Create dialog-specific key handler.
-2. `PushHandler` before showing dialog.
+2. `PushHandler` before showing dialog and keep the returned `HandlerToken`.
 3. Wrap content with `KeySink` and focus it.
-4. On all close paths, `PopHandler` once.
+4. On all close paths, `RemoveHandler(token)` once. The token identifies the
+   dialog's own stack entry, so an out-of-order or duplicate removal cannot
+   evict another owner's handler; such calls only log a warning.
 5. Optionally call parent `Canvas().Unfocus()` to avoid stale focus targets.
 
 This pattern is used in history/filter/tree/directory-jump/copy-move/jobs/quit dialogs.
