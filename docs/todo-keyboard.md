@@ -161,10 +161,19 @@ type KeyHandler interface {
   - conflictNameEntryのKeyDown/KeyUp転送をAlt系TypedShortcut転送に置換
   - fileViewerTextGridのTypedShortcutも全Shortcut転送に統一
     (Ctrl+CのコピーはShortcutCopy経由でhandlerに届く)
-- [ ] Step3: 抑止機構をarm-gate+次tick遷移に置換
-  - tri-state gate導入、fyne.Doラッパ、Transition属性化
-  - 5点セット/DeferUntilKeysReleased/ForceReleaseAllKeysの削除
-  - KeySinkフォーカス変化でのリセット配線
+- [x] Step3: 抑止機構をarm-gate+次tick遷移に置換
+  - `armed` + `queuedTransitions`の2状態に縮小(tri-state相当)。
+    `BeginOwnerTransition`がfyne.Doラッパ(`queueOnMain`、app無しでは同期実行)で
+    次tickに遷移を実行。disarm中のイベントはキューせず破棄
+  - 5点セット(pressedKeys/pending/suppressTyped/suppressRune/activeTypedKey)、
+    `DeferUntilKeysReleased`、`ForceReleaseAllKeys`を削除。
+    `ResetTransientState`を追加(modifier+gate+lastKeyDownのリセット)
+  - `shouldDeferCommand`のswitchを廃止し、コマンド定義側の`commandSpec.transition`
+    属性へ移行。旧switchから漏れていた`archive.extract`の遷移指定もこの際修正
+  - KeySinkのFocusGained/FocusLostで`ResetTransientState`(alt-tab/dialog開閉での
+    状態残留を解消)
+  - 「activationをKeyManagerへ転送する経路は必ずKeyDownも転送する」を不変条件化
+    (conflictNameEntryのKeyDown/KeyUp転送はgate armのため維持)
 - [ ] Step4: 残課題整理
   - stackVersion/currentHandlerAndVersionの削除
   - スレッディング前提の決定と明文化(todo.mdの該当項目の決着)

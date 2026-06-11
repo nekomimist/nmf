@@ -9,34 +9,30 @@ import (
 	"nmf/internal/keymanager"
 )
 
-func TestShowMessageDialogDefersUntilKeysReleased(t *testing.T) {
+func TestShowMessageDialogRunsViaTransitionQueue(t *testing.T) {
 	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
 	fm := &FileManager{keyManager: km}
 	ran := false
 
+	// Without a running Fyne app the transition queue executes synchronously;
+	// held keys no longer delay the owner transition.
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyE})
 	fm.showMessageDialog(func() {
 		ran = true
 	})
 
-	if ran {
-		t.Fatal("message show should be deferred while a key is pressed")
-	}
-
-	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyE})
-
 	if !ran {
-		t.Fatal("message show should run after all keys are released")
+		t.Fatal("message show should run via the transition queue")
 	}
 }
 
-func TestShowMessageDialogRunsAfterExternalOpenForceRelease(t *testing.T) {
+func TestShowMessageDialogRunsAfterExternalOpenReset(t *testing.T) {
 	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
 	fm := &FileManager{keyManager: km}
 	ran := false
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
-	fm.forceReleaseKeysAfterExternalOpen("test.open-error")
+	fm.resetKeyStateAfterExternalOpen("test.open-error")
 	fm.showMessageDialog(func() {
 		ran = true
 	})

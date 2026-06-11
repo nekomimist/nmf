@@ -25,7 +25,7 @@ func (fm *FileManager) showMessageDialog(show func()) {
 		return
 	}
 	if fm != nil && fm.keyManager != nil {
-		fm.keyManager.DeferUntilKeysReleased("message.show", show)
+		fm.keyManager.BeginOwnerTransition("message.show", show)
 		return
 	}
 	show()

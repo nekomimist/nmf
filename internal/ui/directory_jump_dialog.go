@@ -342,7 +342,7 @@ func (d *DirectoryJumpDialog) scheduleAutoAccept() {
 	}
 	path := d.pendingAutoAcceptPath
 	d.autoAcceptScheduled = true
-	d.keyManager.DeferUntilKeysReleased("directoryJump.autoAccept", func() {
+	d.keyManager.BeginOwnerTransition("directoryJump.autoAccept", func() {
 		if d.closed || d.pendingAutoAcceptPath != path {
 			return
 		}

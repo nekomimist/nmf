@@ -77,6 +77,8 @@ func TestConflictNameEntryForwardsAltShortcutsToKeyManager(t *testing.T) {
 	km.PushHandler(handler)
 	entry := newConflictNameEntry(km, nil)
 
+	entry.KeyDown(&fyne.KeyEvent{Name: desktop.KeyAltLeft}) // modifier: tracked, does not arm
+	entry.KeyDown(&fyne.KeyEvent{Name: fyne.KeyN})          // fresh press arms the gate
 	entry.TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyN, Modifier: fyne.KeyModifierAlt})
 
 	if len(handler.keys) != 1 || handler.keys[0] != fyne.KeyN {

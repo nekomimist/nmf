@@ -49,8 +49,13 @@ func (k *KeySink) CreateRenderer() fyne.WidgetRenderer {
 	return widget.NewSimpleRenderer(k.Content)
 }
 
-// FocusGained implements fyne.Focusable.
+// FocusGained implements fyne.Focusable. Focus changes (including window
+// focus changes, which Fyne forwards to the focused widget) reset transient
+// input state so stale modifiers or held keys never leak across owners.
 func (k *KeySink) FocusGained() {
+	if k.km != nil {
+		k.km.ResetTransientState("keysink-focus-gained")
+	}
 	if k.onFocus != nil {
 		k.onFocus(true)
 	}
@@ -58,6 +63,9 @@ func (k *KeySink) FocusGained() {
 
 // FocusLost implements fyne.Focusable.
 func (k *KeySink) FocusLost() {
+	if k.km != nil {
+		k.km.ResetTransientState("keysink-focus-lost")
+	}
 	if k.onFocus != nil {
 		k.onFocus(false)
 	}

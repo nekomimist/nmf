@@ -31,6 +31,7 @@ func TestKeySinkForwardsCustomShortcuts(t *testing.T) {
 	km.PushHandler(handler)
 	sink := NewKeySink(widget.NewLabel("content"), km)
 
+	sink.KeyDown(&fyne.KeyEvent{Name: fyne.KeyH}) // fresh press arms the gate
 	sink.TypedShortcut(&desktop.CustomShortcut{
 		KeyName:  fyne.KeyH,
 		Modifier: fyne.KeyModifierControl | fyne.KeyModifierShift,

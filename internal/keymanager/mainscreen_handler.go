@@ -130,11 +130,21 @@ type clipboardWriter interface {
 	SetClipboardText(text string) bool
 }
 
+// commandSpec couples a command implementation with its input attributes.
+// transition marks commands that change the input owner (open a dialog or
+// menu, move window focus, enter an input mode); they are executed through
+// the KeyManager owner-transition gate. Declaring the attribute at the
+// definition site keeps new commands from silently skipping the gate.
+type commandSpec struct {
+	fn         CommandFunc
+	transition bool
+}
+
 // MainScreenKeyHandler handles keyboard events for the main file list screen.
 type MainScreenKeyHandler struct {
 	fileManager     FileManagerInterface
 	debugPrint      func(format string, args ...interface{})
-	commands        CommandRegistry
+	commands        map[string]commandSpec
 	bindings        []keyBinding
 	runningCommands map[string]int
 	runningDepth    int
@@ -163,7 +173,9 @@ func NewMainScreenKeyHandlerWithCommands(fm FileManagerInterface, debugPrint fun
 			mh.debugPrint("MainScreen: WARNING extra command ignored existing command=%s", id)
 			continue
 		}
-		mh.commands[id] = command
+		// Extra (user/script) commands run without the transition gate, same
+		// as before; a command that opens UI itself must gate internally.
+		mh.commands[id] = commandSpec{fn: command}
 	}
 	mh.bindings = mh.buildBindings(configuredBindings)
 	return mh
@@ -285,50 +297,16 @@ func (mh *MainScreenKeyHandler) executeCommand(commandID string, ctx CommandCont
 			}
 		}()
 
-		command(ctx)
+		command.fn(ctx)
 	}
 
-	if mh.shouldDeferCommand(commandID) && mh.deferTransition != nil {
+	if command.transition && mh.deferTransition != nil {
 		mh.deferTransition(commandID, run)
 		return true
 	}
 
 	run()
 	return true
-}
-
-func (mh *MainScreenKeyHandler) shouldDeferCommand(commandID string) bool {
-	switch commandID {
-	case CommandWindowNew,
-		CommandWindowReopen,
-		CommandWindowFocusLeft,
-		CommandWindowFocusRight,
-		CommandTreeShow,
-		CommandHistoryShow,
-		CommandHistoryPinCurrent,
-		CommandDirectoryJumpShow,
-		CommandFilterShow,
-		CommandSearchShow,
-		CommandSortShow,
-		CommandJobsShow,
-		CommandPathEdit,
-		CommandDirectoryCreate,
-		CommandClipboardTextFile,
-		CommandQuit,
-		CommandCopyShow,
-		CommandMoveShow,
-		CommandCompareShow,
-		CommandRenameShow,
-		CommandDeleteTrash,
-		CommandDeletePermanent,
-		CommandExplorerContextShow,
-		CommandExternalCommandMenu,
-		CommandViewerShow,
-		CommandMaintenanceShow:
-		return true
-	default:
-		return false
-	}
 }
 
 func (mh *MainScreenKeyHandler) buildBindings(configured []config.KeyBindingEntry) []keyBinding {
@@ -406,55 +384,57 @@ func defaultMainScreenBindings() []config.KeyBindingEntry {
 	}
 }
 
-func (mh *MainScreenKeyHandler) defaultCommands() CommandRegistry {
-	return CommandRegistry{
-		CommandCursorUp:            mh.cursorUp,
-		CommandCursorDown:          mh.cursorDown,
-		CommandCursorPageUp:        mh.cursorPageUp,
-		CommandCursorPageDown:      mh.cursorPageDown,
-		CommandCursorFirst:         mh.cursorFirst,
-		CommandCursorLast:          mh.cursorLast,
-		CommandOpen:                mh.openCurrent,
-		CommandOpenDefaultApp:      mh.openCurrentDefaultApp,
-		CommandSelectToggle:        mh.toggleSelection,
-		CommandSelectAll:           mh.selectAll,
-		CommandSelectInvert:        func(CommandContext) { mh.invertSelection(false) },
-		CommandSelectInvertWithDir: func(CommandContext) { mh.invertSelection(true) },
-		CommandParentDirectory:     mh.parentDirectory,
-		CommandRefresh:             mh.refreshDirectory,
-		CommandHome:                mh.homeDirectory,
-		CommandWindowNew:           func(CommandContext) { mh.fileManager.OpenNewWindow() },
-		CommandWindowReopen:        func(CommandContext) { mh.fileManager.ReopenClosedWindow() },
-		CommandWindowFocusLeft:     func(CommandContext) { mh.fileManager.FocusWindowLeft() },
-		CommandWindowFocusRight:    func(CommandContext) { mh.fileManager.FocusWindowRight() },
-		CommandWindowResetSize:     func(CommandContext) { mh.fileManager.ResetWindowSize() },
-		CommandWindowResetAllSizes: func(CommandContext) { mh.fileManager.ResetAllWindowSizes() },
-		CommandTreeShow:            func(CommandContext) { mh.fileManager.ShowDirectoryTreeDialog() },
-		CommandHistoryShow:         func(CommandContext) { mh.fileManager.ShowNavigationHistoryDialog() },
-		CommandHistoryPinCurrent:   func(CommandContext) { mh.fileManager.PinCurrentHistoryPath() },
-		CommandDirectoryJumpShow:   func(CommandContext) { mh.fileManager.ShowDirectoryJumpDialog() },
-		CommandFilterShow:          func(CommandContext) { mh.fileManager.ShowFilterDialog() },
-		CommandFilterClear:         func(CommandContext) { mh.fileManager.ClearFilter() },
-		CommandFilterToggle:        func(CommandContext) { mh.fileManager.ToggleFilter() },
-		CommandSearchShow:          func(CommandContext) { mh.fileManager.ShowIncrementalSearchDialog() },
-		CommandSortShow:            func(CommandContext) { mh.fileManager.ShowSortDialog() },
-		CommandJobsShow:            func(CommandContext) { mh.fileManager.ShowJobsDialog() },
-		CommandPathEdit:            func(CommandContext) { mh.fileManager.ShowPathEditDialog() },
-		CommandDirectoryCreate:     func(CommandContext) { mh.fileManager.ShowCreateDirectoryDialog() },
-		CommandClipboardTextFile:   func(CommandContext) { mh.fileManager.ShowClipboardTextFileDialog() },
-		CommandQuit:                func(CommandContext) { mh.fileManager.QuitApplication() },
-		CommandCopyShow:            func(CommandContext) { mh.fileManager.ShowCopyDialog() },
-		CommandMoveShow:            func(CommandContext) { mh.fileManager.ShowMoveDialog() },
-		CommandArchiveExtract:      func(CommandContext) { mh.fileManager.ShowExtractArchiveDialog() },
-		CommandCompareShow:         func(CommandContext) { mh.fileManager.ShowCompareDialog() },
-		CommandRenameShow:          mh.rename,
-		CommandDeleteTrash:         func(CommandContext) { mh.fileManager.ShowDeleteDialog(false) },
-		CommandDeletePermanent:     func(CommandContext) { mh.fileManager.ShowDeleteDialog(true) },
-		CommandExplorerContextShow: func(CommandContext) { mh.fileManager.ShowExplorerContextMenu() },
-		CommandExternalCommandMenu: func(CommandContext) { mh.fileManager.ShowExternalCommandMenu() },
-		CommandViewerShow:          func(CommandContext) { mh.fileManager.ShowFileViewer() },
-		CommandMaintenanceShow:     func(CommandContext) { mh.fileManager.ShowMaintenanceDialog() },
-		CommandNoop:                func(CommandContext) {},
+func (mh *MainScreenKeyHandler) defaultCommands() map[string]commandSpec {
+	return map[string]commandSpec{
+		CommandCursorUp:            {fn: mh.cursorUp},
+		CommandCursorDown:          {fn: mh.cursorDown},
+		CommandCursorPageUp:        {fn: mh.cursorPageUp},
+		CommandCursorPageDown:      {fn: mh.cursorPageDown},
+		CommandCursorFirst:         {fn: mh.cursorFirst},
+		CommandCursorLast:          {fn: mh.cursorLast},
+		CommandOpen:                {fn: mh.openCurrent},
+		CommandOpenDefaultApp:      {fn: mh.openCurrentDefaultApp},
+		CommandSelectToggle:        {fn: mh.toggleSelection},
+		CommandSelectAll:           {fn: mh.selectAll},
+		CommandSelectInvert:        {fn: func(CommandContext) { mh.invertSelection(false) }},
+		CommandSelectInvertWithDir: {fn: func(CommandContext) { mh.invertSelection(true) }},
+		CommandParentDirectory:     {fn: mh.parentDirectory},
+		CommandRefresh:             {fn: mh.refreshDirectory},
+		CommandHome:                {fn: mh.homeDirectory},
+		CommandWindowNew:           {fn: func(CommandContext) { mh.fileManager.OpenNewWindow() }, transition: true},
+		CommandWindowReopen:        {fn: func(CommandContext) { mh.fileManager.ReopenClosedWindow() }, transition: true},
+		CommandWindowFocusLeft:     {fn: func(CommandContext) { mh.fileManager.FocusWindowLeft() }, transition: true},
+		CommandWindowFocusRight:    {fn: func(CommandContext) { mh.fileManager.FocusWindowRight() }, transition: true},
+		CommandWindowResetSize:     {fn: func(CommandContext) { mh.fileManager.ResetWindowSize() }},
+		CommandWindowResetAllSizes: {fn: func(CommandContext) { mh.fileManager.ResetAllWindowSizes() }},
+		CommandTreeShow:            {fn: func(CommandContext) { mh.fileManager.ShowDirectoryTreeDialog() }, transition: true},
+		CommandHistoryShow:         {fn: func(CommandContext) { mh.fileManager.ShowNavigationHistoryDialog() }, transition: true},
+		CommandHistoryPinCurrent:   {fn: func(CommandContext) { mh.fileManager.PinCurrentHistoryPath() }, transition: true},
+		CommandDirectoryJumpShow:   {fn: func(CommandContext) { mh.fileManager.ShowDirectoryJumpDialog() }, transition: true},
+		CommandFilterShow:          {fn: func(CommandContext) { mh.fileManager.ShowFilterDialog() }, transition: true},
+		CommandFilterClear:         {fn: func(CommandContext) { mh.fileManager.ClearFilter() }},
+		CommandFilterToggle:        {fn: func(CommandContext) { mh.fileManager.ToggleFilter() }},
+		CommandSearchShow:          {fn: func(CommandContext) { mh.fileManager.ShowIncrementalSearchDialog() }, transition: true},
+		CommandSortShow:            {fn: func(CommandContext) { mh.fileManager.ShowSortDialog() }, transition: true},
+		CommandJobsShow:            {fn: func(CommandContext) { mh.fileManager.ShowJobsDialog() }, transition: true},
+		CommandPathEdit:            {fn: func(CommandContext) { mh.fileManager.ShowPathEditDialog() }, transition: true},
+		CommandDirectoryCreate:     {fn: func(CommandContext) { mh.fileManager.ShowCreateDirectoryDialog() }, transition: true},
+		CommandClipboardTextFile:   {fn: func(CommandContext) { mh.fileManager.ShowClipboardTextFileDialog() }, transition: true},
+		CommandQuit:                {fn: func(CommandContext) { mh.fileManager.QuitApplication() }, transition: true},
+		CommandCopyShow:            {fn: func(CommandContext) { mh.fileManager.ShowCopyDialog() }, transition: true},
+		CommandMoveShow:            {fn: func(CommandContext) { mh.fileManager.ShowMoveDialog() }, transition: true},
+		// transition was missing from the old shouldDeferCommand switch; the
+		// extract dialog is an input-owner change like copy/move.
+		CommandArchiveExtract:      {fn: func(CommandContext) { mh.fileManager.ShowExtractArchiveDialog() }, transition: true},
+		CommandCompareShow:         {fn: func(CommandContext) { mh.fileManager.ShowCompareDialog() }, transition: true},
+		CommandRenameShow:          {fn: mh.rename, transition: true},
+		CommandDeleteTrash:         {fn: func(CommandContext) { mh.fileManager.ShowDeleteDialog(false) }, transition: true},
+		CommandDeletePermanent:     {fn: func(CommandContext) { mh.fileManager.ShowDeleteDialog(true) }, transition: true},
+		CommandExplorerContextShow: {fn: func(CommandContext) { mh.fileManager.ShowExplorerContextMenu() }, transition: true},
+		CommandExternalCommandMenu: {fn: func(CommandContext) { mh.fileManager.ShowExternalCommandMenu() }, transition: true},
+		CommandViewerShow:          {fn: func(CommandContext) { mh.fileManager.ShowFileViewer() }, transition: true},
+		CommandMaintenanceShow:     {fn: func(CommandContext) { mh.fileManager.ShowMaintenanceDialog() }, transition: true},
+		CommandNoop:                {fn: func(CommandContext) {}},
 	}
 }
 

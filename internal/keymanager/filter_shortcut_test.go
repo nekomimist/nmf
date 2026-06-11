@@ -271,54 +271,55 @@ func TestIncrementalSearchTreatsCtrlHAsBackspace(t *testing.T) {
 	}
 }
 
-func TestIncrementalSearchDefersAcceptUntilKeysReleased(t *testing.T) {
-	km := NewKeyManager(func(string, ...interface{}) {})
+func TestIncrementalSearchAcceptRunsOnNextTick(t *testing.T) {
+	km, q := newGatedKeyManager()
 	search := &fakeIncrementalSearch{}
 	handler := NewIncrementalSearchKeyHandler(search, func(string, ...interface{}) {})
-	handler.SetTransitionGate(km.DeferUntilKeysReleased)
+	handler.SetTransitionGate(km.BeginOwnerTransition)
 	km.PushHandler(handler)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
 
 	if search.accepted != 0 {
-		t.Fatalf("AcceptIncrementalSearchOverlay count = %d before key release, want 0", search.accepted)
+		t.Fatalf("AcceptIncrementalSearchOverlay count = %d before next tick, want 0", search.accepted)
 	}
 
-	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyReturn})
-	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	q.runAll()
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn}) // held Enter repeat
 
 	if search.accepted != 1 {
-		t.Fatalf("AcceptIncrementalSearchOverlay count = %d after release and late typed key, want 1", search.accepted)
+		t.Fatalf("AcceptIncrementalSearchOverlay count = %d after tick and held repeat, want 1", search.accepted)
 	}
 }
 
 func TestIncrementalSearchDirectoryAcceptDoesNotLeakReturnToMain(t *testing.T) {
-	km := NewKeyManager(func(string, ...interface{}) {})
+	km, q := newGatedKeyManager()
 	search := &fakeIncrementalSearch{
 		currentMatch: &fileinfo.FileInfo{Name: "dir", Path: "/tmp/dir", IsDir: true},
 	}
 	main := &recordingHandler{}
 	handler := NewIncrementalSearchKeyHandler(search, func(string, ...interface{}) {})
-	handler.SetTransitionGate(km.DeferUntilKeysReleased)
+	handler.SetTransitionGate(km.BeginOwnerTransition)
 	km.PushHandler(main)
-	km.PushHandler(handler)
+	searchToken := km.PushHandler(handler)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
 
 	if search.cursorSet != 0 || search.accepted != 0 {
-		t.Fatalf("search accepted before key release: cursorSet=%d accepted=%d", search.cursorSet, search.accepted)
+		t.Fatalf("search accepted before next tick: cursorSet=%d accepted=%d", search.cursorSet, search.accepted)
 	}
 	if len(main.typedKeys) != 0 {
-		t.Fatalf("Return leaked to main while search pending: %v", main.typedKeys)
+		t.Fatalf("Return leaked to main while transition queued: %v", main.typedKeys)
 	}
 
-	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyReturn})
-	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	q.runAll()
+	km.RemoveHandler(searchToken)                           // accept callback removes the handler in production
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn}) // held Enter repeat
 
 	if search.cursorSet != 1 || search.accepted != 1 || search.hidden != 0 {
-		t.Fatalf("search accept after release = cursorSet=%d accepted=%d hidden=%d, want 1/1/0", search.cursorSet, search.accepted, search.hidden)
+		t.Fatalf("search accept after tick = cursorSet=%d accepted=%d hidden=%d, want 1/1/0", search.cursorSet, search.accepted, search.hidden)
 	}
 	if len(main.typedKeys) != 0 {
 		t.Fatalf("late Return leaked to main after search exit: %v", main.typedKeys)

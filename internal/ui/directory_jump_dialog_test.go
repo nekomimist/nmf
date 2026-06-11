@@ -92,7 +92,7 @@ func TestFilterDirectoryJumpEntriesMatchesShortcutPrefixOnly(t *testing.T) {
 	}
 }
 
-func TestDirectoryJumpUniqueShortcutDefersAcceptUntilKeyUp(t *testing.T) {
+func TestDirectoryJumpUniqueShortcutAcceptsViaTransition(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
@@ -110,27 +110,20 @@ func TestDirectoryJumpUniqueShortcutDefersAcceptUntilKeyUp(t *testing.T) {
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyE})
 	km.HandleTypedRune('e')
 
-	if acceptedPath != "" {
-		t.Fatalf("accepted path before key up = %q, want empty", acceptedPath)
-	}
-	if dialog.closed {
-		t.Fatal("dialog should stay open until key up")
-	}
-
-	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyE})
-
+	// The accept transition is queued; under the test driver the queue runs
+	// synchronously, standing in for the next main-loop iteration.
 	if acceptedPath != "/target" {
-		t.Fatalf("accepted path after key up = %q, want /target", acceptedPath)
+		t.Fatalf("accepted path = %q, want /target", acceptedPath)
 	}
 	if !dialog.closed {
-		t.Fatal("dialog should be closed after deferred accept")
+		t.Fatal("dialog should be closed after the accept transition")
 	}
 	if got := km.GetStackSize(); got != 0 {
 		t.Fatalf("key manager stack size = %d, want 0", got)
 	}
 }
 
-func TestDirectoryJumpManualAcceptDefersCloseUntilKeyUp(t *testing.T) {
+func TestDirectoryJumpManualAcceptClosesViaTransition(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
@@ -148,19 +141,12 @@ func TestDirectoryJumpManualAcceptDefersCloseUntilKeyUp(t *testing.T) {
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	dialog.AcceptSelection()
 
-	if acceptedPath != "" {
-		t.Fatalf("accepted path before key up = %q, want empty", acceptedPath)
-	}
-	if got := km.GetStackSize(); got != 1 {
-		t.Fatalf("key manager stack size before key up = %d, want 1", got)
-	}
-
-	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyReturn})
-
+	// The close transition is queued; under the test driver it runs
+	// synchronously, standing in for the next main-loop iteration.
 	if acceptedPath != "/target" {
-		t.Fatalf("accepted path after key up = %q, want /target", acceptedPath)
+		t.Fatalf("accepted path = %q, want /target", acceptedPath)
 	}
 	if got := km.GetStackSize(); got != 0 {
-		t.Fatalf("key manager stack size after key up = %d, want 0", got)
+		t.Fatalf("key manager stack size = %d, want 0", got)
 	}
 }

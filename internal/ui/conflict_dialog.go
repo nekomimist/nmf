@@ -392,6 +392,23 @@ func (e *conflictNameEntry) TypedShortcut(shortcut fyne.Shortcut) {
 	e.TabEntry.TypedShortcut(shortcut)
 }
 
+// KeyDown / KeyUp keep feeding the KeyManager's input plumbing while the
+// entry is focused. Every path that forwards activations into the KeyManager
+// must also forward key downs, since a fresh press is what arms its gate.
+func (e *conflictNameEntry) KeyDown(ev *fyne.KeyEvent) {
+	if e.km != nil {
+		e.km.HandleKeyDown(ev)
+	}
+	e.TabEntry.KeyDown(ev)
+}
+
+func (e *conflictNameEntry) KeyUp(ev *fyne.KeyEvent) {
+	if e.km != nil {
+		e.km.HandleKeyUp(ev)
+	}
+	e.TabEntry.KeyUp(ev)
+}
+
 func (e *conflictNameEntry) FocusGained() {
 	e.focused = true
 	e.TabEntry.FocusGained()

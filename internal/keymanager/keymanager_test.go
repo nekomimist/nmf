@@ -33,44 +33,70 @@ func (h *recordingHandler) OnTypedRune(r rune, _ ModifierState) bool {
 }
 func (h *recordingHandler) GetName() string { return "recording" }
 
-type deferPushOnActivationHandler struct {
-	km *KeyManager
+// manualMainQueue stands in for the Fyne main-loop queue so tests can
+// control when queued owner transitions run ("the next tick").
+type manualMainQueue struct{ fns []func() }
+
+func (q *manualMainQueue) queue(fn func()) { q.fns = append(q.fns, fn) }
+func (q *manualMainQueue) runAll() {
+	for len(q.fns) > 0 {
+		fn := q.fns[0]
+		q.fns = q.fns[1:]
+		fn()
+	}
 }
 
-func (h *deferPushOnActivationHandler) OnKeyActivated(ev *fyne.KeyEvent, _ ModifierState) bool {
+func newGatedKeyManager() (*KeyManager, *manualMainQueue) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	q := &manualMainQueue{}
+	km.queueOnMain = q.queue
+	return km, q
+}
+
+type transitionPushOnActivationHandler struct {
+	km        *KeyManager
+	typedKeys []fyne.KeyName
+}
+
+func (h *transitionPushOnActivationHandler) OnKeyActivated(ev *fyne.KeyEvent, _ ModifierState) bool {
 	if ev.Name == fyne.KeyL {
-		h.km.DeferUntilKeysReleased("test.push", func() {
+		h.km.BeginOwnerTransition("test.push", func() {
 			h.km.PushHandler(&recordingHandler{})
 		})
 		return true
 	}
+	h.typedKeys = append(h.typedKeys, ev.Name)
 	return false
 }
-func (h *deferPushOnActivationHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
-func (h *deferPushOnActivationHandler) GetName() string                          { return "deferPushOnActivation" }
+func (h *transitionPushOnActivationHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
+func (h *transitionPushOnActivationHandler) GetName() string {
+	return "transitionPushOnActivation"
+}
 
-type deferPopOnActivationHandler struct {
+type transitionPopOnActivationHandler struct {
 	km    *KeyManager
 	token HandlerToken
 }
 
-func pushDeferPopOnActivation(km *KeyManager) *deferPopOnActivationHandler {
-	h := &deferPopOnActivationHandler{km: km}
+func pushTransitionPopOnActivation(km *KeyManager) *transitionPopOnActivationHandler {
+	h := &transitionPopOnActivationHandler{km: km}
 	h.token = km.PushHandler(h)
 	return h
 }
 
-func (h *deferPopOnActivationHandler) OnKeyActivated(ev *fyne.KeyEvent, _ ModifierState) bool {
+func (h *transitionPopOnActivationHandler) OnKeyActivated(ev *fyne.KeyEvent, _ ModifierState) bool {
 	if ev.Name == fyne.KeyReturn || ev.Name == fyne.KeyEnter || ev.Name == fyne.KeyEscape {
-		h.km.DeferUntilKeysReleased("test.pop", func() {
+		h.km.BeginOwnerTransition("test.pop", func() {
 			h.km.RemoveHandler(h.token)
 		})
 		return true
 	}
 	return false
 }
-func (h *deferPopOnActivationHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
-func (h *deferPopOnActivationHandler) GetName() string                          { return "deferPopOnActivation" }
+func (h *transitionPopOnActivationHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
+func (h *transitionPopOnActivationHandler) GetName() string {
+	return "transitionPopOnActivation"
+}
 
 type transientStackChangeOnActivationHandler struct {
 	km        *KeyManager
@@ -91,18 +117,19 @@ func (h *transientStackChangeOnActivationHandler) GetName() string {
 }
 
 func TestDumpStateIncludesRoutingState(t *testing.T) {
-	km := NewKeyManager(func(string, ...interface{}) {})
+	km, _ := newGatedKeyManager()
 	km.PushHandler(noopHandler{})
 	km.HandleKeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyA})
-	km.DeferUntilKeysReleased("test.transition", func() {})
+	km.BeginOwnerTransition("test.transition", func() {})
 
 	dump := km.DumpState()
 	for _, want := range []string{
 		"handlers=[noop]",
 		"modifiers=shift:false ctrl:true alt:false",
-		"pressedKeys=[A," + string(desktop.KeyControlLeft) + "]",
-		"pendingTransitions=[test.transition]",
+		"armed=true",
+		"queuedTransitions=1",
+		"lastKeyDown=A",
 		"stackVersion=1",
 	} {
 		if !strings.Contains(dump, want) {
@@ -126,238 +153,153 @@ func TestKeyManagerTracksAltModifier(t *testing.T) {
 	}
 }
 
-func TestKeyManagerDefersTransitionUntilKeysReleased(t *testing.T) {
-	km := NewKeyManager(func(string, ...interface{}) {})
+func TestKeyManagerActivationRequiresFreshPress(t *testing.T) {
+	km, _ := newGatedKeyManager()
 	main := &recordingHandler{}
 	km.PushHandler(main)
-	pushDeferPopOnActivation(km)
 
-	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyEnter})
+	// Activations without a preceding fresh key down (e.g. repeats surviving
+	// from before a focus change) are dropped.
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedRune('a')
+	km.HandleShortcut(&fyne.ShortcutSelectAll{})
+	if len(main.typedKeys) != 0 || len(main.runes) != 0 {
+		t.Fatalf("events delivered while disarmed: keys=%v runes=%q", main.typedKeys, string(main.runes))
+	}
 
+	// The arming press itself is fully delivered.
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	if len(main.typedKeys) != 1 || main.typedKeys[0] != fyne.KeyReturn {
+		t.Fatalf("typed keys = %v, want [Return]", main.typedKeys)
+	}
+}
+
+func TestKeyManagerOpenTransitionDropsTrailingRuneAndRepeats(t *testing.T) {
+	km, q := newGatedKeyManager()
+	source := &transitionPushOnActivationHandler{km: km}
+	km.PushHandler(source)
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyL})  // arms the gate
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyL}) // queues the push
+	km.HandleTypedRune('l')                            // trailing rune of the same press
+
+	q.runAll() // next main-loop iteration installs the new owner
+
+	pushed, ok := km.GetCurrentHandler().(*recordingHandler)
+	if !ok {
+		t.Fatalf("current handler = %T, want pushed *recordingHandler", km.GetCurrentHandler())
+	}
+	if len(pushed.runes) != 0 {
+		t.Fatalf("trailing rune leaked into the new owner: %q", string(pushed.runes))
+	}
+
+	// Held-key repeats produce no key down and stay gated.
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyL})
+	km.HandleTypedRune('l')
+	if len(pushed.typedKeys) != 0 || len(pushed.runes) != 0 {
+		t.Fatalf("held-key repeat leaked into the new owner: keys=%v runes=%q", pushed.typedKeys, string(pushed.runes))
+	}
+
+	// A fresh press is delivered from its key down onwards.
+	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyL})
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyX})
+	km.HandleTypedRune('x')
+	if len(pushed.runes) != 1 || pushed.runes[0] != 'x' {
+		t.Fatalf("next rune = %q, want x", string(pushed.runes))
+	}
+}
+
+func TestKeyManagerCloseTransitionGatesHeldEnter(t *testing.T) {
+	km, q := newGatedKeyManager()
+	main := &recordingHandler{}
+	km.PushHandler(main)
+	pushTransitionPopOnActivation(km)
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})  // arms
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn}) // dialog queues its close
+	q.runAll()
+
+	if got := km.GetCurrentHandler(); got != main {
+		t.Fatalf("current handler = %T, want main handler", got)
+	}
+
+	// Enter is still held; its repeats must not fall through to main.
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	if len(main.typedKeys) != 0 {
-		t.Fatalf("typed keys leaked to main while transition was pending: %v", main.typedKeys)
+		t.Fatalf("held Enter repeats leaked to main: %v", main.typedKeys)
 	}
 
 	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyReturn})
-
-	if got := km.GetCurrentHandler(); got != main {
-		t.Fatalf("current handler = %T, want main handler", got)
-	}
-}
-
-func TestKeyManagerForceReleaseRunsPendingTransition(t *testing.T) {
-	km := NewKeyManager(func(string, ...interface{}) {})
-	main := &recordingHandler{}
-	km.PushHandler(main)
-	pushDeferPopOnActivation(km)
-
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
-	km.ForceReleaseAllKeys("test.force")
-
-	if got := km.GetCurrentHandler(); got != main {
-		t.Fatalf("current handler = %T, want main handler", got)
-	}
-	dump := km.DumpState()
-	for _, want := range []string{
-		"pressedKeys=[]",
-		"pendingTransitions=[]",
-		"modifiers=shift:false ctrl:false alt:false",
-		"suppressTyped=[Return]",
-	} {
-		if !strings.Contains(dump, want) {
-			t.Fatalf("DumpState() =\n%s\nwant substring %q", dump, want)
-		}
-	}
-}
-
-func TestKeyManagerForceReleaseSuppressesLateTypedKey(t *testing.T) {
-	km := NewKeyManager(func(string, ...interface{}) {})
-	main := &recordingHandler{}
-	km.PushHandler(main)
-	pushDeferPopOnActivation(km)
-
-	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
-	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
-	km.ForceReleaseAllKeys("test.force")
-	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
-
-	if len(main.typedKeys) != 0 {
-		t.Fatalf("late typed key leaked to main after force release: %v", main.typedKeys)
-	}
-
-	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
-	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
-
 	if len(main.typedKeys) != 1 || main.typedKeys[0] != fyne.KeyReturn {
 		t.Fatalf("next typed key = %v, want [Return]", main.typedKeys)
 	}
 }
 
-func TestKeyManagerForceReleaseClearsModifiers(t *testing.T) {
-	km := NewKeyManager(func(string, ...interface{}) {})
-	km.PushHandler(noopHandler{})
+func TestKeyManagerDropsFreshPressWhileTransitionQueued(t *testing.T) {
+	km, q := newGatedKeyManager()
+	source := &transitionPushOnActivationHandler{km: km}
+	km.PushHandler(source)
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyL})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyL}) // queues the push
+	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyL})
+
+	// A rollover press lands between queue and run: dropped, not queued,
+	// and it must not re-arm the gate.
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyF})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyF})
+	if len(source.typedKeys) != 0 {
+		t.Fatalf("rollover press executed on the old owner: %v", source.typedKeys)
+	}
+
+	q.runAll()
+	pushed, ok := km.GetCurrentHandler().(*recordingHandler)
+	if !ok {
+		t.Fatalf("current handler = %T, want pushed *recordingHandler", km.GetCurrentHandler())
+	}
+
+	// The dropped press does not surface in the new owner either.
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyF}) // still-held F repeat
+	if len(pushed.typedKeys) != 0 {
+		t.Fatalf("dropped press leaked into the new owner: %v", pushed.typedKeys)
+	}
+
+	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyF})
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyA})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyA})
+	if len(pushed.typedKeys) != 1 || pushed.typedKeys[0] != fyne.KeyA {
+		t.Fatalf("typed keys = %v, want [A]", pushed.typedKeys)
+	}
+}
+
+func TestKeyManagerResetTransientStateClearsModifiersAndDisarms(t *testing.T) {
+	km, _ := newGatedKeyManager()
+	main := &recordingHandler{}
+	km.PushHandler(main)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
-	km.ForceReleaseAllKeys("test.force")
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyA})
+	km.ResetTransientState("test.reset")
 
 	if km.GetModifierState().CtrlPressed {
-		t.Fatal("CtrlPressed should be false after force release")
+		t.Fatal("CtrlPressed should be false after reset")
 	}
-}
 
-func TestKeyManagerSuppressesLateTypedKeyAfterDeferredTransition(t *testing.T) {
-	km := NewKeyManager(func(string, ...interface{}) {})
-	main := &recordingHandler{}
-	km.PushHandler(main)
-	pushDeferPopOnActivation(km)
-
-	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyEnter})
-	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
-	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyReturn})
-	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
-
+	// Keys still physically held after the reset (e.g. across a focus loss)
+	// stay gated until a fresh press.
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyA})
 	if len(main.typedKeys) != 0 {
-		t.Fatalf("typed keys leaked to main after Enter key up: %v", main.typedKeys)
+		t.Fatalf("typed key delivered after reset without fresh press: %v", main.typedKeys)
 	}
 
-	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
-	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
-
-	if len(main.typedKeys) != 1 || main.typedKeys[0] != fyne.KeyReturn {
-		t.Fatalf("next typed key = %v, want [Return]", main.typedKeys)
-	}
-}
-
-func TestKeyManagerGatesRepeatedTypedKeyDuringDeferredTransition(t *testing.T) {
-	km := NewKeyManager(func(string, ...interface{}) {})
-	main := &recordingHandler{}
-	km.PushHandler(main)
-	pushDeferPopOnActivation(km)
-
-	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
-	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
-	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
-
-	if len(main.typedKeys) != 0 {
-		t.Fatalf("repeated typed key leaked to main while Enter was held: %v", main.typedKeys)
-	}
-
-	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyReturn})
-	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
-	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
-
-	if len(main.typedKeys) != 1 || main.typedKeys[0] != fyne.KeyReturn {
-		t.Fatalf("typed keys after transition = %v, want [Return]", main.typedKeys)
-	}
-}
-
-func TestKeyManagerDefersTypedKeyPopUntilKeyRelease(t *testing.T) {
-	km := NewKeyManager(func(string, ...interface{}) {})
-	main := &recordingHandler{}
-	dialog := &deferPopOnActivationHandler{km: km}
-	km.PushHandler(main)
-	dialog.token = km.PushHandler(dialog)
-
-	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
-	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
-
-	if got := km.GetCurrentHandler(); got != dialog {
-		t.Fatalf("current handler before key up = %T, want dialog handler", got)
-	}
-	if len(main.typedKeys) != 0 {
-		t.Fatalf("typed keys leaked to main while dialog close was pending: %v", main.typedKeys)
-	}
-
-	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyReturn})
-	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
-
-	if got := km.GetCurrentHandler(); got != main {
-		t.Fatalf("current handler after key up = %T, want main handler", got)
-	}
-	if len(main.typedKeys) != 0 {
-		t.Fatalf("late typed key leaked to main after dialog close: %v", main.typedKeys)
-	}
-
-	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
-	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
-
-	if len(main.typedKeys) != 1 || main.typedKeys[0] != fyne.KeyReturn {
-		t.Fatalf("next typed key = %v, want [Return]", main.typedKeys)
-	}
-}
-
-func TestKeyManagerGatesTypedRuneBeforeDeferredTransition(t *testing.T) {
-	km := NewKeyManager(func(string, ...interface{}) {})
-	km.PushHandler(&deferPushOnActivationHandler{km: km})
-
-	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyL})
-	km.HandleTypedRune('L')
-
-	current := km.GetCurrentHandler()
-	if _, ok := current.(*deferPushOnActivationHandler); !ok {
-		t.Fatalf("current handler = %T, want deferred source handler", current)
-	}
-
-	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyL})
-	current = km.GetCurrentHandler()
-	main, ok := current.(*recordingHandler)
-	if !ok {
-		t.Fatalf("current handler = %T, want *recordingHandler", current)
-	}
-
-	if len(main.runes) != 0 {
-		t.Fatalf("typed rune leaked to pushed handler: %q", string(main.runes))
-	}
-
-	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyX})
-	km.HandleTypedRune('x')
-
-	if len(main.runes) != 1 || main.runes[0] != 'x' {
-		t.Fatalf("next rune = %q, want x", string(main.runes))
-	}
-}
-
-func TestKeyManagerDoesNotRetainTypedKeyWithoutTransition(t *testing.T) {
-	km := NewKeyManager(func(string, ...interface{}) {})
-	km.PushHandler(noopHandler{})
-
-	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
-
-	closed := false
-	km.DeferUntilKeysReleased("close", func() {
-		closed = true
-	})
-
-	if !closed {
-		t.Fatal("defer should run immediately after a typed key that did not request a transition")
-	}
-}
-
-func TestKeyManagerSuppressesLateTypedRuneAfterDeferredTransition(t *testing.T) {
-	km := NewKeyManager(func(string, ...interface{}) {})
-	km.PushHandler(&deferPushOnActivationHandler{km: km})
-
-	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyL})
-	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyL})
-	km.HandleTypedRune('L')
-
-	current := km.GetCurrentHandler()
-	main, ok := current.(*recordingHandler)
-	if !ok {
-		t.Fatalf("current handler = %T, want *recordingHandler", current)
-	}
-
-	if len(main.runes) != 0 {
-		t.Fatalf("late typed rune leaked to pushed handler: %q", string(main.runes))
-	}
-
-	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyX})
-	km.HandleTypedRune('x')
-
-	if len(main.runes) != 1 || main.runes[0] != 'x' {
-		t.Fatalf("runes after suppress clear = %q, want x", string(main.runes))
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyA})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyA})
+	if len(main.typedKeys) != 1 || main.typedKeys[0] != fyne.KeyA {
+		t.Fatalf("typed keys = %v, want [A]", main.typedKeys)
 	}
 }
 
@@ -420,13 +362,24 @@ func TestKeyManagerRemoveNonTopKeepsModifiers(t *testing.T) {
 	}
 }
 
-func TestKeyManagerDoesNotDrainAfterTransientStackChange(t *testing.T) {
-	km := NewKeyManager(func(string, ...interface{}) {})
+func TestKeyManagerTransientStackChangeRequiresFreshPress(t *testing.T) {
+	km, _ := newGatedKeyManager()
 	main := &transientStackChangeOnActivationHandler{km: km}
 	km.PushHandler(main)
 
+	// First press: handled; the transient push/remove disarms the gate.
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyTab})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyTab})
+
+	// A held-key repeat stays gated after the stack change.
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyTab})
+	if len(main.typedKeys) != 1 {
+		t.Fatalf("typed keys = %v, want one Tab before re-press", main.typedKeys)
+	}
+
+	// A fresh press is delivered again.
 	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyTab})
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyTab})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyTab})
 
 	if len(main.typedKeys) != 2 {
@@ -1166,58 +1119,61 @@ func TestMainScreenConfiguredBindingCanUseExtraCommand(t *testing.T) {
 	}
 }
 
-func TestMainScreenDefersInputTransitionUntilKeysReleased(t *testing.T) {
-	km := NewKeyManager(func(string, ...interface{}) {})
+func TestMainScreenTransitionCommandRunsOnNextTick(t *testing.T) {
+	km, q := newGatedKeyManager()
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
-		{Key: "S-L", Command: CommandHistoryShow, Event: keyEventTyped},
+		{Key: "S-L", Command: CommandHistoryShow},
 	})
-	handler.SetTransitionGate(km.DeferUntilKeysReleased)
+	handler.SetTransitionGate(km.BeginOwnerTransition)
 	km.PushHandler(handler)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyL})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyL})
 	km.HandleTypedRune('L')
 
 	if fm.showHistoryCount != 0 {
-		t.Fatalf("ShowNavigationHistoryDialog count = %d before key release, want 0", fm.showHistoryCount)
+		t.Fatalf("ShowNavigationHistoryDialog count = %d before next tick, want 0", fm.showHistoryCount)
 	}
 
-	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyL})
-	if fm.showHistoryCount != 0 {
-		t.Fatalf("ShowNavigationHistoryDialog count = %d before all keys release, want 0", fm.showHistoryCount)
-	}
-
-	km.HandleKeyUp(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
+	q.runAll()
 	if fm.showHistoryCount != 1 {
-		t.Fatalf("ShowNavigationHistoryDialog count = %d after release, want 1", fm.showHistoryCount)
+		t.Fatalf("ShowNavigationHistoryDialog count = %d after next tick, want 1", fm.showHistoryCount)
+	}
+
+	// Held-key repeats after the transition must not re-trigger the command.
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyL})
+	q.runAll()
+	if fm.showHistoryCount != 1 {
+		t.Fatalf("ShowNavigationHistoryDialog count = %d after held repeat, want 1", fm.showHistoryCount)
 	}
 }
 
-func TestMainScreenDefersMaintenanceDialogTransition(t *testing.T) {
-	km := NewKeyManager(func(string, ...interface{}) {})
+func TestMainScreenMaintenanceDialogTransitionRunsOnNextTick(t *testing.T) {
+	km, q := newGatedKeyManager()
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
 		{Key: "F12", Command: CommandMaintenanceShow},
 	})
-	handler.SetTransitionGate(km.DeferUntilKeysReleased)
+	handler.SetTransitionGate(km.BeginOwnerTransition)
 	km.PushHandler(handler)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyF12})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyF12})
 
 	if fm.showMaintenanceCount != 0 {
-		t.Fatalf("ShowMaintenanceDialog count = %d before key release, want 0", fm.showMaintenanceCount)
+		t.Fatalf("ShowMaintenanceDialog count = %d before next tick, want 0", fm.showMaintenanceCount)
 	}
 
-	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyF12})
+	q.runAll()
 	if fm.showMaintenanceCount != 1 {
-		t.Fatalf("ShowMaintenanceDialog count = %d after release, want 1", fm.showMaintenanceCount)
+		t.Fatalf("ShowMaintenanceDialog count = %d after next tick, want 1", fm.showMaintenanceCount)
 	}
 }
 
 func TestMainScreenDefersRunCommandTransition(t *testing.T) {
-	km := NewKeyManager(func(string, ...interface{}) {})
+	km, q := newGatedKeyManager()
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandlerWithCommands(
 		fm,
@@ -1229,24 +1185,24 @@ func TestMainScreenDefersRunCommandTransition(t *testing.T) {
 			},
 		},
 	)
-	handler.SetTransitionGate(km.DeferUntilKeysReleased)
+	handler.SetTransitionGate(km.BeginOwnerTransition)
 	km.PushHandler(handler)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyX})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyX})
 
 	if fm.showHistoryCount != 0 {
-		t.Fatalf("ShowNavigationHistoryDialog count = %d before key release, want 0", fm.showHistoryCount)
+		t.Fatalf("ShowNavigationHistoryDialog count = %d before next tick, want 0", fm.showHistoryCount)
 	}
 
-	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyX})
+	q.runAll()
 	if fm.showHistoryCount != 1 {
-		t.Fatalf("ShowNavigationHistoryDialog count = %d after release, want 1", fm.showHistoryCount)
+		t.Fatalf("ShowNavigationHistoryDialog count = %d after next tick, want 1", fm.showHistoryCount)
 	}
 }
 
 func TestMainScreenProvidesTransitionGateToExtraCommand(t *testing.T) {
-	km := NewKeyManager(func(string, ...interface{}) {})
+	km, q := newGatedKeyManager()
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandlerWithCommands(
 		fm,
@@ -1260,19 +1216,19 @@ func TestMainScreenProvidesTransitionGateToExtraCommand(t *testing.T) {
 			},
 		},
 	)
-	handler.SetTransitionGate(km.DeferUntilKeysReleased)
+	handler.SetTransitionGate(km.BeginOwnerTransition)
 	km.PushHandler(handler)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyX})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyX})
 
 	if fm.showHistoryCount != 0 {
-		t.Fatalf("ShowNavigationHistoryDialog count = %d before key release, want 0", fm.showHistoryCount)
+		t.Fatalf("ShowNavigationHistoryDialog count = %d before next tick, want 0", fm.showHistoryCount)
 	}
 
-	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyX})
+	q.runAll()
 	if fm.showHistoryCount != 1 {
-		t.Fatalf("ShowNavigationHistoryDialog count = %d after release, want 1", fm.showHistoryCount)
+		t.Fatalf("ShowNavigationHistoryDialog count = %d after next tick, want 1", fm.showHistoryCount)
 	}
 }
 
@@ -1309,7 +1265,7 @@ func TestMainScreenDoesNotDeferNonTransitionCommand(t *testing.T) {
 		},
 	}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
-	handler.SetTransitionGate(km.DeferUntilKeysReleased)
+	handler.SetTransitionGate(km.BeginOwnerTransition)
 	km.PushHandler(handler)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
@@ -1522,6 +1478,7 @@ func TestHandleShortcutPassesCustomShortcutModifiers(t *testing.T) {
 	h := &modsRecordingHandler{}
 	km.PushHandler(h)
 
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyQ})
 	km.HandleShortcut(&desktop.CustomShortcut{
 		KeyName:  fyne.KeyQ,
 		Modifier: fyne.KeyModifierControl | fyne.KeyModifierShift,

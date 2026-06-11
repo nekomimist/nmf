@@ -55,7 +55,7 @@ func (ish *IncrementalSearchKeyHandler) SetTransitionGate(deferTransition func(l
 	ish.deferTransition = deferTransition
 }
 
-func (ish *IncrementalSearchKeyHandler) deferUntilKeysReleased(label string, action func()) {
+func (ish *IncrementalSearchKeyHandler) beginTransition(label string, action func()) {
 	if ish.deferTransition != nil {
 		ish.deferTransition(label, action)
 		return
@@ -64,14 +64,14 @@ func (ish *IncrementalSearchKeyHandler) deferUntilKeysReleased(label string, act
 }
 
 func (ish *IncrementalSearchKeyHandler) cancelSearch() {
-	ish.deferUntilKeysReleased("search.cancel", func() {
+	ish.beginTransition("search.cancel", func() {
 		ish.searchInterface.HideIncrementalSearchOverlay()
 	})
 }
 
 func (ish *IncrementalSearchKeyHandler) acceptCurrentMatch() {
 	currentMatch := ish.searchInterface.GetCurrentSearchMatch()
-	ish.deferUntilKeysReleased("search.accept", func() {
+	ish.beginTransition("search.accept", func() {
 		if currentMatch != nil {
 			ish.searchInterface.SetCursorToFile(currentMatch)
 		}
