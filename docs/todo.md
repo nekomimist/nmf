@@ -1,5 +1,10 @@
 # 実用になるために必要なToDo
 
+## キー入力処理の再設計
+- 設計と移行ステップを [todo-keyboard.md](todo-keyboard.md) にまとめた。
+  「KeyManagerまわりの小さめの設計改善」「KeyDown/KeyUp系キーバインドの
+  repeat適性を棚卸ししたい」はこの再設計で決着する予定。
+
 ## 優先度高いの
 
 ### File Managerのタイトル
