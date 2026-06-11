@@ -55,13 +55,19 @@ type handlerEntry struct {
 // never produce key-down events, a key held across an owner change can never
 // fire into the new owner; the arming press itself is fully delivered since
 // its key-down precedes its typed events.
+//
+// Threading: event dispatch always happens on the Fyne main thread (driver
+// callbacks). The mutex exists because handler push/remove and owner
+// transitions may also be initiated from background goroutines (e.g. job
+// completion showing a message dialog); it guards the small transient state
+// only, never held across handler callbacks.
 type KeyManager struct {
 	handlers          []handlerEntry
 	nextToken         HandlerToken
 	modifierState     ModifierState
 	mutex             sync.RWMutex
 	debugPrint        func(format string, args ...interface{})
-	stackVersion      uint64
+	stackVersion      uint64 // counts stack changes; diagnostic only (DumpState)
 	lastKeyDown       fyne.KeyName
 	armed             bool
 	queuedTransitions int
@@ -151,15 +157,6 @@ func (km *KeyManager) GetCurrentHandler() KeyHandler {
 	return km.handlers[len(km.handlers)-1].handler
 }
 
-func (km *KeyManager) currentHandlerAndVersion() (KeyHandler, uint64) {
-	km.mutex.RLock()
-	defer km.mutex.RUnlock()
-
-	if len(km.handlers) == 0 {
-		return nil, km.stackVersion
-	}
-	return km.handlers[len(km.handlers)-1].handler, km.stackVersion
-}
 
 func normalizeDrainKey(name fyne.KeyName) fyne.KeyName {
 	switch name {
@@ -347,7 +344,7 @@ func (km *KeyManager) HandleShortcutKey(ev *fyne.KeyEvent, modifiers ModifierSta
 }
 
 func (km *KeyManager) handleKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) {
-	currentHandler, _ := km.currentHandlerAndVersion()
+	currentHandler := km.GetCurrentHandler()
 
 	if currentHandler != nil {
 		handled := currentHandler.OnKeyActivated(ev, modifiers)
@@ -365,7 +362,7 @@ func (km *KeyManager) HandleTypedRune(r rune) {
 		return
 	}
 
-	currentHandler, _ := km.currentHandlerAndVersion()
+	currentHandler := km.GetCurrentHandler()
 	if currentHandler != nil {
 		handled := currentHandler.OnTypedRune(r, modifiers)
 		km.debugPrint("KeyManager: TypedRune %s handled=%t", currentHandler.GetName(), handled)
