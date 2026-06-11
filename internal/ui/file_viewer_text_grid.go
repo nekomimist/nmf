@@ -7,7 +7,6 @@ import (
 	"unicode"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	locale "github.com/jeandeaual/go-locale"
@@ -236,26 +235,13 @@ func (v *fileViewerTextGrid) TypedRune(r rune) {
 	}
 }
 
+// TypedShortcut forwards shortcut activations to KeyManager. The folded
+// ShortcutCopy reaches the viewer handler as Ctrl+C and triggers the
+// selection copy there.
 func (v *fileViewerTextGrid) TypedShortcut(shortcut fyne.Shortcut) {
-	if _, ok := shortcut.(*fyne.ShortcutCopy); ok {
-		start, end, chars := v.selectionDebugInfo()
-		v.debug("FileViewer: text-grid-copy-shortcut ignored=keymanager-path selection=%t start=%d:%d end=%d:%d chars=%d",
-			v.selection.set, start.line+1, start.col, end.line+1, end.col, chars)
-		return
+	if v.km != nil {
+		v.km.HandleShortcut(shortcut)
 	}
-	if v.km == nil {
-		return
-	}
-	s, ok := shortcut.(*desktop.CustomShortcut)
-	if !ok {
-		return
-	}
-	modifiers := keymanager.ModifierState{
-		ShiftPressed: s.Modifier&fyne.KeyModifierShift != 0,
-		CtrlPressed:  s.Modifier&fyne.KeyModifierControl != 0,
-		AltPressed:   s.Modifier&fyne.KeyModifierAlt != 0,
-	}
-	v.km.HandleShortcutKey(&fyne.KeyEvent{Name: s.KeyName}, modifiers)
 }
 
 func (v *fileViewerTextGrid) KeyDown(ev *fyne.KeyEvent) {

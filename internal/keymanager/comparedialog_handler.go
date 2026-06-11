@@ -47,11 +47,9 @@ func NewCompareDialogKeyHandler(d CompareDialogInterface, debugPrint func(format
 
 func (h *CompareDialogKeyHandler) GetName() string { return "CompareDialog" }
 
-func (h *CompareDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	if ev.Name == fyne.KeyReturn && modifiers.CtrlPressed {
-		h.dialog.AcceptDirectPath()
-		return true
-	}
+func (h *CompareDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+	h.debugPrint("CompareDialog: OnKeyActivated %s", ev.Name)
+
 	if modifiers.AltPressed {
 		switch ev.Name {
 		case fyne.KeyU:
@@ -74,15 +72,6 @@ func (h *CompareDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers Modifie
 			return true
 		}
 	}
-	return false
-}
-
-func (h *CompareDialogKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	return false
-}
-
-func (h *CompareDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	h.debugPrint("CompareDialog: OnTypedKey %s", ev.Name)
 
 	switch ev.Name {
 	case fyne.KeyH:
@@ -114,6 +103,10 @@ func (h *CompareDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modifi
 		h.dialog.SelectCurrentItem()
 		return true
 	case fyne.KeyReturn:
+		if modifiers.CtrlPressed {
+			h.dialog.AcceptDirectPath()
+			return true
+		}
 		h.dialog.AcceptSelection()
 		return true
 	case fyne.KeyEscape:

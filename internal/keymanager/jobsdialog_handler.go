@@ -26,12 +26,7 @@ func NewJobsDialogKeyHandler(d JobsDialogInterface, debugPrint func(format strin
 
 func (h *JobsDialogKeyHandler) GetName() string { return "JobsDialog" }
 
-func (h *JobsDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	return false
-}
-func (h *JobsDialogKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool { return false }
-
-func (h *JobsDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+func (h *JobsDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	switch ev.Name {
 	case fyne.KeyUp:
 		if modifiers.ShiftPressed {

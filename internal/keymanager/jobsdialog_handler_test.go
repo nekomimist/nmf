@@ -28,7 +28,7 @@ func TestJobsDialogHandlerReturnClosesDialog(t *testing.T) {
 		dialog := &fakeJobsDialog{}
 		handler := NewJobsDialogKeyHandler(dialog, func(string, ...interface{}) {})
 
-		if !handler.OnTypedKey(&fyne.KeyEvent{Name: key}, ModifierState{}) {
+		if !handler.OnKeyActivated(&fyne.KeyEvent{Name: key}, ModifierState{}) {
 			t.Fatalf("%s should be handled", key)
 		}
 		if dialog.close != 1 {
@@ -44,7 +44,7 @@ func TestJobsDialogHandlerDeleteCancelsSelected(t *testing.T) {
 	dialog := &fakeJobsDialog{}
 	handler := NewJobsDialogKeyHandler(dialog, func(string, ...interface{}) {})
 
-	if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyDelete}, ModifierState{}) {
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyDelete}, ModifierState{}) {
 		t.Fatal("Delete should be handled")
 	}
 	if dialog.cancel != 1 {

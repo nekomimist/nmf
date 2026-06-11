@@ -31,20 +31,8 @@ func (qh *QuitConfirmDialogKeyHandler) GetName() string {
 	return "QuitConfirmDialog"
 }
 
-// OnKeyDown handles key press events
-func (qh *QuitConfirmDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	// Consume all key down events to prevent them from reaching MainScreen
-	return true
-}
-
-// OnKeyUp handles key release events
-func (qh *QuitConfirmDialogKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	// Consume all key up events to prevent them from reaching MainScreen
-	return true
-}
-
-// OnTypedKey handles typed key events
-func (qh *QuitConfirmDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+// OnKeyActivated handles key activations
+func (qh *QuitConfirmDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	if !modifiers.None() {
 		// Modified combos (e.g. Ctrl+Y arriving as a folded Redo shortcut) are
 		// not dialog answers; consume them so they do not reach MainScreen.

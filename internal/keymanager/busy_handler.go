@@ -20,14 +20,7 @@ func NewBusyKeyHandler(onCancel ...func()) *BusyKeyHandler {
 
 func (b *BusyKeyHandler) GetName() string { return "BusyGuard" }
 
-func (b *BusyKeyHandler) OnKeyDown(ev *fyne.KeyEvent, _ ModifierState) bool {
-	b.cancelIfEscape(ev)
-	return true
-}
-
-func (b *BusyKeyHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool { return true }
-
-func (b *BusyKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState) bool {
+func (b *BusyKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, _ ModifierState) bool {
 	b.cancelIfEscape(ev)
 	return true
 }

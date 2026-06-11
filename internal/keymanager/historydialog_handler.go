@@ -56,37 +56,16 @@ func (hh *HistoryDialogKeyHandler) GetName() string {
 	return "HistoryDialog"
 }
 
-// OnKeyDown handles key press events
-func (hh *HistoryDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+// OnKeyActivated handles key activations in focusless mode
+func (hh *HistoryDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+	hh.debugPrint("HistoryDialog: OnKeyActivated %s", ev.Name)
+
 	switch ev.Name {
 	case fyne.KeyF:
 		// Ctrl+F - Search functionality handled by focusless design
 		if modifiers.CtrlPressed {
 			return true
 		}
-
-	case fyne.KeyReturn:
-		if modifiers.CtrlPressed {
-			// Ctrl+Enter - Accept direct path navigation
-			hh.historyDialog.AcceptDirectPathNavigation()
-		}
-		return true
-	}
-
-	return false
-}
-
-// OnKeyUp handles key release events
-func (hh *HistoryDialogKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	// Modifier key state is managed by KeyManager
-	return false
-}
-
-// OnTypedKey handles typed key events in focusless mode
-func (hh *HistoryDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	hh.debugPrint("HistoryDialog: OnTypedKey %s", ev.Name)
-
-	switch ev.Name {
 	case fyne.KeyH:
 		if modifiers.CtrlPressed {
 			hh.historyDialog.BackspaceSearch()

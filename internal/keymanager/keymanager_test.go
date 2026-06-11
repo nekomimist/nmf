@@ -14,20 +14,16 @@ import (
 
 type noopHandler struct{}
 
-func (noopHandler) OnKeyDown(_ *fyne.KeyEvent, _ ModifierState) bool  { return false }
-func (noopHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool    { return false }
-func (noopHandler) OnTypedKey(_ *fyne.KeyEvent, _ ModifierState) bool { return false }
-func (noopHandler) OnTypedRune(_ rune, _ ModifierState) bool          { return false }
-func (noopHandler) GetName() string                                   { return "noop" }
+func (noopHandler) OnKeyActivated(_ *fyne.KeyEvent, _ ModifierState) bool { return false }
+func (noopHandler) OnTypedRune(_ rune, _ ModifierState) bool              { return false }
+func (noopHandler) GetName() string                                       { return "noop" }
 
 type recordingHandler struct {
 	typedKeys []fyne.KeyName
 	runes     []rune
 }
 
-func (h *recordingHandler) OnKeyDown(_ *fyne.KeyEvent, _ ModifierState) bool { return false }
-func (h *recordingHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool   { return false }
-func (h *recordingHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState) bool {
+func (h *recordingHandler) OnKeyActivated(ev *fyne.KeyEvent, _ ModifierState) bool {
 	h.typedKeys = append(h.typedKeys, ev.Name)
 	return true
 }
@@ -37,46 +33,11 @@ func (h *recordingHandler) OnTypedRune(r rune, _ ModifierState) bool {
 }
 func (h *recordingHandler) GetName() string { return "recording" }
 
-type deferPopOnKeyDownHandler struct {
-	km    *KeyManager
-	token HandlerToken
-}
-
-func pushDeferPopOnKeyDown(km *KeyManager) *deferPopOnKeyDownHandler {
-	h := &deferPopOnKeyDownHandler{km: km}
-	h.token = km.PushHandler(h)
-	return h
-}
-
-func (h *deferPopOnKeyDownHandler) OnKeyDown(ev *fyne.KeyEvent, _ ModifierState) bool {
-	if ev.Name == fyne.KeyReturn || ev.Name == fyne.KeyEnter {
-		h.km.DeferUntilKeysReleased("test.pop", func() {
-			h.km.RemoveHandler(h.token)
-		})
-		return true
-	}
-	return false
-}
-func (h *deferPopOnKeyDownHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool {
-	return false
-}
-func (h *deferPopOnKeyDownHandler) OnTypedKey(_ *fyne.KeyEvent, _ ModifierState) bool {
-	return false
-}
-func (h *deferPopOnKeyDownHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
-func (h *deferPopOnKeyDownHandler) GetName() string                          { return "deferPopOnKeyDown" }
-
-type deferPushOnTypedKeyHandler struct {
+type deferPushOnActivationHandler struct {
 	km *KeyManager
 }
 
-func (h *deferPushOnTypedKeyHandler) OnKeyDown(_ *fyne.KeyEvent, _ ModifierState) bool {
-	return false
-}
-func (h *deferPushOnTypedKeyHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool {
-	return false
-}
-func (h *deferPushOnTypedKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState) bool {
+func (h *deferPushOnActivationHandler) OnKeyActivated(ev *fyne.KeyEvent, _ ModifierState) bool {
 	if ev.Name == fyne.KeyL {
 		h.km.DeferUntilKeysReleased("test.push", func() {
 			h.km.PushHandler(&recordingHandler{})
@@ -85,53 +46,47 @@ func (h *deferPushOnTypedKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierSta
 	}
 	return false
 }
-func (h *deferPushOnTypedKeyHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
-func (h *deferPushOnTypedKeyHandler) GetName() string                          { return "deferPushOnTypedKey" }
+func (h *deferPushOnActivationHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
+func (h *deferPushOnActivationHandler) GetName() string                          { return "deferPushOnActivation" }
 
-type deferPopOnTypedKeyHandler struct {
+type deferPopOnActivationHandler struct {
 	km    *KeyManager
 	token HandlerToken
 }
 
-func (h *deferPopOnTypedKeyHandler) OnKeyDown(_ *fyne.KeyEvent, _ ModifierState) bool {
-	return false
+func pushDeferPopOnActivation(km *KeyManager) *deferPopOnActivationHandler {
+	h := &deferPopOnActivationHandler{km: km}
+	h.token = km.PushHandler(h)
+	return h
 }
-func (h *deferPopOnTypedKeyHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool {
-	return false
-}
-func (h *deferPopOnTypedKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState) bool {
-	if ev.Name == fyne.KeyReturn || ev.Name == fyne.KeyEscape {
-		h.km.DeferUntilKeysReleased("test.typedPop", func() {
+
+func (h *deferPopOnActivationHandler) OnKeyActivated(ev *fyne.KeyEvent, _ ModifierState) bool {
+	if ev.Name == fyne.KeyReturn || ev.Name == fyne.KeyEnter || ev.Name == fyne.KeyEscape {
+		h.km.DeferUntilKeysReleased("test.pop", func() {
 			h.km.RemoveHandler(h.token)
 		})
 		return true
 	}
 	return false
 }
-func (h *deferPopOnTypedKeyHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
-func (h *deferPopOnTypedKeyHandler) GetName() string                          { return "deferPopOnTypedKey" }
+func (h *deferPopOnActivationHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
+func (h *deferPopOnActivationHandler) GetName() string                          { return "deferPopOnActivation" }
 
-type transientStackChangeOnTypedKeyHandler struct {
+type transientStackChangeOnActivationHandler struct {
 	km        *KeyManager
 	typedKeys []fyne.KeyName
 }
 
-func (h *transientStackChangeOnTypedKeyHandler) OnKeyDown(_ *fyne.KeyEvent, _ ModifierState) bool {
-	return false
-}
-func (h *transientStackChangeOnTypedKeyHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool {
-	return false
-}
-func (h *transientStackChangeOnTypedKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState) bool {
+func (h *transientStackChangeOnActivationHandler) OnKeyActivated(ev *fyne.KeyEvent, _ ModifierState) bool {
 	h.typedKeys = append(h.typedKeys, ev.Name)
 	token := h.km.PushHandler(noopHandler{})
 	h.km.RemoveHandler(token)
 	return true
 }
-func (h *transientStackChangeOnTypedKeyHandler) OnTypedRune(_ rune, _ ModifierState) bool {
+func (h *transientStackChangeOnActivationHandler) OnTypedRune(_ rune, _ ModifierState) bool {
 	return false
 }
-func (h *transientStackChangeOnTypedKeyHandler) GetName() string {
+func (h *transientStackChangeOnActivationHandler) GetName() string {
 	return "transientStackChange"
 }
 
@@ -175,7 +130,7 @@ func TestKeyManagerDefersTransitionUntilKeysReleased(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	main := &recordingHandler{}
 	km.PushHandler(main)
-	pushDeferPopOnKeyDown(km)
+	pushDeferPopOnActivation(km)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyEnter})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
@@ -195,9 +150,10 @@ func TestKeyManagerForceReleaseRunsPendingTransition(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	main := &recordingHandler{}
 	km.PushHandler(main)
-	pushDeferPopOnKeyDown(km)
+	pushDeferPopOnActivation(km)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	km.ForceReleaseAllKeys("test.force")
 
 	if got := km.GetCurrentHandler(); got != main {
@@ -220,9 +176,10 @@ func TestKeyManagerForceReleaseSuppressesLateTypedKey(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	main := &recordingHandler{}
 	km.PushHandler(main)
-	pushDeferPopOnKeyDown(km)
+	pushDeferPopOnActivation(km)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	km.ForceReleaseAllKeys("test.force")
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
 
@@ -254,9 +211,10 @@ func TestKeyManagerSuppressesLateTypedKeyAfterDeferredTransition(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	main := &recordingHandler{}
 	km.PushHandler(main)
-	pushDeferPopOnKeyDown(km)
+	pushDeferPopOnActivation(km)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyEnter})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
 
@@ -276,7 +234,7 @@ func TestKeyManagerGatesRepeatedTypedKeyDuringDeferredTransition(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	main := &recordingHandler{}
 	km.PushHandler(main)
-	pushDeferPopOnKeyDown(km)
+	pushDeferPopOnActivation(km)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
@@ -298,7 +256,7 @@ func TestKeyManagerGatesRepeatedTypedKeyDuringDeferredTransition(t *testing.T) {
 func TestKeyManagerDefersTypedKeyPopUntilKeyRelease(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	main := &recordingHandler{}
-	dialog := &deferPopOnTypedKeyHandler{km: km}
+	dialog := &deferPopOnActivationHandler{km: km}
 	km.PushHandler(main)
 	dialog.token = km.PushHandler(dialog)
 
@@ -332,13 +290,13 @@ func TestKeyManagerDefersTypedKeyPopUntilKeyRelease(t *testing.T) {
 
 func TestKeyManagerGatesTypedRuneBeforeDeferredTransition(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
-	km.PushHandler(&deferPushOnTypedKeyHandler{km: km})
+	km.PushHandler(&deferPushOnActivationHandler{km: km})
 
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyL})
 	km.HandleTypedRune('L')
 
 	current := km.GetCurrentHandler()
-	if _, ok := current.(*deferPushOnTypedKeyHandler); !ok {
+	if _, ok := current.(*deferPushOnActivationHandler); !ok {
 		t.Fatalf("current handler = %T, want deferred source handler", current)
 	}
 
@@ -379,7 +337,7 @@ func TestKeyManagerDoesNotRetainTypedKeyWithoutTransition(t *testing.T) {
 
 func TestKeyManagerSuppressesLateTypedRuneAfterDeferredTransition(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
-	km.PushHandler(&deferPushOnTypedKeyHandler{km: km})
+	km.PushHandler(&deferPushOnActivationHandler{km: km})
 
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyL})
 	km.HandleKeyUp(&fyne.KeyEvent{Name: fyne.KeyL})
@@ -464,7 +422,7 @@ func TestKeyManagerRemoveNonTopKeepsModifiers(t *testing.T) {
 
 func TestKeyManagerDoesNotDrainAfterTransientStackChange(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
-	main := &transientStackChangeOnTypedKeyHandler{km: km}
+	main := &transientStackChangeOnActivationHandler{km: km}
 	km.PushHandler(main)
 
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyTab})
@@ -626,7 +584,7 @@ func TestMainScreenReturnRunsOpen(t *testing.T) {
 	}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{})
 
 	if !handled {
 		t.Fatal("Return should be handled")
@@ -645,7 +603,7 @@ func TestMainScreenShiftReturnRunsOpenDefaultApp(t *testing.T) {
 	}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{ShiftPressed: true})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{ShiftPressed: true})
 
 	if !handled {
 		t.Fatal("Shift+Return should be handled")
@@ -666,7 +624,7 @@ func TestMainScreenConfiguredBindingCanRunOpenDefaultApp(t *testing.T) {
 		{Key: "O", Command: CommandOpenDefaultApp},
 	})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyO}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyO}, ModifierState{})
 
 	if !handled {
 		t.Fatal("configured open.defaultApp should be handled")
@@ -682,7 +640,7 @@ func TestMainScreenConfiguredBindingCanShowMaintenanceDialog(t *testing.T) {
 		{Key: "F12", Command: CommandMaintenanceShow},
 	})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyF12}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyF12}, ModifierState{})
 
 	if !handled {
 		t.Fatal("configured maintenance.show should be handled")
@@ -696,7 +654,7 @@ func TestMainScreenJShowsDirectoryJumpDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyJ}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyJ}, ModifierState{})
 
 	if !handled {
 		t.Fatal("J should be handled")
@@ -713,7 +671,7 @@ func TestMainScreenShiftBPinsCurrentHistoryPath(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyB}, ModifierState{ShiftPressed: true})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyB}, ModifierState{ShiftPressed: true})
 
 	if !handled {
 		t.Fatal("Shift+B should be handled")
@@ -727,7 +685,7 @@ func TestMainScreenLeftFocusesLeftWindow(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyLeft}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyLeft}, ModifierState{})
 
 	if !handled {
 		t.Fatal("Left should be handled")
@@ -744,7 +702,7 @@ func TestMainScreenRightFocusesRightWindow(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyRight}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyRight}, ModifierState{})
 
 	if !handled {
 		t.Fatal("Right should be handled")
@@ -761,7 +719,7 @@ func TestMainScreenShiftJShowsJobsDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyJ}, ModifierState{ShiftPressed: true})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyJ}, ModifierState{ShiftPressed: true})
 
 	if !handled {
 		t.Fatal("Shift+J should be handled")
@@ -778,7 +736,7 @@ func TestMainScreenKShowsCreateDirectoryDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyK}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyK}, ModifierState{})
 
 	if !handled {
 		t.Fatal("K should be handled")
@@ -792,7 +750,7 @@ func TestMainScreenPShowsClipboardTextFileDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyP}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyP}, ModifierState{})
 
 	if !handled {
 		t.Fatal("P should be handled")
@@ -806,7 +764,7 @@ func TestMainScreenF2ShowsRenameDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyF2}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyF2}, ModifierState{})
 
 	if !handled {
 		t.Fatal("F2 should be handled")
@@ -820,7 +778,7 @@ func TestMainScreenRShowsRenameDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{})
 
 	if !handled {
 		t.Fatal("R should be handled")
@@ -834,8 +792,8 @@ func TestMainScreenModifiedRenameKeysDoNotShowRenameDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyF2}, ModifierState{CtrlPressed: true})
-	handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{ShiftPressed: true})
+	handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyF2}, ModifierState{CtrlPressed: true})
+	handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{ShiftPressed: true})
 
 	if fm.showRenameCount != 0 {
 		t.Fatalf("ShowRenameDialog count = %d, want 0", fm.showRenameCount)
@@ -846,7 +804,7 @@ func TestMainScreenTabShowsExplorerContextMenu(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyTab}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyTab}, ModifierState{})
 
 	if !handled {
 		t.Fatal("Tab should be handled")
@@ -860,7 +818,7 @@ func TestMainScreenPeriodRefreshesCurrentDirectory(t *testing.T) {
 	fm := &mainScreenFakeFileManager{currentPath: "/tmp/nmf"}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyPeriod}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyPeriod}, ModifierState{})
 
 	if !handled {
 		t.Fatal("Period should be handled")
@@ -877,7 +835,7 @@ func TestMainScreenModifiedTabDoesNotShowExplorerContextMenu(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyTab}, ModifierState{CtrlPressed: true})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyTab}, ModifierState{CtrlPressed: true})
 
 	if !handled {
 		t.Fatal("modified Tab should still be handled to keep focus traversal suppressed")
@@ -891,7 +849,7 @@ func TestMainScreenDeleteShowsTrashDeleteDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyDelete}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyDelete}, ModifierState{})
 
 	if !handled {
 		t.Fatal("Delete should be handled")
@@ -908,7 +866,7 @@ func TestMainScreenShiftDeleteShowsPermanentDeleteDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyDelete}, ModifierState{ShiftPressed: true})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyDelete}, ModifierState{ShiftPressed: true})
 
 	if !handled {
 		t.Fatal("Shift+Delete should be handled")
@@ -925,7 +883,7 @@ func TestMainScreenXShowsExternalCommandMenu(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{})
 
 	if !handled {
 		t.Fatal("X should be handled")
@@ -939,7 +897,7 @@ func TestMainScreenVShowsFileViewer(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyV}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyV}, ModifierState{})
 
 	if !handled {
 		t.Fatal("V should be handled")
@@ -953,7 +911,7 @@ func TestMainScreenShiftCShowsCompareDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyC}, ModifierState{ShiftPressed: true})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyC}, ModifierState{ShiftPressed: true})
 
 	if !handled {
 		t.Fatal("Shift+C should be handled")
@@ -974,7 +932,7 @@ func TestMainScreenCtrlAMarksAllSelectableFiles(t *testing.T) {
 	}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyA}, ModifierState{CtrlPressed: true})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyA}, ModifierState{CtrlPressed: true})
 
 	if !handled {
 		t.Fatal("Ctrl+A should be handled")
@@ -1007,7 +965,7 @@ func TestMainScreenIInvertsFileMarksOnly(t *testing.T) {
 	}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyI}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyI}, ModifierState{})
 
 	if !handled {
 		t.Fatal("I should be handled")
@@ -1045,7 +1003,7 @@ func TestMainScreenShiftIInvertsMarksIncludingDirectories(t *testing.T) {
 	}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyI}, ModifierState{ShiftPressed: true})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyI}, ModifierState{ShiftPressed: true})
 
 	if !handled {
 		t.Fatal("Shift+I should be handled")
@@ -1070,7 +1028,7 @@ func TestMainScreenConfiguredBindingOverridesDefault(t *testing.T) {
 		{Key: "X", Command: CommandJobsShow},
 	})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{})
 
 	if !handled {
 		t.Fatal("configured X should be handled")
@@ -1089,7 +1047,7 @@ func TestMainScreenNoopCommandOverridesDefault(t *testing.T) {
 		{Key: "S-S", Command: CommandNoop},
 	})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyS}, ModifierState{ShiftPressed: true})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyS}, ModifierState{ShiftPressed: true})
 
 	if !handled {
 		t.Fatal("configured noop should be handled")
@@ -1105,7 +1063,7 @@ func TestMainScreenConfiguredBindingCanReopenWindow(t *testing.T) {
 		{Key: "C-R", Command: CommandWindowReopen},
 	})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{CtrlPressed: true})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{CtrlPressed: true})
 
 	if !handled {
 		t.Fatal("configured window.reopen should be handled")
@@ -1119,7 +1077,7 @@ func TestMainScreenShiftQResetsCurrentWindowSize(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyQ}, ModifierState{ShiftPressed: true})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyQ}, ModifierState{ShiftPressed: true})
 
 	if !handled {
 		t.Fatal("Shift+Q should be handled")
@@ -1136,7 +1094,7 @@ func TestMainScreenCtrlShiftQResetsAllWindowSizes(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyQ}, ModifierState{CtrlPressed: true, ShiftPressed: true})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyQ}, ModifierState{CtrlPressed: true, ShiftPressed: true})
 
 	if !handled {
 		t.Fatal("Ctrl+Shift+Q should be handled")
@@ -1155,7 +1113,7 @@ func TestMainScreenNoopCommandOverridesResetSize(t *testing.T) {
 		{Key: "S-Q", Command: CommandNoop},
 	})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyQ}, ModifierState{ShiftPressed: true})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyQ}, ModifierState{ShiftPressed: true})
 
 	if !handled {
 		t.Fatal("configured noop should be handled")
@@ -1171,7 +1129,7 @@ func TestMainScreenNoopCommandOverridesResetAllSizes(t *testing.T) {
 		{Key: "C-S-Q", Command: CommandNoop},
 	})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyQ}, ModifierState{CtrlPressed: true, ShiftPressed: true})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyQ}, ModifierState{CtrlPressed: true, ShiftPressed: true})
 
 	if !handled {
 		t.Fatal("configured noop should be handled")
@@ -1195,7 +1153,7 @@ func TestMainScreenConfiguredBindingCanUseExtraCommand(t *testing.T) {
 		},
 	)
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{ShiftPressed: true})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{ShiftPressed: true})
 
 	if !handled {
 		t.Fatal("configured extra command should be handled")
@@ -1333,7 +1291,7 @@ func TestMainScreenProvidesClipboardWriterToExtraCommand(t *testing.T) {
 		},
 	)
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{})
 
 	if !handled {
 		t.Fatal("configured extra command should be handled")
@@ -1376,7 +1334,7 @@ func TestMainScreenExtraCommandCanRunInternalCommand(t *testing.T) {
 		},
 	)
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{})
 
 	if !handled {
 		t.Fatal("configured extra command should be handled")
@@ -1393,7 +1351,7 @@ func TestMainScreenShiftUpUsesPageUpCommand(t *testing.T) {
 	}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyUp}, ModifierState{ShiftPressed: true})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyUp}, ModifierState{ShiftPressed: true})
 
 	if !handled {
 		t.Fatal("Shift+Up should be handled")
@@ -1410,7 +1368,7 @@ func TestMainScreenShiftDownUsesPageDownCommand(t *testing.T) {
 	}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyDown}, ModifierState{ShiftPressed: true})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyDown}, ModifierState{ShiftPressed: true})
 
 	if !handled {
 		t.Fatal("Shift+Down should be handled")
@@ -1491,7 +1449,7 @@ func TestInvalidConfiguredBindingIsIgnored(t *testing.T) {
 		{Key: "Bogus", Command: CommandJobsShow},
 	})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyName("Bogus")}, ModifierState{})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyName("Bogus")}, ModifierState{})
 
 	if handled {
 		t.Fatal("invalid configured binding should be ignored")
@@ -1509,9 +1467,7 @@ type modsRecordingHandler struct {
 	mods []ModifierState
 }
 
-func (h *modsRecordingHandler) OnKeyDown(_ *fyne.KeyEvent, _ ModifierState) bool { return false }
-func (h *modsRecordingHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool   { return false }
-func (h *modsRecordingHandler) OnTypedKey(ev *fyne.KeyEvent, mods ModifierState) bool {
+func (h *modsRecordingHandler) OnKeyActivated(ev *fyne.KeyEvent, mods ModifierState) bool {
 	h.keys = append(h.keys, ev.Name)
 	h.mods = append(h.mods, mods)
 	return true
@@ -1619,7 +1575,7 @@ func TestMainScreenDeprecatedEventBindingStillFires(t *testing.T) {
 		{Key: "S-L", Command: CommandWindowResetSize, Event: "down"},
 	})
 
-	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyL}, ModifierState{ShiftPressed: true})
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyL}, ModifierState{ShiftPressed: true})
 
 	if !handled {
 		t.Fatal("binding with deprecated event should still fire on activation")

@@ -40,7 +40,7 @@ func TestConflictDialogAltShortcutsSelectChoices(t *testing.T) {
 	}
 	for _, tt := range tests {
 		before := tt.want()
-		if !handler.OnKeyDown(&fyne.KeyEvent{Name: tt.key}, modifiers) {
+		if !handler.OnKeyActivated(&fyne.KeyEvent{Name: tt.key}, modifiers) {
 			t.Fatalf("%s shortcut was not handled", tt.name)
 		}
 		if got := tt.want(); got != before+1 {

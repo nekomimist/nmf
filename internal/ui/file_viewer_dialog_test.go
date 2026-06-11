@@ -460,6 +460,7 @@ func TestFileViewerDialogTextGridCtrlCCopiesThroughKeyManager(t *testing.T) {
 	}
 	d.textGrid.KeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
 	d.textGrid.KeyDown(&fyne.KeyEvent{Name: fyne.KeyC})
+	d.textGrid.TypedShortcut(&fyne.ShortcutCopy{})
 
 	if got := app.Clipboard().Content(); got != "bcd" {
 		t.Fatalf("clipboard = %q, want %q", got, "bcd")

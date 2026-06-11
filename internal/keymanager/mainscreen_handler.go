@@ -216,17 +216,7 @@ func (mh *MainScreenKeyHandler) ActivationShortcuts() []fyne.Shortcut {
 	return shortcuts
 }
 
-// OnKeyDown is internal plumbing only; bindings never fire on key down.
-func (mh *MainScreenKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	return false
-}
-
-// OnKeyUp is internal plumbing only; bindings never fire on key up.
-func (mh *MainScreenKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	return false
-}
-
-func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+func (mh *MainScreenKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	if mh.executeBinding(ev, modifiers) {
 		return true
 	}

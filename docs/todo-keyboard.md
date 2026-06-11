@@ -152,9 +152,15 @@ type KeyHandler interface {
   - 無フォーカスfallback用にcanvasへ`ActivationShortcuts()`を登録
     (折り畳みShortcutはCustomShortcutにならないため明示登録が必要)
   - 既存の遷移ゲートはこの段階では維持(typed発火の遷移は既存機構で動作する)
-- [ ] Step2: KeyHandlerからOnKeyDown/OnKeyUpを削除
+- [x] Step2: KeyHandlerからOnKeyDown/OnKeyUpを削除
+  - KeyHandlerはOnKeyActivated+OnTypedRune+GetNameの3メソッドに縮小。
+    HandleKeyDown/HandleKeyUpはKeyManager内部配管(modifier追跡・lastKeyDown・
+    pendingフラッシュ)専用になり、handlerへはdispatchしない
   - 全dialog handlerのOnKeyDownロジックをOnKeyActivatedへ移植
-  - conflictNameEntryの転送をTypedShortcutベースへ
+    (viewerの矢印/incremental searchのBackspace等がリピート対応になった)
+  - conflictNameEntryのKeyDown/KeyUp転送をAlt系TypedShortcut転送に置換
+  - fileViewerTextGridのTypedShortcutも全Shortcut転送に統一
+    (Ctrl+CのコピーはShortcutCopy経由でhandlerに届く)
 - [ ] Step3: 抑止機構をarm-gate+次tick遷移に置換
   - tri-state gate導入、fyne.Doラッパ、Transition属性化
   - 5点セット/DeferUntilKeysReleased/ForceReleaseAllKeysの削除

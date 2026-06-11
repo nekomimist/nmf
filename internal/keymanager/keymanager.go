@@ -22,16 +22,14 @@ func (m ModifierState) None() bool {
 	return !m.ShiftPressed && !m.CtrlPressed && !m.AltPressed
 }
 
-// KeyHandler defines the interface for handling keyboard events
+// KeyHandler defines the interface for handling keyboard events.
+// Handlers only see key activations: TypedKey and TypedShortcut events,
+// including key repeats, merged into OnKeyActivated. Raw key down/up are
+// KeyManager-internal plumbing (modifier tracking, folded-shortcut
+// reconstruction) and are never dispatched to handlers.
 type KeyHandler interface {
-	// OnKeyDown handles key press events
-	OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool // returns true if handled
-
-	// OnKeyUp handles key release events
-	OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool // returns true if handled
-
-	// OnTypedKey handles typed key events
-	OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool // returns true if handled
+	// OnKeyActivated handles a key activation (typed key or shortcut)
+	OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool // returns true if handled
 
 	// OnTypedRune handles text input runes
 	OnTypedRune(r rune, modifiers ModifierState) bool // returns true if handled
@@ -314,7 +312,9 @@ func (km *KeyManager) GetModifierState() ModifierState {
 	return km.modifierState
 }
 
-// HandleKeyDown routes key down events to the current top handler
+// HandleKeyDown records key press plumbing state (modifier tracking,
+// folded-shortcut reconstruction, pressed-key set). It never dispatches to
+// handlers; bindings fire on activation events only.
 func (km *KeyManager) HandleKeyDown(ev *fyne.KeyEvent) {
 	km.mutex.Lock()
 	// Update modifier state first
@@ -325,50 +325,23 @@ func (km *KeyManager) HandleKeyDown(ev *fyne.KeyEvent) {
 		km.lastKeyDown = normalizeDrainKey(ev.Name)
 	}
 	km.recordKeyDownLocked(ev)
-	modifiers := km.modifierState
-	pending := km.hasPendingTransitionLocked()
 	km.mutex.Unlock()
 
-	if pending {
-		km.debugPrint("KeyManager: KeyDown gated key=%s mod=%t", ev.Name, modifierHandled)
-		return
-	}
-
-	currentHandler, _ := km.currentHandlerAndVersion()
-
-	if currentHandler != nil {
-		handled := currentHandler.OnKeyDown(ev, modifiers)
-		km.debugPrint("KeyManager: KeyDown %s handled=%t mod=%t", currentHandler.GetName(), handled, modifierHandled)
-	} else {
-		km.debugPrint("KeyManager: KeyDown no handler")
-	}
+	km.debugPrint("KeyManager: KeyDown recorded key=%s mod=%t", ev.Name, modifierHandled)
 }
 
-// HandleKeyUp routes key up events to the current top handler
+// HandleKeyUp records key release plumbing state and runs transitions that
+// were deferred until all keys were released. It never dispatches to handlers.
 func (km *KeyManager) HandleKeyUp(ev *fyne.KeyEvent) {
 	km.mutex.Lock()
 	// Update modifier state first
 	modifierHandled := km.updateModifierState(ev, false)
 	km.recordKeyUpLocked(ev)
-	modifiers := km.modifierState
-	pending := km.hasPendingTransitionLocked()
 	pendingTransitions := km.flushPendingTransitionsLocked()
 	km.mutex.Unlock()
 
-	if pending {
-		km.debugPrint("KeyManager: KeyUp gated key=%s mod=%t", ev.Name, modifierHandled)
-		km.runPendingTransitions(pendingTransitions)
-		return
-	}
-
-	currentHandler, _ := km.currentHandlerAndVersion()
-
-	if currentHandler != nil {
-		handled := currentHandler.OnKeyUp(ev, modifiers)
-		km.debugPrint("KeyManager: KeyUp %s handled=%t mod=%t", currentHandler.GetName(), handled, modifierHandled)
-	} else {
-		km.debugPrint("KeyManager: KeyUp no handler")
-	}
+	km.debugPrint("KeyManager: KeyUp recorded key=%s mod=%t", ev.Name, modifierHandled)
+	km.runPendingTransitions(pendingTransitions)
 }
 
 // HandleTypedKey routes typed key events to the current top handler
@@ -514,11 +487,11 @@ func (km *KeyManager) handleTypedKey(ev *fyne.KeyEvent, modifiers ModifierState)
 	currentHandler, _ := km.currentHandlerAndVersion()
 
 	if currentHandler != nil {
-		handled := currentHandler.OnTypedKey(ev, modifiers)
-		km.debugPrint("KeyManager: TypedKey %s handled=%t", currentHandler.GetName(), handled)
+		handled := currentHandler.OnKeyActivated(ev, modifiers)
+		km.debugPrint("KeyManager: KeyActivated %s handled=%t", currentHandler.GetName(), handled)
 		return handled
 	}
-	km.debugPrint("KeyManager: TypedKey no handler")
+	km.debugPrint("KeyManager: KeyActivated no handler")
 	return false
 }
 

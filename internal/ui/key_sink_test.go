@@ -15,13 +15,7 @@ type shortcutRecordingHandler struct {
 	modifiers []keymanager.ModifierState
 }
 
-func (h *shortcutRecordingHandler) OnKeyDown(_ *fyne.KeyEvent, _ keymanager.ModifierState) bool {
-	return false
-}
-func (h *shortcutRecordingHandler) OnKeyUp(_ *fyne.KeyEvent, _ keymanager.ModifierState) bool {
-	return false
-}
-func (h *shortcutRecordingHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers keymanager.ModifierState) bool {
+func (h *shortcutRecordingHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers keymanager.ModifierState) bool {
 	h.keys = append(h.keys, ev.Name)
 	h.modifiers = append(h.modifiers, modifiers)
 	return true
@@ -47,6 +41,23 @@ func TestKeySinkForwardsCustomShortcuts(t *testing.T) {
 	}
 	if len(handler.modifiers) != 1 || !handler.modifiers[0].CtrlPressed || !handler.modifiers[0].ShiftPressed {
 		t.Fatalf("modifiers = %+v, want ctrl and shift", handler.modifiers)
+	}
+}
+
+func TestKeySinkForwardsFoldedStandardShortcuts(t *testing.T) {
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	handler := &shortcutRecordingHandler{}
+	km.PushHandler(handler)
+	sink := NewKeySink(widget.NewLabel("content"), km)
+
+	sink.KeyDown(&fyne.KeyEvent{Name: fyne.KeyDelete})
+	sink.TypedShortcut(&fyne.ShortcutCut{})
+
+	if len(handler.keys) != 1 || handler.keys[0] != fyne.KeyDelete {
+		t.Fatalf("keys = %v, want [Delete]", handler.keys)
+	}
+	if len(handler.modifiers) != 1 || !handler.modifiers[0].ShiftPressed || handler.modifiers[0].CtrlPressed {
+		t.Fatalf("modifiers = %+v, want shift only", handler.modifiers)
 	}
 }
 

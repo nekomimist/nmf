@@ -40,8 +40,8 @@ func (th *TreeDialogKeyHandler) GetName() string {
 	return "TreeDialog"
 }
 
-// OnKeyDown handles key press events
-func (th *TreeDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+// OnKeyActivated handles key activations
+func (th *TreeDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	switch ev.Name {
 	case fyne.KeyR:
 		// Ctrl+R - Toggle root mode
@@ -49,20 +49,7 @@ func (th *TreeDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierS
 			th.treeDialog.ToggleRootMode()
 			return true
 		}
-	}
 
-	return false
-}
-
-// OnKeyUp handles key release events
-func (th *TreeDialogKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	// Modifier key state is managed by KeyManager
-	return false
-}
-
-// OnTypedKey handles typed key events
-func (th *TreeDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	switch ev.Name {
 	case fyne.KeyUp:
 		if modifiers.ShiftPressed {
 			// Fast move up (multiple nodes)

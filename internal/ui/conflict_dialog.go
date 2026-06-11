@@ -379,18 +379,17 @@ func (e *conflictNameEntry) TypedRune(r rune) {
 	e.UpdateIMEAnchor()
 }
 
-func (e *conflictNameEntry) KeyDown(ev *fyne.KeyEvent) {
-	if e.km != nil {
-		e.km.HandleKeyDown(ev)
+// TypedShortcut forwards shortcut activations (e.g. Alt+N choice keys) to the
+// KeyManager so the conflict dialog handler sees them while the entry is
+// focused. Standard editing shortcuts stay with the entry.
+func (e *conflictNameEntry) TypedShortcut(shortcut fyne.Shortcut) {
+	if custom, ok := shortcut.(*desktop.CustomShortcut); ok && e.km != nil {
+		if custom.Modifier&fyne.KeyModifierAlt != 0 {
+			e.km.HandleShortcut(shortcut)
+			return
+		}
 	}
-	e.TabEntry.KeyDown(ev)
-}
-
-func (e *conflictNameEntry) KeyUp(ev *fyne.KeyEvent) {
-	if e.km != nil {
-		e.km.HandleKeyUp(ev)
-	}
-	e.TabEntry.KeyUp(ev)
+	e.TabEntry.TypedShortcut(shortcut)
 }
 
 func (e *conflictNameEntry) FocusGained() {

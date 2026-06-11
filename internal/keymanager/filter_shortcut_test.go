@@ -67,8 +67,8 @@ func TestFilteringDialogsTreatCtrlHAsBackspace(t *testing.T) {
 			dialog := &fakeFilterSearchDialog{}
 			handler := tt.handler(dialog)
 
-			if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyH}, ModifierState{CtrlPressed: true}) {
-				t.Fatal("Ctrl+H typed key should be handled")
+			if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyH}, ModifierState{CtrlPressed: true}) {
+				t.Fatal("Ctrl+H activation should be handled")
 			}
 			if dialog.backspace != 1 {
 				t.Fatalf("BackspaceSearch count = %d, want 1", dialog.backspace)
@@ -81,8 +81,8 @@ func TestCopyMoveDialogCtrlNOpensDestination(t *testing.T) {
 	dialog := &fakeFilterSearchDialog{}
 	handler := NewCopyMoveDialogKeyHandler(dialog, func(string, ...interface{}) {})
 
-	if !handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyN}, ModifierState{CtrlPressed: true}) {
-		t.Fatal("Ctrl+N key down should be handled")
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyN}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("Ctrl+N activation should be handled")
 	}
 	if dialog.open != 1 {
 		t.Fatalf("OpenDestination count = %d, want 1", dialog.open)
@@ -93,23 +93,8 @@ func TestFilterDialogCtrlDDeletesSelectedEntry(t *testing.T) {
 	dialog := &fakeFilterSearchDialog{}
 	handler := NewFilterDialogKeyHandler(dialog, func(string, ...interface{}) {})
 
-	if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyD}, ModifierState{CtrlPressed: true}) {
-		t.Fatal("Ctrl+D typed key should be handled")
-	}
-	if dialog.deleted != 1 {
-		t.Fatalf("DeleteSelectedEntry count = %d, want 1", dialog.deleted)
-	}
-}
-
-func TestFilterDialogCtrlDDeletesOnlyOnceAcrossKeyDownAndTypedKey(t *testing.T) {
-	dialog := &fakeFilterSearchDialog{}
-	handler := NewFilterDialogKeyHandler(dialog, func(string, ...interface{}) {})
-
-	if handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyD}, ModifierState{CtrlPressed: true}) {
-		t.Fatal("Ctrl+D key down should not delete; typed key owns the shortcut")
-	}
-	if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyD}, ModifierState{CtrlPressed: true}) {
-		t.Fatal("Ctrl+D typed key should be handled")
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyD}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("Ctrl+D activation should be handled")
 	}
 	if dialog.deleted != 1 {
 		t.Fatalf("DeleteSelectedEntry count = %d, want 1", dialog.deleted)
@@ -120,11 +105,8 @@ func TestHistoryDialogCtrlDUnpinsSelectedPath(t *testing.T) {
 	dialog := &fakeFilterSearchDialog{}
 	handler := NewHistoryDialogKeyHandler(dialog, func(string, ...interface{}) {})
 
-	if handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyD}, ModifierState{CtrlPressed: true}) {
-		t.Fatal("Ctrl+D key down should not unpin; typed key owns the shortcut")
-	}
-	if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyD}, ModifierState{CtrlPressed: true}) {
-		t.Fatal("Ctrl+D typed key should be handled")
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyD}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("Ctrl+D activation should be handled")
 	}
 	if dialog.unpinned != 1 {
 		t.Fatalf("UnpinSelectedPath count = %d, want 1", dialog.unpinned)
@@ -135,8 +117,8 @@ func TestFilterDialogCtrlEnterAcceptsDirectInput(t *testing.T) {
 	dialog := &fakeFilterSearchDialog{}
 	handler := NewFilterDialogKeyHandler(dialog, func(string, ...interface{}) {})
 
-	if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{CtrlPressed: true}) {
-		t.Fatal("Ctrl+Enter typed key should be handled")
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("Ctrl+Enter activation should be handled")
 	}
 	if dialog.direct != 1 {
 		t.Fatalf("AcceptDirectInput count = %d, want 1", dialog.direct)
@@ -144,36 +126,14 @@ func TestFilterDialogCtrlEnterAcceptsDirectInput(t *testing.T) {
 }
 
 func TestHistoryDialogCtrlEnterAcceptsDirectPathNavigation(t *testing.T) {
-	tests := []struct {
-		name string
-		call func(KeyHandler) bool
-	}{
-		{
-			name: "key down",
-			call: func(handler KeyHandler) bool {
-				return handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{CtrlPressed: true})
-			},
-		},
-		{
-			name: "typed key",
-			call: func(handler KeyHandler) bool {
-				return handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{CtrlPressed: true})
-			},
-		},
+	dialog := &fakeFilterSearchDialog{}
+	handler := NewHistoryDialogKeyHandler(dialog, func(string, ...interface{}) {})
+
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("Ctrl+Enter should be handled")
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dialog := &fakeFilterSearchDialog{}
-			handler := NewHistoryDialogKeyHandler(dialog, func(string, ...interface{}) {})
-
-			if !tt.call(handler) {
-				t.Fatal("Ctrl+Enter should be handled")
-			}
-			if dialog.direct != 1 {
-				t.Fatalf("AcceptDirectPathNavigation count = %d, want 1", dialog.direct)
-			}
-		})
+	if dialog.direct != 1 {
+		t.Fatalf("AcceptDirectPathNavigation count = %d, want 1", dialog.direct)
 	}
 }
 
@@ -254,11 +214,11 @@ func TestPathDialogsHandleHorizontalScrollKeys(t *testing.T) {
 			dialog := &fakeFilterSearchDialog{}
 			handler := tt.handler(dialog)
 
-			if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyRight}, ModifierState{}) {
-				t.Fatal("Right typed key should be handled")
+			if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyRight}, ModifierState{}) {
+				t.Fatal("Right activation should be handled")
 			}
-			if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyLeft}, ModifierState{}) {
-				t.Fatal("Left typed key should be handled")
+			if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyLeft}, ModifierState{}) {
+				t.Fatal("Left activation should be handled")
 			}
 			if dialog.right != 1 || dialog.left != 1 {
 				t.Fatalf("scroll calls right=%d left=%d, want 1/1", dialog.right, dialog.left)
@@ -303,8 +263,8 @@ func TestIncrementalSearchTreatsCtrlHAsBackspace(t *testing.T) {
 	search := &fakeIncrementalSearch{}
 	handler := NewIncrementalSearchKeyHandler(search, func(string, ...interface{}) {})
 
-	if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyH}, ModifierState{CtrlPressed: true}) {
-		t.Fatal("Ctrl+H typed key should be handled")
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyH}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("Ctrl+H activation should be handled")
 	}
 	if search.removed != 1 {
 		t.Fatalf("RemoveLastSearchCharacter count = %d, want 1", search.removed)
