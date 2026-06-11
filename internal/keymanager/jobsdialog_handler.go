@@ -48,6 +48,10 @@ func (h *JobsDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierS
 		}
 		return true
 	case fyne.KeyDelete:
+		// Plain Delete only: Shift+Delete arrives here as a folded Cut shortcut.
+		if !modifiers.None() {
+			return false
+		}
 		h.dlg.CancelSelected()
 		return true
 	case fyne.KeyReturn, fyne.KeyEnter:

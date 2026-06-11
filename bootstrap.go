@@ -79,6 +79,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 	}
 	mainHandler := keymanager.NewMainScreenKeyHandlerWithCommands(fm, debugPrint, config.UI.KeyBindings, scriptCommands)
 	mainHandler.SetTransitionGate(fm.keyManager.DeferUntilKeysReleased)
+	fm.mainKeyHandler = mainHandler
 	fm.keyManager.PushHandler(mainHandler)
 
 	fm.setupUI()

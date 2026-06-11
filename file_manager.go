@@ -47,6 +47,7 @@ type FileManager struct {
 	customTheme       *customtheme.CustomTheme                // Custom theme for colors
 	cursorRenderer    ui.CursorRenderer                       // Cursor display renderer
 	keyManager        *keymanager.KeyManager                  // Keyboard input manager
+	mainKeyHandler    *keymanager.MainScreenKeyHandler        // Main screen key handler (for canvas shortcut registration)
 	dirWatcher        *watcher.DirectoryWatcher               // Directory change watcher
 	currentFilter     *config.FilterEntry                     // Currently applied filter
 	searchOverlay     *ui.IncrementalSearchOverlay            // Incremental search overlay

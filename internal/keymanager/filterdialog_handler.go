@@ -129,6 +129,10 @@ func (fh *FilterDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modifi
 		return true
 
 	case fyne.KeyDelete:
+		// Plain Delete only: Shift+Delete arrives here as a folded Cut shortcut.
+		if !modifiers.None() {
+			return false
+		}
 		// Clear entire search
 		fh.filterDialog.ClearSearch()
 		return true

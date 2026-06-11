@@ -45,6 +45,12 @@ func (qh *QuitConfirmDialogKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers Modi
 
 // OnTypedKey handles typed key events
 func (qh *QuitConfirmDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+	if !modifiers.None() {
+		// Modified combos (e.g. Ctrl+Y arriving as a folded Redo shortcut) are
+		// not dialog answers; consume them so they do not reach MainScreen.
+		qh.debugPrint("QuitConfirmDialog: Consuming modified key event: %s", ev.Name)
+		return true
+	}
 	switch ev.Name {
 	case fyne.KeyReturn:
 		fallthrough

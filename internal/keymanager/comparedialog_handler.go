@@ -123,6 +123,10 @@ func (h *CompareDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modifi
 		h.dialog.BackspaceSearch()
 		return true
 	case fyne.KeyDelete:
+		// Plain Delete only: Shift+Delete arrives here as a folded Cut shortcut.
+		if !modifiers.None() {
+			return false
+		}
 		h.dialog.ClearSearch()
 		return true
 	case fyne.KeyTab:

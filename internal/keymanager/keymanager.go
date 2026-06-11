@@ -17,6 +17,11 @@ type ModifierState struct {
 	AltPressed   bool
 }
 
+// None reports whether no modifier key is active.
+func (m ModifierState) None() bool {
+	return !m.ShiftPressed && !m.CtrlPressed && !m.AltPressed
+}
+
 // KeyHandler defines the interface for handling keyboard events
 type KeyHandler interface {
 	// OnKeyDown handles key press events
@@ -57,6 +62,7 @@ type KeyManager struct {
 	suppressTyped  map[fyne.KeyName]struct{}
 	suppressRune   bool
 	activeTypedKey fyne.KeyName
+	lastKeyDown    fyne.KeyName
 }
 
 type pendingTransition struct {
@@ -246,6 +252,7 @@ func (km *KeyManager) ForceReleaseAllKeys(label string) {
 	km.pressedKeys = nil
 	km.modifierState = ModifierState{}
 	km.activeTypedKey = ""
+	km.lastKeyDown = ""
 	pendingTransitions := km.flushPendingTransitionsLocked()
 	km.mutex.Unlock()
 
@@ -312,6 +319,11 @@ func (km *KeyManager) HandleKeyDown(ev *fyne.KeyEvent) {
 	km.mutex.Lock()
 	// Update modifier state first
 	modifierHandled := km.updateModifierState(ev, true)
+	if !modifierHandled && ev != nil && ev.Name != "" {
+		// Remembered to reconstruct the physical key behind folded standard
+		// shortcuts (e.g. Ctrl+Insert vs Ctrl+C both arrive as ShortcutCopy).
+		km.lastKeyDown = normalizeDrainKey(ev.Name)
+	}
 	km.recordKeyDownLocked(ev)
 	modifiers := km.modifierState
 	pending := km.hasPendingTransitionLocked()
@@ -388,6 +400,59 @@ func (km *KeyManager) HandleTypedKey(ev *fyne.KeyEvent) {
 		km.clearPressedKeyWithoutPending(active)
 	}
 	km.clearActiveTypedKey(active)
+}
+
+// HandleShortcut routes any Fyne shortcut to the current handler as a
+// shortcut-style key event. Fyne's GLFW driver folds some physical
+// combinations into standard shortcuts before they can reach TypedKey
+// (Ctrl+C/X/V/A/Z/Y/Insert and Shift+Insert/Delete); the original key is
+// reconstructed from the most recent non-modifier key down of the same press.
+func (km *KeyManager) HandleShortcut(shortcut fyne.Shortcut) {
+	ev, modifiers, ok := km.normalizeShortcut(shortcut)
+	if !ok {
+		km.debugPrint("KeyManager: Shortcut ignored name=%s", shortcut.ShortcutName())
+		return
+	}
+	km.HandleShortcutKey(ev, modifiers)
+}
+
+func (km *KeyManager) normalizeShortcut(shortcut fyne.Shortcut) (*fyne.KeyEvent, ModifierState, bool) {
+	if custom, ok := shortcut.(*desktop.CustomShortcut); ok {
+		return &fyne.KeyEvent{Name: custom.KeyName}, ModifierState{
+			ShiftPressed: custom.Modifier&fyne.KeyModifierShift != 0,
+			CtrlPressed:  custom.Modifier&fyne.KeyModifierControl != 0,
+			AltPressed:   custom.Modifier&fyne.KeyModifierAlt != 0,
+		}, true
+	}
+
+	km.mutex.RLock()
+	lastKeyDown := km.lastKeyDown
+	km.mutex.RUnlock()
+
+	switch shortcut.(type) {
+	case *fyne.ShortcutCopy:
+		if lastKeyDown == fyne.KeyInsert {
+			return &fyne.KeyEvent{Name: fyne.KeyInsert}, ModifierState{CtrlPressed: true}, true
+		}
+		return &fyne.KeyEvent{Name: fyne.KeyC}, ModifierState{CtrlPressed: true}, true
+	case *fyne.ShortcutCut:
+		if lastKeyDown == fyne.KeyDelete {
+			return &fyne.KeyEvent{Name: fyne.KeyDelete}, ModifierState{ShiftPressed: true}, true
+		}
+		return &fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{CtrlPressed: true}, true
+	case *fyne.ShortcutPaste:
+		if lastKeyDown == fyne.KeyInsert {
+			return &fyne.KeyEvent{Name: fyne.KeyInsert}, ModifierState{ShiftPressed: true}, true
+		}
+		return &fyne.KeyEvent{Name: fyne.KeyV}, ModifierState{CtrlPressed: true}, true
+	case *fyne.ShortcutSelectAll:
+		return &fyne.KeyEvent{Name: fyne.KeyA}, ModifierState{CtrlPressed: true}, true
+	case *fyne.ShortcutUndo:
+		return &fyne.KeyEvent{Name: fyne.KeyZ}, ModifierState{CtrlPressed: true}, true
+	case *fyne.ShortcutRedo:
+		return &fyne.KeyEvent{Name: fyne.KeyY}, ModifierState{CtrlPressed: true}, true
+	}
+	return nil, ModifierState{}, false
 }
 
 // HandleShortcutKey routes a shortcut-style key event to the current handler.

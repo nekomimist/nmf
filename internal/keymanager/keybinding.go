@@ -7,11 +7,10 @@ import (
 	"fyne.io/fyne/v2"
 )
 
-const (
-	keyEventTyped = "typed"
-	keyEventDown  = "down"
-	keyEventUp    = "up"
-)
+// keyEventTyped is the only activation kind; bindings fire on TypedKey or
+// TypedShortcut. It is kept as the CommandContext.Event value for
+// compatibility with Starlark user commands that read ctx.event.
+const keyEventTyped = "typed"
 
 // CommandContext carries transient input state into command execution.
 type CommandContext struct {
@@ -43,7 +42,6 @@ type CommandMenuItem struct {
 
 type keyBinding struct {
 	spec    keySpec
-	event   string
 	command string
 }
 
@@ -206,20 +204,6 @@ var validKeyNames = map[fyne.KeyName]struct{}{
 	fyne.KeyAsterisk:     {},
 	fyne.KeyPlus:         {},
 	fyne.KeyBackTick:     {},
-}
-
-func normalizeEventName(event string, spec keySpec) string {
-	switch strings.ToLower(strings.TrimSpace(event)) {
-	case keyEventDown, keyEventUp, keyEventTyped:
-		return strings.ToLower(strings.TrimSpace(event))
-	case "":
-		if spec.mod.CtrlPressed || spec.mod.AltPressed {
-			return keyEventDown
-		}
-		return keyEventTyped
-	default:
-		return ""
-	}
 }
 
 func (b keyBinding) matches(ev *fyne.KeyEvent, modifiers ModifierState) bool {

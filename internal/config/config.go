@@ -379,7 +379,7 @@ type DirectoryJumpsConfig struct {
 type KeyBindingEntry struct {
 	Key     string `json:"key"`             // Forms: "Key", "S-Key", "A-Key", "C-Key"
 	Command string `json:"command"`         // Stable internal command ID
-	Event   string `json:"event,omitempty"` // Optional: "typed", "down", or "up"
+	Event   string `json:"event,omitempty"` // Deprecated: ignored. Bindings fire on key activation (typed/shortcut).
 }
 
 // ExternalCommandEntry describes a command that can be run for matching files.

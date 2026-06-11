@@ -727,7 +727,7 @@ func TestMainScreenLeftFocusesLeftWindow(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyLeft}, ModifierState{})
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyLeft}, ModifierState{})
 
 	if !handled {
 		t.Fatal("Left should be handled")
@@ -744,7 +744,7 @@ func TestMainScreenRightFocusesRightWindow(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyRight}, ModifierState{})
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyRight}, ModifierState{})
 
 	if !handled {
 		t.Fatal("Right should be handled")
@@ -816,14 +816,14 @@ func TestMainScreenF2ShowsRenameDialog(t *testing.T) {
 	}
 }
 
-func TestMainScreenRKeyUpShowsRenameDialog(t *testing.T) {
+func TestMainScreenRShowsRenameDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnKeyUp(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{})
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{})
 
 	if !handled {
-		t.Fatal("R key up should be handled")
+		t.Fatal("R should be handled")
 	}
 	if fm.showRenameCount != 1 {
 		t.Fatalf("ShowRenameDialog count = %d, want 1", fm.showRenameCount)
@@ -835,7 +835,7 @@ func TestMainScreenModifiedRenameKeysDoNotShowRenameDialog(t *testing.T) {
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
 	handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyF2}, ModifierState{CtrlPressed: true})
-	handler.OnKeyUp(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{ShiftPressed: true})
+	handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{ShiftPressed: true})
 
 	if fm.showRenameCount != 0 {
 		t.Fatalf("ShowRenameDialog count = %d, want 0", fm.showRenameCount)
@@ -908,7 +908,7 @@ func TestMainScreenShiftDeleteShowsPermanentDeleteDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyDelete}, ModifierState{ShiftPressed: true})
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyDelete}, ModifierState{ShiftPressed: true})
 
 	if !handled {
 		t.Fatal("Shift+Delete should be handled")
@@ -974,7 +974,7 @@ func TestMainScreenCtrlAMarksAllSelectableFiles(t *testing.T) {
 	}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyA}, ModifierState{CtrlPressed: true})
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyA}, ModifierState{CtrlPressed: true})
 
 	if !handled {
 		t.Fatal("Ctrl+A should be handled")
@@ -1105,7 +1105,7 @@ func TestMainScreenConfiguredBindingCanReopenWindow(t *testing.T) {
 		{Key: "C-R", Command: CommandWindowReopen},
 	})
 
-	handled := handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{CtrlPressed: true})
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{CtrlPressed: true})
 
 	if !handled {
 		t.Fatal("configured window.reopen should be handled")
@@ -1136,7 +1136,7 @@ func TestMainScreenCtrlShiftQResetsAllWindowSizes(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
 
-	handled := handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyQ}, ModifierState{CtrlPressed: true, ShiftPressed: true})
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyQ}, ModifierState{CtrlPressed: true, ShiftPressed: true})
 
 	if !handled {
 		t.Fatal("Ctrl+Shift+Q should be handled")
@@ -1168,10 +1168,10 @@ func TestMainScreenNoopCommandOverridesResetSize(t *testing.T) {
 func TestMainScreenNoopCommandOverridesResetAllSizes(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
-		{Key: "C-S-Q", Command: CommandNoop, Event: "down"},
+		{Key: "C-S-Q", Command: CommandNoop},
 	})
 
-	handled := handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyQ}, ModifierState{CtrlPressed: true, ShiftPressed: true})
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyQ}, ModifierState{CtrlPressed: true, ShiftPressed: true})
 
 	if !handled {
 		t.Fatal("configured noop should be handled")
@@ -1356,6 +1356,7 @@ func TestMainScreenDoesNotDeferNonTransitionCommand(t *testing.T) {
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyA})
+	km.HandleShortcut(&fyne.ShortcutSelectAll{})
 
 	if fm.refreshFileListCount != 1 {
 		t.Fatalf("RefreshFileList count = %d, want immediate select-all", fm.refreshFileListCount)
@@ -1500,5 +1501,139 @@ func TestInvalidConfiguredBindingIsIgnored(t *testing.T) {
 	}
 	if len(logs) != 1 || !strings.Contains(logs[0], "WARNING invalid key binding") {
 		t.Fatalf("logs = %#v, want warning", logs)
+	}
+}
+
+type modsRecordingHandler struct {
+	keys []fyne.KeyName
+	mods []ModifierState
+}
+
+func (h *modsRecordingHandler) OnKeyDown(_ *fyne.KeyEvent, _ ModifierState) bool { return false }
+func (h *modsRecordingHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool   { return false }
+func (h *modsRecordingHandler) OnTypedKey(ev *fyne.KeyEvent, mods ModifierState) bool {
+	h.keys = append(h.keys, ev.Name)
+	h.mods = append(h.mods, mods)
+	return true
+}
+func (h *modsRecordingHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
+func (h *modsRecordingHandler) GetName() string                          { return "modsRecording" }
+
+type fakeUnknownShortcut struct{}
+
+func (fakeUnknownShortcut) ShortcutName() string { return "FakeUnknown" }
+
+func TestHandleShortcutReconstructsFoldedShortcuts(t *testing.T) {
+	tests := []struct {
+		name        string
+		lastKeyDown fyne.KeyName
+		shortcut    fyne.Shortcut
+		wantKey     fyne.KeyName
+		wantMods    ModifierState
+	}{
+		{name: "copy from C", lastKeyDown: fyne.KeyC, shortcut: &fyne.ShortcutCopy{}, wantKey: fyne.KeyC, wantMods: ModifierState{CtrlPressed: true}},
+		{name: "copy from Insert", lastKeyDown: fyne.KeyInsert, shortcut: &fyne.ShortcutCopy{}, wantKey: fyne.KeyInsert, wantMods: ModifierState{CtrlPressed: true}},
+		{name: "cut from X", lastKeyDown: fyne.KeyX, shortcut: &fyne.ShortcutCut{}, wantKey: fyne.KeyX, wantMods: ModifierState{CtrlPressed: true}},
+		{name: "cut from Shift+Delete", lastKeyDown: fyne.KeyDelete, shortcut: &fyne.ShortcutCut{}, wantKey: fyne.KeyDelete, wantMods: ModifierState{ShiftPressed: true}},
+		{name: "paste from V", lastKeyDown: fyne.KeyV, shortcut: &fyne.ShortcutPaste{}, wantKey: fyne.KeyV, wantMods: ModifierState{CtrlPressed: true}},
+		{name: "paste from Shift+Insert", lastKeyDown: fyne.KeyInsert, shortcut: &fyne.ShortcutPaste{}, wantKey: fyne.KeyInsert, wantMods: ModifierState{ShiftPressed: true}},
+		{name: "select all", lastKeyDown: fyne.KeyA, shortcut: &fyne.ShortcutSelectAll{}, wantKey: fyne.KeyA, wantMods: ModifierState{CtrlPressed: true}},
+		{name: "undo", lastKeyDown: fyne.KeyZ, shortcut: &fyne.ShortcutUndo{}, wantKey: fyne.KeyZ, wantMods: ModifierState{CtrlPressed: true}},
+		{name: "redo", lastKeyDown: fyne.KeyY, shortcut: &fyne.ShortcutRedo{}, wantKey: fyne.KeyY, wantMods: ModifierState{CtrlPressed: true}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			km := NewKeyManager(func(string, ...interface{}) {})
+			h := &modsRecordingHandler{}
+			km.PushHandler(h)
+
+			km.HandleKeyDown(&fyne.KeyEvent{Name: tt.lastKeyDown})
+			km.HandleShortcut(tt.shortcut)
+
+			if len(h.keys) != 1 || h.keys[0] != tt.wantKey {
+				t.Fatalf("keys = %v, want [%s]", h.keys, tt.wantKey)
+			}
+			if h.mods[0] != tt.wantMods {
+				t.Fatalf("mods = %+v, want %+v", h.mods[0], tt.wantMods)
+			}
+		})
+	}
+}
+
+func TestHandleShortcutPassesCustomShortcutModifiers(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	h := &modsRecordingHandler{}
+	km.PushHandler(h)
+
+	km.HandleShortcut(&desktop.CustomShortcut{
+		KeyName:  fyne.KeyQ,
+		Modifier: fyne.KeyModifierControl | fyne.KeyModifierShift,
+	})
+
+	if len(h.keys) != 1 || h.keys[0] != fyne.KeyQ {
+		t.Fatalf("keys = %v, want [Q]", h.keys)
+	}
+	want := ModifierState{CtrlPressed: true, ShiftPressed: true}
+	if h.mods[0] != want {
+		t.Fatalf("mods = %+v, want %+v", h.mods[0], want)
+	}
+}
+
+func TestHandleShortcutIgnoresUnknownShortcutTypes(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	h := &modsRecordingHandler{}
+	km.PushHandler(h)
+
+	km.HandleShortcut(fakeUnknownShortcut{})
+
+	if len(h.keys) != 0 {
+		t.Fatalf("keys = %v, want none", h.keys)
+	}
+}
+
+func TestMainScreenShiftDeleteViaFoldedCutShortcut(t *testing.T) {
+	km := NewKeyManager(func(string, ...interface{}) {})
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	km.PushHandler(handler)
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyDelete})
+	km.HandleShortcut(&fyne.ShortcutCut{})
+
+	if fm.showDeleteCount != 1 {
+		t.Fatalf("ShowDeleteDialog count = %d, want 1", fm.showDeleteCount)
+	}
+	if !fm.deletePermanent {
+		t.Fatal("Shift+Delete should request permanent delete")
+	}
+}
+
+func TestMainScreenDeprecatedEventBindingStillFires(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	var logs []string
+	handler := NewMainScreenKeyHandler(fm, func(format string, args ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}, []config.KeyBindingEntry{
+		{Key: "S-L", Command: CommandWindowResetSize, Event: "down"},
+	})
+
+	handled := handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyL}, ModifierState{ShiftPressed: true})
+
+	if !handled {
+		t.Fatal("binding with deprecated event should still fire on activation")
+	}
+	if fm.resetWindowSizeCount != 1 {
+		t.Fatalf("ResetWindowSize count = %d, want 1", fm.resetWindowSizeCount)
+	}
+	deprecated := false
+	for _, log := range logs {
+		if strings.Contains(log, "deprecated") {
+			deprecated = true
+		}
+	}
+	if !deprecated {
+		t.Fatalf("logs = %#v, want deprecation warning", logs)
 	}
 }

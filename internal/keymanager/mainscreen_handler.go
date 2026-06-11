@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/driver/desktop"
 
 	"nmf/internal/config"
 	"nmf/internal/fileinfo"
@@ -175,16 +176,58 @@ func (mh *MainScreenKeyHandler) SetTransitionGate(deferTransition func(label str
 	mh.deferTransition = deferTransition
 }
 
-func (mh *MainScreenKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	return mh.executeBinding(keyEventDown, ev, modifiers)
+// ActivationShortcuts returns the shortcuts the window canvas must register so
+// Ctrl/Alt bindings keep working in the no-focus fallback state, where the
+// driver routes shortcuts to the canvas instead of generating TypedKey events.
+// Fyne's folded standard shortcuts are listed explicitly because the driver
+// never reports those combinations as CustomShortcut.
+func (mh *MainScreenKeyHandler) ActivationShortcuts() []fyne.Shortcut {
+	shortcuts := []fyne.Shortcut{
+		&fyne.ShortcutCopy{},
+		&fyne.ShortcutCut{},
+		&fyne.ShortcutPaste{},
+		&fyne.ShortcutSelectAll{},
+		&fyne.ShortcutUndo{},
+		&fyne.ShortcutRedo{},
+	}
+	seen := make(map[string]struct{})
+	for _, binding := range mh.bindings {
+		mod := binding.spec.mod
+		if !mod.CtrlPressed && !mod.AltPressed {
+			continue
+		}
+		var modifier fyne.KeyModifier
+		if mod.ShiftPressed {
+			modifier |= fyne.KeyModifierShift
+		}
+		if mod.CtrlPressed {
+			modifier |= fyne.KeyModifierControl
+		}
+		if mod.AltPressed {
+			modifier |= fyne.KeyModifierAlt
+		}
+		shortcut := &desktop.CustomShortcut{KeyName: binding.spec.key, Modifier: modifier}
+		if _, ok := seen[shortcut.ShortcutName()]; ok {
+			continue
+		}
+		seen[shortcut.ShortcutName()] = struct{}{}
+		shortcuts = append(shortcuts, shortcut)
+	}
+	return shortcuts
 }
 
+// OnKeyDown is internal plumbing only; bindings never fire on key down.
+func (mh *MainScreenKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+	return false
+}
+
+// OnKeyUp is internal plumbing only; bindings never fire on key up.
 func (mh *MainScreenKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	return mh.executeBinding(keyEventUp, ev, modifiers)
+	return false
 }
 
 func (mh *MainScreenKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	if mh.executeBinding(keyEventTyped, ev, modifiers) {
+	if mh.executeBinding(ev, modifiers) {
 		return true
 	}
 	return ev != nil && ev.Name == fyne.KeyTab
@@ -194,9 +237,9 @@ func (mh *MainScreenKeyHandler) OnTypedRune(r rune, modifiers ModifierState) boo
 	return false
 }
 
-func (mh *MainScreenKeyHandler) executeBinding(event string, ev *fyne.KeyEvent, modifiers ModifierState) bool {
+func (mh *MainScreenKeyHandler) executeBinding(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	for _, binding := range mh.bindings {
-		if binding.event != event || !binding.matches(ev, modifiers) {
+		if !binding.matches(ev, modifiers) {
 			continue
 		}
 		key := fyne.KeyName("")
@@ -206,7 +249,7 @@ func (mh *MainScreenKeyHandler) executeBinding(event string, ev *fyne.KeyEvent, 
 		ctx := CommandContext{
 			Modifiers:       modifiers,
 			Key:             key,
-			Event:           event,
+			Event:           keyEventTyped,
 			FileManager:     mh.fileManager,
 			DeferTransition: mh.deferTransition,
 		}
@@ -308,10 +351,8 @@ func (mh *MainScreenKeyHandler) buildBindings(configured []config.KeyBindingEntr
 			mh.debugPrint("MainScreen: WARNING invalid key binding key=%q command=%s err=%v", entry.Key, entry.Command, err)
 			continue
 		}
-		event := normalizeEventName(entry.Event, spec)
-		if event == "" {
-			mh.debugPrint("MainScreen: WARNING invalid key binding event=%q key=%q command=%s", entry.Event, entry.Key, entry.Command)
-			continue
+		if entry.Event != "" {
+			mh.debugPrint("MainScreen: WARNING key binding event=%q is deprecated and ignored key=%q command=%s", entry.Event, entry.Key, entry.Command)
 		}
 		if _, ok := mh.commands[entry.Command]; !ok {
 			mh.debugPrint("MainScreen: WARNING invalid key binding unknown command=%s key=%q", entry.Command, entry.Key)
@@ -319,7 +360,6 @@ func (mh *MainScreenKeyHandler) buildBindings(configured []config.KeyBindingEntr
 		}
 		bindings = append(bindings, keyBinding{
 			spec:    spec,
-			event:   event,
 			command: entry.Command,
 		})
 	}
@@ -329,50 +369,50 @@ func (mh *MainScreenKeyHandler) buildBindings(configured []config.KeyBindingEntr
 
 func defaultMainScreenBindings() []config.KeyBindingEntry {
 	return []config.KeyBindingEntry{
-		{Key: "Up", Command: CommandCursorUp, Event: keyEventTyped},
-		{Key: "S-Up", Command: CommandCursorPageUp, Event: keyEventTyped},
-		{Key: "Down", Command: CommandCursorDown, Event: keyEventTyped},
-		{Key: "S-Down", Command: CommandCursorPageDown, Event: keyEventTyped},
-		{Key: "Return", Command: CommandOpen, Event: keyEventTyped},
-		{Key: "S-Return", Command: CommandOpenDefaultApp, Event: keyEventTyped},
-		{Key: "Space", Command: CommandSelectToggle, Event: keyEventTyped},
-		{Key: "C-A", Command: CommandSelectAll, Event: keyEventDown},
-		{Key: "I", Command: CommandSelectInvert, Event: keyEventTyped},
-		{Key: "S-I", Command: CommandSelectInvertWithDir, Event: keyEventTyped},
-		{Key: "Backspace", Command: CommandParentDirectory, Event: keyEventTyped},
-		{Key: "S-Comma", Command: CommandCursorFirst, Event: keyEventTyped},
-		{Key: "Period", Command: CommandRefresh, Event: keyEventTyped},
-		{Key: "S-Period", Command: CommandCursorLast, Event: keyEventTyped},
-		{Key: "S-Backtick", Command: CommandHome, Event: keyEventTyped},
-		{Key: "K", Command: CommandDirectoryCreate, Event: keyEventTyped},
-		{Key: "P", Command: CommandClipboardTextFile, Event: keyEventTyped},
-		{Key: "F2", Command: CommandRenameShow, Event: keyEventTyped},
-		{Key: "R", Command: CommandRenameShow, Event: keyEventUp},
-		{Key: "Left", Command: CommandWindowFocusLeft, Event: keyEventDown},
-		{Key: "Right", Command: CommandWindowFocusRight, Event: keyEventDown},
-		{Key: "S-Q", Command: CommandWindowResetSize, Event: keyEventTyped},
-		{Key: "C-S-Q", Command: CommandWindowResetAllSizes, Event: keyEventDown},
-		{Key: "Tab", Command: CommandExplorerContextShow, Event: keyEventTyped},
-		{Key: "F3", Command: CommandFilterToggle, Event: keyEventTyped},
-		{Key: "Q", Command: CommandQuit, Event: keyEventTyped},
-		{Key: "C", Command: CommandCopyShow, Event: keyEventTyped},
-		{Key: "U", Command: CommandArchiveExtract, Event: keyEventTyped},
-		{Key: "S-C", Command: CommandCompareShow, Event: keyEventTyped},
-		{Key: "M", Command: CommandMoveShow, Event: keyEventTyped},
-		{Key: "X", Command: CommandExternalCommandMenu, Event: keyEventTyped},
-		{Key: "V", Command: CommandViewerShow, Event: keyEventTyped},
-		{Key: "C-N", Command: CommandWindowNew, Event: keyEventDown},
-		{Key: "C-T", Command: CommandTreeShow, Event: keyEventDown},
-		{Key: "C-H", Command: CommandHistoryShow, Event: keyEventDown},
-		{Key: "S-B", Command: CommandHistoryPinCurrent, Event: keyEventTyped},
-		{Key: "C-F", Command: CommandFilterShow, Event: keyEventDown},
-		{Key: "C-S", Command: CommandSearchShow, Event: keyEventDown},
-		{Key: "S-S", Command: CommandSortShow, Event: keyEventTyped},
-		{Key: "C-L", Command: CommandPathEdit, Event: keyEventDown},
-		{Key: "S-J", Command: CommandJobsShow, Event: keyEventTyped},
-		{Key: "J", Command: CommandDirectoryJumpShow, Event: keyEventTyped},
-		{Key: "Delete", Command: CommandDeleteTrash, Event: keyEventTyped},
-		{Key: "S-Delete", Command: CommandDeletePermanent, Event: keyEventDown},
+		{Key: "Up", Command: CommandCursorUp},
+		{Key: "S-Up", Command: CommandCursorPageUp},
+		{Key: "Down", Command: CommandCursorDown},
+		{Key: "S-Down", Command: CommandCursorPageDown},
+		{Key: "Return", Command: CommandOpen},
+		{Key: "S-Return", Command: CommandOpenDefaultApp},
+		{Key: "Space", Command: CommandSelectToggle},
+		{Key: "C-A", Command: CommandSelectAll},
+		{Key: "I", Command: CommandSelectInvert},
+		{Key: "S-I", Command: CommandSelectInvertWithDir},
+		{Key: "Backspace", Command: CommandParentDirectory},
+		{Key: "S-Comma", Command: CommandCursorFirst},
+		{Key: "Period", Command: CommandRefresh},
+		{Key: "S-Period", Command: CommandCursorLast},
+		{Key: "S-Backtick", Command: CommandHome},
+		{Key: "K", Command: CommandDirectoryCreate},
+		{Key: "P", Command: CommandClipboardTextFile},
+		{Key: "F2", Command: CommandRenameShow},
+		{Key: "R", Command: CommandRenameShow},
+		{Key: "Left", Command: CommandWindowFocusLeft},
+		{Key: "Right", Command: CommandWindowFocusRight},
+		{Key: "S-Q", Command: CommandWindowResetSize},
+		{Key: "C-S-Q", Command: CommandWindowResetAllSizes},
+		{Key: "Tab", Command: CommandExplorerContextShow},
+		{Key: "F3", Command: CommandFilterToggle},
+		{Key: "Q", Command: CommandQuit},
+		{Key: "C", Command: CommandCopyShow},
+		{Key: "U", Command: CommandArchiveExtract},
+		{Key: "S-C", Command: CommandCompareShow},
+		{Key: "M", Command: CommandMoveShow},
+		{Key: "X", Command: CommandExternalCommandMenu},
+		{Key: "V", Command: CommandViewerShow},
+		{Key: "C-N", Command: CommandWindowNew},
+		{Key: "C-T", Command: CommandTreeShow},
+		{Key: "C-H", Command: CommandHistoryShow},
+		{Key: "S-B", Command: CommandHistoryPinCurrent},
+		{Key: "C-F", Command: CommandFilterShow},
+		{Key: "C-S", Command: CommandSearchShow},
+		{Key: "S-S", Command: CommandSortShow},
+		{Key: "C-L", Command: CommandPathEdit},
+		{Key: "S-J", Command: CommandJobsShow},
+		{Key: "J", Command: CommandDirectoryJumpShow},
+		{Key: "Delete", Command: CommandDeleteTrash},
+		{Key: "S-Delete", Command: CommandDeletePermanent},
 	}
 }
 

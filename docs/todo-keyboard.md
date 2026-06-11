@@ -142,12 +142,15 @@ type KeyHandler interface {
 
 ## 移行ステップ (各段で出荷可能)
 
-- [ ] Step1: 発火をTypedKey/TypedShortcutへ一本化
-  - KeySinkで全Shortcut転送、KeyManagerにlastKeyDown+畳み込み逆引き追加
+- [x] Step1: 発火をTypedKey/TypedShortcutへ一本化
+  - KeySinkで全Shortcut転送、KeyManagerにlastKeyDown+畳み込み逆引き
+    (`HandleShortcut`)を追加
   - main画面bindingのevent廃止(specから自動解決)、config/Starlarkのeventは
-    deprecated警告
+    deprecated警告(受理して無視)
   - dialog handlerのOnTypedKeyベアキー分岐にmodifierガード追加
-    (quitのY/N vs C-Y、jobs/historyのDelete vs S-Delete等の衝突回避)
+    (quitのY/N vs C-Y、各dialogのDelete vs S-Delete等の衝突回避)
+  - 無フォーカスfallback用にcanvasへ`ActivationShortcuts()`を登録
+    (折り畳みShortcutはCustomShortcutにならないため明示登録が必要)
   - 既存の遷移ゲートはこの段階では維持(typed発火の遷移は既存機構で動作する)
 - [ ] Step2: KeyHandlerからOnKeyDown/OnKeyUpを削除
   - 全dialog handlerのOnKeyDownロジックをOnKeyActivatedへ移植

@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/keymanager"
@@ -78,21 +77,13 @@ func (k *KeySink) TypedRune(r rune) {
 	}
 }
 
-// TypedShortcut forwards desktop shortcut repeats to KeyManager.
+// TypedShortcut forwards shortcut activations (including key repeats) to
+// KeyManager. All shortcut types are forwarded; KeyManager reconstructs the
+// underlying key for Fyne's folded standard shortcuts.
 func (k *KeySink) TypedShortcut(shortcut fyne.Shortcut) {
-	if k.km == nil {
-		return
+	if k.km != nil {
+		k.km.HandleShortcut(shortcut)
 	}
-	s, ok := shortcut.(*desktop.CustomShortcut)
-	if !ok {
-		return
-	}
-	modifiers := keymanager.ModifierState{
-		ShiftPressed: s.Modifier&fyne.KeyModifierShift != 0,
-		CtrlPressed:  s.Modifier&fyne.KeyModifierControl != 0,
-		AltPressed:   s.Modifier&fyne.KeyModifierAlt != 0,
-	}
-	k.km.HandleShortcutKey(&fyne.KeyEvent{Name: s.KeyName}, modifiers)
 }
 
 // KeyDown forwards desktop key down events to KeyManager.

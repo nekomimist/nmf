@@ -83,7 +83,7 @@ func (h *LineEditDialogKeyHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bo
 }
 
 // OnTypedKey handles special typed keys.
-func (h *LineEditDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState) bool {
+func (h *LineEditDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	switch ev.Name {
 	case fyne.KeyReturn, fyne.KeyEnter:
 		h.dialog.AcceptEdit()
@@ -95,6 +95,10 @@ func (h *LineEditDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState
 		h.dialog.DeleteBeforeCursor()
 		return true
 	case fyne.KeyDelete:
+		// Plain Delete only: Shift+Delete arrives here as a folded Cut shortcut.
+		if !modifiers.None() {
+			return false
+		}
 		h.dialog.DeleteAtCursor()
 		return true
 	case fyne.KeyLeft:
