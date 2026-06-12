@@ -41,7 +41,9 @@
 
 # DONE 以下は一応終わったもの
 ## キー入力処理の再設計 (KeyDown/KeyUp発火の廃止)
-- 設計・検証記録・移行ステップは [todo-keyboard.md](todo-keyboard.md) を参照。
+- 現行仕様(活性化モデル・arm-gate・依存するFyne挙動の再検証ポイント・
+  トレードオフ)は `docs/architecture/ui-input.md` に集約した。
+  設計検討の経緯はgit履歴(PR #5、旧`docs/todo-keyboard.md`)にある。
 - バインドの発火をTypedKey/TypedShortcut(活性化イベント)へ一本化し、
   KeyDown/KeyUpはKeyManager内部配管(modifier追跡・畳み込みShortcut逆引き・
   arm-gateのarm)へ格下げした。configの`event`(down/up/typed)は廃止(警告+無視)。

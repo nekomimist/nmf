@@ -27,21 +27,26 @@ Core model:
   before executing file-manager behavior. Each command definition carries a
   `transition` attribute marking it as an input-owner change.
 
-Driver facts this design relies on (verified in Fyne v2.7.3,
-`internal/driver/glfw/window.go`; re-verify on Fyne upgrades — see
-`docs/todo-keyboard.md` for details):
+Driver facts this design relies on (verified in Fyne v2.7.3; re-verify these
+on Fyne upgrades at the named locations in the Fyne source):
 
 1. Exclusive delivery: focused object or (only when nothing has focus) the
-   canvas-level callbacks.
-2. Key repeats produce TypedKey/TypedShortcut but never KeyDown.
+   canvas-level callbacks
+   (`internal/driver/glfw/window.go` `processKeyPressed`).
+2. Key repeats produce TypedKey/TypedShortcut but never KeyDown; KeyUp is the
+   only release-time event (`processKeyPressed`: press/repeat/release paths).
 3. Ctrl-only C/X/V/A/Z/Y/Insert and Shift-only Insert/Delete are folded into
    standard shortcuts (Copy/Cut/Paste/SelectAll/Undo/Redo); other Ctrl/Alt
-   combos arrive as `desktop.CustomShortcut` with exact modifier bits.
+   combos arrive as `desktop.CustomShortcut` with exact modifier bits, and
+   Shift-only combos never become shortcuts
+   (`internal/driver/glfw/window.go` `triggersShortcut`).
    `KeyManager.HandleShortcut` reconstructs the physical combo for folded
    shortcuts from `lastKeyDown`.
 4. `fyne.Do` queued from the main thread runs after the current event batch,
-   including the trailing TypedRune of the same key press.
-5. Window focus loss reaches the focused widget's `FocusLost()`.
+   including the trailing TypedRune of the same key press
+   (`internal/driver/glfw/loop.go` `runOnMainWithWait` + run loop).
+5. Window focus loss reaches the focused widget's `FocusLost()`
+   (`internal/app/focus_manager.go` `FocusManager.FocusLost`).
 
 Event delivery paths:
 
@@ -72,6 +77,21 @@ Input gating (owner transitions):
   survive an alt-tab.
 - Cursor movement, selection, refresh, and other non-transition commands
   remain immediate, and every binding repeats while its key is held.
+
+Accepted trade-offs of the activation model:
+
+- Bindings cannot fire on raw key down/up anymore; nothing needed them once
+  the leak workarounds became unnecessary.
+- Input arriving within roughly one main-loop tick of an owner transition is
+  dropped (the old model dropped everything until full key release, so the
+  window is strictly smaller).
+- A dialog whose entry has Fyne focus receives held-key repeats as normal
+  text input, like any OS text field.
+- Distinguishing `C-C` from `C-Insert` (and `C-X`/`C-V` from their
+  Shift-folded variants) depends on the `lastKeyDown` reconstruction; the
+  driver events alone cannot tell them apart.
+- On macOS the driver folds Cmd (not Ctrl) combos into standard shortcuts;
+  Super-modifier handling needs its own design before any macOS support.
 
 Main-screen configurable bindings:
 
