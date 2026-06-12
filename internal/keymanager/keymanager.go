@@ -157,7 +157,6 @@ func (km *KeyManager) GetCurrentHandler() KeyHandler {
 	return km.handlers[len(km.handlers)-1].handler
 }
 
-
 func normalizeDrainKey(name fyne.KeyName) fyne.KeyName {
 	switch name {
 	case fyne.KeyEnter:
