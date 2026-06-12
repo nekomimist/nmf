@@ -79,7 +79,7 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
       ]
     },
     "keyBindings": [
-      { "key": "C-N", "command": "window.new", "event": "down" },
+      { "key": "C-N", "command": "window.new" },
       { "key": "A-X", "command": "externalCommand.menu" }
     ],
     "externalCommands": [
@@ -298,15 +298,15 @@ alphabetically; entries without shortcuts appear last.
 ## Key Bindings
 
 `ui.keyBindings` adds main-screen key bindings. User bindings are evaluated
-before built-in defaults, so a binding for the same key and event overrides the
-default behavior.
+before built-in defaults, so a binding for the same key overrides the default
+behavior.
 
 ```json
 {
   "ui": {
     "keyBindings": [
-      { "key": "S-A-C-F2", "command": "rename.show", "event": "typed" },
-      { "key": "C-N", "command": "window.new", "event": "down" },
+      { "key": "S-A-C-F2", "command": "rename.show" },
+      { "key": "C-N", "command": "window.new" },
       { "key": "F12", "command": "maintenance.show" },
       { "key": "S-S", "command": "noop" }
     ]
@@ -338,17 +338,13 @@ Supported aliases:
 - `Backtick` or `Backquote` -> `` ` ``
 - `Del` -> `Delete`
 
-Invalid key names, invalid modifiers, invalid events, and unknown commands are
-logged as warnings and only that binding entry is ignored.
+Invalid key names, invalid modifiers, and unknown commands are logged as
+warnings and only that binding entry is ignored.
 
-Events:
-
-- `typed`: Fyne typed key event; best for normal keys that should repeat.
-- `down`: desktop key down event; useful for Ctrl/Alt combinations.
-- `up`: desktop key up event.
-
-When `event` is omitted, Ctrl or Alt bindings default to `down`; other bindings
-default to `typed`.
+Bindings fire when the key combination activates (Fyne typed key or shortcut,
+chosen automatically from the key spec) and repeat while the key is held. The
+legacy `event` field (`typed`/`down`/`up`) is deprecated: it is accepted for
+backward compatibility but ignored with a warning.
 
 Built-in window-size reset bindings are `S-Q` for the current File Manager
 window and `C-S-Q` for all File Manager windows.

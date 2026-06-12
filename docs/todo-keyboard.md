@@ -1,4 +1,7 @@
-# キー入力処理の再設計 (KeyDown/KeyUp発火の廃止)
+# キー入力処理の再設計 (KeyDown/KeyUp発火の廃止) — 完了
+
+全ステップ実装済み。本ファイルは設計判断とFyne依存挙動の検証記録として残す。
+現行仕様の正は `docs/architecture/ui-input.md`。
 
 ## 背景 / 動機
 
@@ -174,12 +177,14 @@ type KeyHandler interface {
     状態残留を解消)
   - 「activationをKeyManagerへ転送する経路は必ずKeyDownも転送する」を不変条件化
     (conflictNameEntryのKeyDown/KeyUp転送はgate armのため維持)
-- [ ] Step4: 残課題整理
-  - stackVersion/currentHandlerAndVersionの削除
-  - スレッディング前提の決定と明文化(todo.mdの該当項目の決着)
-- [ ] Step5: ドキュメント更新
-  - ui-input.md / configuration.md / starlark-configuration.md / CLAUDE.md
-  - todo.mdの関連項目消し込み
+- [x] Step4: 残課題整理
+  - currentHandlerAndVersionを削除。stackVersionはDumpState専用の診断カウンタとして残置
+  - スレッディング方針を決定: dispatchはUIスレッド、push/remove・遷移は
+    バックグラウンドgoroutineからも来るためmutexは維持(構造体コメントに明文化)
+- [x] Step5: ドキュメント更新
+  - ui-input.md(活性化モデル・gate仕様・依存ドライバ挙動5点の検証記録)
+  - configuration.md / starlark-configuration.md(event廃止、deprecated注記)
+  - CLAUDE.md(KeyManager説明の更新)、todo.mdの関連項目をDONEへ移動
 
 ## 関連する既存todoとの関係
 

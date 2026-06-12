@@ -10,47 +10,68 @@ Source packages:
 
 Core model:
 
-- `KeyManager` maintains a stack of handlers.
-- Active handler is the top of stack.
-- `DumpState` returns handler stack, modifier state, pressed keys, pending
-  transitions, and suppression flags for debug logs.
-- The main-screen handler maps key events to stable internal command IDs before
-  executing file-manager behavior.
-- Events routed by type:
-  - `OnKeyDown`
-  - `OnKeyUp`
-  - `OnTypedKey`
-  - `OnTypedRune`
+- `KeyManager` maintains a stack of handlers; the active handler is the top.
+- Handlers implement only `OnKeyActivated(ev, modifiers)` and
+  `OnTypedRune(r, modifiers)`. An "activation" merges Fyne's TypedKey and
+  TypedShortcut deliveries (both repeat while a key is held).
+- Raw key down/up never reach handlers. They are KeyManager-internal plumbing
+  with three uses: modifier tracking, remembering the physical key behind
+  folded standard shortcuts (`lastKeyDown`), and arming the input gate.
+- For shortcut-path activations the modifiers come from the shortcut event
+  itself; only Shift on the typed-key path relies on tracked state, because
+  `fyne.KeyEvent` carries no modifier information and Shift-only combos never
+  become shortcuts.
+- `DumpState` returns handler stack, modifier state, gate state, queued
+  transition count, and `lastKeyDown` for debug logs.
+- The main-screen handler maps activations to stable internal command IDs
+  before executing file-manager behavior. Each command definition carries a
+  `transition` attribute marking it as an input-owner change.
 
-Modifier keys (`Shift`, `Ctrl`, `Alt`) are tracked centrally in `KeyManager` and passed to handlers.
+Driver facts this design relies on (verified in Fyne v2.7.3,
+`internal/driver/glfw/window.go`; re-verify on Fyne upgrades — see
+`docs/todo-keyboard.md` for details):
+
+1. Exclusive delivery: focused object or (only when nothing has focus) the
+   canvas-level callbacks.
+2. Key repeats produce TypedKey/TypedShortcut but never KeyDown.
+3. Ctrl-only C/X/V/A/Z/Y/Insert and Shift-only Insert/Delete are folded into
+   standard shortcuts (Copy/Cut/Paste/SelectAll/Undo/Redo); other Ctrl/Alt
+   combos arrive as `desktop.CustomShortcut` with exact modifier bits.
+   `KeyManager.HandleShortcut` reconstructs the physical combo for folded
+   shortcuts from `lastKeyDown`.
+4. `fyne.Do` queued from the main thread runs after the current event batch,
+   including the trailing TypedRune of the same key press.
+5. Window focus loss reaches the focused widget's `FocusLost()`.
 
 Event delivery paths:
 
-- Fyne's GLFW driver delivers each key event exclusively: the focused object
-  receives it when focus exists, and the canvas-level callbacks fire only when
-  nothing has focus (verified in Fyne v2.7.3, `internal/driver/glfw/window.go`).
-- A focused `KeySink` forwards all four event types to `KeyManager`. Widgets
-  that legitimately own text input (entries) consume events themselves and
-  forward to `KeyManager` only what the active handler needs (for example the
-  conflict dialog name entry forwards `KeyDown`/`KeyUp` for modifier tracking).
-- `ui_setup.go` registers the canvas-level callbacks as the no-focus fallback.
-  Each callback carries a defensive `Focused() != nil` guard so delivery stays
-  single per event even if a future Fyne version invokes canvas callbacks
-  alongside the focused object.
+- A focused `KeySink` forwards key down/up, typed keys, runes, and all
+  shortcuts to `KeyManager`.
+- Invariant: every path that forwards activations into the KeyManager must
+  also forward key downs, because a fresh press is what arms the gate
+  (KeySink, canvas fallback, viewer text grid, conflict dialog name entry).
+- `ui_setup.go` registers the canvas-level callbacks as the no-focus fallback
+  with defensive `Focused() != nil` guards. Because the driver routes
+  shortcuts to the canvas shortcut table in that state, the main screen's
+  Ctrl/Alt activations (`MainScreenKeyHandler.ActivationShortcuts`) are also
+  registered on the canvas.
 
-Input-owner transitions:
+Input gating (owner transitions):
 
-- Commands that open a dialog/menu, enter an input mode, or create a new window
-  are deferred until all currently pressed keys have been released.
-- Dialog/menu/input-mode close paths that return control to the main file list
-  use the same central gate before popping their handler.
-- While such a transition is pending, `KeyManager` consumes typed key/rune
-  events and only uses key-up events to update pressed-key state.
-- This keeps the triggering key from leaking into the newly opened input owner
-  (for example a history filter field) and prevents late `Return` typed events
-  from falling through to the main file list.
-- Cursor movement, selection, refresh, and other non-input-owner state changes
-  remain immediate so key repeat behavior stays responsive.
+- Commands and close paths that change the input owner run through
+  `KeyManager.BeginOwnerTransition`: the action is queued onto the next Fyne
+  main-loop iteration, so the remaining events of the triggering key press
+  (e.g. its TypedRune) are delivered to the old owner and discarded there.
+- The gate disarms on handler push/remove, queued transitions, and KeySink
+  focus changes; it re-arms on the next fresh non-modifier key down. Since
+  repeats never produce key downs, a key held across an owner change can
+  never fire into the new owner. The arming press itself is fully delivered.
+- Events arriving while disarmed are dropped, never queued.
+- `ResetTransientState` (focus changes, external-open failures) clears
+  modifiers, `lastKeyDown`, and the gate, so stale Shift state cannot
+  survive an alt-tab.
+- Cursor movement, selection, refresh, and other non-transition commands
+  remain immediate, and every binding repeats while its key is held.
 
 Main-screen configurable bindings:
 
@@ -59,10 +80,11 @@ Main-screen configurable bindings:
   and `Delete`.
 - Modifiers are limited to `S`, `A`, and `C`; unknown modifiers or key names are
   logged as warnings and that binding entry is ignored.
-- Optional event values are `typed`, `down`, and `up`. When omitted, modifier
-  bindings default to `down`; unmodified bindings default to `typed`.
+- Bindings fire on activation; whether that is the typed-key or shortcut path
+  is derived from the key spec. The legacy `event` field (`typed`/`down`/`up`)
+  is deprecated: it is accepted but ignored with a warning.
 - User bindings are evaluated before built-in defaults, so a configured binding
-  for the same key/event overrides the default behavior.
+  for the same key overrides the default behavior.
 - Optional `init.star` configuration can append bindings and register `user.*`
   commands. Starlark command functions receive key/modifier context and may call
   `nmf.run(command_id)` to compose built-in or custom commands.
