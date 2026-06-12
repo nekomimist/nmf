@@ -229,7 +229,7 @@ func (fm *FileManager) ShowIncrementalSearchDialog() {
 	fm.searchOverlay.SetCancelCallback(func() {
 		debugPrint("FileManager: Incremental search cancelled")
 		// Pop the search handler and refocus main view
-		fm.keyManager.DeferUntilKeysReleased("search.cancelCallback", func() {
+		fm.keyManager.BeginOwnerTransition("search.cancelCallback", func() {
 			fm.keyManager.RemoveHandler(fm.searchToken)
 			fm.FocusFileList()
 		})
@@ -276,7 +276,7 @@ func (fm *FileManager) ShowSortDialog() {
 	var sortToken keymanager.HandlerToken
 	sortDialog.SetOnCleanup(func() {
 		debugPrint("FileManager: Cleaning up sort dialog - removing key handler")
-		fm.keyManager.DeferUntilKeysReleased("sort.close", func() {
+		fm.keyManager.BeginOwnerTransition("sort.close", func() {
 			fm.keyManager.RemoveHandler(sortToken)
 		})
 	})
@@ -332,7 +332,7 @@ func (fm *FileManager) AcceptIncrementalSearchOverlay() {
 	if fm.searchOverlay != nil {
 		fm.searchOverlay.HideAccepted()
 	}
-	fm.keyManager.DeferUntilKeysReleased("search.acceptCallback", func() {
+	fm.keyManager.BeginOwnerTransition("search.acceptCallback", func() {
 		fm.keyManager.RemoveHandler(fm.searchToken)
 		fm.FocusFileList()
 	})
@@ -423,7 +423,7 @@ func (fm *FileManager) OpenFile(file *fileinfo.FileInfo) {
 	// Regular file: try to open with associated application
 	if err := fileinfo.OpenWithDefaultApp(file.Path); err != nil {
 		debugPrint("FileManager: Failed to open file '%s': %v", file.Path, err)
-		fm.forceReleaseKeysAfterExternalOpen("open-file-error")
+		fm.resetKeyStateAfterExternalOpen("open-file-error")
 		fm.ShowMessageDialog("ファイルを開けませんでした", err.Error())
 		return
 	}
@@ -440,17 +440,17 @@ func (fm *FileManager) OpenFileDefaultApp(file *fileinfo.FileInfo) {
 	}
 	if err := fileinfo.OpenWithDefaultApp(file.Path); err != nil {
 		debugPrint("FileManager: Failed to open file with default app '%s': %v", file.Path, err)
-		fm.forceReleaseKeysAfterExternalOpen("open-default-app-error")
+		fm.resetKeyStateAfterExternalOpen("open-default-app-error")
 		fm.ShowMessageDialog("ファイルを開けませんでした", err.Error())
 		return
 	}
 }
 
-func (fm *FileManager) forceReleaseKeysAfterExternalOpen(label string) {
+func (fm *FileManager) resetKeyStateAfterExternalOpen(label string) {
 	if fm == nil || fm.keyManager == nil {
 		return
 	}
-	fm.keyManager.ForceReleaseAllKeys(label)
+	fm.keyManager.ResetTransientState(label)
 }
 
 // SetCursorToFile sets the cursor to the specified file.

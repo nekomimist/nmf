@@ -46,9 +46,9 @@ func (h *SortDialogKeyHandler) GetName() string {
 	return "SortDialog"
 }
 
-// OnKeyDown handles key press events
-func (h *SortDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	h.debugPrint("SortDialogKeyHandler: OnKeyDown called with key: %s", ev.Name)
+// OnKeyActivated handles key activations
+func (h *SortDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+	h.debugPrint("SortDialogKeyHandler: OnKeyActivated called with key: %s", ev.Name)
 
 	switch ev.Name {
 	case fyne.KeyTab:
@@ -92,17 +92,6 @@ func (h *SortDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierSt
 		return true
 	}
 
-	return false
-}
-
-// OnKeyUp handles key release events
-func (h *SortDialogKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	// Modifier key state is managed by KeyManager
-	return false
-}
-
-// OnTypedKey handles typed key events
-func (h *SortDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	return false
 }
 

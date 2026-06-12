@@ -47,7 +47,7 @@ nmf/
 ### Core Components
 
 - **FileManager**: Main controller (main package, split across feature files) - manages window, UI, navigation, file operations
-- **KeyManager**: Stack-based keyboard input system - handles context-aware key routing; main screen uses a declarative key binding + command registry, dialogs use dedicated handlers
+- **KeyManager**: Stack-based keyboard input system - handles context-aware key routing; bindings fire on key activations (TypedKey/TypedShortcut, repeats included) with an arm-gate that drops input across input-owner transitions; main screen uses a declarative key binding + command registry (each command declares a `transition` attribute), dialogs use dedicated handlers
 - **KeySink**: Focusable wrapper widget that forwards key events to KeyManager and captures Tab
 - **JobsManager**: Background job queue (copy/move/delete/archive) with progress, cancellation, and a Jobs window
 - **ConfigScript**: Starlark-based configuration (`init.star`) layered over `config.json`; user commands, menus, external commands

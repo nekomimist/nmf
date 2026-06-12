@@ -47,34 +47,17 @@ func NewCopyMoveDialogKeyHandler(d CopyMoveDialogInterface, debugPrint func(form
 // GetName returns the handler name
 func (h *CopyMoveDialogKeyHandler) GetName() string { return "CopyMoveDialog" }
 
-// OnKeyDown handles key press events
-func (h *CopyMoveDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	switch ev.Name {
-	case fyne.KeyReturn:
-		if modifiers.CtrlPressed {
-			h.dialog.AcceptDirectPath()
-		}
-		return true
-	case fyne.KeyN:
-		if modifiers.CtrlPressed {
-			h.dialog.OpenDestination()
-			return true
-		}
-	}
-	return false
-}
-
-// OnKeyUp handles key release events
-func (h *CopyMoveDialogKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	return false
-}
-
-// OnTypedKey handles non-text keys
-func (h *CopyMoveDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+// OnKeyActivated handles key activations
+func (h *CopyMoveDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	switch ev.Name {
 	case fyne.KeyH:
 		if modifiers.CtrlPressed {
 			h.dialog.BackspaceSearch()
+			return true
+		}
+	case fyne.KeyN:
+		if modifiers.CtrlPressed {
+			h.dialog.OpenDestination()
 			return true
 		}
 
@@ -102,6 +85,10 @@ func (h *CopyMoveDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modif
 		h.dialog.SelectCurrentItem()
 		return true
 	case fyne.KeyReturn:
+		if modifiers.CtrlPressed {
+			h.dialog.AcceptDirectPath()
+			return true
+		}
 		h.dialog.AcceptSelection()
 		return true
 	case fyne.KeyEscape:
@@ -111,6 +98,10 @@ func (h *CopyMoveDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modif
 		h.dialog.BackspaceSearch()
 		return true
 	case fyne.KeyDelete:
+		// Plain Delete only: Shift+Delete arrives here as a folded Cut shortcut.
+		if !modifiers.None() {
+			return false
+		}
 		h.dialog.ClearSearch()
 		return true
 	case fyne.KeyTab:

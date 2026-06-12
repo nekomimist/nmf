@@ -344,4 +344,18 @@ func (fm *FileManager) setupUI() {
 			fm.keyManager.HandleTypedRune(r)
 		})
 	}
+
+	// In the no-focus fallback state the driver routes shortcuts to the
+	// canvas shortcut table instead of generating TypedKey events, so the
+	// Ctrl/Alt activations must be registered here to stay usable.
+	if fm.mainKeyHandler != nil {
+		for _, shortcut := range fm.mainKeyHandler.ActivationShortcuts() {
+			fm.window.Canvas().AddShortcut(shortcut, func(s fyne.Shortcut) {
+				if fm.window.Canvas().Focused() != nil {
+					return // delivered through the focused object (e.g. KeySink)
+				}
+				fm.keyManager.HandleShortcut(s)
+			})
+		}
+	}
 }

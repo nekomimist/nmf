@@ -53,35 +53,16 @@ func (fh *FilterDialogKeyHandler) GetName() string {
 	return "FilterDialog"
 }
 
-// OnKeyDown handles key press events
-func (fh *FilterDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+// OnKeyActivated handles key activations in focusless mode
+func (fh *FilterDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+	fh.debugPrint("FilterDialog: OnKeyActivated %s", ev.Name)
+
 	switch ev.Name {
 	case fyne.KeyF:
 		// Ctrl+F - Search functionality handled by focusless design
 		if modifiers.CtrlPressed {
 			return true
 		}
-	case fyne.KeyReturn:
-		if modifiers.CtrlPressed {
-			fh.filterDialog.AcceptDirectInput()
-			return true
-		}
-	}
-
-	return false
-}
-
-// OnKeyUp handles key release events
-func (fh *FilterDialogKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	// Modifier key state is managed by KeyManager
-	return false
-}
-
-// OnTypedKey handles typed key events in focusless mode
-func (fh *FilterDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	fh.debugPrint("FilterDialog: OnTypedKey %s", ev.Name)
-
-	switch ev.Name {
 	case fyne.KeyH:
 		if modifiers.CtrlPressed {
 			fh.filterDialog.BackspaceSearch()
@@ -129,6 +110,10 @@ func (fh *FilterDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers Modifi
 		return true
 
 	case fyne.KeyDelete:
+		// Plain Delete only: Shift+Delete arrives here as a folded Cut shortcut.
+		if !modifiers.None() {
+			return false
+		}
 		// Clear entire search
 		fh.filterDialog.ClearSearch()
 		return true

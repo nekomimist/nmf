@@ -20,7 +20,7 @@ func (h *MaintenanceDialogKeyHandler) GetName() string {
 	return "MaintenanceDialog"
 }
 
-func (h *MaintenanceDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+func (h *MaintenanceDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	if ev == nil {
 		return false
 	}
@@ -37,14 +37,6 @@ func (h *MaintenanceDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers Mod
 	default:
 		return false
 	}
-}
-
-func (h *MaintenanceDialogKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	return false
-}
-
-func (h *MaintenanceDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	return false
 }
 
 func (h *MaintenanceDialogKeyHandler) OnTypedRune(r rune, modifiers ModifierState) bool {

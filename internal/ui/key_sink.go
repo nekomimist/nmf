@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/keymanager"
@@ -50,8 +49,13 @@ func (k *KeySink) CreateRenderer() fyne.WidgetRenderer {
 	return widget.NewSimpleRenderer(k.Content)
 }
 
-// FocusGained implements fyne.Focusable.
+// FocusGained implements fyne.Focusable. Focus changes (including window
+// focus changes, which Fyne forwards to the focused widget) reset transient
+// input state so stale modifiers or held keys never leak across owners.
 func (k *KeySink) FocusGained() {
+	if k.km != nil {
+		k.km.ResetTransientState("keysink-focus-gained")
+	}
 	if k.onFocus != nil {
 		k.onFocus(true)
 	}
@@ -59,6 +63,9 @@ func (k *KeySink) FocusGained() {
 
 // FocusLost implements fyne.Focusable.
 func (k *KeySink) FocusLost() {
+	if k.km != nil {
+		k.km.ResetTransientState("keysink-focus-lost")
+	}
 	if k.onFocus != nil {
 		k.onFocus(false)
 	}
@@ -78,21 +85,13 @@ func (k *KeySink) TypedRune(r rune) {
 	}
 }
 
-// TypedShortcut forwards desktop shortcut repeats to KeyManager.
+// TypedShortcut forwards shortcut activations (including key repeats) to
+// KeyManager. All shortcut types are forwarded; KeyManager reconstructs the
+// underlying key for Fyne's folded standard shortcuts.
 func (k *KeySink) TypedShortcut(shortcut fyne.Shortcut) {
-	if k.km == nil {
-		return
+	if k.km != nil {
+		k.km.HandleShortcut(shortcut)
 	}
-	s, ok := shortcut.(*desktop.CustomShortcut)
-	if !ok {
-		return
-	}
-	modifiers := keymanager.ModifierState{
-		ShiftPressed: s.Modifier&fyne.KeyModifierShift != 0,
-		CtrlPressed:  s.Modifier&fyne.KeyModifierControl != 0,
-		AltPressed:   s.Modifier&fyne.KeyModifierAlt != 0,
-	}
-	k.km.HandleShortcutKey(&fyne.KeyEvent{Name: s.KeyName}, modifiers)
 }
 
 // KeyDown forwards desktop key down events to KeyManager.

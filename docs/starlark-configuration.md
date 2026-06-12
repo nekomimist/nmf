@@ -85,7 +85,7 @@ def open_parent_and_refresh(ctx):
     nmf.run("directory.refresh")
 
 nmf.command("user.open_parent_and_refresh", open_parent_and_refresh)
-nmf.key("C-P", "user.open_parent_and_refresh", event = "down")
+nmf.key("C-P", "user.open_parent_and_refresh")
 
 def edit_current(ctx):
     nmf.exec("vim", args = [ctx.current_file], cwd = ctx.current_path)
@@ -100,7 +100,7 @@ nmf.key("K", fn = create_directory)
 def copy_selected(ctx):
     nmf.clipboard("\n".join(ctx.selected_files))
 
-nmf.key("C-Y", fn = copy_selected, event = "down")
+nmf.key("C-Y", fn = copy_selected)
 
 def save_clipboard(ctx):
     nmf.save_clipboard(edit = True)
@@ -177,8 +177,9 @@ List sections:
 
 - `nmf.directory_jump(shortcut, directory)`
 - `nmf.clear_directory_jumps()`
-- `nmf.key(key, cmd = None, fn = None, event = "")`
-- `nmf.unkey(key, event = "")`
+- `nmf.key(key, cmd = None, fn = None)`
+- `nmf.unkey(key)`
+  (the legacy `event` argument is still accepted but deprecated and ignored)
 - `nmf.clear_keys()`
 - `nmf.external_command(name, cmd, exts = [], args = [], cwd = "", edit = False, key = "")`
 - `nmf.clear_external_commands()`
@@ -210,7 +211,7 @@ dialog size. Use `0` for either value to leave that dimension uncapped.
 names that are not marked as UTF-8. Common values include `shift_jis` (default),
 `cp437`, and `utf-8`.
 `nmf.unkey` appends a binding to the built-in `noop` command, which disables a
-default key binding with the same key and event for the current run.
+default key binding with the same key for the current run.
 Menu definitions are runtime-only and are not saved to `config.json`.
 Menu item and external command `key` values are optional single printable
 characters. While a command menu is open, typing the key runs the first visible
@@ -285,7 +286,7 @@ def show_jobs(ctx):
     nmf.run("jobs.show")
 
 nmf.command("user.show_jobs", show_jobs)
-nmf.key("S-J", "user.show_jobs", event = "typed")
+nmf.key("S-J", "user.show_jobs")
 ```
 
 Custom command IDs must start with `user.` so they cannot override built-in
@@ -297,7 +298,7 @@ Use `nmf.command` when a function needs a stable reusable command ID for
 The command function receives one `ctx` struct:
 
 - `ctx.key`: key name such as `X`, `F2`, or `Return`
-- `ctx.event`: `typed`, `down`, or `up`
+- `ctx.event`: always `typed` (kept for compatibility; bindings fire on key activation)
 - `ctx.shift`, `ctx.ctrl`, `ctx.alt`: modifier booleans
 - `ctx.current_path`: current directory path in external-command argument form
 - `ctx.current_file`: first target path in external-command argument form, or empty
@@ -330,8 +331,9 @@ Command-only helpers:
   existing process working directory behavior. If it points to a virtual path
   such as an archive or direct SMB provider, it is ignored.
   When `edit` is true, nmf opens the command line in a one-line edit dialog.
-  When launched from a key binding, that dialog is opened after the triggering
-  keys are released so late key events do not leak into the editor.
+  When launched from a key binding, that dialog is opened on the next
+  main-loop iteration so the triggering key's events do not leak into the
+  editor.
   In that mode, `command` may be empty so the dialog can be used as a command
   prompt.
   The call returns false immediately because the edited command runs later when

@@ -788,10 +788,12 @@ func (rt *Runtime) appendKeyBinding(fnName string, args starlark.Tuple, kwargs [
 	if strings.TrimSpace(command) == "" {
 		return nil, fmt.Errorf("command must not be empty")
 	}
+	if event != "" {
+		rt.debugPrint("ConfigScript: WARNING key binding event=%q is deprecated and ignored key=%s command=%s", event, key, command)
+	}
 	rt.cfg.UI.KeyBindings = append(rt.cfg.UI.KeyBindings, config.KeyBindingEntry{
 		Key:     key,
 		Command: command,
-		Event:   event,
 	})
 	rt.saveMask.uiKeyBindings = true
 	return starlark.None, nil

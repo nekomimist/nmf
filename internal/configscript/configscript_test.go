@@ -411,7 +411,8 @@ nmf.unkey("C-S", event = "down")
 
 	want := []config.KeyBindingEntry{
 		{Key: "S-S", Command: keymanager.CommandNoop},
-		{Key: "C-S", Command: keymanager.CommandNoop, Event: "down"},
+		// The deprecated event argument is still accepted but dropped.
+		{Key: "C-S", Command: keymanager.CommandNoop},
 	}
 	if !reflect.DeepEqual(cfg.UI.KeyBindings, want) {
 		t.Fatalf("key bindings = %#v, want %#v", cfg.UI.KeyBindings, want)
@@ -445,8 +446,8 @@ nmf.key("C-E", fn = edit, event = "down")
 	if first.Key != "E" || first.Command == "" || first.Event != "" {
 		t.Fatalf("first binding = %+v, want E generated command", first)
 	}
-	if second.Key != "C-E" || second.Command == "" || second.Event != "down" {
-		t.Fatalf("second binding = %+v, want C-E generated down command", second)
+	if second.Key != "C-E" || second.Command == "" || second.Event != "" {
+		t.Fatalf("second binding = %+v, want C-E generated command without deprecated event", second)
 	}
 	if first.Command == second.Command {
 		t.Fatalf("generated commands should be unique, got %q", first.Command)

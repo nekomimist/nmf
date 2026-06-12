@@ -59,10 +59,10 @@ func TestLineEditDialogHandlerReadlineKeys(t *testing.T) {
 			dialog := &fakeLineEditDialog{}
 			handler := NewLineEditDialogKeyHandler(dialog)
 
-			handled := handler.OnKeyDown(&fyne.KeyEvent{Name: tt.key}, ModifierState{CtrlPressed: true})
+			handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: tt.key}, ModifierState{CtrlPressed: true})
 
 			if !handled {
-				t.Fatal("OnKeyDown should handle readline key")
+				t.Fatal("OnKeyActivated should handle readline key")
 			}
 			if got := tt.want(dialog); got != 1 {
 				t.Fatalf("handler count = %d, want 1", got)
@@ -75,13 +75,13 @@ func TestLineEditDialogHandlerAcceptsAndCancels(t *testing.T) {
 	dialog := &fakeLineEditDialog{}
 	handler := NewLineEditDialogKeyHandler(dialog)
 
-	if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{}) {
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{}) {
 		t.Fatal("Return should be handled")
 	}
 	if dialog.accepted != 1 {
 		t.Fatalf("accepted = %d, want 1", dialog.accepted)
 	}
-	if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyEscape}, ModifierState{}) {
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyEscape}, ModifierState{}) {
 		t.Fatal("Escape should be handled")
 	}
 	if dialog.cancelled != 1 {
@@ -108,8 +108,8 @@ func TestLineEditDialogHandlerFallbackTypedKeyEditing(t *testing.T) {
 			dialog := &fakeLineEditDialog{}
 			handler := NewLineEditDialogKeyHandler(dialog)
 
-			if !handler.OnTypedKey(&fyne.KeyEvent{Name: tt.key}, ModifierState{}) {
-				t.Fatal("OnTypedKey should handle fallback edit key")
+			if !handler.OnKeyActivated(&fyne.KeyEvent{Name: tt.key}, ModifierState{}) {
+				t.Fatal("OnKeyActivated should handle fallback edit key")
 			}
 			if got := tt.want(dialog); got != 1 {
 				t.Fatalf("handler count = %d, want 1", got)

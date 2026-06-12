@@ -19,15 +19,7 @@ func NewDeleteConfirmDialogKeyHandler(d DeleteConfirmDialogInterface) *DeleteCon
 
 func (h *DeleteConfirmDialogKeyHandler) GetName() string { return "DeleteConfirmDialog" }
 
-func (h *DeleteConfirmDialogKeyHandler) OnKeyDown(_ *fyne.KeyEvent, _ ModifierState) bool {
-	return false
-}
-
-func (h *DeleteConfirmDialogKeyHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool {
-	return false
-}
-
-func (h *DeleteConfirmDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState) bool {
+func (h *DeleteConfirmDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, _ ModifierState) bool {
 	switch ev.Name {
 	case fyne.KeyReturn:
 		h.dialog.ConfirmDelete()

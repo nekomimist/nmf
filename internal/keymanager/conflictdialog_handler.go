@@ -26,8 +26,8 @@ func NewConflictDialogKeyHandler(d ConflictDialogInterface) *ConflictDialogKeyHa
 // GetName returns the handler name.
 func (h *ConflictDialogKeyHandler) GetName() string { return "ConflictDialog" }
 
-// OnKeyDown handles desktop key events.
-func (h *ConflictDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+// OnKeyActivated handles key activations.
+func (h *ConflictDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	if modifiers.AltPressed {
 		switch ev.Name {
 		case fyne.KeyN:
@@ -47,21 +47,6 @@ func (h *ConflictDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers Modifi
 			return true
 		}
 	}
-	switch ev.Name {
-	case fyne.KeyEscape:
-		h.dialog.CancelJob()
-		return true
-	}
-	return false
-}
-
-// OnKeyUp handles key release events.
-func (h *ConflictDialogKeyHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool {
-	return false
-}
-
-// OnTypedKey handles special typed keys.
-func (h *ConflictDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState) bool {
 	switch ev.Name {
 	case fyne.KeyReturn, fyne.KeyEnter:
 		h.dialog.Continue()

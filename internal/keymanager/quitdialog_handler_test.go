@@ -22,7 +22,7 @@ func TestQuitConfirmDialogHandlerReturnUsesDefaultAction(t *testing.T) {
 	dialog := &fakeQuitDialog{}
 	handler := NewQuitConfirmDialogKeyHandler(dialog, func(string, ...interface{}) {})
 
-	if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{}) {
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{}) {
 		t.Fatal("Return should be handled")
 	}
 	if dialog.defaults != 1 {
@@ -37,7 +37,7 @@ func TestQuitConfirmDialogHandlerEnterUsesDefaultAction(t *testing.T) {
 	dialog := &fakeQuitDialog{}
 	handler := NewQuitConfirmDialogKeyHandler(dialog, func(string, ...interface{}) {})
 
-	if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyEnter}, ModifierState{}) {
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyEnter}, ModifierState{}) {
 		t.Fatal("Enter should be handled")
 	}
 	if dialog.defaults != 1 {
@@ -49,14 +49,14 @@ func TestQuitConfirmDialogHandlerExplicitChoices(t *testing.T) {
 	dialog := &fakeQuitDialog{}
 	handler := NewQuitConfirmDialogKeyHandler(dialog, func(string, ...interface{}) {})
 
-	if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyY}, ModifierState{}) {
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyY}, ModifierState{}) {
 		t.Fatal("Y should be handled")
 	}
 	if dialog.confirmed != 1 {
 		t.Fatalf("confirmed count = %d, want 1", dialog.confirmed)
 	}
 
-	if !handler.OnTypedKey(&fyne.KeyEvent{Name: fyne.KeyN}, ModifierState{}) {
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyN}, ModifierState{}) {
 		t.Fatal("N should be handled")
 	}
 	if dialog.cancelled != 1 {

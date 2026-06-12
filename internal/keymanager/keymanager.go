@@ -2,7 +2,6 @@ package keymanager
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 
@@ -17,16 +16,19 @@ type ModifierState struct {
 	AltPressed   bool
 }
 
-// KeyHandler defines the interface for handling keyboard events
+// None reports whether no modifier key is active.
+func (m ModifierState) None() bool {
+	return !m.ShiftPressed && !m.CtrlPressed && !m.AltPressed
+}
+
+// KeyHandler defines the interface for handling keyboard events.
+// Handlers only see key activations: TypedKey and TypedShortcut events,
+// including key repeats, merged into OnKeyActivated. Raw key down/up are
+// KeyManager-internal plumbing (modifier tracking, folded-shortcut
+// reconstruction, gate arming) and are never dispatched to handlers.
 type KeyHandler interface {
-	// OnKeyDown handles key press events
-	OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool // returns true if handled
-
-	// OnKeyUp handles key release events
-	OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool // returns true if handled
-
-	// OnTypedKey handles typed key events
-	OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool // returns true if handled
+	// OnKeyActivated handles a key activation (typed key or shortcut)
+	OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool // returns true if handled
 
 	// OnTypedRune handles text input runes
 	OnTypedRune(r rune, modifiers ModifierState) bool // returns true if handled
@@ -44,36 +46,58 @@ type handlerEntry struct {
 	handler KeyHandler
 }
 
-// KeyManager manages a stack of key handlers
+// KeyManager manages a stack of key handlers.
+//
+// Input gating model: activation events (typed keys, shortcuts, runes) are
+// delivered only while the gate is armed. The gate disarms on every input
+// owner change (handler push/remove, queued owner transition, focus change)
+// and re-arms on the next fresh non-modifier key down. Because key repeats
+// never produce key-down events, a key held across an owner change can never
+// fire into the new owner; the arming press itself is fully delivered since
+// its key-down precedes its typed events.
+//
+// Threading: event dispatch always happens on the Fyne main thread (driver
+// callbacks). The mutex exists because handler push/remove and owner
+// transitions may also be initiated from background goroutines (e.g. job
+// completion showing a message dialog); it guards the small transient state
+// only, never held across handler callbacks.
 type KeyManager struct {
-	handlers       []handlerEntry
-	nextToken      HandlerToken
-	modifierState  ModifierState
-	mutex          sync.RWMutex
-	debugPrint     func(format string, args ...interface{})
-	stackVersion   uint64
-	pressedKeys    map[fyne.KeyName]struct{}
-	pending        []pendingTransition
-	suppressTyped  map[fyne.KeyName]struct{}
-	suppressRune   bool
-	activeTypedKey fyne.KeyName
-}
-
-type pendingTransition struct {
-	label  string
-	action func()
+	handlers          []handlerEntry
+	nextToken         HandlerToken
+	modifierState     ModifierState
+	mutex             sync.RWMutex
+	debugPrint        func(format string, args ...interface{})
+	stackVersion      uint64 // counts stack changes; diagnostic only (DumpState)
+	lastKeyDown       fyne.KeyName
+	armed             bool
+	queuedTransitions int
+	queueOnMain       func(func())
 }
 
 // NewKeyManager creates a new KeyManager instance
 func NewKeyManager(debugPrint func(format string, args ...interface{})) *KeyManager {
 	return &KeyManager{
-		handlers:   make([]handlerEntry, 0),
-		debugPrint: debugPrint,
+		handlers:    make([]handlerEntry, 0),
+		debugPrint:  debugPrint,
+		queueOnMain: queueOnFyneMain,
 	}
 }
 
+// queueOnFyneMain schedules fn onto the next Fyne main-loop iteration, after
+// the current event batch (including the trailing TypedRune of the same key
+// press) has been processed. Without a running app (headless tests) it runs
+// fn synchronously.
+func queueOnFyneMain(fn func()) {
+	if fyne.CurrentApp() == nil {
+		fn()
+		return
+	}
+	fyne.Do(fn)
+}
+
 // PushHandler adds a new key handler to the top of the stack and returns a
-// token that removes exactly this entry via RemoveHandler.
+// token that removes exactly this entry via RemoveHandler. The input owner
+// changes, so the gate disarms until the next fresh key press.
 func (km *KeyManager) PushHandler(handler KeyHandler) HandlerToken {
 	km.mutex.Lock()
 	defer km.mutex.Unlock()
@@ -82,6 +106,7 @@ func (km *KeyManager) PushHandler(handler KeyHandler) HandlerToken {
 	token := km.nextToken
 	km.handlers = append(km.handlers, handlerEntry{token: token, handler: handler})
 	km.stackVersion++
+	km.armed = false
 	km.debugPrint("KeyManager: push %s token=%d stack=%d", handler.GetName(), token, len(km.handlers))
 	return token
 }
@@ -110,8 +135,9 @@ func (km *KeyManager) RemoveHandler(token HandlerToken) KeyHandler {
 	km.handlers = append(km.handlers[:idx], km.handlers[idx+1:]...)
 	km.stackVersion++
 	if wasTop {
-		// The active input owner changed; modifier state belongs to it.
+		// The active input owner changed; transient input state belongs to it.
 		km.modifierState = ModifierState{}
+		km.armed = false
 		km.debugPrint("KeyManager: remove %s token=%d stack=%d", entry.handler.GetName(), token, len(km.handlers))
 	} else {
 		km.debugPrint("KeyManager: WARNING out-of-order remove %s token=%d index=%d stack=%d", entry.handler.GetName(), token, idx, len(km.handlers))
@@ -131,16 +157,6 @@ func (km *KeyManager) GetCurrentHandler() KeyHandler {
 	return km.handlers[len(km.handlers)-1].handler
 }
 
-func (km *KeyManager) currentHandlerAndVersion() (KeyHandler, uint64) {
-	km.mutex.RLock()
-	defer km.mutex.RUnlock()
-
-	if len(km.handlers) == 0 {
-		return nil, km.stackVersion
-	}
-	return km.handlers[len(km.handlers)-1].handler, km.stackVersion
-}
-
 func normalizeDrainKey(name fyne.KeyName) fyne.KeyName {
 	switch name {
 	case fyne.KeyEnter:
@@ -150,135 +166,43 @@ func normalizeDrainKey(name fyne.KeyName) fyne.KeyName {
 	}
 }
 
-func (km *KeyManager) recordKeyDownLocked(ev *fyne.KeyEvent) {
-	if ev == nil || ev.Name == "" {
-		return
-	}
-	if km.pressedKeys == nil {
-		km.pressedKeys = make(map[fyne.KeyName]struct{})
-	}
-	keyName := normalizeDrainKey(ev.Name)
-	km.pressedKeys[keyName] = struct{}{}
-	km.suppressRune = false
-	if km.suppressTyped != nil {
-		delete(km.suppressTyped, keyName)
-		if len(km.suppressTyped) == 0 {
-			km.suppressTyped = nil
-		}
-	}
-}
-
-func (km *KeyManager) recordKeyUpLocked(ev *fyne.KeyEvent) {
-	if ev == nil || ev.Name == "" || km.pressedKeys == nil {
-		return
-	}
-	keyName := normalizeDrainKey(ev.Name)
-	if len(km.pending) > 0 {
-		if km.suppressTyped == nil {
-			km.suppressTyped = make(map[fyne.KeyName]struct{})
-		}
-		km.suppressTyped[keyName] = struct{}{}
-	}
-	delete(km.pressedKeys, keyName)
-	if len(km.pressedKeys) == 0 {
-		km.pressedKeys = nil
-	}
-}
-
-func (km *KeyManager) hasPendingTransitionLocked() bool {
-	return len(km.pending) > 0
-}
-
-func (km *KeyManager) flushPendingTransitionsLocked() []pendingTransition {
-	if len(km.pressedKeys) > 0 || len(km.pending) == 0 {
-		return nil
-	}
-	pending := km.pending
-	km.pending = nil
-	km.modifierState = ModifierState{}
-	km.suppressRune = true
-	return pending
-}
-
-func (km *KeyManager) shouldSuppressTypedKeyLocked(ev *fyne.KeyEvent) bool {
-	if ev == nil || ev.Name == "" || km.suppressTyped == nil {
-		return false
-	}
-	keyName := normalizeDrainKey(ev.Name)
-	if _, ok := km.suppressTyped[keyName]; !ok {
-		return false
-	}
-	delete(km.suppressTyped, keyName)
-	if len(km.suppressTyped) == 0 {
-		km.suppressTyped = nil
-	}
-	return true
-}
-
-func (km *KeyManager) shouldSuppressRuneLocked() bool {
-	if !km.suppressRune {
-		return false
-	}
-	km.suppressRune = false
-	return true
-}
-
-func (km *KeyManager) runPendingTransitions(pending []pendingTransition) {
-	for _, transition := range pending {
-		km.debugPrint("KeyManager: transition run label=%s", transition.label)
-		transition.action()
-	}
-}
-
-// ForceReleaseAllKeys clears tracked key state and runs pending transitions.
-func (km *KeyManager) ForceReleaseAllKeys(label string) {
-	km.mutex.Lock()
-	pressed := len(km.pressedKeys)
-	pendingCount := len(km.pending)
-	if pressed > 0 {
-		if km.suppressTyped == nil {
-			km.suppressTyped = make(map[fyne.KeyName]struct{})
-		}
-		for key := range km.pressedKeys {
-			km.suppressTyped[key] = struct{}{}
-		}
-	}
-	km.pressedKeys = nil
-	km.modifierState = ModifierState{}
-	km.activeTypedKey = ""
-	pendingTransitions := km.flushPendingTransitionsLocked()
-	km.mutex.Unlock()
-
-	km.debugPrint("KeyManager: force release label=%s pressed=%d pending=%d", label, pressed, pendingCount)
-	km.runPendingTransitions(pendingTransitions)
-}
-
-// DeferUntilKeysReleased runs action after all currently pressed keys are released.
-func (km *KeyManager) DeferUntilKeysReleased(label string, action func()) {
+// BeginOwnerTransition queues action onto the next Fyne main-loop iteration
+// and gates activation events until a fresh key press after it has run. Use
+// it for any action that changes the input owner (opening or closing a
+// dialog, moving window focus, entering an input mode): the remaining events
+// of the triggering key press are delivered to the old owner in the current
+// iteration, and held-key repeats can never fire into the new owner because
+// repeats do not produce key-down events. Events arriving while the
+// transition is queued are dropped, not queued.
+func (km *KeyManager) BeginOwnerTransition(label string, action func()) {
 	if action == nil {
 		return
 	}
-
 	km.mutex.Lock()
-	if len(km.pressedKeys) == 0 && km.activeTypedKey != "" {
-		if km.pressedKeys == nil {
-			km.pressedKeys = make(map[fyne.KeyName]struct{})
-		}
-		km.pressedKeys[km.activeTypedKey] = struct{}{}
-	}
-	if len(km.pressedKeys) == 0 {
-		km.modifierState = ModifierState{}
-		km.mutex.Unlock()
+	km.queuedTransitions++
+	km.mutex.Unlock()
+	km.debugPrint("KeyManager: transition queued label=%s", label)
+
+	km.queueOnMain(func() {
 		km.debugPrint("KeyManager: transition run label=%s", label)
 		action()
-		return
-	}
+		km.mutex.Lock()
+		km.queuedTransitions--
+		km.armed = false
+		km.mutex.Unlock()
+	})
+}
 
-	km.pending = append(km.pending, pendingTransition{label: label, action: action})
-	pressed := len(km.pressedKeys)
+// ResetTransientState clears per-press input state (modifiers, gate arming,
+// folded-shortcut reconstruction). Called on focus changes so that state from
+// before a focus loss can never leak into the new focus owner.
+func (km *KeyManager) ResetTransientState(label string) {
+	km.mutex.Lock()
+	km.modifierState = ModifierState{}
+	km.lastKeyDown = ""
+	km.armed = false
 	km.mutex.Unlock()
-
-	km.debugPrint("KeyManager: transition defer label=%s pressed=%d", label, pressed)
+	km.debugPrint("KeyManager: transient state reset label=%s", label)
 }
 
 // updateModifierState updates the modifier key state based on key events
@@ -307,177 +231,137 @@ func (km *KeyManager) GetModifierState() ModifierState {
 	return km.modifierState
 }
 
-// HandleKeyDown routes key down events to the current top handler
+// HandleKeyDown records key press plumbing state: modifier tracking, the key
+// behind folded standard shortcuts, and gate arming. A fresh non-modifier
+// press arms the gate (unless an owner transition is still queued), so the
+// same press's typed events are delivered. It never dispatches to handlers.
 func (km *KeyManager) HandleKeyDown(ev *fyne.KeyEvent) {
 	km.mutex.Lock()
-	// Update modifier state first
 	modifierHandled := km.updateModifierState(ev, true)
-	km.recordKeyDownLocked(ev)
-	modifiers := km.modifierState
-	pending := km.hasPendingTransitionLocked()
+	armedNow := false
+	if !modifierHandled && ev != nil && ev.Name != "" {
+		// Remembered to reconstruct the physical key behind folded standard
+		// shortcuts (e.g. Ctrl+Insert vs Ctrl+C both arrive as ShortcutCopy).
+		km.lastKeyDown = normalizeDrainKey(ev.Name)
+		if km.queuedTransitions == 0 && !km.armed {
+			km.armed = true
+			armedNow = true
+		}
+	}
 	km.mutex.Unlock()
 
-	if pending {
-		km.debugPrint("KeyManager: KeyDown gated key=%s mod=%t", ev.Name, modifierHandled)
-		return
-	}
-
-	currentHandler, _ := km.currentHandlerAndVersion()
-
-	if currentHandler != nil {
-		handled := currentHandler.OnKeyDown(ev, modifiers)
-		km.debugPrint("KeyManager: KeyDown %s handled=%t mod=%t", currentHandler.GetName(), handled, modifierHandled)
-	} else {
-		km.debugPrint("KeyManager: KeyDown no handler")
-	}
+	km.debugPrint("KeyManager: KeyDown recorded key=%s mod=%t armed=%t", ev.Name, modifierHandled, armedNow)
 }
 
-// HandleKeyUp routes key up events to the current top handler
+// HandleKeyUp records modifier key releases. It never dispatches to handlers.
 func (km *KeyManager) HandleKeyUp(ev *fyne.KeyEvent) {
 	km.mutex.Lock()
-	// Update modifier state first
 	modifierHandled := km.updateModifierState(ev, false)
-	km.recordKeyUpLocked(ev)
-	modifiers := km.modifierState
-	pending := km.hasPendingTransitionLocked()
-	pendingTransitions := km.flushPendingTransitionsLocked()
 	km.mutex.Unlock()
 
-	if pending {
-		km.debugPrint("KeyManager: KeyUp gated key=%s mod=%t", ev.Name, modifierHandled)
-		km.runPendingTransitions(pendingTransitions)
-		return
-	}
+	km.debugPrint("KeyManager: KeyUp recorded key=%s mod=%t", ev.Name, modifierHandled)
+}
 
-	currentHandler, _ := km.currentHandlerAndVersion()
-
-	if currentHandler != nil {
-		handled := currentHandler.OnKeyUp(ev, modifiers)
-		km.debugPrint("KeyManager: KeyUp %s handled=%t mod=%t", currentHandler.GetName(), handled, modifierHandled)
-	} else {
-		km.debugPrint("KeyManager: KeyUp no handler")
-	}
+func (km *KeyManager) gateOpen() (bool, ModifierState) {
+	km.mutex.RLock()
+	defer km.mutex.RUnlock()
+	return km.armed && km.queuedTransitions == 0, km.modifierState
 }
 
 // HandleTypedKey routes typed key events to the current top handler
 func (km *KeyManager) HandleTypedKey(ev *fyne.KeyEvent) {
-	km.mutex.Lock()
-	suppressed := km.shouldSuppressTypedKeyLocked(ev)
-	if suppressed {
-		km.mutex.Unlock()
-		km.debugPrint("KeyManager: TypedKey suppressed key=%s", ev.Name)
-		return
-	}
-	pending := km.hasPendingTransitionLocked()
-	modifiers := km.modifierState
-	var active fyne.KeyName
-	if ev != nil {
-		active = normalizeDrainKey(ev.Name)
-		km.activeTypedKey = active
-	}
-	km.mutex.Unlock()
-
-	if pending {
+	open, modifiers := km.gateOpen()
+	if !open {
 		km.debugPrint("KeyManager: TypedKey gated key=%s", ev.Name)
-		km.clearActiveTypedKey(active)
 		return
 	}
+	km.handleKeyActivated(ev, modifiers)
+}
 
-	handled := km.handleTypedKey(ev, modifiers)
-	if handled {
-		km.clearPressedKeyWithoutPending(active)
+// HandleShortcut routes any Fyne shortcut to the current handler as a
+// shortcut-style key event. Fyne's GLFW driver folds some physical
+// combinations into standard shortcuts before they can reach TypedKey
+// (Ctrl+C/X/V/A/Z/Y/Insert and Shift+Insert/Delete); the original key is
+// reconstructed from the most recent non-modifier key down of the same press.
+func (km *KeyManager) HandleShortcut(shortcut fyne.Shortcut) {
+	ev, modifiers, ok := km.normalizeShortcut(shortcut)
+	if !ok {
+		km.debugPrint("KeyManager: Shortcut ignored name=%s", shortcut.ShortcutName())
+		return
 	}
-	km.clearActiveTypedKey(active)
+	km.HandleShortcutKey(ev, modifiers)
+}
+
+func (km *KeyManager) normalizeShortcut(shortcut fyne.Shortcut) (*fyne.KeyEvent, ModifierState, bool) {
+	if custom, ok := shortcut.(*desktop.CustomShortcut); ok {
+		return &fyne.KeyEvent{Name: custom.KeyName}, ModifierState{
+			ShiftPressed: custom.Modifier&fyne.KeyModifierShift != 0,
+			CtrlPressed:  custom.Modifier&fyne.KeyModifierControl != 0,
+			AltPressed:   custom.Modifier&fyne.KeyModifierAlt != 0,
+		}, true
+	}
+
+	km.mutex.RLock()
+	lastKeyDown := km.lastKeyDown
+	km.mutex.RUnlock()
+
+	switch shortcut.(type) {
+	case *fyne.ShortcutCopy:
+		if lastKeyDown == fyne.KeyInsert {
+			return &fyne.KeyEvent{Name: fyne.KeyInsert}, ModifierState{CtrlPressed: true}, true
+		}
+		return &fyne.KeyEvent{Name: fyne.KeyC}, ModifierState{CtrlPressed: true}, true
+	case *fyne.ShortcutCut:
+		if lastKeyDown == fyne.KeyDelete {
+			return &fyne.KeyEvent{Name: fyne.KeyDelete}, ModifierState{ShiftPressed: true}, true
+		}
+		return &fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{CtrlPressed: true}, true
+	case *fyne.ShortcutPaste:
+		if lastKeyDown == fyne.KeyInsert {
+			return &fyne.KeyEvent{Name: fyne.KeyInsert}, ModifierState{ShiftPressed: true}, true
+		}
+		return &fyne.KeyEvent{Name: fyne.KeyV}, ModifierState{CtrlPressed: true}, true
+	case *fyne.ShortcutSelectAll:
+		return &fyne.KeyEvent{Name: fyne.KeyA}, ModifierState{CtrlPressed: true}, true
+	case *fyne.ShortcutUndo:
+		return &fyne.KeyEvent{Name: fyne.KeyZ}, ModifierState{CtrlPressed: true}, true
+	case *fyne.ShortcutRedo:
+		return &fyne.KeyEvent{Name: fyne.KeyY}, ModifierState{CtrlPressed: true}, true
+	}
+	return nil, ModifierState{}, false
 }
 
 // HandleShortcutKey routes a shortcut-style key event to the current handler.
+// Modifiers come from the shortcut event itself, not from tracked state.
 func (km *KeyManager) HandleShortcutKey(ev *fyne.KeyEvent, modifiers ModifierState) {
-	km.mutex.Lock()
-	suppressed := km.shouldSuppressTypedKeyLocked(ev)
-	if suppressed {
-		km.mutex.Unlock()
-		km.debugPrint("KeyManager: ShortcutKey suppressed key=%s", ev.Name)
-		return
-	}
-	pending := km.hasPendingTransitionLocked()
-	var active fyne.KeyName
-	if ev != nil {
-		active = normalizeDrainKey(ev.Name)
-		km.activeTypedKey = active
-	}
-	km.mutex.Unlock()
-
-	if pending {
+	open, _ := km.gateOpen()
+	if !open {
 		km.debugPrint("KeyManager: ShortcutKey gated key=%s", ev.Name)
-		km.clearActiveTypedKey(active)
 		return
 	}
-
-	handled := km.handleTypedKey(ev, modifiers)
-	if handled {
-		km.clearPressedKeyWithoutPending(active)
-	}
-	km.clearActiveTypedKey(active)
+	km.handleKeyActivated(ev, modifiers)
 }
 
-func (km *KeyManager) clearPressedKeyWithoutPending(key fyne.KeyName) {
-	if key == "" {
-		return
-	}
-	km.mutex.Lock()
-	if len(km.pending) == 0 && km.pressedKeys != nil {
-		delete(km.pressedKeys, key)
-		if len(km.pressedKeys) == 0 {
-			km.pressedKeys = nil
-		}
-	}
-	km.mutex.Unlock()
-}
-
-func (km *KeyManager) clearActiveTypedKey(key fyne.KeyName) {
-	if key == "" {
-		return
-	}
-	km.mutex.Lock()
-	if km.activeTypedKey == key {
-		km.activeTypedKey = ""
-	}
-	km.mutex.Unlock()
-}
-
-func (km *KeyManager) handleTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	currentHandler, _ := km.currentHandlerAndVersion()
+func (km *KeyManager) handleKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) {
+	currentHandler := km.GetCurrentHandler()
 
 	if currentHandler != nil {
-		handled := currentHandler.OnTypedKey(ev, modifiers)
-		km.debugPrint("KeyManager: TypedKey %s handled=%t", currentHandler.GetName(), handled)
-		return handled
+		handled := currentHandler.OnKeyActivated(ev, modifiers)
+		km.debugPrint("KeyManager: KeyActivated %s handled=%t", currentHandler.GetName(), handled)
+		return
 	}
-	km.debugPrint("KeyManager: TypedKey no handler")
-	return false
+	km.debugPrint("KeyManager: KeyActivated no handler")
 }
 
 // HandleTypedRune routes typed rune events to the current top handler
 func (km *KeyManager) HandleTypedRune(r rune) {
-	km.mutex.Lock()
-	pending := km.hasPendingTransitionLocked()
-	suppressed := km.shouldSuppressRuneLocked()
-	modifiers := km.modifierState
-	var currentHandler KeyHandler
-	if len(km.handlers) > 0 {
-		currentHandler = km.handlers[len(km.handlers)-1].handler
-	}
-	km.mutex.Unlock()
-
-	if suppressed {
-		km.debugPrint("KeyManager: TypedRune suppressed rune=%q", r)
-		return
-	}
-	if pending {
+	open, modifiers := km.gateOpen()
+	if !open {
 		km.debugPrint("KeyManager: TypedRune gated rune=%q", r)
 		return
 	}
 
+	currentHandler := km.GetCurrentHandler()
 	if currentHandler != nil {
 		handled := currentHandler.OnTypedRune(r, modifiers)
 		km.debugPrint("KeyManager: TypedRune %s handled=%t", currentHandler.GetName(), handled)
@@ -516,34 +400,16 @@ func (km *KeyManager) DumpState() string {
 	for i, entry := range km.handlers {
 		handlers[i] = entry.handler.GetName()
 	}
-	pending := make([]string, len(km.pending))
-	for i, transition := range km.pending {
-		pending[i] = transition.label
-	}
 
 	lines := []string{
 		fmt.Sprintf("stackVersion=%d", km.stackVersion),
 		fmt.Sprintf("handlers=%s", formatStateList(handlers)),
 		fmt.Sprintf("modifiers=shift:%t ctrl:%t alt:%t", km.modifierState.ShiftPressed, km.modifierState.CtrlPressed, km.modifierState.AltPressed),
-		fmt.Sprintf("pressedKeys=%s", formatKeySet(km.pressedKeys)),
-		fmt.Sprintf("pendingTransitions=%s", formatStateList(pending)),
-		fmt.Sprintf("suppressTyped=%s", formatKeySet(km.suppressTyped)),
-		fmt.Sprintf("suppressRune=%t", km.suppressRune),
-		fmt.Sprintf("activeTypedKey=%s", km.activeTypedKey),
+		fmt.Sprintf("armed=%t", km.armed),
+		fmt.Sprintf("queuedTransitions=%d", km.queuedTransitions),
+		fmt.Sprintf("lastKeyDown=%s", km.lastKeyDown),
 	}
 	return strings.Join(lines, "\n")
-}
-
-func formatKeySet(keys map[fyne.KeyName]struct{}) string {
-	if len(keys) == 0 {
-		return "[]"
-	}
-	names := make([]string, 0, len(keys))
-	for key := range keys {
-		names = append(names, string(key))
-	}
-	sort.Strings(names)
-	return formatStateList(names)
 }
 
 func formatStateList(values []string) string {

@@ -55,7 +55,7 @@ func (ish *IncrementalSearchKeyHandler) SetTransitionGate(deferTransition func(l
 	ish.deferTransition = deferTransition
 }
 
-func (ish *IncrementalSearchKeyHandler) deferUntilKeysReleased(label string, action func()) {
+func (ish *IncrementalSearchKeyHandler) beginTransition(label string, action func()) {
 	if ish.deferTransition != nil {
 		ish.deferTransition(label, action)
 		return
@@ -64,14 +64,14 @@ func (ish *IncrementalSearchKeyHandler) deferUntilKeysReleased(label string, act
 }
 
 func (ish *IncrementalSearchKeyHandler) cancelSearch() {
-	ish.deferUntilKeysReleased("search.cancel", func() {
+	ish.beginTransition("search.cancel", func() {
 		ish.searchInterface.HideIncrementalSearchOverlay()
 	})
 }
 
 func (ish *IncrementalSearchKeyHandler) acceptCurrentMatch() {
 	currentMatch := ish.searchInterface.GetCurrentSearchMatch()
-	ish.deferUntilKeysReleased("search.accept", func() {
+	ish.beginTransition("search.accept", func() {
 		if currentMatch != nil {
 			ish.searchInterface.SetCursorToFile(currentMatch)
 		}
@@ -79,11 +79,17 @@ func (ish *IncrementalSearchKeyHandler) acceptCurrentMatch() {
 	})
 }
 
-// OnKeyDown handles key press events during incremental search
-func (ish *IncrementalSearchKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	ish.debugPrint("IncrementalSearchKeyHandler: OnKeyDown %v", ev.Name)
+// OnKeyActivated handles key activations during incremental search
+func (ish *IncrementalSearchKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+	ish.debugPrint("IncrementalSearchKeyHandler: OnKeyActivated %v", ev.Name)
 
 	switch ev.Name {
+	case fyne.KeyH:
+		if modifiers.CtrlPressed {
+			ish.searchInterface.RemoveLastSearchCharacter()
+			return true
+		}
+
 	case fyne.KeyEscape:
 		// Exit search mode
 		ish.cancelSearch()
@@ -123,44 +129,9 @@ func (ish *IncrementalSearchKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers M
 			ish.searchInterface.NextSearchMatch()
 		}
 		return true
-
-	default:
-		// Let OnTypedRune handle character input
-		return false
 	}
-}
 
-// OnKeyUp handles key release events during incremental search
-func (ish *IncrementalSearchKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	// We don't need to handle key up events for incremental search
-	return false
-}
-
-// OnTypedKey handles special key events during incremental search
-func (ish *IncrementalSearchKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	ish.debugPrint("IncrementalSearchKeyHandler: OnTypedKey %v", ev.Name)
-
-	switch ev.Name {
-	case fyne.KeyH:
-		if modifiers.CtrlPressed {
-			ish.searchInterface.RemoveLastSearchCharacter()
-			return true
-		}
-
-	case fyne.KeyEscape:
-		// Exit search mode
-		ish.cancelSearch()
-		return true
-
-	case fyne.KeyReturn, fyne.KeyEnter:
-		// Select current match and exit search mode
-		ish.acceptCurrentMatch()
-		return true
-
-	default:
-		// Let other events pass through
-		return false
-	}
+	// Let OnTypedRune handle character input
 	return false
 }
 

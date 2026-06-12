@@ -13,20 +13,6 @@
 
 ## 優先度低めのもの
 
-## KeyManagerまわりの小さめの設計改善
-- `shouldDeferCommand`のハードコードswitch(`mainscreen_handler.go`)をコマンド定義側の属性
-  (`TransitionsInput bool`のような)へ移したい。コマンド追加時に登録を忘れると
-  stuck-keyバグが再発する構造になっている。
-- `stackVersion`は加算されているが、`currentHandlerAndVersion`の戻り値は全呼び出し元で捨てられている。
-  不変条件チェックとして使うか、消すか決めたい。
-- `pressedKeys`/`pending`/`suppressTyped`/`suppressRune`/`activeTypedKey`の5状態は
-  いずれも「画面遷移時のキーイベント漏れ」への個別対症療法。
-  「ゲート中のイベントはキューせず破棄する」等の仕様を明文化しつつ、状態を整理できないか検討したい。
-- handler取得(RLock内)→呼び出し(ロック外)のTOCTOUがある。
-  全部UIスレッドで呼ばれるならmutex自体が過剰。スレッディング前提を決めて片方に寄せたい。
-- modifier状態は観測したKeyDown/KeyUp頼みのため、修飾キー押下中のフォーカスロストで状態が残留しうる。
-  `ForceReleaseAllKeys`がウィンドウのフォーカスロスト時に確実に呼ばれる配線か確認したい。
-
 ## ダイアログ系KeyHandlerの共通化
 - keymanagerパッケージにdialog毎のhandlerが16ファイルあり、
   Esc=cancel / Enter=accept / ↑↓=移動 のパターンがほぼ重複している。
@@ -44,20 +30,6 @@
 - `jobs_window_controller.go`のパッケージグローバル`jobsWindow`だけシングルトンで、
   他のインスタンス指向な作りと不揃い。テスタビリティの穴にもなっている。
 
-## KeyDown/KeyUp系キーバインドのrepeat適性を棚卸ししたい
-- Fyne/GLFWではキーリピートがKeyDownではなくTypedKey/TypedShortcut側へ流れる。
-- repeatしてほしい操作はtyped/TypedShortcutへ寄せ、長押しで増殖して困る操作はdown/upに残す。
-- Fyneのイベント順は概ね KeyDown -> TypedKey/TypedShortcut -> TypedRune -> KeyUp。
-  KeyDown/KeyUpを全廃してTyped系へ完全移行するには、現行の`KeyName + modifier` bindingを
-  TypedRune/TypedKey/TypedShortcutのどれで解決するか分類する必要がある。
-- 文字キーをTypedKeyで即実行すると、同じ打鍵由来のTypedRuneが後から新しいdialogへ漏れる可能性がある。
-  完全移行するなら、文字系bindingは「TypedKeyで候補を記録し、続くTypedRuneで確定する」ような
-  pending/commit方式が必要になりそう。
-- Ctrl/Alt系はTypedShortcutへ寄せられるが、Fyne組み込みのShortcutCopy/SelectAll/Cut/Paste等に
-  畳まれる組み合わせがあり、`Ctrl+C`と`Ctrl+Insert`のように区別できないケースがある。
-- 以上から、大規模なKeyDown/KeyUp全廃は複雑さの置き場所が変わるだけの可能性が高い。
-  当面は全移行ではなく、repeatが必要な操作だけtyped/TypedShortcutへ寄せる方針が費用対効果よさそう。
-
 ## ファイルコピーの高速化を検討したい
 - 現状のCopy/Moveは進捗表示のために、汎用的なread -> writeループでコピーしている。
 - Linuxでは`os.File.ReadFrom`経由で`copy_file_range`/`splice`を使える可能性があり、
@@ -68,6 +40,17 @@
 - 進捗表示は必須。高速化案はチャンク単位などで現在ファイルの進捗を維持できることを条件にする。
 
 # DONE 以下は一応終わったもの
+## キー入力処理の再設計 (KeyDown/KeyUp発火の廃止)
+- 設計・検証記録・移行ステップは [todo-keyboard.md](todo-keyboard.md) を参照。
+- バインドの発火をTypedKey/TypedShortcut(活性化イベント)へ一本化し、
+  KeyDown/KeyUpはKeyManager内部配管(modifier追跡・畳み込みShortcut逆引き・
+  arm-gateのarm)へ格下げした。configの`event`(down/up/typed)は廃止(警告+無視)。
+- 抑止5点セットと`DeferUntilKeysReleased`/`ForceReleaseAllKeys`を、
+  arm-gate(armed+queuedTransitions)と次tick遷移(`BeginOwnerTransition`)に置換。
+- 旧todo「KeyManagerまわりの小さめの設計改善」(shouldDeferCommand属性化、
+  stackVersion整理、5状態整理、mutex方針、modifier残留)と
+  「KeyDown/KeyUp系キーバインドのrepeat適性を棚卸ししたい」はこれで決着。
+
 ## KeyDown/KeyUpの二重配送経路を整理したい
 - Fyne v2.7.3のGLFW driver(`internal/driver/glfw/window.go`)を確認した結果、
   キーイベントの配送は排他だった: フォーカスがあれば focused object のみ、

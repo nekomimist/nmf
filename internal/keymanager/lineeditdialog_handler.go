@@ -35,8 +35,8 @@ func NewLineEditDialogKeyHandler(d LineEditDialogInterface) *LineEditDialogKeyHa
 // GetName returns the handler name.
 func (h *LineEditDialogKeyHandler) GetName() string { return "LineEditDialog" }
 
-// OnKeyDown handles desktop key events.
-func (h *LineEditDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+// OnKeyActivated handles key activations.
+func (h *LineEditDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	if modifiers.CtrlPressed {
 		switch ev.Name {
 		case fyne.KeyA:
@@ -70,21 +70,6 @@ func (h *LineEditDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers Modifi
 	}
 
 	switch ev.Name {
-	case fyne.KeyEscape:
-		h.dialog.CancelDialog()
-		return true
-	}
-	return false
-}
-
-// OnKeyUp handles key release events.
-func (h *LineEditDialogKeyHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool {
-	return false
-}
-
-// OnTypedKey handles special typed keys.
-func (h *LineEditDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState) bool {
-	switch ev.Name {
 	case fyne.KeyReturn, fyne.KeyEnter:
 		h.dialog.AcceptEdit()
 		return true
@@ -95,6 +80,10 @@ func (h *LineEditDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, _ ModifierState
 		h.dialog.DeleteBeforeCursor()
 		return true
 	case fyne.KeyDelete:
+		// Plain Delete only: Shift+Delete arrives here as a folded Cut shortcut.
+		if !modifiers.None() {
+			return false
+		}
 		h.dialog.DeleteAtCursor()
 		return true
 	case fyne.KeyLeft:

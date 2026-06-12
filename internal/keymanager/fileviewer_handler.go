@@ -32,7 +32,7 @@ func NewFileViewerKeyHandler(viewer FileViewerInterface) *FileViewerKeyHandler {
 
 func (h *FileViewerKeyHandler) GetName() string { return "FileViewer" }
 
-func (h *FileViewerKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+func (h *FileViewerKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	if ev == nil {
 		return false
 	}
@@ -57,21 +57,6 @@ func (h *FileViewerKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierSt
 		h.viewer.ViewerHome()
 	case fyne.KeyEnd:
 		h.viewer.ViewerEnd()
-	default:
-		return false
-	}
-	return true
-}
-
-func (h *FileViewerKeyHandler) OnKeyUp(_ *fyne.KeyEvent, _ ModifierState) bool {
-	return false
-}
-
-func (h *FileViewerKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	if ev == nil {
-		return false
-	}
-	switch ev.Name {
 	case fyne.KeyEscape:
 		h.viewer.CloseViewer()
 	case fyne.KeySpace:

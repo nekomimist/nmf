@@ -42,19 +42,9 @@ func (h *DirectoryJumpDialogKeyHandler) GetName() string {
 	return "DirectoryJumpDialog"
 }
 
-// OnKeyDown handles key press events.
-func (h *DirectoryJumpDialogKeyHandler) OnKeyDown(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	return false
-}
-
-// OnKeyUp handles key release events.
-func (h *DirectoryJumpDialogKeyHandler) OnKeyUp(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	return false
-}
-
-// OnTypedKey handles non-text keys.
-func (h *DirectoryJumpDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	h.debugPrint("DirectoryJumpDialog: OnTypedKey %s", ev.Name)
+// OnKeyActivated handles key activations.
+func (h *DirectoryJumpDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+	h.debugPrint("DirectoryJumpDialog: OnKeyActivated %s", ev.Name)
 
 	switch ev.Name {
 	case fyne.KeyH:
@@ -90,6 +80,10 @@ func (h *DirectoryJumpDialogKeyHandler) OnTypedKey(ev *fyne.KeyEvent, modifiers 
 		h.dialog.BackspaceSearch()
 		return true
 	case fyne.KeyDelete:
+		// Plain Delete only: Shift+Delete arrives here as a folded Cut shortcut.
+		if !modifiers.None() {
+			return false
+		}
 		h.dialog.ClearSearch()
 		return true
 	case fyne.KeyTab:

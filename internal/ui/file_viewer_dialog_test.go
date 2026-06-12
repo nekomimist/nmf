@@ -460,6 +460,7 @@ func TestFileViewerDialogTextGridCtrlCCopiesThroughKeyManager(t *testing.T) {
 	}
 	d.textGrid.KeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
 	d.textGrid.KeyDown(&fyne.KeyEvent{Name: fyne.KeyC})
+	d.textGrid.TypedShortcut(&fyne.ShortcutCopy{})
 
 	if got := app.Clipboard().Content(); got != "bcd" {
 		t.Fatalf("clipboard = %q, want %q", got, "bcd")
@@ -605,13 +606,11 @@ func TestFileViewerDialogSlashFocusesSearchAfterKeyRelease(t *testing.T) {
 
 	d.textGrid.KeyDown(&fyne.KeyEvent{Name: fyne.KeySlash})
 	d.textGrid.TypedKey(&fyne.KeyEvent{Name: fyne.KeySlash})
-	if w.Canvas().Focused() == d.search {
-		t.Fatal("search focused before slash key release")
-	}
 
-	d.textGrid.KeyUp(&fyne.KeyEvent{Name: fyne.KeySlash})
+	// The focus transition is queued; under the test driver the queue runs
+	// synchronously, standing in for the next main-loop iteration.
 	if w.Canvas().Focused() != d.search {
-		t.Fatal("search not focused after slash key release")
+		t.Fatal("search not focused after slash activation")
 	}
 	if d.search.Text != "" {
 		t.Fatalf("search text = %q, want empty after slash command", d.search.Text)
@@ -636,13 +635,11 @@ func TestFileViewerDialogColonFocusesLineAfterKeyRelease(t *testing.T) {
 
 	d.textGrid.KeyDown(&fyne.KeyEvent{Name: fyne.KeySemicolon})
 	d.textGrid.TypedRune(':')
-	if w.Canvas().Focused() == d.jump {
-		t.Fatal("line entry focused before colon key release")
-	}
 
-	d.textGrid.KeyUp(&fyne.KeyEvent{Name: fyne.KeySemicolon})
+	// The focus transition is queued; under the test driver the queue runs
+	// synchronously, standing in for the next main-loop iteration.
 	if w.Canvas().Focused() != d.jump {
-		t.Fatal("line entry not focused after colon key release")
+		t.Fatal("line entry not focused after colon activation")
 	}
 	if d.jump.Text != "" {
 		t.Fatalf("line text = %q, want empty after colon command", d.jump.Text)

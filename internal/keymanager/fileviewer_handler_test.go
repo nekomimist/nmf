@@ -62,14 +62,14 @@ func TestFileViewerHandlerCtrlCCopiesSelection(t *testing.T) {
 	viewer := &fakeFileViewer{}
 	handler := NewFileViewerKeyHandler(viewer)
 
-	if !handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyC}, ModifierState{CtrlPressed: true}) {
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyC}, ModifierState{CtrlPressed: true}) {
 		t.Fatal("Ctrl+C should be handled")
 	}
 	if viewer.copy != 1 {
 		t.Fatalf("copy calls = %d, want 1", viewer.copy)
 	}
-	if handler.OnKeyDown(&fyne.KeyEvent{Name: fyne.KeyC}, ModifierState{}) {
-		t.Fatal("plain C should not be handled by OnKeyDown")
+	if handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyC}, ModifierState{}) {
+		t.Fatal("plain C should not be handled as an activation")
 	}
 }
 
@@ -87,7 +87,7 @@ func TestFileViewerHandlerNavigationKeys(t *testing.T) {
 		fyne.KeyHome,
 		fyne.KeyEnd,
 	} {
-		if !handler.OnKeyDown(&fyne.KeyEvent{Name: key}, ModifierState{}) {
+		if !handler.OnKeyActivated(&fyne.KeyEvent{Name: key}, ModifierState{}) {
 			t.Fatalf("key %s should be handled", key)
 		}
 	}

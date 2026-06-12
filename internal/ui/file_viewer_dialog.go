@@ -578,7 +578,7 @@ func (d *FileViewerDialog) ViewerFocusSearch() {
 
 func (d *FileViewerDialog) deferViewerFocus(label string, focus func()) {
 	if d.km != nil {
-		d.km.DeferUntilKeysReleased(label, focus)
+		d.km.BeginOwnerTransition(label, focus)
 		return
 	}
 	focus()

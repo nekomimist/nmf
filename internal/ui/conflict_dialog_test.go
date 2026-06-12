@@ -16,21 +16,20 @@ import (
 	customtheme "nmf/internal/theme"
 )
 
-type conflictEntryTestHandler struct{}
+type conflictEntryTestHandler struct {
+	keys []fyne.KeyName
+	mods []keymanager.ModifierState
+}
 
-func (conflictEntryTestHandler) OnKeyDown(_ *fyne.KeyEvent, _ keymanager.ModifierState) bool {
+func (h *conflictEntryTestHandler) OnKeyActivated(ev *fyne.KeyEvent, mods keymanager.ModifierState) bool {
+	h.keys = append(h.keys, ev.Name)
+	h.mods = append(h.mods, mods)
+	return true
+}
+func (h *conflictEntryTestHandler) OnTypedRune(_ rune, _ keymanager.ModifierState) bool {
 	return false
 }
-func (conflictEntryTestHandler) OnKeyUp(_ *fyne.KeyEvent, _ keymanager.ModifierState) bool {
-	return false
-}
-func (conflictEntryTestHandler) OnTypedKey(_ *fyne.KeyEvent, _ keymanager.ModifierState) bool {
-	return false
-}
-func (conflictEntryTestHandler) OnTypedRune(_ rune, _ keymanager.ModifierState) bool {
-	return false
-}
-func (conflictEntryTestHandler) GetName() string { return "test" }
+func (h *conflictEntryTestHandler) GetName() string { return "test" }
 
 func TestConflictDialogSelectOverwriteUsesExactOption(t *testing.T) {
 	dialog := &ConflictDialog{}
@@ -72,24 +71,34 @@ func TestConflictDialogChoiceRequiresSelection(t *testing.T) {
 	}
 }
 
-func TestConflictNameEntryKeyUpClearsShortcutKeys(t *testing.T) {
+func TestConflictNameEntryForwardsAltShortcutsToKeyManager(t *testing.T) {
 	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
-	km.PushHandler(conflictEntryTestHandler{})
+	handler := &conflictEntryTestHandler{}
+	km.PushHandler(handler)
 	entry := newConflictNameEntry(km, nil)
 
-	km.HandleKeyDown(&fyne.KeyEvent{Name: desktop.KeyAltLeft})
-	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyR})
+	entry.KeyDown(&fyne.KeyEvent{Name: desktop.KeyAltLeft}) // modifier: tracked, does not arm
+	entry.KeyDown(&fyne.KeyEvent{Name: fyne.KeyN})          // fresh press arms the gate
+	entry.TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyN, Modifier: fyne.KeyModifierAlt})
 
-	entry.KeyUp(&fyne.KeyEvent{Name: fyne.KeyR})
-	entry.KeyUp(&fyne.KeyEvent{Name: desktop.KeyAltLeft})
+	if len(handler.keys) != 1 || handler.keys[0] != fyne.KeyN {
+		t.Fatalf("forwarded keys = %v, want [N]", handler.keys)
+	}
+	if !handler.mods[0].AltPressed {
+		t.Fatalf("forwarded mods = %+v, want AltPressed", handler.mods[0])
+	}
+}
 
-	closed := false
-	km.DeferUntilKeysReleased("test.close", func() {
-		closed = true
-	})
+func TestConflictNameEntryKeepsNonAltShortcuts(t *testing.T) {
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	handler := &conflictEntryTestHandler{}
+	km.PushHandler(handler)
+	entry := newConflictNameEntry(km, nil)
 
-	if !closed {
-		t.Fatal("deferred close should run after focused entry releases Alt+R")
+	entry.TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyL, Modifier: fyne.KeyModifierControl})
+
+	if len(handler.keys) != 0 {
+		t.Fatalf("non-Alt shortcut should stay with the entry, got %v", handler.keys)
 	}
 }
 
