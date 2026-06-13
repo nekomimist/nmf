@@ -598,16 +598,30 @@ func (rt *Runtime) builtinCopy(_ *starlark.Thread, fn *starlark.Builtin, args st
 func (rt *Runtime) builtinViewer(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	maxWidth := rt.cfg.UI.Viewer.MaxWidth
 	maxHeight := rt.cfg.UI.Viewer.MaxHeight
-	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "max_width?", &maxWidth, "max_height?", &maxHeight); err != nil {
+	defaultPane := rt.cfg.UI.Viewer.DefaultPane
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "max_width?", &maxWidth, "max_height?", &maxHeight, "default_pane?", &defaultPane); err != nil {
 		return nil, err
 	}
 	if maxWidth < 0 || maxHeight < 0 {
 		return nil, fmt.Errorf("viewer max_width and max_height must be zero or positive")
 	}
+	if defaultPane = normalizeViewerDefaultPane(defaultPane); defaultPane == "" {
+		return nil, fmt.Errorf("viewer default_pane must be one of auto, text, markdown, or hex")
+	}
 	rt.cfg.UI.Viewer.MaxWidth = maxWidth
 	rt.cfg.UI.Viewer.MaxHeight = maxHeight
+	rt.cfg.UI.Viewer.DefaultPane = defaultPane
 	rt.saveMask.uiViewer = true
 	return starlark.None, nil
+}
+
+func normalizeViewerDefaultPane(pane string) string {
+	switch strings.ToLower(strings.TrimSpace(pane)) {
+	case "auto", "text", "markdown", "hex":
+		return strings.ToLower(strings.TrimSpace(pane))
+	default:
+		return ""
+	}
 }
 
 func (rt *Runtime) builtinArchive(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

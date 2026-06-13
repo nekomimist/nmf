@@ -86,8 +86,9 @@ type rawCopyConfig struct {
 }
 
 type rawViewerConfig struct {
-	MaxWidth  *int `json:"maxWidth"`
-	MaxHeight *int `json:"maxHeight"`
+	MaxWidth    *int    `json:"maxWidth"`
+	MaxHeight   *int    `json:"maxHeight"`
+	DefaultPane *string `json:"defaultPane"`
 }
 
 type rawCursorStyleConfig struct {
@@ -323,8 +324,9 @@ type CopyConfig struct {
 
 // ViewerConfig controls the built-in file viewer dialog.
 type ViewerConfig struct {
-	MaxWidth  int `json:"maxWidth"`  // Optional maximum dialog width; 0 means uncapped
-	MaxHeight int `json:"maxHeight"` // Optional maximum dialog height; 0 means uncapped
+	MaxWidth    int    `json:"maxWidth"`    // Optional maximum dialog width; 0 means uncapped
+	MaxHeight   int    `json:"maxHeight"`   // Optional maximum dialog height; 0 means uncapped
+	DefaultPane string `json:"defaultPane"` // "auto", "text", "markdown", or "hex"
 }
 
 // CursorStyleConfig represents cursor appearance settings
@@ -828,8 +830,9 @@ func getDefaultConfig() *Config {
 				PreserveTimestamps: false,
 			},
 			Viewer: ViewerConfig{
-				MaxWidth:  0,
-				MaxHeight: 0,
+				MaxWidth:    0,
+				MaxHeight:   0,
+				DefaultPane: "auto",
 			},
 			Archive: ArchiveConfig{
 				ZipNameEncoding: "shift_jis",
@@ -994,6 +997,11 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) {
 	if fileConfig.UI.Viewer.MaxHeight != nil && *fileConfig.UI.Viewer.MaxHeight >= 0 {
 		defaultConfig.UI.Viewer.MaxHeight = *fileConfig.UI.Viewer.MaxHeight
 	}
+	if fileConfig.UI.Viewer.DefaultPane != nil {
+		if pane := normalizeViewerDefaultPane(*fileConfig.UI.Viewer.DefaultPane); pane != "" {
+			defaultConfig.UI.Viewer.DefaultPane = pane
+		}
+	}
 	if fileConfig.UI.Archive.ZipNameEncoding != nil && strings.TrimSpace(*fileConfig.UI.Archive.ZipNameEncoding) != "" {
 		defaultConfig.UI.Archive.ZipNameEncoding = strings.TrimSpace(*fileConfig.UI.Archive.ZipNameEncoding)
 	}
@@ -1063,6 +1071,15 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) {
 	}
 	if fileConfig.UI.ExternalCommands != nil {
 		defaultConfig.UI.ExternalCommands = fileConfig.UI.ExternalCommands
+	}
+}
+
+func normalizeViewerDefaultPane(pane string) string {
+	switch strings.ToLower(strings.TrimSpace(pane)) {
+	case "auto", "text", "markdown", "hex":
+		return strings.ToLower(strings.TrimSpace(pane))
+	default:
+		return ""
 	}
 }
 

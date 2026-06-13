@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"bytes"
-	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -26,20 +24,6 @@ func TestViewerTextDisablesBinaryPreview(t *testing.T) {
 	got := viewerText(preview)
 	if strings.Contains(got, "\x00") || !strings.Contains(got, "Binary file") {
 		t.Fatalf("viewerText() = %q, want binary placeholder without raw NUL", got)
-	}
-}
-
-func TestViewerTextTruncatesDisplayText(t *testing.T) {
-	preview := &fileinfo.PreviewFile{
-		Text: strings.Repeat("a", fileViewerTextLimit+1),
-	}
-
-	got := viewerText(preview)
-	if !strings.Contains(got, "viewer text truncated") {
-		t.Fatalf("viewerText() missing truncation notice")
-	}
-	if !strings.Contains(got, fileinfo.FormatFileSize(int64(fileViewerTextLimit))) {
-		t.Fatalf("viewerText() missing text limit")
 	}
 }
 
@@ -70,39 +54,116 @@ func TestViewerTextKeepsIdeographicSpace(t *testing.T) {
 	}
 }
 
-func TestViewerHexTruncatesDisplayData(t *testing.T) {
-	preview := &fileinfo.PreviewFile{
-		Data: bytes.Repeat([]byte{0xff}, fileViewerHexLimit+1),
-	}
-
-	got := viewerHex(preview)
-	if !strings.Contains(got, "viewer hex truncated") {
-		t.Fatalf("viewerHex() missing truncation notice")
-	}
-	if strings.Contains(got, fmt.Sprintf("%08x", hexDumpDataLimit(fileViewerHexLimit))) {
-		t.Fatalf("viewerHex() includes offset beyond display limit")
-	}
-}
-
-func TestViewerMarkdownTruncatesDisplayText(t *testing.T) {
+func TestViewerMarkdownRendersToTextGridText(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
 	d := NewFileViewerDialog(&fileinfo.PreviewFile{
-		Text: strings.Repeat("a", fileViewerMarkdownLimit+1),
+		Text: "# Title\n\n- one\n- two\n\n```mermaid\ngraph TD\n```\n",
 	})
 
 	view := d.markdownView()
-	rich, ok := view.(*widget.RichText)
+	grid, ok := view.(*fileViewerTextGrid)
 	if !ok {
-		t.Fatalf("markdownView() = %T, want *widget.RichText", view)
+		t.Fatalf("markdownView() = %T, want *fileViewerTextGrid", view)
 	}
-	got := rich.String()
-	if !strings.Contains(got, "markdown preview truncated") {
-		t.Fatalf("markdownView() missing truncation notice")
+	got := strings.Join(grid.lines, "\n")
+	for _, want := range []string{"# Title", "- one", "- two", "```mermaid", "graph TD"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("markdownView() = %q, want fragment %q", got, want)
+		}
 	}
-	if !strings.Contains(got, fileinfo.FormatFileSize(int64(fileViewerMarkdownLimit))) {
-		t.Fatalf("markdownView() missing markdown limit")
+}
+
+func TestViewerMarkdownFormatsPipeTables(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Text: "| Name | Size |\n| --- | ---: |\n| README | 12K |\n| 日本語 | 1K |\n",
+	})
+
+	grid := d.markdownView().(*fileViewerTextGrid)
+	got := strings.Join(grid.lines, "\n")
+	for _, want := range []string{"| Name", "| README", "| 日本語"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("markdown table text = %q, want fragment %q", got, want)
+		}
+	}
+	if strings.Contains(got, "---:") {
+		t.Fatalf("markdown table text = %q, want rendered separator instead of raw markdown delimiter", got)
+	}
+}
+
+func TestViewerMarkdownFormatsFrontMatter(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Text: "---\nname: git-commit\ndescription: Handles commits\n---\n# Body\n",
+	})
+
+	grid := d.markdownView().(*fileViewerTextGrid)
+	got := strings.Join(grid.lines, "\n")
+	for _, want := range []string{"| Name", "| name", "| description", "git-commit", "Handles commits", "# Body"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("markdown front matter text = %q, want fragment %q", got, want)
+		}
+	}
+	for _, line := range grid.lines {
+		if strings.TrimSpace(line) == "---" {
+			t.Fatalf("markdown front matter text = %q, want delimiters removed", got)
+		}
+	}
+	if strings.HasPrefix(got, "----------------------------------------") {
+		t.Fatalf("markdown front matter text = %q, want delimiters removed", got)
+	}
+}
+
+func TestViewerMarkdownWrapsLongFrontMatterValues(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Text: "---\nname: git-commit\ndescription: Handles user requests to create git commits such as commit this and commit these changes without touching unrelated files\n---\n",
+	})
+
+	grid := d.markdownView().(*fileViewerTextGrid)
+	got := strings.Join(grid.lines, "\n")
+	if !strings.Contains(got, "| description | Handles user requests") {
+		t.Fatalf("markdown front matter text = %q, want first description row", got)
+	}
+	if !strings.Contains(got, "|             | this and commit these changes") {
+		t.Fatalf("markdown front matter text = %q, want wrapped continuation row", got)
+	}
+	assertViewerLinesWithinWidth(t, grid.lines, markdownTableTargetColumns)
+}
+
+func TestViewerMarkdownWrapsLongTableCells(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Text: "| Name | Description |\n| --- | --- |\n| git-commit | Handles user requests to create git commits such as commit this and commit these changes without touching unrelated files |\n",
+	})
+
+	grid := d.markdownView().(*fileViewerTextGrid)
+	got := strings.Join(grid.lines, "\n")
+	if !strings.Contains(got, "| git-commit | Handles user requests") {
+		t.Fatalf("markdown table text = %q, want first table row", got)
+	}
+	if !strings.Contains(got, "|            | and commit these changes") {
+		t.Fatalf("markdown table text = %q, want wrapped continuation row", got)
+	}
+	assertViewerLinesWithinWidth(t, grid.lines, markdownTableTargetColumns)
+}
+
+func assertViewerLinesWithinWidth(t *testing.T, lines []string, width int) {
+	t.Helper()
+	for _, line := range lines {
+		if got := viewerDisplayLineWidth(line, false); got > width {
+			t.Fatalf("line width = %d, want <= %d: %q", got, width, line)
+		}
 	}
 }
 
@@ -244,7 +305,7 @@ func TestFileViewerDialogSizeUsesFallbackWithoutParent(t *testing.T) {
 	}
 }
 
-func TestFileViewerDialogMarkdownStartsOnTextTab(t *testing.T) {
+func TestFileViewerDialogMarkdownStartsOnMarkdownTabByDefault(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
@@ -258,8 +319,49 @@ func TestFileViewerDialogMarkdownStartsOnTextTab(t *testing.T) {
 	d.ShowDialog(w)
 	defer d.CancelDialog()
 
+	if d.activeName != "Markdown" {
+		t.Fatalf("activeName = %q, want Markdown", d.activeName)
+	}
+	if d.mdGrid == nil {
+		t.Fatal("mdGrid is nil, want Markdown tab loaded")
+	}
+}
+
+func TestFileViewerDialogDefaultPaneTextKeepsMarkdownOnTextTab(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "README.md",
+		Text:     "# title",
+		Markdown: true,
+	})
+	d.SetDefaultPane("text")
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
 	if d.activeName != "Text" {
 		t.Fatalf("activeName = %q, want Text", d.activeName)
+	}
+}
+
+func TestFileViewerDialogTabLabelsIncludeShortcuts(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path: "note.txt",
+		Text: "hello",
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	if d.textTab.Text != "Text (t)" || d.mdTab.Text != "Markdown (m)" || d.hexTab.Text != "Hex (x)" {
+		t.Fatalf("tab labels = %q, %q, %q; want shortcuts", d.textTab.Text, d.mdTab.Text, d.hexTab.Text)
 	}
 }
 
@@ -324,6 +426,7 @@ func TestFileViewerDialogLazyLoadsMarkdownView(t *testing.T) {
 		Text:     "# title",
 		Markdown: true,
 	})
+	d.SetDefaultPane("text")
 	d.ShowDialog(w)
 	defer d.CancelDialog()
 
@@ -339,6 +442,34 @@ func TestFileViewerDialogLazyLoadsMarkdownView(t *testing.T) {
 	}
 	if d.mdTab.Content != d.mdView {
 		t.Fatal("mdTab content not replaced by lazy-loaded markdown view")
+	}
+}
+
+func TestFileViewerDialogSwitchesViewerTabs(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path: "note.txt",
+		Data: []byte("hello"),
+		Text: "hello",
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	d.ViewerShowMarkdown()
+	if d.activeName != "Markdown" || d.mdGrid == nil {
+		t.Fatalf("active after markdown = %q mdGrid=%v, want Markdown loaded", d.activeName, d.mdGrid != nil)
+	}
+	d.ViewerShowHex()
+	if d.activeName != "Hex" || d.hexGrid == nil {
+		t.Fatalf("active after hex = %q hexGrid=%v, want Hex loaded", d.activeName, d.hexGrid != nil)
+	}
+	d.ViewerShowText()
+	if d.activeName != "Text" {
+		t.Fatalf("active after text = %q, want Text", d.activeName)
 	}
 }
 

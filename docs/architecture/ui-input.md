@@ -142,14 +142,17 @@ Built-in file viewer:
 - `viewer.show` opens the selected file with the internal viewer and pushes
   `FileViewerKeyHandler` while the dialog is open.
 - The handler owns less-like navigation keys (`j/k`, `f/b`, `g/G`, `n/N`,
-  `/`, `:`, `q`) so keys do not fall through to the main file list if focus
-  moves to non-text parts of the dialog.
-- The Text and hex panes use a TextGrid PoC that renders only visible text for
+  `/`, `:`, `q`) and pane switching keys (`t`, `m`, `x`) so keys do not fall
+  through to the main file list if focus moves to non-text parts of the dialog.
+- The Text, Markdown, and hex panes use a TextGrid PoC that renders only visible text for
   faster initial display. It supports less-like vertical movement, line jumps,
   horizontal movement, a wrap toggle, mouse drag selection, copy, and literal
   current-match search. Keyboard selection is intentionally not wired yet.
-- Markdown files open on the Text pane by default. The Markdown tab remains
-  available for manual rendered preview.
+- Markdown files open on the Markdown pane by default unless
+  `viewer.defaultPane` is set to `text`. The Markdown tab converts
+  Markdown AST to simplified text, including fixed-width pipe tables and
+  front-matter metadata tables with long cells wrapped to multiple rows, and
+  leaves diagram rendering to external viewers.
 - Search and line inputs are normal entries; submitted searches return focus to
   the active viewer pane regardless of match result.
 

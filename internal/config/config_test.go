@@ -77,6 +77,9 @@ func TestGetDefaultConfig(t *testing.T) {
 	if config.UI.Viewer.MaxWidth != 0 || config.UI.Viewer.MaxHeight != 0 {
 		t.Errorf("Expected default viewer max size 0x0, got %dx%d", config.UI.Viewer.MaxWidth, config.UI.Viewer.MaxHeight)
 	}
+	if config.UI.Viewer.DefaultPane != "auto" {
+		t.Errorf("Expected default viewer pane auto, got %q", config.UI.Viewer.DefaultPane)
+	}
 	if config.UI.Archive.ZipNameEncoding != "shift_jis" {
 		t.Errorf("Expected default ZIP name encoding 'shift_jis', got '%s'", config.UI.Archive.ZipNameEncoding)
 	}
@@ -468,6 +471,7 @@ func TestMergeConfigs(t *testing.T) {
 	preserveTimestamps := true
 	viewerMaxWidth := 1200
 	viewerMaxHeight := 900
+	viewerDefaultPane := "text"
 	zipNameEncoding := "cp437"
 	imeEnabled := false
 	fontSize := 16
@@ -506,8 +510,9 @@ func TestMergeConfigs(t *testing.T) {
 				PreserveTimestamps: &preserveTimestamps,
 			},
 			Viewer: rawViewerConfig{
-				MaxWidth:  &viewerMaxWidth,
-				MaxHeight: &viewerMaxHeight,
+				MaxWidth:    &viewerMaxWidth,
+				MaxHeight:   &viewerMaxHeight,
+				DefaultPane: &viewerDefaultPane,
 			},
 			Archive: rawArchiveConfig{
 				ZipNameEncoding: &zipNameEncoding,
@@ -579,6 +584,9 @@ func TestMergeConfigs(t *testing.T) {
 	}
 	if defaultConfig.UI.Viewer.MaxWidth != 1200 || defaultConfig.UI.Viewer.MaxHeight != 900 {
 		t.Errorf("Expected merged viewer max size 1200x900, got %dx%d", defaultConfig.UI.Viewer.MaxWidth, defaultConfig.UI.Viewer.MaxHeight)
+	}
+	if defaultConfig.UI.Viewer.DefaultPane != "text" {
+		t.Errorf("Expected merged viewer default pane text, got %q", defaultConfig.UI.Viewer.DefaultPane)
 	}
 	if defaultConfig.UI.Archive.ZipNameEncoding != "cp437" {
 		t.Errorf("Expected merged ZIP name encoding 'cp437', got '%s'", defaultConfig.UI.Archive.ZipNameEncoding)

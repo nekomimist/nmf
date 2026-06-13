@@ -9,8 +9,8 @@
 
 ## 簡易viewerの残課題
 - Text/Hex表示のキーボードによる範囲選択が未対応。
-- MarkdownタブはRichText(TextGrid未対応)のままで遅い。現状は遅延構築+
-  64KB打ち切りで実害を抑えているだけで、根本対策(仮想化)は未着手。
+- MarkdownタブはTextGrid化済み。Markdown ASTから簡易テキストへ変換しているため、
+  Mermaid等の図示や複雑な表現は外部ビューアに任せる。
 
 ## ダイアログ系KeyHandlerの共通化
 - keymanagerパッケージにdialog毎のhandlerが16ファイルあり、
@@ -46,10 +46,17 @@
   (228KBのJSONで計約1分30秒)。Text/Hex用の自作TextGridは仮想化済みで無関係。
 - MarkdownタブをHexタブと同じ遅延構築(タブ選択時に生成)へ変更し、
   Markdown専用の64KB表示上限(打ち切り注記つき)を追加した。
-- Text/Hexの64KB表示制限は安全網(Text 4MiB / Hex 8MiB)へ引き上げて実質撤廃。
-  読み込み自体は従来どおり`fileinfo.PreviewReadLimit`(1MiB)が上限。
+- Text/Hex/Markdownの表示上限は`fileinfo.PreviewReadLimit`(1MiB)へ一本化した。
 - 同じ223KBのJSONで open-ready が約23msになった。残課題は優先度低の
   「簡易viewerの残課題」へ移動。
+
+## Markdown viewerのTextGrid化
+- MarkdownタブからFyne RichTextを撤去し、`goldmark` ASTを簡易テキストへ変換して
+  既存のTextGridで表示するようにした。
+- GFM pipe tableは等幅テキスト表へ整形し、長いセルは80桁目安で複数行化する。
+  Mermaid等のfenced code blockはコードブロックとしてそのまま表示する。
+- 先頭のYAML front matterはGitHub風にkey/valueの等幅テーブルとして表示し、
+  長い値は同じく複数行化する。
 
 ## キー入力処理の再設計 (KeyDown/KeyUp発火の廃止)
 - 現行仕様(活性化モデル・arm-gate・依存するFyne挙動の再検証ポイント・

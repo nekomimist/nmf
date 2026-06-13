@@ -14,6 +14,9 @@ type FileViewerInterface interface {
 	ViewerColumnLeft()
 	ViewerColumnRight()
 	ViewerToggleWrap()
+	ViewerShowText()
+	ViewerShowMarkdown()
+	ViewerShowHex()
 	ViewerSearchNext()
 	ViewerSearchPrevious()
 	ViewerFocusSearch()
@@ -91,6 +94,12 @@ func (h *FileViewerKeyHandler) OnTypedRune(r rune, modifiers ModifierState) bool
 		h.viewer.ViewerEnd()
 	case 'w':
 		h.viewer.ViewerToggleWrap()
+	case 't':
+		h.viewer.ViewerShowText()
+	case 'm':
+		h.viewer.ViewerShowMarkdown()
+	case 'x':
+		h.viewer.ViewerShowHex()
 	case 'n':
 		h.viewer.ViewerSearchNext()
 	case 'N':

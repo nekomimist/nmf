@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"html"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -14,21 +15,26 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/yuin/goldmark"
+	goldmarkast "github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/extension"
+	tableast "github.com/yuin/goldmark/extension/ast"
+	"github.com/yuin/goldmark/text"
 
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 )
 
 const (
-	// Text/hex display limits are safety nets only: the underlying read is
-	// already capped by fileinfo.PreviewReadLimit (1 MiB), and the viewer
-	// grid is virtualized, so these are sized to never trigger in practice.
-	fileViewerTextLimit int = 4 << 20
-	fileViewerHexLimit  int = 8 << 20
-	// Fyne's RichText lays out the whole content (not virtualized), so the
-	// markdown preview must stay small to keep the UI responsive.
-	fileViewerMarkdownLimit int = 64 << 10
-	hexDumpFullLineBytes    int = 79
+	markdownTableTargetColumns int = 80
+	markdownTableMinColumn     int = 8
+)
+
+const (
+	viewerPaneAuto     = "auto"
+	viewerPaneText     = "text"
+	viewerPaneMarkdown = "markdown"
+	viewerPaneHex      = "hex"
 )
 
 type FileViewerDialog struct {
@@ -40,6 +46,7 @@ type FileViewerDialog struct {
 
 	textGrid   *fileViewerTextGrid
 	hexGrid    *fileViewerTextGrid
+	mdGrid     *fileViewerTextGrid
 	search     *IMEEntry
 	jump       *IMEEntry
 	status     *widget.Label
@@ -52,12 +59,13 @@ type FileViewerDialog struct {
 	mdTab   *container.TabItem
 	mdView  fyne.CanvasObject
 
-	activeName string
-	closed     bool
-	handlerSet bool
-	maxWidth   int
-	maxHeight  int
-	debugPrint func(format string, args ...interface{})
+	activeName  string
+	closed      bool
+	handlerSet  bool
+	maxWidth    int
+	maxHeight   int
+	defaultPane string
+	debugPrint  func(format string, args ...interface{})
 }
 
 func NewFileViewerDialog(preview *fileinfo.PreviewFile, km ...*keymanager.KeyManager) *FileViewerDialog {
@@ -66,9 +74,10 @@ func NewFileViewerDialog(preview *fileinfo.PreviewFile, km ...*keymanager.KeyMan
 		keyManager = km[0]
 	}
 	return &FileViewerDialog{
-		preview:    preview,
-		km:         keyManager,
-		activeName: "Text",
+		preview:     preview,
+		km:          keyManager,
+		activeName:  "Text",
+		defaultPane: viewerPaneAuto,
 	}
 }
 
@@ -85,6 +94,12 @@ func (d *FileViewerDialog) SetMaxSize(width, height int) {
 	}
 	d.maxWidth = width
 	d.maxHeight = height
+}
+
+func (d *FileViewerDialog) SetDefaultPane(pane string) {
+	if normalized := normalizeViewerPane(pane); normalized != "" {
+		d.defaultPane = normalized
+	}
 }
 
 func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
@@ -122,9 +137,9 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	d.debug("FileViewer: controls elapsed=%s", time.Since(stepStart))
 	stepStart = time.Now()
 
-	d.textTab = container.NewTabItem("Text", d.textGrid)
-	d.hexTab = container.NewTabItem("Hex", hexContent)
-	d.mdTab = container.NewTabItem("Markdown", widget.NewLabel("Markdown preview will load when selected."))
+	d.textTab = container.NewTabItem("Text (t)", d.textGrid)
+	d.hexTab = container.NewTabItem("Hex (x)", hexContent)
+	d.mdTab = container.NewTabItem("Markdown (m)", widget.NewLabel("Markdown preview will load when selected."))
 	d.tabs = container.NewAppTabs(d.textTab, d.mdTab, d.hexTab)
 	d.tabs.OnSelected = func(item *container.TabItem) {
 		if item == d.hexTab {
@@ -133,13 +148,10 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 		if item == d.mdTab {
 			d.ensureMarkdownView()
 		}
-		d.activeName = item.Text
+		d.activeName = viewerPaneNameForTab(d, item)
 		d.updateLineDisplay()
 	}
-	if d.preview.Binary {
-		d.tabs.SelectIndex(2)
-		d.activeName = "Hex"
-	}
+	d.selectInitialTab()
 	d.debug("FileViewer: tabs elapsed=%s active=%s", time.Since(stepStart), d.activeName)
 	stepStart = time.Now()
 
@@ -212,27 +224,37 @@ func cappedFileViewerSize(width, height float32, maxWidth, maxHeight int) fyne.S
 }
 
 func (d *FileViewerDialog) markdownView() fyne.CanvasObject {
+	return d.createMarkdownGrid()
+}
+
+func (d *FileViewerDialog) createMarkdownGrid() *fileViewerTextGrid {
 	start := time.Now()
 	if d.preview.Binary {
 		d.debug("FileViewer: markdown-view elapsed=%s mode=binary-placeholder", time.Since(start))
-		return widget.NewLabel("Binary file: markdown preview disabled. Use the Hex tab.")
+		d.mdGrid = newFileViewerTextGrid("Binary file: markdown preview disabled. Use the Hex tab.", d.km, d.updateLineDisplay, d.debugPrint)
+		d.mdGrid.SetCopyHandler(d.copySelection)
+		return d.mdGrid
 	}
-	text, truncated := truncateUTF8Bytes(viewerText(d.preview), fileViewerMarkdownLimit)
-	if truncated {
-		text += fmt.Sprintf("\n\n[markdown preview truncated at %s]", fileinfo.FormatFileSize(int64(fileViewerMarkdownLimit)))
-	}
-	rich := widget.NewRichTextFromMarkdown(text)
-	rich.Wrapping = fyne.TextWrapWord
-	d.debug("FileViewer: markdown-view elapsed=%s mode=markdown bytes=%d truncated=%t", time.Since(start), len(text), truncated)
-	return rich
+	mdText := markdownViewerText(d.preview)
+	d.mdGrid = newFileViewerTextGrid(mdText, d.km, d.updateLineDisplay, d.debugPrint)
+	d.mdGrid.SetCopyHandler(d.copySelection)
+	d.debug("FileViewer: markdown-view elapsed=%s mode=text-grid bytes=%d lines=%d", time.Since(start), len(mdText), d.mdGrid.TotalLines())
+	return d.mdGrid
 }
 
 func (d *FileViewerDialog) ensureMarkdownView() {
-	if d.mdView != nil || d.mdTab == nil {
+	if d.mdTab == nil {
+		return
+	}
+	if d.mdView != nil && d.mdTab.Content == d.mdView {
 		return
 	}
 	stepStart := time.Now()
-	d.mdView = container.NewScroll(d.markdownView())
+	if d.mdGrid != nil {
+		d.mdView = d.mdGrid
+	} else {
+		d.mdView = d.markdownView()
+	}
 	d.mdTab.Content = d.mdView
 	if d.tabs != nil {
 		d.tabs.Refresh()
@@ -264,6 +286,73 @@ func (d *FileViewerDialog) ensureHexGrid() {
 	d.debug("FileViewer: hex-lazy-load elapsed=%s", time.Since(stepStart))
 }
 
+func (d *FileViewerDialog) selectInitialTab() {
+	if d.preview.Binary {
+		d.selectViewerTab(viewerPaneHex)
+		return
+	}
+	switch d.defaultPane {
+	case viewerPaneText:
+		d.selectViewerTab(viewerPaneText)
+	case viewerPaneMarkdown:
+		d.selectViewerTab(viewerPaneMarkdown)
+	case viewerPaneHex:
+		d.selectViewerTab(viewerPaneHex)
+	default:
+		if d.preview.Markdown {
+			d.selectViewerTab(viewerPaneMarkdown)
+			return
+		}
+		d.selectViewerTab(viewerPaneText)
+	}
+}
+
+func normalizeViewerPane(pane string) string {
+	switch strings.ToLower(strings.TrimSpace(pane)) {
+	case viewerPaneAuto, viewerPaneText, viewerPaneMarkdown, viewerPaneHex:
+		return strings.ToLower(strings.TrimSpace(pane))
+	default:
+		return ""
+	}
+}
+
+func viewerPaneNameForTab(d *FileViewerDialog, item *container.TabItem) string {
+	switch item {
+	case d.hexTab:
+		return "Hex"
+	case d.mdTab:
+		return "Markdown"
+	default:
+		return "Text"
+	}
+}
+
+func (d *FileViewerDialog) selectViewerTab(pane string) bool {
+	if d.tabs == nil {
+		return false
+	}
+	switch normalizeViewerPane(pane) {
+	case viewerPaneText:
+		if d.textTab == nil {
+			return false
+		}
+		d.tabs.Select(d.textTab)
+	case viewerPaneMarkdown:
+		if d.mdTab == nil {
+			return false
+		}
+		d.tabs.Select(d.mdTab)
+	case viewerPaneHex:
+		if d.hexTab == nil {
+			return false
+		}
+		d.tabs.Select(d.hexTab)
+	default:
+		return false
+	}
+	return true
+}
+
 func (d *FileViewerDialog) debug(format string, args ...interface{}) {
 	if d.debugPrint != nil {
 		d.debugPrint(format, args...)
@@ -277,12 +366,463 @@ func viewerText(preview *fileinfo.PreviewFile) string {
 	if preview.Binary {
 		return "Binary file: text preview disabled. Use the Hex tab."
 	}
-	text, truncated := truncateUTF8Bytes(preview.Text, fileViewerTextLimit)
-	text = sanitizeViewerText(text)
-	if truncated {
-		text += fmt.Sprintf("\n\n[viewer text truncated at %s]", fileinfo.FormatFileSize(int64(fileViewerTextLimit)))
+	return sanitizeViewerText(preview.Text)
+}
+
+func markdownViewerText(preview *fileinfo.PreviewFile) string {
+	if preview == nil {
+		return ""
 	}
-	return text
+	frontMatter, body := splitMarkdownFrontMatter(preview.Text)
+	source := []byte(body)
+	md := goldmark.New(goldmark.WithExtensions(extension.Table))
+	doc := md.Parser().Parse(text.NewReader(source))
+	lines := trimViewerBlankLines(renderMarkdownBlocks(source, doc, 0))
+	if len(frontMatter) > 0 {
+		lines = append(frontMatter, append([]string{""}, lines...)...)
+	}
+	if len(lines) == 0 {
+		return viewerText(preview)
+	}
+	return sanitizeViewerText(strings.Join(lines, "\n"))
+}
+
+func splitMarkdownFrontMatter(markdown string) ([]string, string) {
+	if markdown == "" {
+		return nil, markdown
+	}
+	markdown = strings.TrimPrefix(markdown, "\uFEFF")
+	firstLineEnd := strings.IndexByte(markdown, '\n')
+	if firstLineEnd < 0 {
+		return nil, markdown
+	}
+	if strings.TrimSpace(strings.TrimSuffix(markdown[:firstLineEnd], "\r")) != "---" {
+		return nil, markdown
+	}
+	bodyStart := firstLineEnd + 1
+	for pos := bodyStart; pos <= len(markdown); {
+		next := strings.IndexByte(markdown[pos:], '\n')
+		lineEnd := len(markdown)
+		if next >= 0 {
+			lineEnd = pos + next
+		}
+		line := strings.TrimSpace(strings.TrimSuffix(markdown[pos:lineEnd], "\r"))
+		if line == "---" || line == "..." {
+			body := ""
+			if lineEnd < len(markdown) {
+				body = markdown[lineEnd+1:]
+			}
+			return formatMarkdownFrontMatter(markdown[bodyStart:pos]), body
+		}
+		if next < 0 {
+			break
+		}
+		pos = lineEnd + 1
+	}
+	return nil, markdown
+}
+
+func formatMarkdownFrontMatter(src string) []string {
+	rows := markdownFrontMatterRows(src)
+	if len(rows) == 0 {
+		return nil
+	}
+	widths := []int{3, 5}
+	wideAmbiguous := viewerLocaleUsesWideAmbiguous()
+	for _, row := range rows {
+		for col, cell := range row {
+			if width := viewerDisplayLineWidth(cell, wideAmbiguous); width > widths[col] {
+				widths[col] = width
+			}
+		}
+	}
+	widths = capMarkdownTableWidths(widths, markdownTableTargetColumns)
+	lines := []string{
+		formatMarkdownTableRows([]string{"Name", "Value"}, widths, nil, wideAmbiguous)[0],
+		formatMarkdownTableSeparator(widths),
+	}
+	for _, row := range rows {
+		lines = append(lines, formatMarkdownTableRows(row, widths, nil, wideAmbiguous)...)
+	}
+	return lines
+}
+
+func markdownFrontMatterRows(src string) [][]string {
+	var rows [][]string
+	for _, raw := range strings.Split(src, "\n") {
+		line := strings.TrimSuffix(raw, "\r")
+		if strings.TrimSpace(line) == "" || strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			if len(rows) > 0 {
+				rows[len(rows)-1][1] = strings.TrimSpace(rows[len(rows)-1][1] + " " + strings.TrimSpace(line))
+			}
+			continue
+		}
+		key, value, ok := strings.Cut(line, ":")
+		if !ok || strings.TrimSpace(key) == "" {
+			continue
+		}
+		rows = append(rows, []string{strings.TrimSpace(key), strings.TrimSpace(value)})
+	}
+	return rows
+}
+
+func renderMarkdownBlocks(source []byte, node goldmarkast.Node, depth int) []string {
+	var lines []string
+	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+		lines = append(lines, renderMarkdownBlock(source, child, depth)...)
+	}
+	return lines
+}
+
+func renderMarkdownBlock(source []byte, node goldmarkast.Node, depth int) []string {
+	switch n := node.(type) {
+	case *goldmarkast.Heading:
+		return []string{strings.Repeat("#", n.Level) + " " + markdownInlineText(source, n), ""}
+	case *goldmarkast.Paragraph:
+		if text := markdownInlineText(source, n); text != "" {
+			return []string{text, ""}
+		}
+	case *goldmarkast.List:
+		return renderMarkdownList(source, n, depth)
+	case *goldmarkast.Blockquote:
+		lines := renderMarkdownBlocks(source, n, depth)
+		for i, line := range lines {
+			if line != "" {
+				lines[i] = "> " + line
+			}
+		}
+		return append(lines, "")
+	case *goldmarkast.CodeBlock:
+		return renderMarkdownCodeBlock(source, n, "")
+	case *goldmarkast.FencedCodeBlock:
+		return renderMarkdownCodeBlock(source, n, string(n.Language(source)))
+	case *goldmarkast.ThematicBreak:
+		return []string{strings.Repeat("-", 40), ""}
+	case *tableast.Table:
+		return append(renderMarkdownTable(source, n), "")
+	default:
+		return renderMarkdownBlocks(source, node, depth)
+	}
+	return nil
+}
+
+func renderMarkdownList(source []byte, list *goldmarkast.List, depth int) []string {
+	var lines []string
+	index := list.Start
+	for item := list.FirstChild(); item != nil; item = item.NextSibling() {
+		marker := "-"
+		if list.IsOrdered() {
+			marker = strconv.Itoa(index) + "."
+			index++
+		}
+		itemLines := renderMarkdownListItem(source, item, depth+1)
+		indent := strings.Repeat("  ", depth)
+		if len(itemLines) == 0 {
+			lines = append(lines, indent+marker)
+			continue
+		}
+		lines = append(lines, indent+marker+" "+itemLines[0])
+		continuation := indent + strings.Repeat(" ", len(marker)+1)
+		for _, line := range itemLines[1:] {
+			if line == "" {
+				lines = append(lines, "")
+			} else {
+				lines = append(lines, continuation+line)
+			}
+		}
+	}
+	return append(lines, "")
+}
+
+func renderMarkdownListItem(source []byte, item goldmarkast.Node, depth int) []string {
+	var lines []string
+	for child := item.FirstChild(); child != nil; child = child.NextSibling() {
+		switch child.(type) {
+		case *goldmarkast.List:
+			lines = append(lines, renderMarkdownBlock(source, child, depth)...)
+		default:
+			if text := markdownInlineText(source, child); text != "" {
+				lines = append(lines, text)
+			} else {
+				lines = append(lines, trimViewerBlankLines(renderMarkdownBlock(source, child, depth))...)
+			}
+		}
+	}
+	return trimViewerBlankLines(lines)
+}
+
+type markdownCodeBlock interface {
+	Lines() *text.Segments
+}
+
+func renderMarkdownCodeBlock(source []byte, node markdownCodeBlock, language string) []string {
+	lines := []string{"```" + language}
+	segments := node.Lines()
+	for i := 0; i < segments.Len(); i++ {
+		segment := segments.At(i)
+		lines = append(lines, strings.TrimSuffix(string(segment.Value(source)), "\n"))
+	}
+	return append(lines, "```", "")
+}
+
+func renderMarkdownTable(source []byte, table *tableast.Table) []string {
+	var rows [][]string
+	for row := table.FirstChild(); row != nil; row = row.NextSibling() {
+		rows = append(rows, markdownTableRow(source, row))
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	cols := 0
+	for _, row := range rows {
+		if len(row) > cols {
+			cols = len(row)
+		}
+	}
+	widths := make([]int, cols)
+	wideAmbiguous := viewerLocaleUsesWideAmbiguous()
+	for _, row := range rows {
+		for col, cell := range row {
+			if width := viewerDisplayLineWidth(cell, wideAmbiguous); width > widths[col] {
+				widths[col] = width
+			}
+		}
+	}
+	for i, width := range widths {
+		if width < 3 {
+			widths[i] = 3
+		}
+	}
+	widths = capMarkdownTableWidths(widths, markdownTableTargetColumns)
+
+	lines := make([]string, 0, len(rows)+1)
+	for i, row := range rows {
+		lines = append(lines, formatMarkdownTableRows(row, widths, table.Alignments, wideAmbiguous)...)
+		if i == 0 {
+			lines = append(lines, formatMarkdownTableSeparator(widths))
+		}
+	}
+	return lines
+}
+
+func markdownTableRow(source []byte, row goldmarkast.Node) []string {
+	var cells []string
+	for cell := row.FirstChild(); cell != nil; cell = cell.NextSibling() {
+		cells = append(cells, markdownInlineText(source, cell))
+	}
+	return cells
+}
+
+func capMarkdownTableWidths(widths []int, target int) []int {
+	capped := append([]int(nil), widths...)
+	if len(capped) == 0 || target <= 0 {
+		return capped
+	}
+	available := target - (len(capped)*3 + 1)
+	minWidth := markdownTableMinColumn
+	if available < len(capped)*minWidth {
+		minWidth = max(3, available/len(capped))
+	}
+	if minWidth < 3 {
+		minWidth = 3
+	}
+	for markdownTableContentWidth(capped) > available {
+		col := -1
+		for i, width := range capped {
+			if width <= minWidth {
+				continue
+			}
+			if col < 0 || width > capped[col] {
+				col = i
+			}
+		}
+		if col < 0 {
+			break
+		}
+		capped[col]--
+	}
+	return capped
+}
+
+func markdownTableContentWidth(widths []int) int {
+	total := 0
+	for _, width := range widths {
+		total += width
+	}
+	return total
+}
+
+func formatMarkdownTableRows(row []string, widths []int, alignments []tableast.Alignment, wideAmbiguous bool) []string {
+	cells := make([][]string, len(widths))
+	maxRows := 1
+	for col, width := range widths {
+		cell := ""
+		if col < len(row) {
+			cell = row[col]
+		}
+		cells[col] = wrapMarkdownTableCell(cell, width, wideAmbiguous)
+		if len(cells[col]) > maxRows {
+			maxRows = len(cells[col])
+		}
+	}
+	lines := make([]string, 0, maxRows)
+	for rowIndex := 0; rowIndex < maxRows; rowIndex++ {
+		lines = append(lines, formatMarkdownTableRow(cells, rowIndex, widths, alignments, wideAmbiguous))
+	}
+	return lines
+}
+
+func formatMarkdownTableRow(cells [][]string, rowIndex int, widths []int, alignments []tableast.Alignment, wideAmbiguous bool) string {
+	var b strings.Builder
+	b.WriteByte('|')
+	for col, width := range widths {
+		cell := ""
+		if col < len(cells) && rowIndex < len(cells[col]) {
+			cell = cells[col][rowIndex]
+		}
+		align := tableast.AlignNone
+		if col < len(alignments) {
+			align = alignments[col]
+		}
+		b.WriteByte(' ')
+		b.WriteString(padMarkdownTableCell(cell, width, align, wideAmbiguous))
+		b.WriteByte(' ')
+		b.WriteByte('|')
+	}
+	return b.String()
+}
+
+func wrapMarkdownTableCell(cell string, width int, wideAmbiguous bool) []string {
+	if width < 1 {
+		width = 1
+	}
+	words := strings.Fields(cell)
+	if len(words) == 0 {
+		return []string{""}
+	}
+	var lines []string
+	current := ""
+	for _, word := range words {
+		if current == "" {
+			if viewerDisplayLineWidth(word, wideAmbiguous) <= width {
+				current = word
+				continue
+			}
+			lines = append(lines, splitMarkdownTableWord(word, width, wideAmbiguous)...)
+			continue
+		}
+		candidate := current + " " + word
+		if viewerDisplayLineWidth(candidate, wideAmbiguous) <= width {
+			current = candidate
+			continue
+		}
+		lines = append(lines, current)
+		current = ""
+		if viewerDisplayLineWidth(word, wideAmbiguous) <= width {
+			current = word
+		} else {
+			lines = append(lines, splitMarkdownTableWord(word, width, wideAmbiguous)...)
+		}
+	}
+	if current != "" {
+		lines = append(lines, current)
+	}
+	if len(lines) == 0 {
+		return []string{""}
+	}
+	return lines
+}
+
+func splitMarkdownTableWord(word string, width int, wideAmbiguous bool) []string {
+	if width < 1 {
+		width = 1
+	}
+	var lines []string
+	var b strings.Builder
+	col := 0
+	for _, r := range word {
+		w := viewerRuneWidth(r, wideAmbiguous)
+		if w < 1 {
+			w = 1
+		}
+		if col > 0 && col+w > width {
+			lines = append(lines, b.String())
+			b.Reset()
+			col = 0
+		}
+		b.WriteRune(r)
+		col += w
+	}
+	if b.Len() > 0 {
+		lines = append(lines, b.String())
+	}
+	if len(lines) == 0 {
+		return []string{word}
+	}
+	return lines
+}
+
+func formatMarkdownTableSeparator(widths []int) string {
+	var b strings.Builder
+	b.WriteByte('|')
+	for _, width := range widths {
+		b.WriteByte(' ')
+		b.WriteString(strings.Repeat("-", width))
+		b.WriteByte(' ')
+		b.WriteByte('|')
+	}
+	return b.String()
+}
+
+func padMarkdownTableCell(cell string, width int, align tableast.Alignment, wideAmbiguous bool) string {
+	padding := width - viewerDisplayLineWidth(cell, wideAmbiguous)
+	if padding <= 0 {
+		return cell
+	}
+	switch align {
+	case tableast.AlignRight:
+		return strings.Repeat(" ", padding) + cell
+	case tableast.AlignCenter:
+		left := padding / 2
+		return strings.Repeat(" ", left) + cell + strings.Repeat(" ", padding-left)
+	default:
+		return cell + strings.Repeat(" ", padding)
+	}
+}
+
+func markdownInlineText(source []byte, node goldmarkast.Node) string {
+	var b strings.Builder
+	_ = goldmarkast.Walk(node, func(n goldmarkast.Node, entering bool) (goldmarkast.WalkStatus, error) {
+		if !entering {
+			return goldmarkast.WalkContinue, nil
+		}
+		switch t := n.(type) {
+		case *goldmarkast.Text:
+			b.WriteString(string(t.Value(source)))
+			if t.HardLineBreak() || t.SoftLineBreak() {
+				b.WriteByte(' ')
+			}
+		case *goldmarkast.String:
+			b.Write(t.Value)
+		}
+		return goldmarkast.WalkContinue, nil
+	})
+	return strings.TrimSpace(html.UnescapeString(b.String()))
+}
+
+func trimViewerBlankLines(lines []string) []string {
+	start := 0
+	for start < len(lines) && strings.TrimSpace(lines[start]) == "" {
+		start++
+	}
+	end := len(lines)
+	for end > start && strings.TrimSpace(lines[end-1]) == "" {
+		end--
+	}
+	return lines[start:end]
 }
 
 func sanitizeViewerText(text string) string {
@@ -329,31 +869,7 @@ func viewerHex(preview *fileinfo.PreviewFile) string {
 	if preview == nil {
 		return ""
 	}
-	data := preview.Data
-	truncated := false
-	limit := hexDumpDataLimit(fileViewerHexLimit)
-	if len(data) > limit {
-		data = data[:limit]
-		truncated = true
-	}
-	text := fileinfo.FormatHexDump(data)
-	if truncated {
-		text += fmt.Sprintf("\n[viewer hex truncated at %s of %s read]\n",
-			fileinfo.FormatFileSize(int64(fileViewerHexLimit)),
-			fileinfo.FormatFileSize(int64(len(preview.Data))))
-	}
-	return text
-}
-
-func hexDumpDataLimit(textLimit int) int {
-	if textLimit <= 0 {
-		return 0
-	}
-	lines := textLimit / hexDumpFullLineBytes
-	if lines < 1 {
-		lines = 1
-	}
-	return lines * 16
+	return fileinfo.FormatHexDump(preview.Data)
 }
 
 func truncateUTF8Bytes(text string, limit int) (string, bool) {
@@ -399,7 +915,7 @@ func (d *FileViewerDialog) CancelDialog() {
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}
-		unfocusIfDialogOwned(d.parent, d.textGrid, d.hexGrid, d.search, d.jump)
+		unfocusIfDialogOwned(d.parent, d.textGrid, d.hexGrid, d.mdGrid, d.search, d.jump)
 	})
 }
 
@@ -411,6 +927,8 @@ func (d *FileViewerDialog) activeGrid() *fileViewerTextGrid {
 	switch d.activeName {
 	case "Hex":
 		return d.hexGrid
+	case "Markdown":
+		return d.mdGrid
 	case "Text":
 		return d.textGrid
 	default:
@@ -475,8 +993,7 @@ func (d *FileViewerDialog) find(direction int) {
 		return
 	}
 	if d.activeName == "Markdown" {
-		d.tabs.SelectIndex(0)
-		d.activeName = "Text"
+		d.selectViewerTab(viewerPaneText)
 	}
 	if grid := d.activeGrid(); grid != nil {
 		result := grid.Find(query, direction)
@@ -502,8 +1019,7 @@ func (d *FileViewerDialog) jumpToLine() {
 		return
 	}
 	if d.activeName == "Markdown" {
-		d.tabs.SelectIndex(0)
-		d.activeName = "Text"
+		d.selectViewerTab(viewerPaneText)
 	}
 	if grid := d.activeGrid(); grid != nil {
 		line = grid.JumpToLine(line)
@@ -568,6 +1084,26 @@ func (d *FileViewerDialog) ViewerToggleWrap() {
 	} else {
 		d.setStatusSuffix("wrap=off")
 	}
+	d.focusActiveViewer()
+}
+
+func (d *FileViewerDialog) ViewerShowText() {
+	d.showViewerPane(viewerPaneText)
+}
+
+func (d *FileViewerDialog) ViewerShowMarkdown() {
+	d.showViewerPane(viewerPaneMarkdown)
+}
+
+func (d *FileViewerDialog) ViewerShowHex() {
+	d.showViewerPane(viewerPaneHex)
+}
+
+func (d *FileViewerDialog) showViewerPane(pane string) {
+	if !d.selectViewerTab(pane) {
+		return
+	}
+	d.updateLineDisplay()
 	d.focusActiveViewer()
 }
 
