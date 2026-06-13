@@ -20,9 +20,15 @@ import (
 )
 
 const (
-	fileViewerTextLimit  int = 64 << 10
-	fileViewerHexLimit   int = 64 << 10
-	hexDumpFullLineBytes int = 79
+	// Text/hex display limits are safety nets only: the underlying read is
+	// already capped by fileinfo.PreviewReadLimit (1 MiB), and the viewer
+	// grid is virtualized, so these are sized to never trigger in practice.
+	fileViewerTextLimit int = 4 << 20
+	fileViewerHexLimit  int = 8 << 20
+	// Fyne's RichText lays out the whole content (not virtualized), so the
+	// markdown preview must stay small to keep the UI responsive.
+	fileViewerMarkdownLimit int = 64 << 10
+	hexDumpFullLineBytes    int = 79
 )
 
 type FileViewerDialog struct {
@@ -43,6 +49,8 @@ type FileViewerDialog struct {
 
 	textTab *container.TabItem
 	hexTab  *container.TabItem
+	mdTab   *container.TabItem
+	mdView  fyne.CanvasObject
 
 	activeName string
 	closed     bool
@@ -116,10 +124,14 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 
 	d.textTab = container.NewTabItem("Text", d.textGrid)
 	d.hexTab = container.NewTabItem("Hex", hexContent)
-	d.tabs = container.NewAppTabs(d.textTab, container.NewTabItem("Markdown", container.NewScroll(d.markdownView())), d.hexTab)
+	d.mdTab = container.NewTabItem("Markdown", widget.NewLabel("Markdown preview will load when selected."))
+	d.tabs = container.NewAppTabs(d.textTab, d.mdTab, d.hexTab)
 	d.tabs.OnSelected = func(item *container.TabItem) {
 		if item == d.hexTab {
 			d.ensureHexGrid()
+		}
+		if item == d.mdTab {
+			d.ensureMarkdownView()
 		}
 		d.activeName = item.Text
 		d.updateLineDisplay()
@@ -205,10 +217,27 @@ func (d *FileViewerDialog) markdownView() fyne.CanvasObject {
 		d.debug("FileViewer: markdown-view elapsed=%s mode=binary-placeholder", time.Since(start))
 		return widget.NewLabel("Binary file: markdown preview disabled. Use the Hex tab.")
 	}
-	rich := widget.NewRichTextFromMarkdown(viewerText(d.preview))
+	text, truncated := truncateUTF8Bytes(viewerText(d.preview), fileViewerMarkdownLimit)
+	if truncated {
+		text += fmt.Sprintf("\n\n[markdown preview truncated at %s]", fileinfo.FormatFileSize(int64(fileViewerMarkdownLimit)))
+	}
+	rich := widget.NewRichTextFromMarkdown(text)
 	rich.Wrapping = fyne.TextWrapWord
-	d.debug("FileViewer: markdown-view elapsed=%s mode=markdown", time.Since(start))
+	d.debug("FileViewer: markdown-view elapsed=%s mode=markdown bytes=%d truncated=%t", time.Since(start), len(text), truncated)
 	return rich
+}
+
+func (d *FileViewerDialog) ensureMarkdownView() {
+	if d.mdView != nil || d.mdTab == nil {
+		return
+	}
+	stepStart := time.Now()
+	d.mdView = container.NewScroll(d.markdownView())
+	d.mdTab.Content = d.mdView
+	if d.tabs != nil {
+		d.tabs.Refresh()
+	}
+	d.debug("FileViewer: markdown-lazy-load elapsed=%s", time.Since(stepStart))
 }
 
 func (d *FileViewerDialog) createHexGrid() *fileViewerTextGrid {

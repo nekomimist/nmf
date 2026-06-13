@@ -5,13 +5,12 @@
 ### File Managerのタイトル
 - Nekomimist File Managerにしたい
 
-## 簡易viewerの高速化
-- Text/Hex表示はTextからTextGridに置きかえたけどまだ遅い。
-- 別windowに表示したほうが早いかもしれない。
-- 抜本的対策が必要かも。
-- TextGridで未対応項目がある。Text/Hex表示のキーボードによる範囲選択、MarkdownはTextのままで遅い、など。
-
 ## 優先度低めのもの
+
+## 簡易viewerの残課題
+- Text/Hex表示のキーボードによる範囲選択が未対応。
+- MarkdownタブはRichText(TextGrid未対応)のままで遅い。現状は遅延構築+
+  64KB打ち切りで実害を抑えているだけで、根本対策(仮想化)は未着手。
 
 ## ダイアログ系KeyHandlerの共通化
 - keymanagerパッケージにdialog毎のhandlerが16ファイルあり、
@@ -40,6 +39,18 @@
 - 進捗表示は必須。高速化案はチャンク単位などで現在ファイルの進捗を維持できることを条件にする。
 
 # DONE 以下は一応終わったもの
+## 簡易viewerの高速化
+- 遅さの正体はMarkdownタブだった。`widget.NewRichTextFromMarkdown`に全文を渡して
+  ダイアログ表示時に即時構築しており、FyneのRichTextは非仮想化のため
+  `dialog.Show()`/`Resize()`のレイアウト計算で全文のテキスト計測が走っていた
+  (228KBのJSONで計約1分30秒)。Text/Hex用の自作TextGridは仮想化済みで無関係。
+- MarkdownタブをHexタブと同じ遅延構築(タブ選択時に生成)へ変更し、
+  Markdown専用の64KB表示上限(打ち切り注記つき)を追加した。
+- Text/Hexの64KB表示制限は安全網(Text 4MiB / Hex 8MiB)へ引き上げて実質撤廃。
+  読み込み自体は従来どおり`fileinfo.PreviewReadLimit`(1MiB)が上限。
+- 同じ223KBのJSONで open-ready が約23msになった。残課題は優先度低の
+  「簡易viewerの残課題」へ移動。
+
 ## キー入力処理の再設計 (KeyDown/KeyUp発火の廃止)
 - 現行仕様(活性化モデル・arm-gate・依存するFyne挙動の再検証ポイント・
   トレードオフ)は `docs/architecture/ui-input.md` に集約した。

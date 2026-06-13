@@ -84,6 +84,28 @@ func TestViewerHexTruncatesDisplayData(t *testing.T) {
 	}
 }
 
+func TestViewerMarkdownTruncatesDisplayText(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Text: strings.Repeat("a", fileViewerMarkdownLimit+1),
+	})
+
+	view := d.markdownView()
+	rich, ok := view.(*widget.RichText)
+	if !ok {
+		t.Fatalf("markdownView() = %T, want *widget.RichText", view)
+	}
+	got := rich.String()
+	if !strings.Contains(got, "markdown preview truncated") {
+		t.Fatalf("markdownView() missing truncation notice")
+	}
+	if !strings.Contains(got, fileinfo.FormatFileSize(int64(fileViewerMarkdownLimit))) {
+		t.Fatalf("markdownView() missing markdown limit")
+	}
+}
+
 func TestTruncateUTF8BytesKeepsValidUTF8(t *testing.T) {
 	got, truncated := truncateUTF8Bytes("abc日本語", 5)
 	if !truncated {
@@ -287,6 +309,36 @@ func TestFileViewerDialogLazyLoadsHexTextGrid(t *testing.T) {
 	d.tabs.Select(d.hexTab)
 	if d.hexGrid == nil {
 		t.Fatal("hexGrid is nil after Hex tab selection")
+	}
+}
+
+func TestFileViewerDialogLazyLoadsMarkdownView(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "README.md",
+		Data:     []byte("# title"),
+		Text:     "# title",
+		Markdown: true,
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	if d.mdView != nil {
+		t.Fatal("markdown view loaded before Markdown tab selection")
+	}
+	if _, ok := d.mdTab.Content.(*widget.Label); !ok {
+		t.Fatalf("mdTab content = %T, want placeholder *widget.Label", d.mdTab.Content)
+	}
+	d.tabs.Select(d.mdTab)
+	if d.mdView == nil {
+		t.Fatal("markdown view is nil after Markdown tab selection")
+	}
+	if d.mdTab.Content != d.mdView {
+		t.Fatal("mdTab content not replaced by lazy-loaded markdown view")
 	}
 }
 
