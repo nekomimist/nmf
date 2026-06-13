@@ -20,10 +20,8 @@ This directory is the canonical source for project design and operational docume
 - `docs/starlark-configuration.md`
   - Optional `init.star` overlay configuration, custom commands, and
     persistence behavior.
-- `docs/unc-smb-status.md`
-  - Current UNC/SMB implementation status, remaining work, and touch points.
-- `docs/architecture-review.md`
-  - Active architecture risk register (unresolved items only).
+- `docs/todo.md`
+  - Lower-priority follow-up items and completed work notes.
 - `docs/runbooks/` (recommended when needed)
   - Operational procedures and troubleshooting steps.
 - `docs/adr/` (recommended when needed)
@@ -34,5 +32,5 @@ This directory is the canonical source for project design and operational docume
 - If a topic explains "how the system should be designed," place it in `docs/architecture/`.
 - If a topic explains "how to configure the app," place it in `docs/configuration.md`.
 - If a topic explains "how agents should operate in this repo," place it in `AGENTS.md`.
-- If a risk is resolved, remove it from `docs/architecture-review.md`.
+- If a remaining item is not active design guidance, keep it in `docs/todo.md`.
 - Prefer short, linkable pages over one large document.

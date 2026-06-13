@@ -1,5 +1,23 @@
 # VFS and SMB Architecture
 
+## Goals and Non-Goals
+
+Goals:
+
+- Windows: handle `\\server\share\path` and `smb://server/share/path`
+  through native UNC access, with credential retry on access failures.
+- Linux: treat `smb://server/share/path` and `//server/share/path` as SMB;
+  prefer existing CIFS/SMB mounts, otherwise use the direct SMB provider.
+- Keep UI, history, watcher, tree dialog, file opening, and jobs code stable
+  through the resolver/VFS boundary.
+
+Non-goals:
+
+- Network browsing and share enumeration.
+- Kernel filesystem notifications for SMB; remote paths use polling.
+- Full direct-SMB provider parity on non-Linux until the platform support
+  policy is decided.
+
 ## Path Model
 
 Two forms are used throughout the app:
@@ -21,6 +39,10 @@ Resolver entrypoints:
 - `ResolveDirectoryPath`: normalize + require directory semantics (SMB allowed without stat check).
 - `ResolveAccessibleDirectoryPath`: normalize + require accessible/stat'able directory.
 - `ResolveRead`: select provider and return parsed/native path.
+
+Path input and history use canonical display paths. SMB URL credentials can be
+parsed from path-entry navigation and used to seed the in-memory credential
+cache before provider access.
 
 Archive paths are read-only. The root display path for an archive is
 `archive-file!/`; nested archive navigation is intentionally unsupported.
@@ -66,12 +88,24 @@ Wiring is installed in `NewFileManager`:
 
 ## VFS Usage Rules
 
+Implemented VFS providers expose:
+
+- `ReadDir(path string) ([]os.DirEntry, error)`
+- `Stat(path string) (os.FileInfo, error)`
+- `Open(path string) (io.ReadCloser, error)`
+- `Join(elem ...string) string`
+- `Base(path string) string`
+- `Capabilities() Capabilities`
+
 - Directory listing/metadata should go through portable APIs:
   - `ReadDirPortable`
   - `StatPortable`
 - Path joining/parent/base for display paths should use `internal/fileinfo/pathutil.go` helpers:
   - `JoinPath`, `ParentPath`, `BaseName`
 - Avoid raw `filepath.Join` for `smb://` display paths.
+- Directory tree dialogs should also use the portable read/stat APIs.
+- Directory watcher uses portable listing. SMB paths use a longer polling
+  interval to reduce remote filesystem load.
 
 ## File Opening Behavior
 
@@ -126,7 +160,7 @@ platform default application.
 Constraints:
 
 - If direct SMB provider capability is unavailable for a path that resolves to SMB backend, job execution fails with an explicit backend error.
-- Platform parity for direct SMB backend remains an active architecture item (see `docs/architecture-review.md`).
+- Platform parity for direct SMB backend remains a low-priority follow-up item (see `docs/todo.md`).
 - Archive paths can be copy sources. Archive destinations, move, rename, and
   delete are rejected because archive mutation is out of scope.
 

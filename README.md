@@ -74,5 +74,4 @@ make test
 - [VFS and SMB behavior](docs/architecture/vfs-smb.md)
 - [Watcher and jobs lifecycle](docs/architecture/watcher-jobs.md)
 - [Keyboard and focus model](docs/architecture/ui-input.md)
-- [UNC/SMB support status](docs/unc-smb-status.md)
-- [Architecture risk register](docs/architecture-review.md)
+- [Project todo](docs/todo.md)

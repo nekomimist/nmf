@@ -7,6 +7,25 @@
 
 ## 優先度低めのもの
 
+## SMB/UNCまわりの残課題
+- Network/auth error typingを追加し、auth required/failed、host unreachable、
+  share not found、timeout、credential conflictなどをUIで読みやすいエラーにする。
+- Transient network failureには保守的なretry/backoffを検討する。auth failureでは
+  stale credentialを消して再promptする。
+- Watcherのlist source注入やprovider `Capabilities()` ベースのpolling判定を検討し、
+  `smb://` 文字列heuristicsへの依存を減らす。
+- Non-Linux direct SMB provider / copy-move behavior の方針を決める。
+  Windows native UNC backed に寄せるか、unsupported-by-design として明文化するか、
+  direct provider parity を実装するかを選び、OS別のテストを追加する。
+- SMB integration test は `NMF_SMB_TEST_DIR=...` の手動実行のみなので、
+  dockerized Samba などの repeatable fixture を使うCI/gated jobを検討する。
+- Windows long-path (`\\?\UNC\...`) のresolver、display normalization、
+  file opening、Windows connection retryへの影響をauditする。
+- Credential cacheを複数window間でどう扱うかを明文化する。
+- 将来必要ならshare enumeration/network discovery UIや、SMB copy/moveの
+  conflict handling/partial artifact cleanupを検討する。
+- 詳細な設計は `docs/architecture/vfs-smb.md` を参照する。
+
 ## 簡易viewerの残課題
 - Text/Hex表示のキーボードによる範囲選択が未対応。
 - MarkdownタブはTextGrid化済み。Markdown ASTから簡易テキストへ変換しているため、

@@ -70,7 +70,7 @@ v2.7.3 (VFS with local/SMB/archive support, background jobs, multi-window).
 - VFS/SMB and file opening behavior: `docs/architecture/vfs-smb.md`.
 - Watcher and jobs lifecycle contracts: `docs/architecture/watcher-jobs.md`.
 - Keyboard/focus interaction model: `docs/architecture/ui-input.md`.
-- Active unresolved architecture risks: `docs/architecture-review.md`.
+- Remaining lower-priority work: `docs/todo.md`.
 
 ## Quick Guardrails
 - Route directory listing/stat calls through `internal/fileinfo` portable APIs instead of raw `os` calls.
