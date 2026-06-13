@@ -1,5 +1,8 @@
 # Repository Guidelines
 
+nmf is a cross-platform keyboard-driven GUI file manager built with Go + Fyne
+v2.7.3 (VFS with local/SMB/archive support, background jobs, multi-window).
+
 ## Project Structure & Module Organization
 - Root: `main.go` (startup/flag handling), `go.mod`, and split `*_ui.go` /
   runtime files for `FileManager` behavior.
@@ -51,6 +54,9 @@
 - Config file: OS‑specific path ending in `config.json` (XDG/AppData conventions). Use `internal/config.Manager` to load/save.
 - Debugging: run `go run . -d` or `./dist/nmf -d` after `make build` to enable verbose logs via `debugPrint`.
 - Config schema source of truth: `internal/config/config.go`.
+- Default main-screen key bindings: `defaultMainScreenBindings()` in
+  `internal/keymanager/mainscreen_handler.go`; binding syntax in
+  `docs/configuration.md`; dialog key handling in `docs/architecture/ui-input.md`.
 - Durable architecture details live under `docs/architecture/`.
 
 ## Debug Logging Guidelines
