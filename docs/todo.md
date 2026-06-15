@@ -1,31 +1,17 @@
 # 実用になるために必要なToDo
 
-## 優先度高いの
+# 優先度高いの
 
-### File Managerのタイトル
-- Nekomimist File Managerにしたい
+- File Manager以外のキーバインドも設定可能にする
+  - nmf.key()で対象を指定できるようにする必要があるはず
+  - 優先度低め項目にある"ダイアログ系KeyHandlerの共通化"と同時に対応すべきかもしれない。
 
-## 優先度低めのもの
+- パスの監視に https://github.com/fswatcher/fswatcher を利用して監視負荷を下げる
+  - エラーを返すpathについては既存のポーリング処理にfall backする
 
-## SMB/UNCまわりの残課題
-- Network/auth error typingを追加し、auth required/failed、host unreachable、
-  share not found、timeout、credential conflictなどをUIで読みやすいエラーにする。
-- Transient network failureには保守的なretry/backoffを検討する。auth failureでは
-  stale credentialを消して再promptする。
-- Watcherのlist source注入やprovider `Capabilities()` ベースのpolling判定を検討し、
-  `smb://` 文字列heuristicsへの依存を減らす。
-- Non-Linux direct SMB provider / copy-move behavior の方針を決める。
-  Windows native UNC backed に寄せるか、unsupported-by-design として明文化するか、
-  direct provider parity を実装するかを選び、OS別のテストを追加する。
-- SMB integration test は `NMF_SMB_TEST_DIR=...` の手動実行のみなので、
-  dockerized Samba などの repeatable fixture を使うCI/gated jobを検討する。
-- Windows long-path (`\\?\UNC\...`) のresolver、display normalization、
-  file opening、Windows connection retryへの影響をauditする。
-- Credential cacheを複数window間でどう扱うかを明文化する。
-- 将来必要ならshare enumeration/network discovery UIや、SMB copy/moveの
-  conflict handling/partial artifact cleanupを検討する。
-- 詳細な設計は `docs/architecture/vfs-smb.md` を参照する。
+- File ManagerのタイトルをNekomimist Filerにする
 
+# 優先度低めのもの
 ## 簡易viewerの残課題
 - Text/Hex表示のキーボードによる範囲選択が未対応。
 - MarkdownタブはTextGrid化済み。Markdown ASTから簡易テキストへ変換しているため、
@@ -57,7 +43,27 @@
 - ただしSMB、HDD、archive、progress表示との相性があるため、過度な並列化は避けたい。
 - 進捗表示は必須。高速化案はチャンク単位などで現在ファイルの進捗を維持できることを条件にする。
 
-# DONE 以下は一応終わったもの
+# 優先度かなり低いの
+## SMB/UNCまわりの残課題
+- Network/auth error typingを追加し、auth required/failed、host unreachable、
+  share not found、timeout、credential conflictなどをUIで読みやすいエラーにする。
+- Transient network failureには保守的なretry/backoffを検討する。auth failureでは
+  stale credentialを消して再promptする。
+- Watcherのlist source注入やprovider `Capabilities()` ベースのpolling判定を検討し、
+  `smb://` 文字列heuristicsへの依存を減らす。
+- Non-Linux direct SMB provider / copy-move behavior の方針を決める。
+  Windows native UNC backed に寄せるか、unsupported-by-design として明文化するか、
+  direct provider parity を実装するかを選び、OS別のテストを追加する。
+- SMB integration test は `NMF_SMB_TEST_DIR=...` の手動実行のみなので、
+  dockerized Samba などの repeatable fixture を使うCI/gated jobを検討する。
+- Windows long-path (`\\?\UNC\...`) のresolver、display normalization、
+  file opening、Windows connection retryへの影響をauditする。
+- Credential cacheを複数window間でどう扱うかを明文化する。
+- 将来必要ならshare enumeration/network discovery UIや、SMB copy/moveの
+  conflict handling/partial artifact cleanupを検討する。
+- 詳細な設計は `docs/architecture/vfs-smb.md` を参照する。
+
+# DONE 以下は終わったもの
 ## 簡易viewerの高速化
 - 遅さの正体はMarkdownタブだった。`widget.NewRichTextFromMarkdown`に全文を渡して
   ダイアログ表示時に即時構築しており、FyneのRichTextは非仮想化のため
