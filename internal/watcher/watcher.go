@@ -19,10 +19,11 @@ type FileManager interface {
 // DirectoryWatcher handles incremental directory change detection
 type DirectoryWatcher struct {
 	fm            FileManager
+	hub           *WatchHub
 	mu            sync.RWMutex                 // Protects watcher lifecycle state and previousFiles
 	previousFiles map[string]fileinfo.FileInfo // Previous state for comparison
-	ticker        *time.Ticker
 	pollInterval  time.Duration
+	subscription  *Subscription
 	stopChan      chan struct{}
 	changeChan    chan *PendingChanges                     // Channel for thread-safe change communication
 	running       bool                                     // True while current watcher run is active
@@ -38,9 +39,13 @@ type PendingChanges struct {
 }
 
 // NewDirectoryWatcher creates a new directory watcher
-func NewDirectoryWatcher(fm FileManager, debugPrint func(format string, args ...interface{})) *DirectoryWatcher {
+func NewDirectoryWatcher(fm FileManager, hub *WatchHub, debugPrint func(format string, args ...interface{})) *DirectoryWatcher {
+	if hub == nil {
+		hub = NewWatchHub(debugPrint)
+	}
 	return &DirectoryWatcher{
 		fm:            fm,
+		hub:           hub,
 		previousFiles: make(map[string]fileinfo.FileInfo),
 		pollInterval:  2 * time.Second,
 		debugPrint:    debugPrint,
@@ -60,19 +65,29 @@ func (dw *DirectoryWatcher) Start() {
 	if interval <= 0 {
 		interval = 2 * time.Second
 	}
-	ticker := time.NewTicker(interval)
+	path := dw.fm.GetCurrentPath()
 	stopChan := make(chan struct{})
 	changeChan := make(chan *PendingChanges, 10) // Buffered channel
-	dw.ticker = ticker
 	dw.stopChan = stopChan
 	dw.changeChan = changeChan
 	dw.running = true
 	dw.mu.Unlock()
 
 	dw.updateSnapshot() // Take initial snapshot
+	subscription := dw.hub.Subscribe(path, interval)
+
+	dw.mu.Lock()
+	if dw.running && dw.runID == runID {
+		dw.subscription = subscription
+	} else {
+		dw.mu.Unlock()
+		subscription.Unsubscribe()
+		return
+	}
+	dw.mu.Unlock()
 
 	// Start directory monitoring goroutine
-	go dw.watchLoop(runID, ticker, stopChan, changeChan)
+	go dw.watchLoop(runID, subscription.Updates, stopChan, changeChan)
 
 	// Start change processing goroutine
 	go dw.applyLoop(runID, stopChan, changeChan)
@@ -93,16 +108,17 @@ func (dw *DirectoryWatcher) Stop() {
 		return // Already stopped, do nothing
 	}
 	stopChan := dw.stopChan
-	ticker := dw.ticker
+	subscription := dw.subscription
 	dw.running = false
-	dw.ticker = nil
+	dw.subscription = nil
 	dw.stopChan = nil
 	dw.changeChan = nil
 	dw.mu.Unlock()
 
-	// Stop ticker before signaling goroutines to exit.
-	if ticker != nil {
-		ticker.Stop()
+	// Unsubscribe before signaling so shared path sources stop promptly when
+	// the last window leaves a directory.
+	if subscription != nil {
+		subscription.Unsubscribe()
 	}
 	if stopChan != nil {
 		close(stopChan)
@@ -129,11 +145,14 @@ func (dw *DirectoryWatcher) RefreshSnapshot() {
 	dw.updateSnapshot()
 }
 
-func (dw *DirectoryWatcher) watchLoop(runID uint64, ticker *time.Ticker, stopChan <-chan struct{}, changeChan chan<- *PendingChanges) {
+func (dw *DirectoryWatcher) watchLoop(runID uint64, updates <-chan Snapshot, stopChan <-chan struct{}, changeChan chan<- *PendingChanges) {
 	for {
 		select {
-		case <-ticker.C:
-			dw.checkForChanges(runID, changeChan)
+		case snapshot, ok := <-updates:
+			if !ok {
+				return
+			}
+			dw.queueSnapshotChanges(runID, snapshot, changeChan)
 		case <-stopChan:
 			return
 		}
@@ -158,28 +177,10 @@ func (dw *DirectoryWatcher) isCurrentRun(runID uint64) bool {
 	return dw.running && dw.runID == runID
 }
 
-// checkForChanges detects and handles file system changes.
-func (dw *DirectoryWatcher) checkForChanges(runID uint64, changeChan chan<- *PendingChanges) {
+// queueSnapshotChanges detects and queues file system changes from a shared snapshot.
+func (dw *DirectoryWatcher) queueSnapshotChanges(runID uint64, currentFiles Snapshot, changeChan chan<- *PendingChanges) {
 	if !dw.isCurrentRun(runID) {
 		return
-	}
-
-	// Read current directory state
-	cur := dw.fm.GetCurrentPath()
-	entries, err := fileinfo.ReadDirPortable(cur)
-	if err != nil {
-		return // Skip this check if directory read fails
-	}
-
-	currentFiles := make(map[string]fileinfo.FileInfo)
-
-	// Build current file map
-	for _, entry := range entries {
-		fileInfo, err := fileinfo.FileInfoFromDirEntry(cur, entry)
-		if err != nil {
-			continue
-		}
-		currentFiles[fileInfo.Path] = fileInfo
 	}
 
 	// Detect changes

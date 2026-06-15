@@ -40,7 +40,7 @@ func fi(path string, name string, size int64, mod time.Time) fileinfo.FileInfo {
 
 func TestDetectChanges_AddedDeletedModified(t *testing.T) {
 	m := &mockFM{path: "/tmp"}
-	dw := NewDirectoryWatcher(m, dummyDebug)
+	dw := NewDirectoryWatcher(m, nil, dummyDebug)
 
 	t1 := time.Now().Add(-time.Hour)
 	t2 := time.Now()
@@ -73,7 +73,7 @@ func TestDetectChanges_AddedDeletedModified(t *testing.T) {
 
 func TestUpdateSnapshot_ExcludesParentAndDeleted(t *testing.T) {
 	m := &mockFM{path: "/tmp"}
-	dw := NewDirectoryWatcher(m, dummyDebug)
+	dw := NewDirectoryWatcher(m, nil, dummyDebug)
 	now := time.Now()
 	m.files = []fileinfo.FileInfo{
 		{Name: "..", Path: "/tmp/..", IsDir: true, Modified: now, FileType: fileinfo.FileTypeDirectory, Status: fileinfo.StatusNormal},
@@ -94,7 +94,7 @@ func TestUpdateSnapshot_ExcludesParentAndDeleted(t *testing.T) {
 
 func TestStartStop_IdempotentAndRapidCycles(t *testing.T) {
 	m := &mockFM{path: "."}
-	dw := NewDirectoryWatcher(m, dummyDebug)
+	dw := NewDirectoryWatcher(m, nil, dummyDebug)
 
 	for i := 0; i < 20; i++ {
 		dw.Start()
@@ -115,14 +115,14 @@ func TestStartStop_IdempotentAndRapidCycles(t *testing.T) {
 	if dw.changeChan != nil {
 		t.Fatalf("changeChan should be nil after Stop")
 	}
-	if dw.ticker != nil {
-		t.Fatalf("ticker should be nil after Stop")
+	if dw.subscription != nil {
+		t.Fatalf("subscription should be nil after Stop")
 	}
 }
 
 func TestApplyPendingChanges_IgnoresStaleRun(t *testing.T) {
 	m := &mockFM{path: "."}
-	dw := NewDirectoryWatcher(m, dummyDebug)
+	dw := NewDirectoryWatcher(m, nil, dummyDebug)
 
 	dw.Start()
 	dw.mu.RLock()

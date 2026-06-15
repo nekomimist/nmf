@@ -104,8 +104,11 @@ Implemented VFS providers expose:
   - `JoinPath`, `ParentPath`, `BaseName`
 - Avoid raw `filepath.Join` for `smb://` display paths.
 - Directory tree dialogs should also use the portable read/stat APIs.
-- Directory watcher uses portable listing. SMB paths use a longer polling
-  interval to reduce remote filesystem load.
+- Directory watcher uses shared fswatcher-backed path sources for watchable
+  local paths, then portable listing to refresh snapshots after events. Watcher
+  registration failures fall back to polling.
+- Direct SMB/archive providers currently report `Watch: false`, so main-window
+  directory watching is not started for those paths.
 
 ## File Opening Behavior
 

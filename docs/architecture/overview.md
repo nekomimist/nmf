@@ -15,7 +15,8 @@ This document describes runtime composition, package boundaries, and core state 
 2. `bootstrap.go` (`NewFileManager`)
    - Construct `FileManager` state.
    - Initialize icon service, directory watcher, SMB credential providers, and key manager.
-   - Build UI (`setupUI`), load initial directory (`LoadDirectory`), then start watcher.
+   - Build UI (`setupUI`) and load the initial directory (`LoadDirectory`).
+     The watcher starts after a directory load successfully applies.
    - Register window close intercept (`closeWindow`).
 3. Runtime method groups are split across focused files:
    - `directory_loading.go`: loading, busy state, watcher poll policy.
@@ -33,11 +34,13 @@ This document describes runtime composition, package boundaries, and core state 
 - selection and cursor state
 - key manager stack and search overlay
 - watcher instance and jobs indicator state
+- shared watcher hub reference
 - config/config manager handles
 
 Cross-window/global state:
 
 - window registry and count in `main.go`
+- shared `internal/watcher.WatchHub` path sources
 - singleton jobs manager in `internal/jobs`
 
 Window placement:
@@ -58,7 +61,8 @@ menus and outbound file dragging, are summarized in `platform-behavior.md`.
 - `internal/configscript`: optional Starlark overlay configuration and custom command registration.
 - `internal/fileinfo`: path resolver, VFS abstraction, platform file openers,
   bounded preview loading, SMB support, icon service.
-- `internal/watcher`: polling watcher with run-generation lifecycle protection.
+- `internal/watcher`: shared fswatcher-backed path monitor with polling
+  fallback and run-generation lifecycle protection.
 - `internal/jobs`: copy/move queue manager and background worker.
 - `internal/keymanager`: stacked key handlers and modifier state.
 - `internal/ui`: dialogs, wrappers, and visual widgets.

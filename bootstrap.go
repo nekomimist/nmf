@@ -19,7 +19,10 @@ import (
 	"nmf/internal/watcher"
 )
 
-func NewFileManager(app fyne.App, path string, config *config.Config, configManager *config.Manager, customTheme *customtheme.CustomTheme, configScript *configscript.Runtime) *FileManager {
+func NewFileManager(app fyne.App, path string, config *config.Config, configManager *config.Manager, customTheme *customtheme.CustomTheme, configScript *configscript.Runtime, watchHub *watcher.WatchHub) *FileManager {
+	if watchHub == nil {
+		watchHub = watcher.NewWatchHub(debugPrint)
+	}
 	fm := &FileManager{
 		window:            app.NewWindow("File Manager"),
 		currentPath:       path,
@@ -36,6 +39,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 		cursorRenderer:    ui.NewCursorRenderer(config.UI.CursorStyle),
 		keyManager:        keymanager.NewKeyManager(debugPrint),
 		searchMatchers:    search.NewProvider(debugPrint),
+		watchHub:          watchHub,
 	}
 
 	// Busy overlay (hidden by default)
@@ -55,7 +59,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 	})
 
 	// Create directory watcher
-	fm.dirWatcher = watcher.NewDirectoryWatcher(fm, debugPrint)
+	fm.dirWatcher = watcher.NewDirectoryWatcher(fm, watchHub, debugPrint)
 
 	// Install SMB credentials provider (cached + interactive prompt fallback)
 	cached := fileinfo.NewCachedCredentialsProvider(ui.NewSMBCredentialsProvider(fm.window))
@@ -84,9 +88,6 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 
 	fm.setupUI()
 	fm.LoadDirectory(path)
-
-	// Start watching after initial load
-	fm.dirWatcher.Start()
 
 	// Register window in global registry
 	registerFileManagerWindow(fm)

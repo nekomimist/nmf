@@ -21,6 +21,7 @@ import (
 	"nmf/internal/jobs"
 	"nmf/internal/shellmenu"
 	customtheme "nmf/internal/theme"
+	"nmf/internal/watcher"
 )
 
 // Global debug flag
@@ -181,7 +182,8 @@ func main() {
 	jobs.SetDebug(debugPrint)
 	shellmenu.Debugf = debugPrint
 
-	fm := NewFileManager(fyneApp, startPath, cfg, configManager, customTheme, configScript)
+	watchHub := watcher.NewWatchHub(debugPrint)
+	fm := NewFileManager(fyneApp, startPath, cfg, configManager, customTheme, configScript, watchHub)
 	fm.window.Show()
 	applyInitialWindowPosition(fm.window, cfg.Window)
 	fyneApp.Run()

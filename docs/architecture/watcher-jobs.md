@@ -2,7 +2,7 @@
 
 ## Directory Watcher Contract
 
-Source: `internal/watcher/watcher.go`.
+Source: `internal/watcher/watcher.go` and `internal/watcher/hub.go`.
 
 `DirectoryWatcher` lifecycle rules:
 
@@ -10,21 +10,31 @@ Source: `internal/watcher/watcher.go`.
 - `Stop()` is idempotent and safe to call multiple times.
 - Each `Start()` increments a watcher `runID` generation.
 - Background loops discard stale work when generation no longer matches current run.
+- `RefreshSnapshot()` resets the per-window baseline from the current
+  `FileManager` file list.
 
 Concurrency model:
 
 - Lifecycle state is guarded by watcher mutex.
-- Change application is decoupled via buffered `changeChan`.
+- Shared path monitoring is owned by `WatchHub`.
+- Change application remains per-window and is decoupled via buffered `changeChan`.
 - FileManager access happens through watcher-facing interface methods:
   - `GetCurrentPath`
   - `GetFiles`
   - `UpdateFiles`
   - `RemoveFromSelections`
 
-Polling behavior:
+Watch behavior:
 
-- Default interval is 2 seconds.
-- `SetPollInterval` affects the next `Start()` run.
+- Local watchable paths use `github.com/fswatcher/fswatcher` as the primary
+  event source.
+- One `WatchHub` source is shared by all open windows for the same path.
+- Event bursts are debounced before a complete portable directory snapshot is
+  read and broadcast to subscribers.
+- If watcher creation, path registration, or runtime watcher delivery fails,
+  that source falls back to polling.
+- Default fallback interval is 2 seconds. `SetPollInterval` affects the next
+  `Start()` run.
 
 ## Jobs Manager Contract
 
@@ -89,7 +99,8 @@ Jobs:
 
 Watcher:
 
-- Read failures during polling are skipped for that cycle.
+- Read failures during snapshot refresh or polling are skipped for that cycle.
+- Failing fswatcher sources fall back to polling for that path source.
 - Full change channel drops update for that cycle (best-effort behavior).
 
 ## Regression Checklist
@@ -99,4 +110,5 @@ Before merging lifecycle changes:
 - `go test ./internal/watcher ./internal/jobs`
 - `go test -race ./internal/watcher ./internal/jobs`
 - Verify `Start -> Stop -> Start -> Stop` watcher cycle behavior
-- Verify subscribe/unsubscribe behavior for both main window and jobs dialog
+- Verify shared source subscribe/unsubscribe behavior for multiple windows on
+  the same path

@@ -7,6 +7,7 @@ require (
 	github.com/99designs/keyring v1.2.2
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/bodgit/sevenzip v1.6.1
+	github.com/fswatcher/fswatcher v0.1.0
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20260406072232-3ac4aa2bb164
 	github.com/go-text/typesetting v0.3.4
 	github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f
@@ -17,9 +18,11 @@ require (
 	github.com/nwaples/rardecode/v2 v2.2.0
 	github.com/nziu/lnk v0.1.2
 	go.starlark.net v0.0.0-20260326113308-fadfc96def35
-	golang.org/x/sys v0.43.0
-	golang.org/x/text v0.36.0
+	golang.org/x/sys v0.44.0
+	golang.org/x/text v0.37.0
 )
+
+require github.com/ebitengine/purego v0.10.0 // indirect
 
 require (
 	fyne.io/systray v1.12.0 // indirect

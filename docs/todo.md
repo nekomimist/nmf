@@ -6,9 +6,6 @@
   - nmf.key()で対象を指定できるようにする必要があるはず
   - 優先度低め項目にある"ダイアログ系KeyHandlerの共通化"と同時に対応すべきかもしれない。
 
-- パスの監視に https://github.com/fswatcher/fswatcher を利用して監視負荷を下げる
-  - エラーを返すpathについては既存のポーリング処理にfall backする
-
 - File ManagerのタイトルをNekomimist Filerにする
 
 # 優先度低めのもの
@@ -64,6 +61,14 @@
 - 詳細な設計は `docs/architecture/vfs-smb.md` を参照する。
 
 # DONE 以下は終わったもの
+## パス監視の負荷低減
+- `github.com/fswatcher/fswatcher` を導入し、ローカルのwatch可能なパスは
+  OSイベント監視を主経路にした。
+- アプリ全体で共有する `WatchHub` を追加し、同じパスを複数File Managerで
+  開いても監視sourceとsnapshot読み取りを1つにまとめるようにした。
+- watcher作成・path登録・runtime error時は、そのpath sourceだけ既存相当の
+  polling fallbackへ切り替える。
+
 ## 簡易viewerの高速化
 - 遅さの正体はMarkdownタブだった。`widget.NewRichTextFromMarkdown`に全文を渡して
   ダイアログ表示時に即時構築しており、FyneのRichTextは非仮想化のため

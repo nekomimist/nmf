@@ -55,6 +55,7 @@ type FileManager struct {
 	searchToken       keymanager.HandlerToken                 // Token of the pushed search handler
 	searchMatchers    *search.Provider                        // Shared search matcher provider
 	iconSvc           *fileinfo.IconService                   // Async icon service
+	watchHub          *watcher.WatchHub                       // Shared directory watch hub
 	// Busy state while loading directories
 	busyOverlay  *ui.BusyOverlay
 	busyActive   bool

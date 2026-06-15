@@ -26,7 +26,7 @@ func (fm *FileManager) ReopenClosedWindow() {
 }
 
 func (fm *FileManager) openWindowAtPath(path string) {
-	newFM := NewFileManager(fyne.CurrentApp(), path, fm.config, fm.configManager, fm.customTheme, fm.configScript)
+	newFM := NewFileManager(fyne.CurrentApp(), path, fm.config, fm.configManager, fm.customTheme, fm.configScript, fm.watchHub)
 	newFM.window.Show()
 	positionWindowNextTo(fm.window, newFM.window)
 }
