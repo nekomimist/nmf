@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image/color"
 	"os"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"golang.org/x/text/width"
 
 	"nmf/internal/keymanager"
+	customtheme "nmf/internal/theme"
 )
 
 const (
@@ -623,7 +625,7 @@ func (v *fileViewerTextGrid) applySelectionStyle() {
 		return
 	}
 	style := &widget.CustomTextGridStyle{
-		BGColor: theme.Color(theme.ColorNameSelection),
+		BGColor: currentViewerSelectionColor(),
 	}
 	for rowIdx, row := range v.visible {
 		if row.line < start.line || row.line > end.line || row.displayLen == 0 {
@@ -648,6 +650,14 @@ func (v *fileViewerTextGrid) applySelectionStyle() {
 		}
 		v.grid.SetStyleRange(rowIdx, startCol, rowIdx, endCol-1, style)
 	}
+}
+
+func currentViewerSelectionColor() color.Color {
+	themeProvider := currentThemeColorProvider()
+	if themeProvider == nil {
+		return currentAppThemeColor(theme.ColorNameSelection)
+	}
+	return themeProvider.GetCustomColor(customtheme.ColorLineEditSelection)
 }
 
 func (v *fileViewerTextGrid) applySearchStyle() {

@@ -126,9 +126,11 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 
 	d.search = NewIMEEntry(parent)
 	d.search.SetPlaceHolder("Search")
+	d.search.OnEscape = d.focusActiveViewer
 	d.search.OnSubmitted = func(_ string) { d.findNext() }
 	d.jump = NewIMEEntry(parent)
 	d.jump.SetPlaceHolder("Line")
+	d.jump.OnEscape = d.focusActiveViewer
 	d.jump.OnSubmitted = func(_ string) { d.jumpToLine() }
 	d.status = widget.NewLabel(d.statusText())
 	d.status.Truncation = fyne.TextTruncateClip
@@ -161,11 +163,11 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 		widget.NewButtonWithIcon("", theme.ContentCopyIcon(), d.copySelection),
 		widget.NewButtonWithIcon("", theme.CancelIcon(), d.CancelDialog),
 	), container.NewHBox(
-		container.NewGridWrap(fyne.NewSize(fileViewerSearchWidth, d.search.MinSize().Height), d.search),
+		container.NewGridWrap(fyne.NewSize(fileViewerSearchWidth, d.search.MinSize().Height), lineEditThemeOverride(d.search)),
 		widget.NewButtonWithIcon("", theme.NavigateBackIcon(), d.findPrevious),
 		widget.NewButtonWithIcon("", theme.NavigateNextIcon(), d.findNext),
 		widget.NewSeparator(),
-		container.NewGridWrap(fyne.NewSize(fileViewerLineWidth, d.jump.MinSize().Height), d.jump),
+		container.NewGridWrap(fyne.NewSize(fileViewerLineWidth, d.jump.MinSize().Height), lineEditThemeOverride(d.jump)),
 		widget.NewButtonWithIcon("", theme.ConfirmIcon(), d.jumpToLine),
 	))
 

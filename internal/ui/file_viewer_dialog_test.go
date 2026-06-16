@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image/color"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -8,10 +9,13 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/test"
+	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"nmf/internal/config"
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
+	customtheme "nmf/internal/theme"
 )
 
 func TestViewerTextDisablesBinaryPreview(t *testing.T) {
@@ -556,6 +560,36 @@ func TestFileViewerTextGridSelectedTextSkipsDisplayPadding(t *testing.T) {
 	}
 }
 
+func TestFileViewerTextGridSelectionUsesLineEditSelectionColor(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	cfg := &config.Config{
+		Theme: config.ThemeConfig{
+			Colors: map[string]config.ThemeColorConfig{
+				customtheme.ColorLineEditSelection: {
+					Value: &config.ThemeColorValue{RGBA: [4]uint8{5, 6, 7, 8}, IsRGBA: true},
+				},
+			},
+		},
+	}
+	app.Settings().SetTheme(customtheme.NewCustomTheme(cfg, func(string, ...interface{}) {}))
+
+	grid := newFileViewerTextGrid("abcdef", nil, nil, nil)
+	grid.selection = viewerTextSelection{
+		start: viewerTextPosition{line: 0, col: 1},
+		end:   viewerTextPosition{line: 0, col: 4},
+		set:   true,
+	}
+	grid.refreshGrid()
+
+	got := color.RGBAModel.Convert(grid.grid.Rows[0].Cells[1].Style.BackgroundColor())
+	want := color.RGBAModel.Convert(color.RGBA{5, 6, 7, 8})
+	if got != want {
+		t.Fatalf("selection color = %#v, want lineEditSelection %#v", got, want)
+	}
+}
+
 func TestFileViewerTextGridPositionForHorizontalScroll(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
@@ -800,6 +834,87 @@ func TestFileViewerDialogSlashFocusesSearchAfterKeyRelease(t *testing.T) {
 	}
 }
 
+func TestFileViewerDialogSearchAndLineEntriesUseLineEditColors(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	cfg := &config.Config{
+		Theme: config.ThemeConfig{
+			Colors: map[string]config.ThemeColorConfig{
+				customtheme.ColorLineEditCursor: {
+					Value: &config.ThemeColorValue{RGBA: [4]uint8{1, 2, 3, 4}, IsRGBA: true},
+				},
+				customtheme.ColorLineEditSelection: {
+					Value: &config.ThemeColorValue{RGBA: [4]uint8{5, 6, 7, 8}, IsRGBA: true},
+				},
+			},
+		},
+	}
+	app.Settings().SetTheme(customtheme.NewCustomTheme(cfg, func(string, ...interface{}) {}))
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "note.txt",
+		Data:     []byte("alpha"),
+		Text:     "alpha",
+		Encoding: "UTF-8",
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	variant := app.Settings().ThemeVariant()
+	wantCursor := color.RGBAModel.Convert(color.RGBA{1, 2, 3, 4})
+	wantSelection := color.RGBAModel.Convert(color.RGBA{5, 6, 7, 8})
+	for name, entry := range map[string]*IMEEntry{"search": d.search, "line": d.jump} {
+		if got := color.RGBAModel.Convert(entry.Theme().Color(fynetheme.ColorNamePrimary, variant)); got != wantCursor {
+			t.Fatalf("%s entry primary = %#v, want lineEditCursor %#v", name, got, wantCursor)
+		}
+		if got := color.RGBAModel.Convert(entry.Theme().Color(fynetheme.ColorNameSelection, variant)); got != wantSelection {
+			t.Fatalf("%s entry selection = %#v, want lineEditSelection %#v", name, got, wantSelection)
+		}
+		w.Canvas().Focus(entry)
+		renderer := test.WidgetRenderer(entry).(*lineEditEntryRenderer)
+		renderer.Refresh()
+		if got := color.RGBAModel.Convert(renderer.caret.FillColor); got != wantCursor {
+			t.Fatalf("%s entry caret = %#v, want lineEditCursor %#v", name, got, wantCursor)
+		}
+	}
+}
+
+func TestFileViewerDialogEscapeFromSearchReturnsToViewer(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "note.txt",
+		Data:     []byte("alpha\nbeta"),
+		Text:     "alpha\nbeta",
+		Encoding: "UTF-8",
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	w.Canvas().Focus(d.search)
+	d.search.SetText("beta")
+	d.search.TypedKey(&fyne.KeyEvent{Name: fyne.KeyEscape})
+
+	if d.closed {
+		t.Fatal("viewer closed after Escape in search entry")
+	}
+	if w.Canvas().Focused() != d.textGrid {
+		t.Fatal("focus did not return to text grid after Escape in search entry")
+	}
+	if d.search.Text != "beta" {
+		t.Fatalf("search text = %q, want preserved", d.search.Text)
+	}
+	if d.textGrid.CurrentLine() != 1 {
+		t.Fatalf("current line = %d, want unchanged", d.textGrid.CurrentLine())
+	}
+}
+
 func TestFileViewerDialogColonFocusesLineAfterKeyRelease(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
@@ -826,6 +941,39 @@ func TestFileViewerDialogColonFocusesLineAfterKeyRelease(t *testing.T) {
 	}
 	if d.jump.Text != "" {
 		t.Fatalf("line text = %q, want empty after colon command", d.jump.Text)
+	}
+}
+
+func TestFileViewerDialogEscapeFromLineReturnsToViewer(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "note.txt",
+		Data:     []byte("alpha\nbeta"),
+		Text:     "alpha\nbeta",
+		Encoding: "UTF-8",
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	w.Canvas().Focus(d.jump)
+	d.jump.SetText("2")
+	d.jump.TypedKey(&fyne.KeyEvent{Name: fyne.KeyEscape})
+
+	if d.closed {
+		t.Fatal("viewer closed after Escape in line entry")
+	}
+	if w.Canvas().Focused() != d.textGrid {
+		t.Fatal("focus did not return to text grid after Escape in line entry")
+	}
+	if d.jump.Text != "2" {
+		t.Fatalf("line text = %q, want preserved", d.jump.Text)
+	}
+	if d.textGrid.CurrentLine() != 1 {
+		t.Fatalf("current line = %d, want unchanged", d.textGrid.CurrentLine())
 	}
 }
 

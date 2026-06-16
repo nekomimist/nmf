@@ -153,8 +153,10 @@ Built-in file viewer:
   Markdown AST to simplified text, including fixed-width pipe tables and
   front-matter metadata tables with long cells wrapped to multiple rows, and
   leaves diagram rendering to external viewers.
-- Search and line inputs are normal entries; submitted searches return focus to
-  the active viewer pane regardless of match result.
+- Search and line inputs are normal entries with the line-edit cursor and
+  selection theme colors. Submitted searches return focus to the active viewer
+  pane regardless of match result; Escape returns focus without submitting or
+  closing the viewer.
 
 Filter-style text input:
 

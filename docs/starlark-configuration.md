@@ -266,7 +266,9 @@ Color API:
   `menuCursor`, `copyMoveOpenDestination`,
   `searchOverlayBackground`, `searchOverlayForeground`, and
   `busyOverlayBackground`.
-- `lineEditCursor` and `lineEditSelection` apply only to one-line edit dialogs.
+- `lineEditCursor` and `lineEditSelection` apply to one-line edit dialogs and
+  the built-in File Viewer search/line inputs. `lineEditSelection` also
+  applies to mouse text selection in the File Viewer content panes.
   `dialogListCursor` applies to Navigation History, Directory Jump, Filter,
   Copy/Move, and Jobs list cursor rows.
   `menuCursor` applies to command menu cursor rows.

@@ -1,13 +1,6 @@
 # 実用になるために必要なToDo
 
 # 優先度高いの
-- FileViewの検索欄と行ジャンプ欄のカーソルと選択範囲の色もlineEditCursorとlineEditSelectionにしたい。
-  閲覧部のマウス選択範囲もlineEditSelectionにしたい。
-  そうなるとlineEditCursor, lineEditSelectionという名前はイマイチかも……？
-
-- FileViewの検索欄と行ジャンプ欄にフォーカスがある時、ESCで検索欄と行ジャンプ欄から抜けたい。
-  (Enterと違って単に戻るだけがよい)
-
 - File Manager以外のキーバインドも設定可能にしたい
   - nmf.key()で対象を指定できるようにする必要があるはず
   - 優先度低め項目にある"ダイアログ系KeyHandlerの共通化"と同時に対応すべきかもしれない。
@@ -74,6 +67,16 @@
 - 詳細な設計は `docs/architecture/vfs-smb.md` を参照する。
 
 # DONE 以下は終わったもの
+## FileViewの検索/行ジャンプ欄と選択色
+- FileViewの検索欄と行ジャンプ欄のカーソルと選択範囲に、
+  既存の`lineEditCursor`/`lineEditSelection`色を適用した。
+- 閲覧部のマウス選択範囲にも`lineEditSelection`を適用した。
+- 設定名は互換性優先で維持し、docsの適用範囲説明を更新した。
+
+## FileViewの検索/行ジャンプ欄のEsc戻り
+- FileViewの検索欄と行ジャンプ欄にフォーカスがある時、Escで入力を送信せず、
+  viewerを閉じずに閲覧部へ戻るようにした。
+
 ## Explorerメニューの重複項目抑制
 - TABによるExplorerメニュー表示で、Shell拡張由来の同じ項目が複数出る場合に
   2つ目以降を表示前に間引くようにした。
