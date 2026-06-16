@@ -1,9 +1,6 @@
 # 実用になるために必要なToDo
 
 # 優先度高いの
-- TABによるExplorerメニュー表示で複数出る項目がある
-  - 2つ目以降を出さないなどできるといいのだが。
-  
 - FileViewの検索欄と行ジャンプ欄のカーソルと選択範囲の色もlineEditCursorとlineEditSelectionにしたい。
   閲覧部のマウス選択範囲もlineEditSelectionにしたい。
   そうなるとlineEditCursor, lineEditSelectionという名前はイマイチかも……？
@@ -77,6 +74,10 @@
 - 詳細な設計は `docs/architecture/vfs-smb.md` を参照する。
 
 # DONE 以下は終わったもの
+## Explorerメニューの重複項目抑制
+- TABによるExplorerメニュー表示で、Shell拡張由来の同じ項目が複数出る場合に
+  2つ目以降を表示前に間引くようにした。
+
 ## パス監視の負荷低減
 - `github.com/fswatcher/fswatcher` を導入し、ローカルのwatch可能なパスは
   OSイベント監視を主経路にした。

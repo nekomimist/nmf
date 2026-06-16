@@ -40,6 +40,18 @@ const (
 	tpmRightButton = 0x0002
 	tpmReturnCmd   = 0x0100
 
+	mfByPosition = 0x00000400
+
+	miimState    = 0x00000001
+	miimID       = 0x00000002
+	miimSubMenu  = 0x00000004
+	miimString   = 0x00000040
+	miimFType    = 0x00000100
+	mftSeparator = 0x00000800
+	mfsDisabled  = 0x00000003
+
+	gcsVerbW = 0x00000004
+
 	dropEffectCopy             = 0x00000001
 	dragdropSCancel            = 0x00040101
 	dragdropSDrop              = 0x00040100
@@ -86,6 +98,9 @@ var (
 	procCreatePopupMenu   = modUser32.NewProc("CreatePopupMenu")
 	procDestroyMenu       = modUser32.NewProc("DestroyMenu")
 	procTrackPopupMenuEx  = modUser32.NewProc("TrackPopupMenuEx")
+	procGetMenuItemCount  = modUser32.NewProc("GetMenuItemCount")
+	procGetMenuItemInfoW  = modUser32.NewProc("GetMenuItemInfoW")
+	procDeleteMenu        = modUser32.NewProc("DeleteMenu")
 	procGetCursorPos      = modUser32.NewProc("GetCursorPos")
 	procClientToScreen    = modUser32.NewProc("ClientToScreen")
 	procSetForegroundWnd  = modUser32.NewProc("SetForegroundWindow")
@@ -226,6 +241,21 @@ type cmInvokeCommandInfo struct {
 	nShow        int32
 	dwHotKey     uint32
 	hIcon        uintptr
+}
+
+type menuItemInfo struct {
+	cbSize        uint32
+	fMask         uint32
+	fType         uint32
+	fState        uint32
+	wID           uint32
+	hSubMenu      uintptr
+	hbmpChecked   uintptr
+	hbmpUnchecked uintptr
+	dwItemData    uintptr
+	dwTypeData    *uint16
+	cch           uint32
+	hbmpItem      uintptr
 }
 
 // Show opens the Explorer shell context menu for paths at the current mouse position.
@@ -398,6 +428,7 @@ func showAtScreenPosition(hwnd uintptr, paths []string, pt point) error {
 	if failed(hr) {
 		return logErr(fmt.Errorf("IContextMenu.QueryContextMenu failed: 0x%x", uint32(hr)))
 	}
+	pruneDuplicateMenuItems(menuPtr, menu, firstID)
 
 	owner, err := newMenuOwner(hwnd, menu2, menu3)
 	if err != nil {
@@ -441,6 +472,102 @@ func logErr(err error) error {
 		dbg("Show error=%v", err)
 	}
 	return err
+}
+
+func pruneDuplicateMenuItems(menuPtr *contextMenu, menu uintptr, firstID uintptr) {
+	entries := readMenuDedupeEntries(menuPtr, menu, firstID)
+	if len(entries) == 0 {
+		return
+	}
+	positions := duplicateMenuPositions(entries)
+	if len(positions) == 0 {
+		return
+	}
+
+	removed := make(map[int]struct{}, len(positions))
+	for _, pos := range positions {
+		removed[pos] = struct{}{}
+	}
+	positions = append(positions, separatorCleanupPositions(entries, removed)...)
+	sortDescending(positions)
+
+	for _, pos := range positions {
+		procDeleteMenu.Call(menu, uintptr(pos), mfByPosition)
+	}
+	dbg("Show pruned duplicate menu items count=%d", len(positions))
+}
+
+func readMenuDedupeEntries(menuPtr *contextMenu, menu uintptr, firstID uintptr) []menuDedupeEntry {
+	count, _, _ := procGetMenuItemCount.Call(menu)
+	if int32(count) <= 0 {
+		return nil
+	}
+
+	entries := make([]menuDedupeEntry, 0, int(count))
+	for pos := 0; pos < int(count); pos++ {
+		info, ok := getMenuItemInfo(menu, pos)
+		if !ok {
+			continue
+		}
+		entry := menuDedupeEntry{
+			position:  pos,
+			commandID: uintptr(info.wID),
+			label:     menuItemLabel(info),
+			separator: info.fType&mftSeparator != 0,
+			enabled:   info.fState&mfsDisabled == 0,
+		}
+		if !entry.separator && entry.commandID >= firstID && info.hSubMenu == 0 {
+			entry.verb = contextMenuVerb(menuPtr, entry.commandID-firstID)
+		}
+		entries = append(entries, entry)
+	}
+	return entries
+}
+
+func getMenuItemInfo(menu uintptr, pos int) (menuItemInfo, bool) {
+	const labelChars = 512
+	label := make([]uint16, labelChars)
+	info := menuItemInfo{
+		cbSize:     uint32(unsafe.Sizeof(menuItemInfo{})),
+		fMask:      miimFType | miimState | miimID | miimSubMenu | miimString,
+		dwTypeData: &label[0],
+		cch:        uint32(len(label)),
+	}
+	ret, _, _ := procGetMenuItemInfoW.Call(
+		menu,
+		uintptr(pos),
+		1,
+		uintptr(unsafe.Pointer(&info)),
+	)
+	if ret == 0 {
+		return menuItemInfo{}, false
+	}
+	return info, true
+}
+
+func menuItemLabel(info menuItemInfo) string {
+	if info.dwTypeData == nil || info.cch == 0 {
+		return ""
+	}
+	return windows.UTF16PtrToString(info.dwTypeData)
+}
+
+func contextMenuVerb(menuPtr *contextMenu, offset uintptr) string {
+	const verbChars = 256
+	buf := make([]uint16, verbChars)
+	hr, _, _ := syscall.SyscallN(
+		menuPtr.vtbl.getCommandString,
+		uintptr(unsafe.Pointer(menuPtr)),
+		offset,
+		gcsVerbW,
+		0,
+		uintptr(unsafe.Pointer(&buf[0])),
+		uintptr(len(buf)),
+	)
+	if failed(hr) {
+		return ""
+	}
+	return windows.UTF16PtrToString(&buf[0])
 }
 
 func shellDataObject(hwnd uintptr, folder *shellFolder, childPIDLs []uintptr) (*dataObject, error) {
