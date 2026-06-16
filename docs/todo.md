@@ -1,14 +1,30 @@
 # 実用になるために必要なToDo
 
 # 優先度高いの
+- TABによるExplorerメニュー表示で複数出る項目がある
+  - 2つ目以降を出さないなどできるといいのだが。
+  
+- FileViewの検索欄と行ジャンプ欄のカーソルと選択範囲の色もlineEditCursorとlineEditSelectionにしたい。
+  閲覧部のマウス選択範囲もlineEditSelectionにしたい。
+  そうなるとlineEditCursor, lineEditSelectionという名前はイマイチかも……？
 
-- File Manager以外のキーバインドも設定可能にする
+- FileViewの検索欄と行ジャンプ欄にフォーカスがある時、ESCで検索欄と行ジャンプ欄から抜けたい。
+  (Enterと違って単に戻るだけがよい)
+
+- File Manager以外のキーバインドも設定可能にしたい
   - nmf.key()で対象を指定できるようにする必要があるはず
   - 優先度低め項目にある"ダイアログ系KeyHandlerの共通化"と同時に対応すべきかもしれない。
 
 - File ManagerのタイトルをNekomimist Filerにする
 
 # 優先度低めのもの
+## D&Dのドラッグに反応するのがアイコン部だけなのが微妙につらい
+  ファイル名部分もドラッグ可能にすると嬉しいかも。
+  
+## マウスでファイルをマークする術があってもよい
+  - 左クリックでマーク
+  - Shift+左クリックで、カーソルがある場所からクリックしたファイルまでマーク
+  
 ## 簡易viewerの残課題
 - Text/Hex表示のキーボードによる範囲選択が未対応。
 - MarkdownタブはTextGrid化済み。Markdown ASTから簡易テキストへ変換しているため、
