@@ -1,9 +1,9 @@
 # 実用になるために必要なToDo
 
 # 優先度高いの
-- File Manager以外のキーバインドも設定可能にしたい
+- LineEditとFileViewerのキーバインドも設定可能にしたい
   - nmf.key()で対象を指定できるようにする必要があるはず
-  - 優先度低め項目にある"ダイアログ系KeyHandlerの共通化"と同時に対応すべきかもしれない。
+  - 同時にConflict DialogのRename時の入力欄のキーバインドもLineEditと同じにしたい
 
 - File ManagerのタイトルをNekomimist Filerにする
 
