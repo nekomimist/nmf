@@ -310,29 +310,17 @@ func (mh *MainScreenKeyHandler) executeCommand(commandID string, ctx CommandCont
 }
 
 func (mh *MainScreenKeyHandler) buildBindings(configured []config.KeyBindingEntry) []keyBinding {
-	entries := append(configured, defaultMainScreenBindings()...)
-	bindings := make([]keyBinding, 0, len(entries))
-
-	for _, entry := range entries {
-		spec, err := parseKeySpec(entry.Key)
-		if err != nil {
-			mh.debugPrint("MainScreen: WARNING invalid key binding key=%q command=%s err=%v", entry.Key, entry.Command, err)
-			continue
-		}
-		if entry.Event != "" {
-			mh.debugPrint("MainScreen: WARNING key binding event=%q is deprecated and ignored key=%q command=%s", entry.Event, entry.Key, entry.Command)
-		}
-		if _, ok := mh.commands[entry.Command]; !ok {
-			mh.debugPrint("MainScreen: WARNING invalid key binding unknown command=%s key=%q", entry.Command, entry.Key)
-			continue
-		}
-		bindings = append(bindings, keyBinding{
-			spec:    spec,
-			command: entry.Command,
-		})
-	}
-
-	return bindings
+	return buildTargetKeyBindings(
+		"MainScreen",
+		KeyBindingTargetMain,
+		configured,
+		defaultMainScreenBindings(),
+		func(command string) bool {
+			_, ok := mh.commands[command]
+			return ok
+		},
+		mh.debugPrint,
+	)
 }
 
 func defaultMainScreenBindings() []config.KeyBindingEntry {

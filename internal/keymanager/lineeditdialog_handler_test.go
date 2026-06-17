@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"fyne.io/fyne/v2"
+
+	"nmf/internal/config"
 )
 
 type fakeLineEditDialog struct {
@@ -130,5 +132,26 @@ func TestLineEditDialogHandlerFallbackTypedRune(t *testing.T) {
 	}
 	if handler.OnTypedRune('\n', ModifierState{}) {
 		t.Fatal("control rune should not be handled")
+	}
+}
+
+func TestLineEditDialogConfiguredBindingOverridesDefault(t *testing.T) {
+	dialog := &fakeLineEditDialog{}
+	handler := NewLineEditDialogKeyHandler(dialog, []config.KeyBindingEntry{
+		{Target: KeyBindingTargetLineEdit, Key: "C-A", Command: CommandNoop},
+		{Target: KeyBindingTargetLineEdit, Key: "C-Z", Command: CommandLineEditCursorEnd},
+	})
+
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyA}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("configured noop should handle Ctrl-A")
+	}
+	if dialog.start != 0 {
+		t.Fatalf("start calls = %d, want 0", dialog.start)
+	}
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyZ}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("configured Ctrl-Z should be handled")
+	}
+	if dialog.end != 1 {
+		t.Fatalf("end calls = %d, want 1", dialog.end)
 	}
 }

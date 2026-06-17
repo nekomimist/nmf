@@ -21,6 +21,7 @@ import (
 	tableast "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/text"
 
+	"nmf/internal/config"
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 )
@@ -65,6 +66,7 @@ type FileViewerDialog struct {
 	maxWidth    int
 	maxHeight   int
 	defaultPane string
+	bindings    []config.KeyBindingEntry
 	debugPrint  func(format string, args ...interface{})
 }
 
@@ -83,6 +85,10 @@ func NewFileViewerDialog(preview *fileinfo.PreviewFile, km ...*keymanager.KeyMan
 
 func (d *FileViewerDialog) SetDebugPrint(debugPrint func(format string, args ...interface{})) {
 	d.debugPrint = debugPrint
+}
+
+func (d *FileViewerDialog) SetKeyBindings(bindings []config.KeyBindingEntry) {
+	d.bindings = bindings
 }
 
 func (d *FileViewerDialog) SetMaxSize(width, height int) {
@@ -182,7 +188,7 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	stepStart = time.Now()
 
 	if d.km != nil {
-		d.kmToken = d.km.PushHandler(keymanager.NewFileViewerKeyHandler(d))
+		d.kmToken = d.km.PushHandler(keymanager.NewFileViewerKeyHandler(d, d.bindings))
 		d.handlerSet = true
 	}
 	d.debug("FileViewer: handler elapsed=%s", time.Since(stepStart))

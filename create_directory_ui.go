@@ -12,7 +12,7 @@ func (fm *FileManager) ShowCreateDirectoryDialog() {
 		Title:       "Create Directory",
 		Prompt:      "Directory name:",
 		ConfirmText: "Create",
-	}, fm.keyManager)
+	}, fm.keyManager, fm.config.UI.KeyBindings)
 	dlg.ShowDialog(fm.window, func(name string) bool {
 		return fm.CreateDirectory(name)
 	})

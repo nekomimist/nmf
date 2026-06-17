@@ -155,7 +155,7 @@ func (fm *FileManager) runExternalCommandMaybeEdit(command string, args []string
 		InitialText: line,
 		ConfirmText: "Run",
 		Width:       760,
-	}, fm.keyManager)
+	}, fm.keyManager, fm.config.UI.KeyBindings)
 	dlg.ShowDialog(fm.window, func(edited string) bool {
 		parsedCommand, parsedArgs, err := parseExternalCommandLine(edited)
 		if err != nil {

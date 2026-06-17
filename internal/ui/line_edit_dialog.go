@@ -13,6 +13,7 @@ import (
 	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"nmf/internal/config"
 	"nmf/internal/keymanager"
 	customtheme "nmf/internal/theme"
 )
@@ -49,6 +50,7 @@ type LineEditDialog struct {
 	entry      *LineEditEntry
 	keyManager *keymanager.KeyManager
 	kmToken    keymanager.HandlerToken
+	bindings   []config.KeyBindingEntry
 	parent     fyne.Window
 	dialog     dialog.Dialog
 	closed     bool
@@ -56,7 +58,7 @@ type LineEditDialog struct {
 }
 
 // NewLineEditDialog creates a configured one-line edit dialog.
-func NewLineEditDialog(opts LineEditDialogOptions, km *keymanager.KeyManager) *LineEditDialog {
+func NewLineEditDialog(opts LineEditDialogOptions, km *keymanager.KeyManager, configuredBindings ...[]config.KeyBindingEntry) *LineEditDialog {
 	if opts.ConfirmText == "" {
 		opts.ConfirmText = "OK"
 	}
@@ -71,7 +73,10 @@ func NewLineEditDialog(opts LineEditDialogOptions, km *keymanager.KeyManager) *L
 		opts:       opts,
 		keyManager: km,
 	}
-	d.entry = NewLineEditEntry(d.CancelDialog)
+	if len(configuredBindings) > 0 {
+		d.bindings = configuredBindings[0]
+	}
+	d.entry = NewLineEditEntry(d.CancelDialog, km)
 	d.entry.SetText(opts.InitialText)
 	if opts.InitialSelection != nil {
 		d.entry.SelectRange(opts.InitialSelection.Start, opts.InitialSelection.End)
@@ -103,7 +108,7 @@ func (d *LineEditDialog) ShowDialog(parent fyne.Window, onAccept func(string) bo
 	content.Add(lineEditThemeOverride(d.entry))
 	content.Add(dialogButtonRow("Cancel", d.CancelDialog, d.opts.ConfirmText, d.AcceptEdit))
 
-	handler := keymanager.NewLineEditDialogKeyHandler(d)
+	handler := keymanager.NewLineEditDialogKeyHandler(d, d.bindings)
 	d.kmToken = d.keyManager.PushHandler(handler)
 
 	title := d.opts.Title
@@ -216,6 +221,7 @@ func (d *LineEditDialog) entryIsFocused() bool {
 // LineEditEntry is a single-line entry with small readline-style edit helpers.
 type LineEditEntry struct {
 	TabEntry
+	km        *keymanager.KeyManager
 	onCancel  func()
 	imeWindow fyne.Window
 	focused   bool
@@ -223,8 +229,11 @@ type LineEditEntry struct {
 }
 
 // NewLineEditEntry creates an entry for LineEditDialog.
-func NewLineEditEntry(onCancel func()) *LineEditEntry {
+func NewLineEditEntry(onCancel func(), km ...*keymanager.KeyManager) *LineEditEntry {
 	e := &LineEditEntry{onCancel: onCancel}
+	if len(km) > 0 {
+		e.km = km[0]
+	}
 	e.acceptTab = true
 	e.TextStyle = fyne.TextStyle{Monospace: true}
 	e.Wrapping = fyne.TextWrap(fyne.TextTruncateClip)
@@ -233,6 +242,10 @@ func NewLineEditEntry(onCancel func()) *LineEditEntry {
 }
 
 func (e *LineEditEntry) TypedKey(ev *fyne.KeyEvent) {
+	if e.km != nil && e.km.HandleTypedKey(ev) {
+		e.UpdateIMEAnchor()
+		return
+	}
 	if ev.Name == fyne.KeyEscape {
 		if e.onCancel != nil {
 			e.onCancel()
@@ -309,15 +322,24 @@ func (e *LineEditEntry) lineEditTextStyle() fyne.TextStyle {
 }
 
 func (e *LineEditEntry) KeyDown(ev *fyne.KeyEvent) {
+	if e.km != nil {
+		e.km.HandleKeyDown(ev)
+	}
 	e.TabEntry.KeyDown(ev)
 }
 
 func (e *LineEditEntry) KeyUp(ev *fyne.KeyEvent) {
+	if e.km != nil {
+		e.km.HandleKeyUp(ev)
+	}
 	e.TabEntry.KeyUp(ev)
 }
 
 func (e *LineEditEntry) TypedShortcut(shortcut fyne.Shortcut) {
 	defer e.UpdateIMEAnchor()
+	if e.km != nil && e.km.HandleShortcut(shortcut) {
+		return
+	}
 	switch s := shortcut.(type) {
 	case *fyne.ShortcutSelectAll:
 		e.MoveCursorStart()

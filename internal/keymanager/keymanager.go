@@ -269,13 +269,13 @@ func (km *KeyManager) gateOpen() (bool, ModifierState) {
 }
 
 // HandleTypedKey routes typed key events to the current top handler
-func (km *KeyManager) HandleTypedKey(ev *fyne.KeyEvent) {
+func (km *KeyManager) HandleTypedKey(ev *fyne.KeyEvent) bool {
 	open, modifiers := km.gateOpen()
 	if !open {
 		km.debugPrint("KeyManager: TypedKey gated key=%s", ev.Name)
-		return
+		return false
 	}
-	km.handleKeyActivated(ev, modifiers)
+	return km.handleKeyActivated(ev, modifiers)
 }
 
 // HandleShortcut routes any Fyne shortcut to the current handler as a
@@ -283,13 +283,13 @@ func (km *KeyManager) HandleTypedKey(ev *fyne.KeyEvent) {
 // combinations into standard shortcuts before they can reach TypedKey
 // (Ctrl+C/X/V/A/Z/Y/Insert and Shift+Insert/Delete); the original key is
 // reconstructed from the most recent non-modifier key down of the same press.
-func (km *KeyManager) HandleShortcut(shortcut fyne.Shortcut) {
+func (km *KeyManager) HandleShortcut(shortcut fyne.Shortcut) bool {
 	ev, modifiers, ok := km.normalizeShortcut(shortcut)
 	if !ok {
 		km.debugPrint("KeyManager: Shortcut ignored name=%s", shortcut.ShortcutName())
-		return
+		return false
 	}
-	km.HandleShortcutKey(ev, modifiers)
+	return km.HandleShortcutKey(ev, modifiers)
 }
 
 func (km *KeyManager) normalizeShortcut(shortcut fyne.Shortcut) (*fyne.KeyEvent, ModifierState, bool) {
@@ -333,41 +333,43 @@ func (km *KeyManager) normalizeShortcut(shortcut fyne.Shortcut) (*fyne.KeyEvent,
 
 // HandleShortcutKey routes a shortcut-style key event to the current handler.
 // Modifiers come from the shortcut event itself, not from tracked state.
-func (km *KeyManager) HandleShortcutKey(ev *fyne.KeyEvent, modifiers ModifierState) {
+func (km *KeyManager) HandleShortcutKey(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	open, _ := km.gateOpen()
 	if !open {
 		km.debugPrint("KeyManager: ShortcutKey gated key=%s", ev.Name)
-		return
+		return false
 	}
-	km.handleKeyActivated(ev, modifiers)
+	return km.handleKeyActivated(ev, modifiers)
 }
 
-func (km *KeyManager) handleKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) {
+func (km *KeyManager) handleKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
 	currentHandler := km.GetCurrentHandler()
 
 	if currentHandler != nil {
 		handled := currentHandler.OnKeyActivated(ev, modifiers)
 		km.debugPrint("KeyManager: KeyActivated %s handled=%t", currentHandler.GetName(), handled)
-		return
+		return handled
 	}
 	km.debugPrint("KeyManager: KeyActivated no handler")
+	return false
 }
 
 // HandleTypedRune routes typed rune events to the current top handler
-func (km *KeyManager) HandleTypedRune(r rune) {
+func (km *KeyManager) HandleTypedRune(r rune) bool {
 	open, modifiers := km.gateOpen()
 	if !open {
 		km.debugPrint("KeyManager: TypedRune gated rune=%q", r)
-		return
+		return false
 	}
 
 	currentHandler := km.GetCurrentHandler()
 	if currentHandler != nil {
 		handled := currentHandler.OnTypedRune(r, modifiers)
 		km.debugPrint("KeyManager: TypedRune %s handled=%t", currentHandler.GetName(), handled)
-	} else {
-		km.debugPrint("KeyManager: TypedRune no handler")
+		return handled
 	}
+	km.debugPrint("KeyManager: TypedRune no handler")
+	return false
 }
 
 // GetStackSize returns the current number of handlers in the stack

@@ -177,10 +177,10 @@ List sections:
 
 - `nmf.directory_jump(shortcut, directory)`
 - `nmf.clear_directory_jumps()`
-- `nmf.key(key, cmd = None, fn = None)`
-- `nmf.unkey(key)`
+- `nmf.key(key, cmd = None, fn = None, target = "main")`
+- `nmf.unkey(key, target = "main")`
   (the legacy `event` argument is still accepted but deprecated and ignored)
-- `nmf.clear_keys()`
+- `nmf.clear_keys(target = "main")`
 - `nmf.external_command(name, cmd, exts = [], args = [], cwd = "", edit = False, key = "")`
 - `nmf.clear_external_commands()`
 - `nmf.menu(name, title = "")`
@@ -214,7 +214,10 @@ the Markdown pane and other text files on Text.
 names that are not marked as UTF-8. Common values include `shift_jis` (default),
 `cp437`, and `utf-8`.
 `nmf.unkey` appends a binding to the built-in `noop` command, which disables a
-default key binding with the same key for the current run.
+default key binding with the same key for the current run. Key binding
+`target` accepts `"main"`, `"lineEdit"`, or `"fileViewer"`. Callable `fn`
+bindings are supported only for `target = "main"`; dialog targets can bind only
+stable built-in command IDs.
 Menu definitions are runtime-only and are not saved to `config.json`.
 Menu item and external command `key` values are optional single printable
 characters. While a command menu is open, typing the key runs the first visible
@@ -297,8 +300,8 @@ nmf.key("S-J", "user.show_jobs")
 Custom command IDs must start with `user.` so they cannot override built-in
 commands accidentally.
 Use `nmf.command` when a function needs a stable reusable command ID for
-`nmf.run`, JSON key bindings, or menu items. For Starlark-only key bindings,
-`nmf.key(key, fn = callable)` can bind a function directly.
+`nmf.run`, JSON key bindings, or menu items. For Starlark-only main-screen key
+bindings, `nmf.key(key, fn = callable)` can bind a function directly.
 
 The command function receives one `ctx` struct:
 

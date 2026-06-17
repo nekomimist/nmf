@@ -204,7 +204,7 @@ func (fm *FileManager) conflictResolver() jobs.ConflictResolver {
 				done <- jobs.ConflictResolution{Action: jobs.ConflictCancelJob}
 				return
 			}
-			dlg := ui.NewConflictDialog(req, fm.keyManager)
+			dlg := ui.NewConflictDialog(req, fm.keyManager, fm.config.UI.KeyBindings)
 			dlg.ShowDialog(fm.window, func(res jobs.ConflictResolution) {
 				done <- res
 			})

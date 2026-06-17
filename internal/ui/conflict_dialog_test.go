@@ -102,6 +102,25 @@ func TestConflictNameEntryKeepsNonAltShortcuts(t *testing.T) {
 	}
 }
 
+func TestConflictNameEntryUsesLineEditBindings(t *testing.T) {
+	entry := newConflictNameEntry(nil, nil, []config.KeyBindingEntry{
+		{Target: keymanager.KeyBindingTargetLineEdit, Key: "C-A", Command: keymanager.CommandNoop},
+		{Target: keymanager.KeyBindingTargetLineEdit, Key: "C-E", Command: keymanager.CommandLineEditCursorStart},
+	})
+	entry.SetText("abcd")
+	entry.MoveCursorEnd()
+
+	entry.TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyA, Modifier: fyne.KeyModifierControl})
+	if entry.CursorColumn != 4 {
+		t.Fatalf("cursor after noop ctrl-a = %d, want 4", entry.CursorColumn)
+	}
+
+	entry.TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyE, Modifier: fyne.KeyModifierControl})
+	if entry.CursorColumn != 0 {
+		t.Fatalf("cursor after configured ctrl-e = %d, want 0", entry.CursorColumn)
+	}
+}
+
 func TestConflictNameEntryUsesLineEditCursorColor(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()

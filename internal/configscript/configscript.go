@@ -768,15 +768,16 @@ func (rt *Runtime) appendKeyBinding(fnName string, args starlark.Tuple, kwargs [
 	var key string
 	var command string
 	var event string
+	var target string
 	if len(fixedCommand) > 0 {
 		command = fixedCommand[0]
-		if err := starlark.UnpackArgs(fnName, args, kwargs, "key", &key, "event?", &event); err != nil {
+		if err := starlark.UnpackArgs(fnName, args, kwargs, "key", &key, "event?", &event, "target?", &target); err != nil {
 			return nil, err
 		}
 	} else {
 		commandValue := starlark.Value(starlark.None)
 		fnValue := starlark.Value(starlark.None)
-		if err := starlark.UnpackArgs(fnName, args, kwargs, "key", &key, "cmd?", &commandValue, "event?", &event, "fn?", &fnValue); err != nil {
+		if err := starlark.UnpackArgs(fnName, args, kwargs, "key", &key, "cmd?", &commandValue, "event?", &event, "fn?", &fnValue, "target?", &target); err != nil {
 			return nil, err
 		}
 		var hasCommand bool
@@ -792,9 +793,20 @@ func (rt *Runtime) appendKeyBinding(fnName string, args starlark.Tuple, kwargs [
 		if hasCommand == hasCallable {
 			return nil, fmt.Errorf("key binding must specify exactly one of cmd or fn")
 		}
+		normalizedTarget, err := normalizeKeyBindingTarget(target)
+		if err != nil {
+			return nil, err
+		}
+		if hasCallable && normalizedTarget != keymanager.KeyBindingTargetMain {
+			return nil, fmt.Errorf("fn key bindings are only supported for target main")
+		}
 		if hasCallable {
 			command = rt.registerGeneratedKeyCommand(callable)
 		}
+	}
+	normalizedTarget, err := normalizeKeyBindingTarget(target)
+	if err != nil {
+		return nil, err
 	}
 	if strings.TrimSpace(key) == "" {
 		return nil, fmt.Errorf("key must not be empty")
@@ -806,6 +818,7 @@ func (rt *Runtime) appendKeyBinding(fnName string, args starlark.Tuple, kwargs [
 		rt.debugPrint("ConfigScript: WARNING key binding event=%q is deprecated and ignored key=%s command=%s", event, key, command)
 	}
 	rt.cfg.UI.KeyBindings = append(rt.cfg.UI.KeyBindings, config.KeyBindingEntry{
+		Target:  keyBindingTargetForConfig(normalizedTarget),
 		Key:     key,
 		Command: command,
 	})
@@ -825,12 +838,45 @@ func (rt *Runtime) registerGeneratedKeyCommand(callable starlark.Callable) strin
 }
 
 func (rt *Runtime) builtinClearKeys(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := starlark.UnpackArgs("nmf.clear_keys", args, kwargs); err != nil {
+	var target string
+	if err := starlark.UnpackArgs("nmf.clear_keys", args, kwargs, "target?", &target); err != nil {
 		return nil, err
 	}
-	rt.cfg.UI.KeyBindings = nil
+	normalizedTarget, err := normalizeKeyBindingTarget(target)
+	if err != nil {
+		return nil, err
+	}
+	rt.cfg.UI.KeyBindings = removeKeyBindingsForTarget(rt.cfg.UI.KeyBindings, normalizedTarget)
 	rt.saveMask.uiKeyBindings = true
 	return starlark.None, nil
+}
+
+func normalizeKeyBindingTarget(target string) (string, error) {
+	normalized := keymanager.NormalizeKeyBindingTarget(target)
+	switch normalized {
+	case keymanager.KeyBindingTargetMain, keymanager.KeyBindingTargetLineEdit, keymanager.KeyBindingTargetFileViewer:
+		return normalized, nil
+	default:
+		return "", fmt.Errorf("key binding target must be one of main, lineEdit, or fileViewer")
+	}
+}
+
+func keyBindingTargetForConfig(target string) string {
+	if target == keymanager.KeyBindingTargetMain {
+		return ""
+	}
+	return target
+}
+
+func removeKeyBindingsForTarget(entries []config.KeyBindingEntry, target string) []config.KeyBindingEntry {
+	var kept []config.KeyBindingEntry
+	for _, entry := range entries {
+		if keymanager.NormalizeKeyBindingTarget(entry.Target) == target {
+			continue
+		}
+		kept = append(kept, entry)
+	}
+	return kept
 }
 
 func (rt *Runtime) builtinExternalCommand(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

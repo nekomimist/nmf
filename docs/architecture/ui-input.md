@@ -93,9 +93,11 @@ Accepted trade-offs of the activation model:
 - On macOS the driver folds Cmd (not Ctrl) combos into standard shortcuts;
   Super-modifier handling needs its own design before any macOS support.
 
-Main-screen configurable bindings:
+Configurable bindings:
 
 - Configured under `ui.keyBindings` in `config.json`.
+- `target` defaults to `main`; supported targets are `main`, `lineEdit`, and
+  `fileViewer`.
 - Key specs support forms such as `C-N`, `S-J`, `S-Q`, `C-S-Q`, `C-S-F`, `A-X`, `F2`, `Return`,
   and `Delete`.
 - Modifiers are limited to `S`, `A`, and `C`; unknown modifiers or key names are
@@ -103,11 +105,11 @@ Main-screen configurable bindings:
 - Bindings fire on activation; whether that is the typed-key or shortcut path
   is derived from the key spec. The legacy `event` field (`typed`/`down`/`up`)
   is deprecated: it is accepted but ignored with a warning.
-- User bindings are evaluated before built-in defaults, so a configured binding
-  for the same key overrides the default behavior.
+- User bindings are evaluated before built-in defaults for the same target, so
+  a configured binding for the same key overrides the default behavior.
 - Optional `init.star` configuration can append bindings and register `user.*`
-  commands. Starlark command functions receive key/modifier context and may call
-  `nmf.run(command_id)` to compose built-in or custom commands.
+  commands for the main target. Line-edit and file-viewer targets bind only
+  built-in command IDs.
 
 ## Focus Ownership Rules
 
@@ -122,6 +124,9 @@ Main file list:
 Text entries that must not steal Tab:
 
 - Use `ui.TabEntry` (`AcceptsTab` aware entry wrapper).
+- One-line edit dialogs use the `lineEdit` target. The copy/move conflict
+  dialog's rename entry uses the same line-edit bindings while preserving the
+  conflict choice Alt shortcuts.
 
 ## Dialog Handler Lifecycle Pattern
 
@@ -144,6 +149,7 @@ Built-in file viewer:
 - The handler owns less-like navigation keys (`j/k`, `f/b`, `g/G`, `n/N`,
   `/`, `:`, `q`) and pane switching keys (`t`, `m`, `x`) so keys do not fall
   through to the main file list if focus moves to non-text parts of the dialog.
+- These keys are configurable through the `fileViewer` target.
 - The Text, Markdown, and hex panes use a TextGrid PoC that renders only visible text for
   faster initial display. It supports less-like vertical movement, line jumps,
   horizontal movement, a wrap toggle, mouse drag selection, copy, and literal

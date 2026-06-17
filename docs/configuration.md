@@ -303,9 +303,10 @@ alphabetically; entries without shortcuts appear last.
 
 ## Key Bindings
 
-`ui.keyBindings` adds main-screen key bindings. User bindings are evaluated
-before built-in defaults, so a binding for the same key overrides the default
-behavior.
+`ui.keyBindings` adds key bindings. User bindings are evaluated before built-in
+defaults for the same target, so a binding for the same key overrides the
+default behavior. `target` is optional and defaults to `main`; supported values
+are `main`, `lineEdit`, and `fileViewer`.
 
 ```json
 {
@@ -314,7 +315,9 @@ behavior.
       { "key": "S-A-C-F2", "command": "rename.show" },
       { "key": "C-N", "command": "window.new" },
       { "key": "F12", "command": "maintenance.show" },
-      { "key": "S-S", "command": "noop" }
+      { "key": "S-S", "command": "noop" },
+      { "target": "lineEdit", "key": "C-A", "command": "lineEdit.cursor.start" },
+      { "target": "fileViewer", "key": "J", "command": "fileViewer.page.down" }
     ]
   }
 }
@@ -342,6 +345,7 @@ Supported aliases:
 - `Comma` -> `,`
 - `Period` or `Dot` -> `.`
 - `Backtick` or `Backquote` -> `` ` ``
+- `Semicolon` -> `;`
 - `Del` -> `Delete`
 
 Invalid key names, invalid modifiers, and unknown commands are logged as
@@ -381,6 +385,30 @@ Available main-screen commands:
 
 Starlark `init.star` can register additional command IDs with the `user.`
 prefix and bind them through the same key binding mechanism.
+
+Available line-edit commands:
+
+- `lineEdit.accept`, `lineEdit.cancel`
+- `lineEdit.cursor.start`, `lineEdit.cursor.end`
+- `lineEdit.cursor.left`, `lineEdit.cursor.right`
+- `lineEdit.delete.before`, `lineEdit.delete.at`
+- `lineEdit.delete.beforeStart`, `lineEdit.delete.afterEnd`
+- `lineEdit.paste`
+- `noop`
+
+Available file-viewer commands:
+
+- `fileViewer.close`
+- `fileViewer.line.down`, `fileViewer.line.up`
+- `fileViewer.page.down`, `fileViewer.page.up`
+- `fileViewer.home`, `fileViewer.end`
+- `fileViewer.column.left`, `fileViewer.column.right`
+- `fileViewer.wrap.toggle`
+- `fileViewer.pane.text`, `fileViewer.pane.markdown`, `fileViewer.pane.hex`
+- `fileViewer.search.next`, `fileViewer.search.previous`, `fileViewer.search.focus`
+- `fileViewer.line.focus`
+- `fileViewer.selection.copy`
+- `noop`
 
 ## External Commands
 

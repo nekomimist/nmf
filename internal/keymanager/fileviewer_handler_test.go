@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"fyne.io/fyne/v2"
+
+	"nmf/internal/config"
 )
 
 type fakeFileViewer struct {
@@ -103,5 +105,26 @@ func TestFileViewerHandlerNavigationKeys(t *testing.T) {
 		viewer.pgUp != 1 || viewer.home != 1 || viewer.end != 1 ||
 		viewer.left != 1 || viewer.right != 1 {
 		t.Fatalf("viewer actions = %+v, want each navigation action once", viewer)
+	}
+}
+
+func TestFileViewerConfiguredBindingOverridesDefaultRune(t *testing.T) {
+	viewer := &fakeFileViewer{}
+	handler := NewFileViewerKeyHandler(viewer, []config.KeyBindingEntry{
+		{Target: KeyBindingTargetFileViewer, Key: "J", Command: CommandFileViewerPageDown},
+		{Target: KeyBindingTargetFileViewer, Key: "S-Semicolon", Command: CommandNoop},
+	})
+
+	if !handler.OnTypedRune('j', ModifierState{}) {
+		t.Fatal("configured j should be handled")
+	}
+	if viewer.pgDown != 1 || viewer.down != 0 {
+		t.Fatalf("viewer actions = %+v, want page down only", viewer)
+	}
+	if !handler.OnTypedRune(':', ModifierState{}) {
+		t.Fatal("configured : noop should be handled")
+	}
+	if viewer.line != 0 {
+		t.Fatalf("line focus calls = %d, want 0", viewer.line)
 	}
 }

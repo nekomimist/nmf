@@ -5,6 +5,14 @@ import (
 	"strings"
 
 	"fyne.io/fyne/v2"
+
+	"nmf/internal/config"
+)
+
+const (
+	KeyBindingTargetMain       = "main"
+	KeyBindingTargetLineEdit   = "lineEdit"
+	KeyBindingTargetFileViewer = "fileViewer"
 )
 
 // keyEventTyped is the only activation kind; bindings fire on TypedKey or
@@ -48,6 +56,63 @@ type keyBinding struct {
 type keySpec struct {
 	key fyne.KeyName
 	mod ModifierState
+}
+
+func normalizeKeyBindingTarget(target string) string {
+	switch strings.ToLower(strings.TrimSpace(target)) {
+	case "", "main":
+		return KeyBindingTargetMain
+	case "lineedit", "line-edit", "line_edit":
+		return KeyBindingTargetLineEdit
+	case "fileviewer", "file-viewer", "file_viewer":
+		return KeyBindingTargetFileViewer
+	default:
+		return strings.TrimSpace(target)
+	}
+}
+
+// NormalizeKeyBindingTarget returns the canonical target name for user config.
+func NormalizeKeyBindingTarget(target string) string {
+	return normalizeKeyBindingTarget(target)
+}
+
+func buildTargetKeyBindings(
+	handlerName string,
+	target string,
+	configured []config.KeyBindingEntry,
+	defaults []config.KeyBindingEntry,
+	commandExists func(string) bool,
+	debugPrint func(format string, args ...interface{}),
+) []keyBinding {
+	target = normalizeKeyBindingTarget(target)
+	entries := append(targetKeyBindingEntries(configured, target), defaults...)
+	bindings := make([]keyBinding, 0, len(entries))
+	for _, entry := range entries {
+		spec, err := parseKeySpec(entry.Key)
+		if err != nil {
+			debugPrint("%s: WARNING invalid key binding target=%s key=%q command=%s err=%v", handlerName, target, entry.Key, entry.Command, err)
+			continue
+		}
+		if entry.Event != "" {
+			debugPrint("%s: WARNING key binding event=%q is deprecated and ignored target=%s key=%q command=%s", handlerName, entry.Event, target, entry.Key, entry.Command)
+		}
+		if !commandExists(entry.Command) {
+			debugPrint("%s: WARNING invalid key binding target=%s unknown command=%s key=%q", handlerName, target, entry.Command, entry.Key)
+			continue
+		}
+		bindings = append(bindings, keyBinding{spec: spec, command: entry.Command})
+	}
+	return bindings
+}
+
+func targetKeyBindingEntries(entries []config.KeyBindingEntry, target string) []config.KeyBindingEntry {
+	var filtered []config.KeyBindingEntry
+	for _, entry := range entries {
+		if normalizeKeyBindingTarget(entry.Target) == target {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered
 }
 
 func parseKeySpec(input string) (keySpec, error) {
@@ -124,6 +189,7 @@ var keyNameAliases = map[string]fyne.KeyName{
 	"PAGEUP":    fyne.KeyPageUp,
 	"PAGEDOWN":  fyne.KeyPageDown,
 	"PERIOD":    fyne.KeyPeriod,
+	"SEMICOLON": fyne.KeySemicolon,
 }
 
 var validKeyNames = map[fyne.KeyName]struct{}{

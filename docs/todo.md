@@ -1,10 +1,6 @@
 # 実用になるために必要なToDo
 
 # 優先度高いの
-- LineEditとFileViewerのキーバインドも設定可能にしたい
-  - nmf.key()で対象を指定できるようにする必要があるはず
-  - 同時にConflict DialogのRename時の入力欄のキーバインドもLineEditと同じにしたい
-
 - File ManagerのタイトルをNekomimist Filerにする
 
 # 優先度低めのもの
@@ -67,6 +63,13 @@
 - 詳細な設計は `docs/architecture/vfs-smb.md` を参照する。
 
 # DONE 以下は終わったもの
+## LineEditとFileViewerのキーバインド設定
+- `ui.keyBindings`と`nmf.key()`/`nmf.unkey()`/`nmf.clear_keys()`に
+  `target`を追加し、`main`、`lineEdit`、`fileViewer`を指定できるようにした。
+- 対象をLineEdit/FileViewerの既存組み込みコマンドに絞り、`user.*`や
+  Starlark callable bindingはmain-screen専用のまま維持した。
+- Conflict DialogのRename入力欄も`lineEdit` targetのキーバインドを使うようにした。
+
 ## FileViewの検索/行ジャンプ欄と選択色
 - FileViewの検索欄と行ジャンプ欄のカーソルと選択範囲に、
   既存の`lineEditCursor`/`lineEditSelection`色を適用した。

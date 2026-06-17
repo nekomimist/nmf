@@ -994,6 +994,22 @@ func TestMainScreenConfiguredBindingOverridesDefault(t *testing.T) {
 	}
 }
 
+func TestMainScreenIgnoresNonMainTargetBindings(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+		{Target: KeyBindingTargetFileViewer, Key: "V", Command: CommandNoop},
+	})
+
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyV}, ModifierState{})
+
+	if !handled {
+		t.Fatal("default V should still be handled")
+	}
+	if fm.showViewerCount != 1 {
+		t.Fatalf("ShowFileViewer count = %d, want 1", fm.showViewerCount)
+	}
+}
+
 func TestMainScreenNoopCommandOverridesDefault(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{

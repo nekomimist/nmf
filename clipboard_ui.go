@@ -30,7 +30,7 @@ func (fm *FileManager) ShowClipboardTextFileDialog() {
 		Title:       "Create Text File",
 		Prompt:      "File name:",
 		ConfirmText: "Create",
-	}, fm.keyManager)
+	}, fm.keyManager, fm.config.UI.KeyBindings)
 	dlg.ShowDialog(fm.window, func(name string) bool {
 		return fm.CreateClipboardTextFile(name)
 	})

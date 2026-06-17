@@ -432,6 +432,73 @@ nmf.unkey("C-S", event = "down")
 	}
 }
 
+func TestKeyTargetBindings(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+nmf.key("J", "fileViewer.page.down", target = "fileViewer")
+nmf.unkey("C-A", target = "lineEdit")
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	cfg := testConfig()
+	if _, err := Load(path, cfg, func(string, ...interface{}) {}); err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	want := []config.KeyBindingEntry{
+		{Target: keymanager.KeyBindingTargetFileViewer, Key: "J", Command: "fileViewer.page.down"},
+		{Target: keymanager.KeyBindingTargetLineEdit, Key: "C-A", Command: keymanager.CommandNoop},
+	}
+	if !reflect.DeepEqual(cfg.UI.KeyBindings, want) {
+		t.Fatalf("key bindings = %#v, want %#v", cfg.UI.KeyBindings, want)
+	}
+}
+
+func TestClearKeysTargetOnly(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+nmf.key("X", "jobs.show")
+nmf.key("J", "fileViewer.page.down", target = "fileViewer")
+nmf.clear_keys(target = "main")
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	cfg := testConfig()
+	if _, err := Load(path, cfg, func(string, ...interface{}) {}); err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	want := []config.KeyBindingEntry{
+		{Target: keymanager.KeyBindingTargetFileViewer, Key: "J", Command: "fileViewer.page.down"},
+	}
+	if !reflect.DeepEqual(cfg.UI.KeyBindings, want) {
+		t.Fatalf("key bindings = %#v, want %#v", cfg.UI.KeyBindings, want)
+	}
+}
+
+func TestKeyTargetRejectsCallable(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def edit(ctx):
+    pass
+nmf.key("J", fn = edit, target = "fileViewer")
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	if _, err := Load(path, testConfig(), func(string, ...interface{}) {}); err == nil || !strings.Contains(err.Error(), "fn key bindings are only supported for target main") {
+		t.Fatalf("Load error = %v, want target fn error", err)
+	}
+}
+
 func TestKeyCanBindCallable(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, FileName)

@@ -4,6 +4,22 @@ import (
 	"unicode"
 
 	"fyne.io/fyne/v2"
+
+	"nmf/internal/config"
+)
+
+const (
+	CommandLineEditAccept            = "lineEdit.accept"
+	CommandLineEditCancel            = "lineEdit.cancel"
+	CommandLineEditCursorStart       = "lineEdit.cursor.start"
+	CommandLineEditCursorEnd         = "lineEdit.cursor.end"
+	CommandLineEditCursorLeft        = "lineEdit.cursor.left"
+	CommandLineEditCursorRight       = "lineEdit.cursor.right"
+	CommandLineEditDeleteBefore      = "lineEdit.delete.before"
+	CommandLineEditDeleteAt          = "lineEdit.delete.at"
+	CommandLineEditDeleteBeforeStart = "lineEdit.delete.beforeStart"
+	CommandLineEditDeleteAfterEnd    = "lineEdit.delete.afterEnd"
+	CommandLineEditPaste             = "lineEdit.paste"
 )
 
 // LineEditDialogInterface defines the operations used by the line edit dialog handler.
@@ -24,12 +40,35 @@ type LineEditDialogInterface interface {
 
 // LineEditDialogKeyHandler handles commit/cancel and readline-style edit keys.
 type LineEditDialogKeyHandler struct {
-	dialog LineEditDialogInterface
+	dialog     LineEditDialogInterface
+	bindings   []keyBinding
+	commands   map[string]func()
+	debugPrint func(format string, args ...interface{})
 }
 
 // NewLineEditDialogKeyHandler creates a line edit dialog key handler.
-func NewLineEditDialogKeyHandler(d LineEditDialogInterface) *LineEditDialogKeyHandler {
-	return &LineEditDialogKeyHandler{dialog: d}
+func NewLineEditDialogKeyHandler(d LineEditDialogInterface, configuredBindings ...[]config.KeyBindingEntry) *LineEditDialogKeyHandler {
+	var configured []config.KeyBindingEntry
+	if len(configuredBindings) > 0 {
+		configured = configuredBindings[0]
+	}
+	h := &LineEditDialogKeyHandler{
+		dialog:     d,
+		debugPrint: func(string, ...interface{}) {},
+	}
+	h.commands = h.defaultCommands()
+	h.bindings = buildTargetKeyBindings(
+		"LineEditDialog",
+		KeyBindingTargetLineEdit,
+		configured,
+		defaultLineEditBindings(),
+		func(command string) bool {
+			_, ok := h.commands[command]
+			return ok
+		},
+		h.debugPrint,
+	)
+	return h
 }
 
 // GetName returns the handler name.
@@ -37,66 +76,12 @@ func (h *LineEditDialogKeyHandler) GetName() string { return "LineEditDialog" }
 
 // OnKeyActivated handles key activations.
 func (h *LineEditDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	if modifiers.CtrlPressed {
-		switch ev.Name {
-		case fyne.KeyA:
-			h.dialog.MoveCursorStart()
-			return true
-		case fyne.KeyE:
-			h.dialog.MoveCursorEnd()
-			return true
-		case fyne.KeyB:
-			h.dialog.MoveCursorLeft()
-			return true
-		case fyne.KeyF:
-			h.dialog.MoveCursorRight()
-			return true
-		case fyne.KeyH:
-			h.dialog.DeleteBeforeCursor()
-			return true
-		case fyne.KeyD:
-			h.dialog.DeleteAtCursor()
-			return true
-		case fyne.KeyU:
-			h.dialog.DeleteBeforeCursorToStart()
-			return true
-		case fyne.KeyK:
-			h.dialog.DeleteAfterCursorToEnd()
-			return true
-		case fyne.KeyY:
-			h.dialog.PasteFromClipboard()
-			return true
+	for _, binding := range h.bindings {
+		if !binding.matches(ev, modifiers) {
+			continue
 		}
-	}
-
-	switch ev.Name {
-	case fyne.KeyReturn, fyne.KeyEnter:
-		h.dialog.AcceptEdit()
-		return true
-	case fyne.KeyEscape:
-		h.dialog.CancelDialog()
-		return true
-	case fyne.KeyBackspace:
-		h.dialog.DeleteBeforeCursor()
-		return true
-	case fyne.KeyDelete:
-		// Plain Delete only: Shift+Delete arrives here as a folded Cut shortcut.
-		if !modifiers.None() {
-			return false
-		}
-		h.dialog.DeleteAtCursor()
-		return true
-	case fyne.KeyLeft:
-		h.dialog.MoveCursorLeft()
-		return true
-	case fyne.KeyRight:
-		h.dialog.MoveCursorRight()
-		return true
-	case fyne.KeyHome:
-		h.dialog.MoveCursorStart()
-		return true
-	case fyne.KeyEnd:
-		h.dialog.MoveCursorEnd()
+		h.debugPrint("LineEditDialog: command=%s key=%s", binding.command, ev.Name)
+		h.commands[binding.command]()
 		return true
 	}
 	return false
@@ -108,4 +93,44 @@ func (h *LineEditDialogKeyHandler) OnTypedRune(r rune, _ ModifierState) bool {
 		return h.dialog.InsertRune(r)
 	}
 	return false
+}
+
+func (h *LineEditDialogKeyHandler) defaultCommands() map[string]func() {
+	return map[string]func(){
+		CommandLineEditAccept:            h.dialog.AcceptEdit,
+		CommandLineEditCancel:            h.dialog.CancelDialog,
+		CommandLineEditCursorStart:       h.dialog.MoveCursorStart,
+		CommandLineEditCursorEnd:         h.dialog.MoveCursorEnd,
+		CommandLineEditCursorLeft:        h.dialog.MoveCursorLeft,
+		CommandLineEditCursorRight:       h.dialog.MoveCursorRight,
+		CommandLineEditDeleteBefore:      h.dialog.DeleteBeforeCursor,
+		CommandLineEditDeleteAt:          h.dialog.DeleteAtCursor,
+		CommandLineEditDeleteBeforeStart: h.dialog.DeleteBeforeCursorToStart,
+		CommandLineEditDeleteAfterEnd:    h.dialog.DeleteAfterCursorToEnd,
+		CommandLineEditPaste:             h.dialog.PasteFromClipboard,
+		CommandNoop:                      func() {},
+	}
+}
+
+func defaultLineEditBindings() []config.KeyBindingEntry {
+	return []config.KeyBindingEntry{
+		{Key: "Return", Command: CommandLineEditAccept},
+		{Key: "KP_Enter", Command: CommandLineEditAccept},
+		{Key: "Escape", Command: CommandLineEditCancel},
+		{Key: "Backspace", Command: CommandLineEditDeleteBefore},
+		{Key: "Delete", Command: CommandLineEditDeleteAt},
+		{Key: "Left", Command: CommandLineEditCursorLeft},
+		{Key: "Right", Command: CommandLineEditCursorRight},
+		{Key: "Home", Command: CommandLineEditCursorStart},
+		{Key: "End", Command: CommandLineEditCursorEnd},
+		{Key: "C-A", Command: CommandLineEditCursorStart},
+		{Key: "C-E", Command: CommandLineEditCursorEnd},
+		{Key: "C-B", Command: CommandLineEditCursorLeft},
+		{Key: "C-F", Command: CommandLineEditCursorRight},
+		{Key: "C-H", Command: CommandLineEditDeleteBefore},
+		{Key: "C-D", Command: CommandLineEditDeleteAt},
+		{Key: "C-U", Command: CommandLineEditDeleteBeforeStart},
+		{Key: "C-K", Command: CommandLineEditDeleteAfterEnd},
+		{Key: "C-Y", Command: CommandLineEditPaste},
+	}
 }

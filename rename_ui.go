@@ -29,7 +29,7 @@ func (fm *FileManager) ShowRenameDialog() {
 		InitialText:      target.Name,
 		InitialSelection: renameInitialSelection(target),
 		ConfirmText:      "Rename",
-	}, fm.keyManager)
+	}, fm.keyManager, fm.config.UI.KeyBindings)
 	dlg.ShowDialog(fm.window, func(newName string) bool {
 		return fm.renameCurrentFile(target, newName)
 	})

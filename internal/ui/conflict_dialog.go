@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 
+	"nmf/internal/config"
 	"nmf/internal/fileinfo"
 	"nmf/internal/jobs"
 	"nmf/internal/keymanager"
@@ -41,12 +42,17 @@ type ConflictDialog struct {
 	errorLabel *widget.Label
 	sink       *KeySink
 	shortcuts  []*desktop.CustomShortcut
+	bindings   []config.KeyBindingEntry
 	callback   func(jobs.ConflictResolution)
 }
 
 // NewConflictDialog creates a dialog for one name collision.
-func NewConflictDialog(req jobs.ConflictRequest, km *keymanager.KeyManager) *ConflictDialog {
-	return &ConflictDialog{req: req, km: km}
+func NewConflictDialog(req jobs.ConflictRequest, km *keymanager.KeyManager, configuredBindings ...[]config.KeyBindingEntry) *ConflictDialog {
+	d := &ConflictDialog{req: req, km: km}
+	if len(configuredBindings) > 0 {
+		d.bindings = configuredBindings[0]
+	}
+	return d
 }
 
 // ShowDialog displays the conflict dialog.
@@ -96,7 +102,7 @@ func (d *ConflictDialog) ShowDialog(parent fyne.Window, callback func(jobs.Confl
 		d.choice.SetSelected(options[0])
 	}
 
-	d.nameEntry = newConflictNameEntry(d.km, d.CancelJob)
+	d.nameEntry = newConflictNameEntry(d.km, d.CancelJob, d.bindings)
 	d.nameEntry.SetIMEWindow(parent)
 	d.nameEntry.SetText(suggested)
 	d.nameEntry.OnSubmitted = func(string) {
@@ -346,37 +352,31 @@ func (d *ConflictDialog) focusCurrent() {
 }
 
 type conflictNameEntry struct {
-	TabEntry
-	km        *keymanager.KeyManager
-	onCancel  func()
-	imeWindow fyne.Window
-	focused   bool
-	disabled  bool
+	*LineEditEntry
+	km          *keymanager.KeyManager
+	lineHandler *keymanager.LineEditDialogKeyHandler
 }
 
-func newConflictNameEntry(km *keymanager.KeyManager, onCancel func()) *conflictNameEntry {
-	e := &conflictNameEntry{km: km, onCancel: onCancel}
-	e.acceptTab = true
-	e.TextStyle = fyne.TextStyle{Monospace: true}
-	e.Wrapping = fyne.TextWrap(fyne.TextTruncateClip)
+func newConflictNameEntry(km *keymanager.KeyManager, onCancel func(), bindings ...[]config.KeyBindingEntry) *conflictNameEntry {
+	e := &conflictNameEntry{
+		LineEditEntry: NewLineEditEntry(onCancel),
+		km:            km,
+	}
+	var configured []config.KeyBindingEntry
+	if len(bindings) > 0 {
+		configured = bindings[0]
+	}
+	e.lineHandler = keymanager.NewLineEditDialogKeyHandler(conflictLineEditAdapter{entry: e}, configured)
 	e.ExtendBaseWidget(e)
 	return e
 }
 
 func (e *conflictNameEntry) TypedKey(ev *fyne.KeyEvent) {
-	if ev.Name == fyne.KeyEscape {
-		if e.onCancel != nil {
-			e.onCancel()
-		}
+	if e.lineHandler != nil && e.lineHandler.OnKeyActivated(ev, keymanager.ModifierState{}) {
+		e.UpdateIMEAnchor()
 		return
 	}
-	e.TabEntry.TypedKey(ev)
-	e.UpdateIMEAnchor()
-}
-
-func (e *conflictNameEntry) TypedRune(r rune) {
-	e.TabEntry.TypedRune(r)
-	e.UpdateIMEAnchor()
+	e.LineEditEntry.TypedKey(ev)
 }
 
 // TypedShortcut forwards shortcut activations (e.g. Alt+N choice keys) to the
@@ -389,45 +389,80 @@ func (e *conflictNameEntry) TypedShortcut(shortcut fyne.Shortcut) {
 			return
 		}
 	}
-	e.TabEntry.TypedShortcut(shortcut)
+	if e.handleLineEditShortcut(shortcut) {
+		return
+	}
+	e.LineEditEntry.TypedShortcut(shortcut)
 }
 
 // KeyDown / KeyUp keep feeding the KeyManager's input plumbing while the
-// entry is focused. Every path that forwards activations into the KeyManager
-// must also forward key downs, since a fresh press is what arms its gate.
+// entry is focused, so Alt conflict shortcuts can arm the central gate.
 func (e *conflictNameEntry) KeyDown(ev *fyne.KeyEvent) {
 	if e.km != nil {
 		e.km.HandleKeyDown(ev)
 	}
-	e.TabEntry.KeyDown(ev)
+	e.LineEditEntry.KeyDown(ev)
 }
 
 func (e *conflictNameEntry) KeyUp(ev *fyne.KeyEvent) {
 	if e.km != nil {
 		e.km.HandleKeyUp(ev)
 	}
-	e.TabEntry.KeyUp(ev)
+	e.LineEditEntry.KeyUp(ev)
 }
 
-func (e *conflictNameEntry) FocusGained() {
-	e.focused = true
-	e.TabEntry.FocusGained()
-	e.UpdateIMEAnchor()
+func (e *conflictNameEntry) handleLineEditShortcut(shortcut fyne.Shortcut) bool {
+	if e.lineHandler == nil {
+		return false
+	}
+	if custom, ok := shortcut.(*desktop.CustomShortcut); ok {
+		return e.lineHandler.OnKeyActivated(&fyne.KeyEvent{Name: custom.KeyName}, keymanager.ModifierState{
+			ShiftPressed: custom.Modifier&fyne.KeyModifierShift != 0,
+			CtrlPressed:  custom.Modifier&fyne.KeyModifierControl != 0,
+			AltPressed:   custom.Modifier&fyne.KeyModifierAlt != 0,
+		})
+	}
+	switch shortcut.(type) {
+	case *fyne.ShortcutSelectAll:
+		return e.lineHandler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyA}, keymanager.ModifierState{CtrlPressed: true})
+	case *fyne.ShortcutRedo:
+		return e.lineHandler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyY}, keymanager.ModifierState{CtrlPressed: true})
+	default:
+		return false
+	}
 }
 
-func (e *conflictNameEntry) FocusLost() {
-	e.focused = false
-	e.TabEntry.FocusLost()
+type conflictLineEditAdapter struct {
+	entry *conflictNameEntry
 }
 
-func (e *conflictNameEntry) Disable() {
-	e.disabled = true
-	e.TabEntry.Disable()
+func (a conflictLineEditAdapter) AcceptEdit() {
+	if a.entry != nil && a.entry.OnSubmitted != nil {
+		a.entry.OnSubmitted(a.entry.Text)
+	}
 }
 
-func (e *conflictNameEntry) Enable() {
-	e.disabled = false
-	e.TabEntry.Enable()
+func (a conflictLineEditAdapter) CancelDialog() {
+	if a.entry != nil && a.entry.onCancel != nil {
+		a.entry.onCancel()
+	}
+}
+
+func (a conflictLineEditAdapter) MoveCursorStart()           { a.entry.MoveCursorStart() }
+func (a conflictLineEditAdapter) MoveCursorEnd()             { a.entry.MoveCursorEnd() }
+func (a conflictLineEditAdapter) MoveCursorLeft()            { a.entry.MoveCursorLeft() }
+func (a conflictLineEditAdapter) MoveCursorRight()           { a.entry.MoveCursorRight() }
+func (a conflictLineEditAdapter) DeleteBeforeCursor()        { a.entry.DeleteBeforeCursor() }
+func (a conflictLineEditAdapter) DeleteAtCursor()            { a.entry.DeleteAtCursor() }
+func (a conflictLineEditAdapter) DeleteBeforeCursorToStart() { a.entry.DeleteBeforeCursorToStart() }
+func (a conflictLineEditAdapter) DeleteAfterCursorToEnd()    { a.entry.DeleteAfterCursorToEnd() }
+func (a conflictLineEditAdapter) PasteFromClipboard()        { a.entry.PasteFromClipboard() }
+func (a conflictLineEditAdapter) InsertRune(r rune) bool {
+	if a.entry == nil {
+		return false
+	}
+	a.entry.InsertText(string(r))
+	return true
 }
 
 func (e *conflictNameEntry) SetIMEWindow(window fyne.Window) {

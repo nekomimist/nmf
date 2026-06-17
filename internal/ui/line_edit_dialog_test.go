@@ -10,8 +10,29 @@ import (
 	fynetheme "fyne.io/fyne/v2/theme"
 
 	"nmf/internal/config"
+	"nmf/internal/keymanager"
 	customtheme "nmf/internal/theme"
 )
+
+type lineEditEntryTestAdapter struct {
+	entry *LineEditEntry
+}
+
+func (a lineEditEntryTestAdapter) AcceptEdit()                {}
+func (a lineEditEntryTestAdapter) CancelDialog()              {}
+func (a lineEditEntryTestAdapter) MoveCursorStart()           { a.entry.MoveCursorStart() }
+func (a lineEditEntryTestAdapter) MoveCursorEnd()             { a.entry.MoveCursorEnd() }
+func (a lineEditEntryTestAdapter) MoveCursorLeft()            { a.entry.MoveCursorLeft() }
+func (a lineEditEntryTestAdapter) MoveCursorRight()           { a.entry.MoveCursorRight() }
+func (a lineEditEntryTestAdapter) DeleteBeforeCursor()        { a.entry.DeleteBeforeCursor() }
+func (a lineEditEntryTestAdapter) DeleteAtCursor()            { a.entry.DeleteAtCursor() }
+func (a lineEditEntryTestAdapter) DeleteBeforeCursorToStart() { a.entry.DeleteBeforeCursorToStart() }
+func (a lineEditEntryTestAdapter) DeleteAfterCursorToEnd()    { a.entry.DeleteAfterCursorToEnd() }
+func (a lineEditEntryTestAdapter) PasteFromClipboard()        { a.entry.PasteFromClipboard() }
+func (a lineEditEntryTestAdapter) InsertRune(r rune) bool {
+	a.entry.InsertText(string(r))
+	return true
+}
 
 func TestLineEditEntryReadlineCursorMovement(t *testing.T) {
 	entry := NewLineEditEntry(nil)
@@ -228,6 +249,24 @@ func TestLineEditEntryReadlineShortcutKeys(t *testing.T) {
 	entry.TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyH, Modifier: fyne.KeyModifierControl})
 	if entry.Text != "abc" {
 		t.Fatalf("text after ctrl-h = %q, want %q", entry.Text, "abc")
+	}
+}
+
+func TestLineEditEntryConfiguredNoopDoesNotFallBackToReadlineShortcut(t *testing.T) {
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	entry := NewLineEditEntry(nil, km)
+	entry.SetText("abcd")
+	entry.MoveCursorEnd()
+	handler := keymanager.NewLineEditDialogKeyHandler(lineEditEntryTestAdapter{entry: entry}, []config.KeyBindingEntry{
+		{Target: keymanager.KeyBindingTargetLineEdit, Key: "C-A", Command: keymanager.CommandNoop},
+	})
+	km.PushHandler(handler)
+
+	entry.KeyDown(&fyne.KeyEvent{Name: fyne.KeyA})
+	entry.TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyA, Modifier: fyne.KeyModifierControl})
+
+	if entry.CursorColumn != 4 {
+		t.Fatalf("cursor after configured noop ctrl-a = %d, want 4", entry.CursorColumn)
 	}
 }
 

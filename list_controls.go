@@ -302,7 +302,7 @@ func (fm *FileManager) ShowPathEditDialog() {
 		},
 		ConfirmText: "Open",
 		Width:       760,
-	}, fm.keyManager)
+	}, fm.keyManager, fm.config.UI.KeyBindings)
 	dlg.ShowDialog(fm.window, func(path string) bool {
 		debugPrint("FileManager: path edit accepted input=%s focused=%s", path, focusedObjectLabel(fm.window))
 		return fm.navigateToPath(path)
