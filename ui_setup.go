@@ -126,6 +126,14 @@ func (fm *FileManager) setupUI() {
 					// Get text color based on file type
 					textColor := fileinfo.GetTextColor(fileInfo.FileType, fm.customTheme)
 					nameLabel.SetFile(fileInfo.Name, textColor, fileInfo.Status == fileinfo.StatusDeleted)
+					nameLabel.SetOnTapped(func(modifier fyne.KeyModifier) {
+						debugPrint("FileManager: File name tapped path=%s modifier=%d", fileInfo.Path, modifier)
+						fm.handleFileNameClick(index, fileInfo, modifier)
+					})
+					nameLabel.SetOnDragged(func() {
+						debugPrint("FileManager: File name dragged path=%s", fileInfo.Path)
+						fm.StartFileDrag(fileInfo)
+					})
 
 					if fileInfo.IsDir {
 						infoLabel.SetText(fmt.Sprintf("<dir> %s %s",

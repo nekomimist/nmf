@@ -58,8 +58,8 @@ implemented beyond Fyne's drop callback.
 
 Outbound file drag is implemented for Windows only:
 
-- UI trigger: `TappableIcon` records `MouseDown` and starts the drag from
-  `MouseMoved` after a distance threshold.
+- UI trigger: the file icon and file name widgets record `MouseDown` and start
+  the drag from `MouseMoved` after a distance threshold.
 - File collection and validation: `drag_source_ui.go`.
 - Native Shell drag loop: `internal/shellmenu.StartFileDrag` in
   `shellmenu_windows.go`.

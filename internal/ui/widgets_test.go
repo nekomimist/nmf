@@ -51,6 +51,61 @@ func TestFileNameLabelDisplayTextReturnsEmptyForNoWidth(t *testing.T) {
 	}
 }
 
+func TestFileNameLabelTapForwardsMouseDownModifier(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	var got fyne.KeyModifier
+	calls := 0
+	label := NewFileNameLabel("file.txt", color.RGBA{})
+	label.SetOnTapped(func(modifier fyne.KeyModifier) {
+		got = modifier
+		calls++
+	})
+
+	label.MouseDown(&desktop.MouseEvent{
+		PointEvent: fyne.PointEvent{AbsolutePosition: fyne.NewPos(10, 10)},
+		Button:     desktop.MouseButtonPrimary,
+		Modifier:   fyne.KeyModifierShift,
+	})
+	label.Tapped(&fyne.PointEvent{})
+
+	if calls != 1 {
+		t.Fatalf("tap calls = %d, want 1", calls)
+	}
+	if got != fyne.KeyModifierShift {
+		t.Fatalf("modifier = %d, want shift", got)
+	}
+}
+
+func TestFileNameLabelDragSuppressesTap(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	taps := 0
+	drags := 0
+	label := NewFileNameLabel("file.txt", color.RGBA{})
+	label.SetOnTapped(func(fyne.KeyModifier) { taps++ })
+	label.SetOnDragged(func() { drags++ })
+
+	label.MouseDown(&desktop.MouseEvent{
+		PointEvent: fyne.PointEvent{AbsolutePosition: fyne.NewPos(10, 10)},
+		Button:     desktop.MouseButtonPrimary,
+	})
+	label.MouseMoved(&desktop.MouseEvent{
+		PointEvent: fyne.PointEvent{AbsolutePosition: fyne.NewPos(16, 10)},
+		Button:     desktop.MouseButtonPrimary,
+	})
+	label.Tapped(&fyne.PointEvent{})
+
+	if drags != 1 {
+		t.Fatalf("drag calls = %d, want 1", drags)
+	}
+	if taps != 0 {
+		t.Fatalf("tap calls = %d, want 0 after drag", taps)
+	}
+}
+
 func TestTappableIconMouseMovedStartsDragAfterThreshold(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()

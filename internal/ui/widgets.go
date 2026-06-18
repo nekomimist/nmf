@@ -114,10 +114,17 @@ func (ti *TappableIcon) CreateRenderer() fyne.WidgetRenderer {
 // FileNameLabel draws a file name that shrinks to its assigned width.
 type FileNameLabel struct {
 	widget.BaseWidget
-	name    string
-	color   color.RGBA
-	deleted bool
-	text    *canvas.Text
+	name          string
+	color         color.RGBA
+	deleted       bool
+	text          *canvas.Text
+	onTapped      func(fyne.KeyModifier)
+	onDragged     func()
+	dragging      bool
+	pressed       bool
+	suppressTap   bool
+	pressPos      fyne.Position
+	pressModifier fyne.KeyModifier
 }
 
 func NewFileNameLabel(name string, textColor color.RGBA) *FileNameLabel {
@@ -139,6 +146,83 @@ func (l *FileNameLabel) SetFile(name string, textColor color.RGBA, deleted bool)
 	l.text.Color = textColor
 	l.text.TextSize = fyne.CurrentApp().Settings().Theme().Size(theme.SizeNameText)
 	l.Refresh()
+}
+
+// Tapped handles left-click actions on the file name area.
+func (l *FileNameLabel) Tapped(_ *fyne.PointEvent) {
+	if l.suppressTap {
+		l.suppressTap = false
+		return
+	}
+	if l.onTapped != nil {
+		l.onTapped(l.pressModifier)
+	}
+}
+
+// MouseDown records the initial press for click modifiers and drag startup.
+func (l *FileNameLabel) MouseDown(ev *desktop.MouseEvent) {
+	if ev.Button != desktop.MouseButtonPrimary {
+		return
+	}
+	l.pressed = true
+	l.dragging = false
+	l.suppressTap = false
+	l.pressPos = ev.AbsolutePosition
+	l.pressModifier = ev.Modifier
+}
+
+// MouseUp clears any pending drag startup.
+func (l *FileNameLabel) MouseUp(ev *desktop.MouseEvent) {
+	if ev.Button == desktop.MouseButtonPrimary {
+		l.pressed = false
+		l.dragging = false
+	}
+}
+
+// MouseIn implements desktop.Hoverable.
+func (l *FileNameLabel) MouseIn(_ *desktop.MouseEvent) {}
+
+// MouseMoved starts a native drag after pointer movement exceeds a small threshold.
+func (l *FileNameLabel) MouseMoved(ev *desktop.MouseEvent) {
+	if !l.pressed || ev.Button != desktop.MouseButtonPrimary {
+		return
+	}
+	if l.dragging {
+		return
+	}
+	dx := ev.AbsolutePosition.X - l.pressPos.X
+	dy := ev.AbsolutePosition.Y - l.pressPos.Y
+	const dragStartDistance float32 = 4
+	if dx*dx+dy*dy < dragStartDistance*dragStartDistance {
+		return
+	}
+	l.dragging = true
+	l.suppressTap = true
+	if l.onDragged != nil {
+		l.onDragged()
+	}
+	l.pressed = false
+	l.dragging = false
+}
+
+// MouseOut implements desktop.Hoverable.
+func (l *FileNameLabel) MouseOut() {
+	l.dragging = false
+}
+
+// SetOnTapped sets the callback invoked when the file name is clicked.
+func (l *FileNameLabel) SetOnTapped(onTapped func(fyne.KeyModifier)) {
+	l.onTapped = onTapped
+	l.pressModifier = 0
+	l.suppressTap = false
+}
+
+// SetOnDragged sets the callback invoked when a drag starts.
+func (l *FileNameLabel) SetOnDragged(onDragged func()) {
+	l.onDragged = onDragged
+	l.dragging = false
+	l.pressed = false
+	l.suppressTap = false
 }
 
 func (l *FileNameLabel) displayText(width float32) string {
