@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"fmt"
 	"image/color"
+	"strings"
 	"testing"
 
 	"fyne.io/fyne/v2"
@@ -183,8 +185,8 @@ func TestLineEditEntryMoveClearsSelection(t *testing.T) {
 	}{
 		{name: "start", move: (*LineEditEntry).MoveCursorStart, wantCursor: 0},
 		{name: "end", move: (*LineEditEntry).MoveCursorEnd, wantCursor: 8},
-		{name: "left", move: (*LineEditEntry).MoveCursorLeft, wantCursor: 3},
-		{name: "right", move: (*LineEditEntry).MoveCursorRight, wantCursor: 5},
+		{name: "left", move: (*LineEditEntry).MoveCursorLeft, wantCursor: 0},
+		{name: "right", move: (*LineEditEntry).MoveCursorRight, wantCursor: 4},
 	}
 
 	for _, tt := range tests {
@@ -200,6 +202,50 @@ func TestLineEditEntryMoveClearsSelection(t *testing.T) {
 			}
 			if entry.CursorColumn != tt.wantCursor {
 				t.Fatalf("cursor = %d, want %d", entry.CursorColumn, tt.wantCursor)
+			}
+		})
+	}
+}
+
+func TestLineEditEntryMoveClearsSelectionWithoutSyntheticShiftKeyUp(t *testing.T) {
+	tests := []struct {
+		name       string
+		key        fyne.KeyName
+		wantCursor int
+	}{
+		{name: "left", key: fyne.KeyLeft, wantCursor: 0},
+		{name: "right", key: fyne.KeyRight, wantCursor: 4},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logs []string
+			km := keymanager.NewKeyManager(func(format string, args ...interface{}) {
+				logs = append(logs, fmt.Sprintf(format, args...))
+			})
+			entry := NewLineEditEntry(nil, km)
+			entry.SetText("note.txt")
+			entry.SelectRange(0, 4)
+			handler := keymanager.NewLineEditDialogKeyHandler(lineEditEntryTestAdapter{entry: entry})
+			km.PushHandler(handler)
+			logs = nil
+
+			entry.KeyDown(&fyne.KeyEvent{Name: tt.key})
+			entry.TypedKey(&fyne.KeyEvent{Name: tt.key})
+			entry.KeyUp(&fyne.KeyEvent{Name: tt.key})
+
+			if got := entry.SelectedText(); got != "" {
+				t.Fatalf("SelectedText() = %q, want empty", got)
+			}
+			if entry.CursorColumn != tt.wantCursor {
+				t.Fatalf("cursor = %d, want %d", entry.CursorColumn, tt.wantCursor)
+			}
+			joined := strings.Join(logs, "\n")
+			if !strings.Contains(joined, "KeyManager: KeyActivated LineEditDialog handled=true") {
+				t.Fatalf("logs do not show handled LineEdit activation:\n%s", joined)
+			}
+			if strings.Contains(joined, "KeyManager: Shift up") || strings.Contains(joined, "key=LeftShift") {
+				t.Fatalf("move emitted synthetic shift release logs:\n%s", joined)
 			}
 		})
 	}

@@ -380,24 +380,32 @@ func (e *LineEditEntry) handleReadlineKey(name fyne.KeyName) bool {
 }
 
 func (e *LineEditEntry) MoveCursorStart() {
-	e.clearSelection()
+	if e.moveSelectionWithKey(fyne.KeyHome) {
+		return
+	}
 	e.setCursor(0)
 }
 
 func (e *LineEditEntry) MoveCursorEnd() {
-	e.clearSelection()
+	if e.moveSelectionWithKey(fyne.KeyEnd) {
+		return
+	}
 	e.setCursor(utf8.RuneCountInString(e.Text))
 }
 
 func (e *LineEditEntry) MoveCursorLeft() {
+	if e.moveSelectionWithKey(fyne.KeyLeft) {
+		return
+	}
 	pos := e.normalizedCursor()
-	e.clearSelection()
 	e.setCursor(pos - 1)
 }
 
 func (e *LineEditEntry) MoveCursorRight() {
+	if e.moveSelectionWithKey(fyne.KeyRight) {
+		return
+	}
 	pos := e.normalizedCursor()
-	e.clearSelection()
 	e.setCursor(pos + 1)
 }
 
@@ -464,11 +472,12 @@ func (e *LineEditEntry) SelectRange(start, end int) {
 	if start == end {
 		return
 	}
-	e.KeyDown(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
+	e.TabEntry.KeyDown(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
 	for e.CursorColumn < end {
-		e.TypedKey(&fyne.KeyEvent{Name: fyne.KeyRight})
+		e.TabEntry.TypedKey(&fyne.KeyEvent{Name: fyne.KeyRight})
 	}
-	e.KeyUp(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
+	e.TabEntry.KeyUp(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
+	e.UpdateIMEAnchor()
 }
 
 func (e *LineEditEntry) replaceRunes(start, end int, replacement string) {
@@ -487,12 +496,13 @@ func (e *LineEditEntry) replaceRunes(start, end int, replacement string) {
 	e.setCursor(start + utf8.RuneCountInString(replacement))
 }
 
-func (e *LineEditEntry) clearSelection() {
+func (e *LineEditEntry) moveSelectionWithKey(key fyne.KeyName) bool {
 	if e.SelectedText() == "" {
-		return
+		return false
 	}
-	e.KeyUp(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
-	e.TypedKey(&fyne.KeyEvent{Name: fyne.KeyLeft})
+	e.TabEntry.TypedKey(&fyne.KeyEvent{Name: key})
+	e.UpdateIMEAnchor()
+	return true
 }
 
 func (e *LineEditEntry) setClipboardText(text string) bool {
