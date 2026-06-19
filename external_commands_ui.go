@@ -83,6 +83,7 @@ func (fm *FileManager) showCommandMenu(items []keymanager.CommandMenuItem) {
 	}
 
 	menu := ui.NewCommandMenu(items, fm.FocusFileList)
+	menu.SetTransientStateReset(fm.keyManager.ResetTransientState)
 	menu.ShowAtPosition(fm.window.Canvas(), fm.externalCommandMenuPosition())
 }
 

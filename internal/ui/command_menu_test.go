@@ -125,3 +125,52 @@ func TestCommandMenuEnterExecutesSelectedAndEscapeDismisses(t *testing.T) {
 		t.Fatalf("dismiss count after Escape = %d, want 2", dismissed)
 	}
 }
+
+func TestCommandMenuResetsTransientStateOnFocusAndDismiss(t *testing.T) {
+	var labels []string
+	menu := NewCommandMenu([]keymanager.CommandMenuItem{
+		{Label: "One"},
+	}, nil)
+	menu.SetTransientStateReset(func(label string) {
+		labels = append(labels, label)
+	})
+
+	menu.FocusGained()
+	menu.Dismiss()
+
+	want := []string{"command-menu-focus-gained", "command-menu-dismiss"}
+	if len(labels) != len(want) {
+		t.Fatalf("reset labels = %#v, want %#v", labels, want)
+	}
+	for i := range want {
+		if labels[i] != want[i] {
+			t.Fatalf("reset labels = %#v, want %#v", labels, want)
+		}
+	}
+}
+
+func TestCommandMenuResetsTransientStateOnFocusLost(t *testing.T) {
+	var labels []string
+	dismissed := 0
+	menu := NewCommandMenu([]keymanager.CommandMenuItem{
+		{Label: "One"},
+	}, func() { dismissed++ })
+	menu.SetTransientStateReset(func(label string) {
+		labels = append(labels, label)
+	})
+
+	menu.FocusLost()
+
+	want := []string{"command-menu-focus-lost", "command-menu-dismiss"}
+	if len(labels) != len(want) {
+		t.Fatalf("reset labels = %#v, want %#v", labels, want)
+	}
+	for i := range want {
+		if labels[i] != want[i] {
+			t.Fatalf("reset labels = %#v, want %#v", labels, want)
+		}
+	}
+	if dismissed != 1 {
+		t.Fatalf("dismiss count = %d, want 1", dismissed)
+	}
+}

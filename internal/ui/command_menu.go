@@ -29,12 +29,13 @@ type commandMenuItem struct {
 type CommandMenu struct {
 	widget.BaseWidget
 
-	items     []commandMenuItem
-	selected  int
-	popUp     *widget.PopUp
-	canvas    fyne.Canvas
-	onDismiss func()
-	dismissed bool
+	items               []commandMenuItem
+	selected            int
+	popUp               *widget.PopUp
+	canvas              fyne.Canvas
+	onDismiss           func()
+	resetTransientState func(string)
+	dismissed           bool
 }
 
 // NewCommandMenu creates a command menu from UI-agnostic menu entries.
@@ -67,6 +68,12 @@ func NewCommandMenu(items []keymanager.CommandMenuItem, onDismiss func()) *Comma
 	return menu
 }
 
+// SetTransientStateReset configures the callback used to clear stale input
+// state when the menu takes or releases focus.
+func (m *CommandMenu) SetTransientStateReset(callback func(string)) {
+	m.resetTransientState = callback
+}
+
 func normalizeMenuAccelerator(key string) string {
 	if key == "" {
 		return ""
@@ -91,8 +98,14 @@ func (m *CommandMenu) ShowAtPosition(c fyne.Canvas, pos fyne.Position) {
 	c.Focus(m)
 }
 
-func (m *CommandMenu) FocusGained() {}
-func (m *CommandMenu) FocusLost()   { m.Dismiss() }
+func (m *CommandMenu) FocusGained() {
+	m.resetInputState("command-menu-focus-gained")
+}
+
+func (m *CommandMenu) FocusLost() {
+	m.resetInputState("command-menu-focus-lost")
+	m.Dismiss()
+}
 
 func (m *CommandMenu) TypedKey(ev *fyne.KeyEvent) {
 	if ev == nil {
@@ -124,11 +137,18 @@ func (m *CommandMenu) Dismiss() {
 		return
 	}
 	m.dismissed = true
+	m.resetInputState("command-menu-dismiss")
 	if m.popUp != nil {
 		m.popUp.Hide()
 	}
 	if m.onDismiss != nil {
 		m.onDismiss()
+	}
+}
+
+func (m *CommandMenu) resetInputState(label string) {
+	if m.resetTransientState != nil {
+		m.resetTransientState(label)
 	}
 }
 
