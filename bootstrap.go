@@ -62,7 +62,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 	fm.dirWatcher = watcher.NewDirectoryWatcher(fm, watchHub, debugPrint)
 
 	// Install SMB credentials provider (cached + interactive prompt fallback)
-	cached := fileinfo.NewCachedCredentialsProvider(ui.NewSMBCredentialsProvider(fm.window))
+	cached := fileinfo.NewCachedCredentialsProvider(ui.NewSMBCredentialsProvider(fm.window, fm.keyManager, config.UI.KeyBindings))
 	fileinfo.SetCredentialsProvider(cached)
 	fileinfo.SetArchivePasswordProvider(fileinfo.NewCachedArchivePasswordProvider(ui.NewArchivePasswordProvider(fm.window)))
 
