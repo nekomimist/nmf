@@ -190,6 +190,9 @@ func (dtd *DirectoryTreeDialog) expandInitialLevel() {
 
 // ShowDialog shows the directory tree dialog
 func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(string)) {
+	treeWidth := responsiveDialogWidth(parent, treeDialogTreeWidth)
+	contentWidth := responsiveDialogWidth(parent, treeDialogContentWidth)
+
 	// Create radio group for root selection
 	rootOptions := []string{constants.RootModeOptionText, constants.ParentModeOptionText}
 	var selectedOption string
@@ -245,11 +248,11 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 	buttonPanel := container.NewHBox(dtd.radioGroup)
 
 	// Set tree size and minimum size
-	dtd.tree.Resize(metricsSize(treeDialogTreeWidth, treeDialogTreeHeight))
+	dtd.tree.Resize(metricsSize(treeWidth, treeDialogTreeHeight))
 
 	// Create scrollable container for the tree
 	treeScroll := container.NewScroll(dtd.tree)
-	treeScroll.SetMinSize(metricsSize(treeDialogTreeWidth, treeDialogTreeHeight))
+	treeScroll.SetMinSize(metricsSize(treeWidth, treeDialogTreeHeight))
 
 	// Create main content
 	content := container.NewBorder(
@@ -261,7 +264,7 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 	)
 
 	// Set minimum size for the entire content
-	content.Resize(metricsSize(treeDialogContentWidth, treeDialogContentHeight))
+	content.Resize(metricsSize(contentWidth, treeDialogContentHeight))
 
 	// Expand initial level
 	dtd.expandInitialLevel()

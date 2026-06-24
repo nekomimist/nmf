@@ -201,23 +201,28 @@ func (d *DirectoryJumpDialog) updateFilteredEntries(query string) {
 
 // ShowDialog shows the configured directory jump dialog.
 func (d *DirectoryJumpDialog) ShowDialog(parent fyne.Window, callback func(string)) {
+	listWidth := responsiveDialogWidth(parent, searchDialogListWidth)
+	contentWidth := responsiveDialogWidth(parent, searchDialogContentWidth)
+	listSize := metricsSize(listWidth, searchDialogListHeight)
+	contentSize := metricsSize(contentWidth, searchDialogContentHeight)
+
 	titleLabel := widget.NewLabel("Directory Jumps")
 	titleLabel.TextStyle.Bold = true
 
 	searchLabel := widget.NewLabel("Filter:")
 	searchSection := container.NewBorder(nil, nil, searchLabel, nil, d.searchEntry)
 
-	listScroll := newScrollableDialogList(d.jumpList, directoryJumpListWidth(d.allEntries, searchDialogListWidth), searchDialogListWidth, searchDialogListHeight)
+	listScroll := newScrollableDialogList(d.jumpList, directoryJumpListWidth(d.allEntries, listWidth), listWidth, searchDialogListHeight)
 
 	emptyLabel := widget.NewLabel("No matching shortcuts found")
 	emptyLabel.Alignment = fyne.TextAlignCenter
 	emptyLabel.Hide()
 
 	fixedContainer := container.NewWithoutLayout(listScroll, emptyLabel)
-	fixedContainer.Resize(searchDialogListSize())
-	listScroll.Resize(searchDialogListSize())
+	fixedContainer.Resize(listSize)
+	listScroll.Resize(listSize)
 	listScroll.Move(fyne.NewPos(0, 0))
-	emptyLabel.Resize(searchDialogListSize())
+	emptyLabel.Resize(listSize)
 	emptyLabel.Move(fyne.NewPos(0, 0))
 
 	d.searchEntry.OnChanged = func(query string) {
@@ -238,7 +243,7 @@ func (d *DirectoryJumpDialog) ShowDialog(parent fyne.Window, callback func(strin
 		nil,
 		fixedContainer,
 	)
-	content.Resize(searchDialogContentSize())
+	content.Resize(contentSize)
 
 	d.callback = callback
 	d.parent = parent

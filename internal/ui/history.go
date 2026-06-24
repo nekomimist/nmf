@@ -227,6 +227,11 @@ func (nhd *NavigationHistoryDialog) notifySelectedPathChanged() {
 
 // ShowDialog shows the navigation history dialog.
 func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func(string), unpinCallback ...func(string) bool) {
+	listWidth := responsiveDialogWidth(parent, searchDialogListWidth)
+	contentWidth := responsiveDialogWidth(parent, searchDialogContentWidth)
+	listSize := metricsSize(listWidth, searchDialogListHeight)
+	contentSize := metricsSize(contentWidth, searchDialogContentHeight)
+
 	// Create title label
 	titleLabel := widget.NewLabel("Navigation History")
 	titleLabel.TextStyle.Bold = true
@@ -236,7 +241,7 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 	searchSection := container.NewBorder(nil, nil, searchLabel, nil, nhd.searchEntry)
 
 	// Create scrollable list container
-	listScroll := newDialogListScroller(nhd.historyList, dialogTextWidth(nhd.allPaths, searchDialogListWidth), searchDialogListWidth, searchDialogListHeight)
+	listScroll := newDialogListScroller(nhd.historyList, dialogTextWidth(nhd.allPaths, listWidth), listWidth, searchDialogListHeight)
 	nhd.listScroller = listScroll
 
 	// Create empty state message
@@ -246,13 +251,13 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 
 	// Create a fixed-size container that maintains its size
 	fixedContainer := container.NewWithoutLayout(listScroll, emptyLabel)
-	fixedContainer.Resize(searchDialogListSize())
+	fixedContainer.Resize(listSize)
 
 	// Position elements manually to fill the container
-	listScroll.Resize(searchDialogListSize())
+	listScroll.Resize(listSize)
 	listScroll.Move(fyne.NewPos(0, 0))
 
-	emptyLabel.Resize(searchDialogListSize())
+	emptyLabel.Resize(listSize)
 	emptyLabel.Move(fyne.NewPos(0, 0))
 
 	// Note: Container doesn't have SetMinSize, but the manual layout should maintain size
@@ -279,7 +284,7 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 	)
 
 	// Set minimum size
-	content.Resize(searchDialogContentSize())
+	content.Resize(contentSize)
 
 	// Store callback and parent for use by key handler
 	nhd.callback = callback

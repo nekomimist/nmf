@@ -142,6 +142,20 @@ Required sequence for keyboard-driven dialogs:
 
 This pattern is used in history/filter/tree/directory-jump/copy-move/jobs/quit dialogs.
 
+Dialog sizing:
+
+- Navigation History, Copy/Move, Compare Directories, Tree Dialog, and
+  Directory Jump keep their previous fixed widths as minimums, then expand
+  horizontally to about 90% of the parent File Manager canvas when opened.
+- These dialogs keep their existing fixed heights. Standard OK/Cancel button
+  rows are left to Fyne's dialog layout so buttons stay at their natural size
+  instead of stretching with the content width.
+- Rename opts into responsive one-line editing width separately: the dialog
+  keeps the default line-edit width as its minimum, expands to about 70% of the
+  parent width, and caps at 960px. Other line-edit dialogs stay fixed width.
+- The built-in viewer has its own parent-size ratio and
+  `viewer.maxWidth`/`viewer.maxHeight` caps.
+
 Built-in file viewer:
 
 - `viewer.show` opens the selected file with the internal viewer and pushes

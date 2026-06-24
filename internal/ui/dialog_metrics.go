@@ -9,10 +9,11 @@ const (
 	treeDialogContentWidth  float32 = 550
 	treeDialogContentHeight float32 = 500
 
-	searchDialogListWidth     float32 = 600
-	searchDialogListHeight    float32 = 400
-	searchDialogContentWidth  float32 = 650
-	searchDialogContentHeight float32 = 500
+	searchDialogListWidth      float32 = 600
+	searchDialogListHeight     float32 = 400
+	searchDialogContentWidth   float32 = 650
+	searchDialogContentHeight  float32 = 500
+	responsiveDialogWidthRatio         = 0.90
 
 	filterDialogListHeight float32 = 350
 
@@ -38,8 +39,10 @@ const (
 	archivePasswordDialogWidth  float32 = 420
 	archivePasswordDialogHeight float32 = 140
 
-	lineEditDialogWidth  float32 = 640
-	lineEditDialogHeight float32 = 160
+	lineEditDialogWidth    float32 = 640
+	lineEditDialogHeight   float32 = 160
+	renameDialogMaxWidth   float32 = 960
+	renameDialogWidthRatio         = 0.70
 
 	conflictDialogWidth float32 = 620
 
@@ -79,6 +82,36 @@ const (
 
 func metricsSize(width, height float32) fyne.Size {
 	return fyne.NewSize(width, height)
+}
+
+func parentCanvasWidth(parent fyne.Window) float32 {
+	if parent == nil || parent.Canvas() == nil {
+		return 0
+	}
+	return parent.Canvas().Size().Width
+}
+
+func responsiveDialogWidth(parent fyne.Window, minimum float32) float32 {
+	return responsiveDialogWidthWithRatio(parent, minimum, responsiveDialogWidthRatio, 0)
+}
+
+func responsiveDialogWidthWithRatio(parent fyne.Window, minimum, ratio, maximum float32) float32 {
+	width := minimum
+	if parentWidth := parentCanvasWidth(parent); parentWidth > 0 && ratio > 0 {
+		width = fyne.Max(width, parentWidth*ratio)
+	}
+	if maximum > 0 && width > maximum {
+		width = maximum
+	}
+	return width
+}
+
+func RenameDialogWidthRatio() float32 {
+	return renameDialogWidthRatio
+}
+
+func RenameDialogMaxWidth() float32 {
+	return renameDialogMaxWidth
 }
 
 func searchDialogListSize() fyne.Size {

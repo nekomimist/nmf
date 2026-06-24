@@ -128,13 +128,15 @@ func (d *CompareDialog) createWidgets() {
 func (d *CompareDialog) ShowDialog(parent fyne.Window, onAccept func(CompareResult)) {
 	d.parent = parent
 	d.onAccept = onAccept
+	dialogWidth := responsiveDialogWidth(parent, compareDialogWidth)
+	listSize := metricsSize(dialogWidth, compareDialogListHeight)
 
 	header := widget.NewLabel(fmt.Sprintf("Compare %d file(s)", d.sourceCount))
 	header.TextStyle.Bold = true
-	fromLabel := widget.NewLabel("From: " + compactComparePath(d.sourcePath, compareSourcePathMaxRunes))
+	fromLabel := widget.NewLabel("From: " + compactComparePath(d.sourcePath, compareSourcePathMaxRunesForWidth(dialogWidth)))
 	fromLabel.TextStyle.Monospace = true
 	fromLabel.Truncation = fyne.TextTruncateEllipsis
-	fromLine := container.NewGridWrap(fyne.NewSize(compareDialogWidth, fromLabel.MinSize().Height), fromLabel)
+	fromLine := container.NewGridWrap(fyne.NewSize(dialogWidth, fromLabel.MinSize().Height), fromLabel)
 	headerBox := container.NewVBox(header, fromLine)
 
 	methodLabel := widget.NewLabel("Mark files where:")
@@ -142,16 +144,16 @@ func (d *CompareDialog) ShowDialog(parent fyne.Window, onAccept func(CompareResu
 
 	searchLabel := widget.NewLabel("Destination:")
 	searchSection := container.NewBorder(nil, nil, searchLabel, nil, d.searchEntry)
-	destScroll := newDialogListScroller(d.destList, dialogDestinationTextWidth(d.allDest, compareDialogWidth), compareDialogWidth, compareDialogListHeight)
+	destScroll := newDialogListScroller(d.destList, dialogDestinationTextWidth(d.allDest, dialogWidth), dialogWidth, compareDialogListHeight)
 	d.destScroll = destScroll
 	empty := widget.NewLabel("No matching destinations")
 	empty.Alignment = fyne.TextAlignCenter
 	empty.Hide()
 	fixed := container.NewWithoutLayout(destScroll, empty)
-	fixed.Resize(metricsSize(compareDialogWidth, compareDialogListHeight))
-	destScroll.Resize(metricsSize(compareDialogWidth, compareDialogListHeight))
+	fixed.Resize(listSize)
+	destScroll.Resize(listSize)
 	destScroll.Move(fyne.NewPos(0, 0))
-	empty.Resize(metricsSize(compareDialogWidth, compareDialogListHeight))
+	empty.Resize(listSize)
 	empty.Move(fyne.NewPos(0, 0))
 	d.searchEntry.OnChanged = func(q string) {
 		d.updateFiltered(q)
@@ -550,6 +552,18 @@ func compactComparePath(p string, maxRunes int) string {
 		return p
 	}
 	return string(runes[:prefixLen]) + marker + string(runes[len(runes)-suffixLen:])
+}
+
+func compareSourcePathMaxRunesForWidth(width float32) int {
+	charWidth := fyne.MeasureText("M", fynetheme.TextSize(), fyne.TextStyle{Monospace: true}).Width
+	if charWidth <= 0 {
+		return compareSourcePathMaxRunes
+	}
+	maxRunes := int((width - fyne.MeasureText("From: ", fynetheme.TextSize(), fyne.TextStyle{}).Width) / charWidth)
+	if maxRunes < compareSourcePathMaxRunes {
+		return compareSourcePathMaxRunes
+	}
+	return maxRunes
 }
 
 func compactPathMarker(p string) string {

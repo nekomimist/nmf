@@ -29,6 +29,9 @@ func (fm *FileManager) ShowRenameDialog() {
 		InitialText:      target.Name,
 		InitialSelection: renameInitialSelection(target),
 		ConfirmText:      "Rename",
+		ResponsiveWidth:  true,
+		WidthRatio:       ui.RenameDialogWidthRatio(),
+		MaxWidth:         ui.RenameDialogMaxWidth(),
 	}, fm.keyManager, fm.config.UI.KeyBindings)
 	dlg.ShowDialog(fm.window, func(newName string) bool {
 		return fm.renameCurrentFile(target, newName)

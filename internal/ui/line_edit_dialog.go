@@ -42,6 +42,9 @@ type LineEditDialogOptions struct {
 	ConfirmText      string
 	Width            float32
 	Height           float32
+	ResponsiveWidth  bool
+	WidthRatio       float32
+	MaxWidth         float32
 }
 
 // LineEditDialog edits one line of text and commits it through a callback.
@@ -67,6 +70,9 @@ func NewLineEditDialog(opts LineEditDialogOptions, km *keymanager.KeyManager, co
 	}
 	if opts.Height <= 0 {
 		opts.Height = lineEditDialogHeight
+	}
+	if opts.WidthRatio <= 0 {
+		opts.WidthRatio = responsiveDialogWidthRatio
 	}
 
 	d := &LineEditDialog{
@@ -120,12 +126,19 @@ func (d *LineEditDialog) ShowDialog(parent fyne.Window, onAccept func(string) bo
 		d.CancelDialog()
 	})
 	d.dialog.Show()
-	d.dialog.Resize(fyne.NewSize(d.opts.Width, d.opts.Height))
+	d.dialog.Resize(fyne.NewSize(d.dialogWidth(parent), d.opts.Height))
 	if d.parent != nil && d.entry != nil {
 		d.entry.SetIMEWindow(d.parent)
 		d.parent.Canvas().Focus(d.entry)
 		d.entry.UpdateIMEAnchor()
 	}
+}
+
+func (d *LineEditDialog) dialogWidth(parent fyne.Window) float32 {
+	if !d.opts.ResponsiveWidth {
+		return d.opts.Width
+	}
+	return responsiveDialogWidthWithRatio(parent, d.opts.Width, d.opts.WidthRatio, d.opts.MaxWidth)
 }
 
 // AcceptEdit commits the entered value.

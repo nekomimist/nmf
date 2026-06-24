@@ -42,3 +42,20 @@ func TestCompactComparePathUsesWindowsMarker(t *testing.T) {
 		t.Fatalf("compact path length = %d, want <= 30: %q", utf8.RuneCountInString(got), got)
 	}
 }
+
+func TestCompareSourcePathMaxRunesForWidthKeepsMinimum(t *testing.T) {
+	got := compareSourcePathMaxRunesForWidth(compareDialogWidth)
+
+	if got < compareSourcePathMaxRunes {
+		t.Fatalf("max runes = %d, want at least %d", got, compareSourcePathMaxRunes)
+	}
+}
+
+func TestCompareSourcePathMaxRunesForWidthExpandsWithWidth(t *testing.T) {
+	narrow := compareSourcePathMaxRunesForWidth(compareDialogWidth)
+	wide := compareSourcePathMaxRunesForWidth(compareDialogWidth * 2)
+
+	if wide <= narrow {
+		t.Fatalf("wide max runes = %d, want greater than narrow %d", wide, narrow)
+	}
+}

@@ -146,6 +146,9 @@ func (d *CopyMoveDialog) createWidgets() {
 func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveResult)) {
 	d.parent = parent
 	d.onAccept = onAccept
+	listWidth := responsiveDialogWidth(parent, searchDialogListWidth)
+	targetListWidth := fyne.Max(copyMoveTargetListWidth, listWidth)
+	destListSize := metricsSize(listWidth, copyMoveDestListHeight)
 
 	// Title is derived dynamically when creating the dialog below
 
@@ -178,7 +181,7 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveRe
 		},
 	)
 	targetsScroll := container.NewScroll(targetsList)
-	targetsScroll.SetMinSize(metricsSize(copyMoveTargetListWidth, copyMoveTargetListHeight))
+	targetsScroll.SetMinSize(metricsSize(targetListWidth, copyMoveTargetListHeight))
 	overflowLabel := widget.NewLabel("")
 	if overflow > 0 {
 		overflowLabel.SetText(fmt.Sprintf("... and %d more", overflow))
@@ -190,17 +193,17 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveRe
 		d.OpenDestination()
 	})
 	searchSection := container.NewBorder(nil, nil, searchLabel, openButton, d.searchEntry)
-	destScroll := newDialogListScroller(d.destList, dialogDestinationTextWidth(d.allDest, searchDialogListWidth), searchDialogListWidth, copyMoveDestListHeight)
+	destScroll := newDialogListScroller(d.destList, dialogDestinationTextWidth(d.allDest, listWidth), listWidth, copyMoveDestListHeight)
 	d.destScroll = destScroll
 	empty := widget.NewLabel("No matching destinations")
 	d.destEmpty = empty
 	empty.Alignment = fyne.TextAlignCenter
 	empty.Hide()
 	fixed := container.NewWithoutLayout(destScroll, empty)
-	fixed.Resize(metricsSize(searchDialogListWidth, copyMoveDestListHeight))
-	destScroll.Resize(metricsSize(searchDialogListWidth, copyMoveDestListHeight))
+	fixed.Resize(destListSize)
+	destScroll.Resize(destListSize)
 	destScroll.Move(fyne.NewPos(0, 0))
-	empty.Resize(metricsSize(searchDialogListWidth, copyMoveDestListHeight))
+	empty.Resize(destListSize)
 	empty.Move(fyne.NewPos(0, 0))
 	d.searchEntry.OnChanged = func(q string) {
 		d.updateFiltered(q)

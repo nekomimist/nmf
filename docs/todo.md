@@ -1,14 +1,6 @@
 # 実用になるために必要なToDo
 
 # 優先度高いの
-## いくつかのダイヤログはFile Managerのサイズに合わせて横に広がったほうが嬉しい
-- Navigation History, File viewer, Copy/Move, Compare Directoriesは特にそうなってほしい。
-- Line Edit、Renameももそうかも(
-- Tree Dialog, Directory Jumpは合わせて広げてよい
-- 注意事項
-  - 高さ方向はとりあえずは合わせなくてもよい。
-  - OK/CANCELのボタンなどUIパーツは横幅に合わせて広げず、現状のサイズを基本とする
-
 ## 簡易viewerにテキスト全選択機能をつける
 - C-aにバインドする (カーソルがあるなら行頭の移動にバインドしたくなるが、今のところないのでOK)
 - 他の範囲選択はマウスにまかせてキーボードではやらないことにする(カーソルを足すの面倒!)
@@ -70,6 +62,16 @@
 - 詳細な設計は `docs/architecture/vfs-smb.md` を参照する。
 
 # DONE 以下は終わったもの
+## いくつかのダイヤログをFile Managerのサイズに合わせて横に広げる
+- Navigation History、Copy/Move、Compare Directories、Tree Dialog、
+  Directory Jumpは、表示時点のFile Manager幅の90%を目安に横へ広がるようにした。
+- 現在の固定幅は最小幅として維持し、高さ方向は従来どおり固定値のままにした。
+- Renameだけ一行編集ダイアログの可変幅対象にし、File Manager幅の70%、
+  最大960pxまで広がるようにした。他のLine Edit系は現状維持。
+- File viewerは既に親サイズ比率と`viewer.maxWidth`/`viewer.maxHeight`で
+  サイズ調整しているため、既存挙動を維持した。
+- OK/Cancelなどの標準ボタン列は、Fyne標準の自然幅・中央配置のままにした。
+
 ## ファイル一覧のマウス操作改善
 - ファイル名領域からもWindows Shell D&Dを開始できるようにした。
   アイコンからの既存D&Dは維持している。
