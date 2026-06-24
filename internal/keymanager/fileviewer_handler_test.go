@@ -27,6 +27,7 @@ type fakeFileViewer struct {
 	search int
 	line   int
 	copy   int
+	all    int
 }
 
 func (f *fakeFileViewer) CloseViewer()          { f.closed++ }
@@ -47,6 +48,7 @@ func (f *fakeFileViewer) ViewerSearchPrevious() { f.prev++ }
 func (f *fakeFileViewer) ViewerFocusSearch()    { f.search++ }
 func (f *fakeFileViewer) ViewerFocusLine()      { f.line++ }
 func (f *fakeFileViewer) ViewerCopySelection()  { f.copy++ }
+func (f *fakeFileViewer) ViewerSelectAll()      { f.all++ }
 
 func TestFileViewerHandlerLessKeys(t *testing.T) {
 	viewer := &fakeFileViewer{}
@@ -79,6 +81,21 @@ func TestFileViewerHandlerCtrlCCopiesSelection(t *testing.T) {
 	}
 	if handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyC}, ModifierState{}) {
 		t.Fatal("plain C should not be handled as an activation")
+	}
+}
+
+func TestFileViewerHandlerCtrlASelectsAll(t *testing.T) {
+	viewer := &fakeFileViewer{}
+	handler := NewFileViewerKeyHandler(viewer)
+
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyA}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("Ctrl+A should be handled")
+	}
+	if viewer.all != 1 {
+		t.Fatalf("select all calls = %d, want 1", viewer.all)
+	}
+	if handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyA}, ModifierState{}) {
+		t.Fatal("plain A should not be handled as an activation")
 	}
 }
 
@@ -126,5 +143,19 @@ func TestFileViewerConfiguredBindingOverridesDefaultRune(t *testing.T) {
 	}
 	if viewer.line != 0 {
 		t.Fatalf("line focus calls = %d, want 0", viewer.line)
+	}
+}
+
+func TestFileViewerConfiguredBindingOverridesDefaultCtrlA(t *testing.T) {
+	viewer := &fakeFileViewer{}
+	handler := NewFileViewerKeyHandler(viewer, []config.KeyBindingEntry{
+		{Target: KeyBindingTargetFileViewer, Key: "C-A", Command: CommandNoop},
+	})
+
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyA}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("configured Ctrl+A noop should be handled")
+	}
+	if viewer.all != 0 {
+		t.Fatalf("select all calls = %d, want 0", viewer.all)
 	}
 }

@@ -27,6 +27,7 @@ const (
 	CommandFileViewerFocusSearch    = "fileViewer.search.focus"
 	CommandFileViewerFocusLine      = "fileViewer.line.focus"
 	CommandFileViewerCopySelection  = "fileViewer.selection.copy"
+	CommandFileViewerSelectAll      = "fileViewer.selection.selectAll"
 )
 
 // FileViewerInterface defines keyboard actions for the built-in viewer.
@@ -49,6 +50,7 @@ type FileViewerInterface interface {
 	ViewerFocusSearch()
 	ViewerFocusLine()
 	ViewerCopySelection()
+	ViewerSelectAll()
 }
 
 // FileViewerKeyHandler handles less-like keys for the built-in viewer.
@@ -132,6 +134,7 @@ func (h *FileViewerKeyHandler) defaultCommands() map[string]func() {
 		CommandFileViewerFocusSearch:    h.viewer.ViewerFocusSearch,
 		CommandFileViewerFocusLine:      h.viewer.ViewerFocusLine,
 		CommandFileViewerCopySelection:  h.viewer.ViewerCopySelection,
+		CommandFileViewerSelectAll:      h.viewer.ViewerSelectAll,
 		CommandNoop:                     func() {},
 	}
 }
@@ -149,6 +152,7 @@ func defaultFileViewerBindings() []config.KeyBindingEntry {
 		{Key: "Escape", Command: CommandFileViewerClose},
 		{Key: "Space", Command: CommandFileViewerPageDown},
 		{Key: "/", Command: CommandFileViewerFocusSearch},
+		{Key: "C-A", Command: CommandFileViewerSelectAll},
 		{Key: "C-C", Command: CommandFileViewerCopySelection},
 		{Key: "Q", Command: CommandFileViewerClose},
 		{Key: "J", Command: CommandFileViewerLineDown},

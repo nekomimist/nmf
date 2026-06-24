@@ -560,6 +560,48 @@ func TestFileViewerTextGridSelectedTextSkipsDisplayPadding(t *testing.T) {
 	}
 }
 
+func TestFileViewerTextGridSelectAllSingleLine(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	grid := newFileViewerTextGrid("abcdef", nil, nil, nil)
+
+	if got := grid.SelectAll(); got != 6 {
+		t.Fatalf("SelectAll() = %d, want 6", got)
+	}
+	if got := grid.SelectedText(); got != "abcdef" {
+		t.Fatalf("SelectedText() = %q, want full text", got)
+	}
+}
+
+func TestFileViewerTextGridSelectAllMultiLine(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	grid := newFileViewerTextGrid("abc\ndef\nghi", nil, nil, nil)
+
+	if got := grid.SelectAll(); got != len([]rune("abc\ndef\nghi")) {
+		t.Fatalf("SelectAll() = %d, want full rune count", got)
+	}
+	if got := grid.SelectedText(); got != "abc\ndef\nghi" {
+		t.Fatalf("SelectedText() = %q, want full multi-line text", got)
+	}
+}
+
+func TestFileViewerTextGridSelectAllSkipsDisplayPadding(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	text := "a\tあb"
+	grid := newFileViewerTextGrid(text, nil, nil, nil)
+
+	grid.SelectAll()
+
+	if got := grid.SelectedText(); got != text {
+		t.Fatalf("SelectedText() = %q, want original logical text %q", got, text)
+	}
+}
+
 func TestFileViewerTextGridSelectionUsesLineEditSelectionColor(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
@@ -681,6 +723,36 @@ func TestFileViewerDialogTextGridCtrlCCopiesThroughKeyManager(t *testing.T) {
 
 	if got := app.Clipboard().Content(); got != "bcd" {
 		t.Fatalf("clipboard = %q, want %q", got, "bcd")
+	}
+}
+
+func TestFileViewerDialogTextGridCtrlAThenCtrlCCopiesAll(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "note.txt",
+		Data:     []byte("abc\ndef"),
+		Text:     "abc\ndef",
+		Encoding: "UTF-8",
+	}, km)
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	d.textGrid.KeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
+	d.textGrid.KeyDown(&fyne.KeyEvent{Name: fyne.KeyA})
+	d.textGrid.TypedShortcut(&fyne.ShortcutSelectAll{})
+	d.textGrid.KeyDown(&fyne.KeyEvent{Name: fyne.KeyC})
+	d.textGrid.TypedShortcut(&fyne.ShortcutCopy{})
+
+	if got := app.Clipboard().Content(); got != "abc\ndef" {
+		t.Fatalf("clipboard = %q, want full text", got)
+	}
+	if !strings.Contains(d.status.Text, "copied=7") {
+		t.Fatalf("status = %q, want copied count", d.status.Text)
 	}
 }
 

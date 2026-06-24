@@ -407,7 +407,7 @@ Available file-viewer commands:
 - `fileViewer.pane.text`, `fileViewer.pane.markdown`, `fileViewer.pane.hex`
 - `fileViewer.search.next`, `fileViewer.search.previous`, `fileViewer.search.focus`
 - `fileViewer.line.focus`
-- `fileViewer.selection.copy`
+- `fileViewer.selection.selectAll`, `fileViewer.selection.copy`
 - `noop`
 
 ## External Commands

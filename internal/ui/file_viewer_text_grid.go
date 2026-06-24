@@ -762,6 +762,22 @@ func (v *fileViewerTextGrid) SelectedText() string {
 	return viewerTextForRange(v.lines, start, end)
 }
 
+func (v *fileViewerTextGrid) SelectAll() int {
+	if len(v.lines) == 0 {
+		v.selection = viewerTextSelection{}
+		v.refreshGrid()
+		return 0
+	}
+	lastLine := len(v.lines) - 1
+	v.selection = viewerTextSelection{
+		start: viewerTextPosition{line: 0, col: 0},
+		end:   viewerTextPosition{line: lastLine, col: len([]rune(v.lines[lastLine]))},
+		set:   true,
+	}
+	v.refreshGrid()
+	return len([]rune(v.SelectedText()))
+}
+
 func (v *fileViewerTextGrid) selectionDebugInfo() (viewerTextPosition, viewerTextPosition, int) {
 	if !v.selection.set {
 		return viewerTextPosition{}, viewerTextPosition{}, 0

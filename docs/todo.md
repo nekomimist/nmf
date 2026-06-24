@@ -1,20 +1,10 @@
 # 実用になるために必要なToDo
 
 # 優先度高いの
-## 簡易viewerにテキスト全選択機能をつける
-- C-aにバインドする (カーソルがあるなら行頭の移動にバインドしたくなるが、今のところないのでOK)
-- 他の範囲選択はマウスにまかせてキーボードではやらないことにする(カーソルを足すの面倒!)
-- なのでこの対応完了で、優先度低めに残っている"簡易viewerの残課題"は全doneとする。
-
 ## File ManagerのタイトルをNekomimist Filerとし、バージョンを1.0.0にする
 - 以降はユーザーから見える変更はdocs/CHANGELOG.mdに記載する。
 
 # 優先度低めのもの
-## 簡易viewerの残課題
-- Text/Hex表示のキーボードによる範囲選択が未対応。
-- MarkdownタブはTextGrid化済み。Markdown ASTから簡易テキストへ変換しているため、
-  Mermaid等の図示や複雑な表現は外部ビューアに任せる。
-
 ## ダイアログ系KeyHandlerの共通化
 - keymanagerパッケージにdialog毎のhandlerが16ファイルあり、
   Esc=cancel / Enter=accept / ↑↓=移動 のパターンがほぼ重複している。
@@ -62,6 +52,12 @@
 - 詳細な設計は `docs/architecture/vfs-smb.md` を参照する。
 
 # DONE 以下は終わったもの
+## 簡易viewerのテキスト全選択
+- File ViewerのText/Markdown/Hex各ペインで、C-aに全選択をバインドした。
+- C-a後のC-cで、現在ペインの表示テキスト全体をクリップボードへコピーできる。
+- キーボードによる他の範囲選択は追加せず、既存どおりマウス選択に任せる。
+- 旧「簡易viewerの残課題」は、MarkdownのTextGrid化済み方針を含めて完了扱いにした。
+
 ## いくつかのダイヤログをFile Managerのサイズに合わせて横に広げる
 - Navigation History、Copy/Move、Compare Directories、Tree Dialog、
   Directory Jumpは、表示時点のFile Manager幅の90%を目安に横へ広がるようにした。

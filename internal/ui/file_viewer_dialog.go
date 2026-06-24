@@ -1170,6 +1170,20 @@ func (d *FileViewerDialog) ViewerCopySelection() {
 	d.copySelection()
 }
 
+func (d *FileViewerDialog) ViewerSelectAll() {
+	grid := d.activeGrid()
+	if grid == nil {
+		d.debug("FileViewer: select-all active=%s grid=false", d.activeName)
+		d.setStatusSuffix("select=unsupported")
+		d.focusActiveViewer()
+		return
+	}
+	chars := grid.SelectAll()
+	d.debug("FileViewer: select-all active=%s chars=%d", d.activeName, chars)
+	d.setStatusSuffix(fmt.Sprintf("selected=%d", chars))
+	d.focusActiveViewer()
+}
+
 func (d *FileViewerDialog) moveCursorRows(delta int) {
 	if grid := d.activeGrid(); grid != nil {
 		grid.MoveRows(delta)
