@@ -1,7 +1,21 @@
 # 実用になるために必要なToDo
 
 # 優先度高いの
-- File ManagerのタイトルをNekomimist Filerにする
+## いくつかのダイヤログはFile Managerのサイズに合わせて横に広がったほうが嬉しい
+- Navigation History, File viewer, Copy/Move, Compare Directoriesは特にそうなってほしい。
+- Line Edit、Renameももそうかも(
+- Tree Dialog, Directory Jumpは合わせて広げてよい
+- 注意事項
+  - 高さ方向はとりあえずは合わせなくてもよい。
+  - OK/CANCELのボタンなどUIパーツは横幅に合わせて広げず、現状のサイズを基本とする
+
+## 簡易viewerにテキスト全選択機能をつける
+- C-aにバインドする (カーソルがあるなら行頭の移動にバインドしたくなるが、今のところないのでOK)
+- 他の範囲選択はマウスにまかせてキーボードではやらないことにする(カーソルを足すの面倒!)
+- なのでこの対応完了で、優先度低めに残っている"簡易viewerの残課題"は全doneとする。
+
+## File ManagerのタイトルをNekomimist Filerとし、バージョンを1.0.0にする
+- 以降はユーザーから見える変更はdocs/CHANGELOG.mdに記載する。
 
 # 優先度低めのもの
 ## 簡易viewerの残課題
