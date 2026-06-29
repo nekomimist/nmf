@@ -12,6 +12,7 @@ import (
 // closeWindow handles window closing logic.
 func (fm *FileManager) closeWindow() {
 	recordReopenPath(fm.currentPath)
+	clearFileManagerWindowHighlights()
 
 	// Remove from registry
 	unregisterFileManagerWindow(fm)

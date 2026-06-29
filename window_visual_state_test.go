@@ -2,6 +2,7 @@ package main
 
 import (
 	"image/color"
+	"sync/atomic"
 	"testing"
 
 	"fyne.io/fyne/v2/canvas"
@@ -91,5 +92,39 @@ func TestHighlightFileManagerWindowForPathHighlightsOpenWindow(t *testing.T) {
 	clearFileManagerWindowHighlights()
 	if color.RGBAModel.Convert(target.windowHighlight.StrokeColor).(color.RGBA).A != 0 {
 		t.Fatal("target window highlight should be cleared")
+	}
+}
+
+func TestCloseWindowClearsOtherWindowHighlight(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	resetFileManagerWindowTestRegistry(t)
+	atomic.StoreInt32(&windowCount, 2)
+	t.Cleanup(func() {
+		atomic.StoreInt32(&windowCount, 0)
+	})
+
+	current := &FileManager{
+		window:          app.NewWindow("current"),
+		currentPath:     "/current",
+		windowHighlight: canvas.NewRectangle(color.Transparent),
+	}
+	target := &FileManager{
+		window:          app.NewWindow("target"),
+		currentPath:     "/target",
+		windowHighlight: canvas.NewRectangle(color.Transparent),
+	}
+	registerFileManagerWindow(current)
+	registerFileManagerWindow(target)
+	highlightFileManagerWindowForPath("/target")
+
+	if color.RGBAModel.Convert(target.windowHighlight.StrokeColor).(color.RGBA).A == 0 {
+		t.Fatal("target window highlight should be visible before close")
+	}
+
+	current.closeWindow()
+
+	if color.RGBAModel.Convert(target.windowHighlight.StrokeColor).(color.RGBA).A != 0 {
+		t.Fatal("target window highlight should be cleared when source window closes")
 	}
 }
