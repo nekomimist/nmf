@@ -121,6 +121,7 @@ func (d *CompareDialog) createWidgets() {
 	d.methodRadio = widget.NewRadioGroup(compareMethodLabels(), func(string) {
 		d.focusSink()
 	})
+	d.methodRadio.Required = true
 	d.methodRadio.SetSelected(compareMethodLabel(filecompare.MissingOrNewer))
 }
 
@@ -513,17 +514,17 @@ func compareMethodLabels() []string {
 func compareMethodLabel(method filecompare.Method) string {
 	switch method {
 	case filecompare.Missing:
-		return "Missing in destination"
+		return "Missing in destination (Alt+M)"
 	case filecompare.Newer:
-		return "Newer than destination"
+		return "Newer than destination (Alt+N)"
 	case filecompare.SizeEqual:
-		return "File size matches"
+		return "File size matches (Alt+S)"
 	case filecompare.SizeTimeEqual:
-		return "File size and timestamp match"
+		return "File size and timestamp match (Alt+T)"
 	case filecompare.SizeContentEqual:
-		return "File size and content match"
+		return "File size and content match (Alt+C)"
 	default:
-		return "Missing in destination or newer"
+		return "Missing in destination or newer (Alt+U)"
 	}
 }
 

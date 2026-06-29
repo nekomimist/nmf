@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"nmf/internal/filecompare"
 )
 
 func TestCompactComparePathKeepsShortPath(t *testing.T) {
@@ -57,5 +59,40 @@ func TestCompareSourcePathMaxRunesForWidthExpandsWithWidth(t *testing.T) {
 
 	if wide <= narrow {
 		t.Fatalf("wide max runes = %d, want greater than narrow %d", wide, narrow)
+	}
+}
+
+func TestCompareMethodLabelsShowAltShortcuts(t *testing.T) {
+	want := []string{
+		"Missing in destination or newer (Alt+U)",
+		"Missing in destination (Alt+M)",
+		"Newer than destination (Alt+N)",
+		"File size matches (Alt+S)",
+		"File size and timestamp match (Alt+T)",
+		"File size and content match (Alt+C)",
+	}
+
+	got := compareMethodLabels()
+	if len(got) != len(want) {
+		t.Fatalf("compare method labels length = %d, want %d: %v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("compare method label[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestCompareDialogMethodRadioRequiresSelection(t *testing.T) {
+	dialog := NewCompareDialog("/src", 1, nil, nil, func(string, ...interface{}) {})
+
+	if dialog.methodRadio == nil {
+		t.Fatal("compare method radio group was not created")
+	}
+	if !dialog.methodRadio.Required {
+		t.Fatal("compare method radio group should require one selected option")
+	}
+	if got := dialog.methodRadio.Selected; got != compareMethodLabel(filecompare.MissingOrNewer) {
+		t.Fatalf("default compare method = %q, want %q", got, compareMethodLabel(filecompare.MissingOrNewer))
 	}
 }
