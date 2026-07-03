@@ -31,7 +31,7 @@ type CommandMenu struct {
 
 	items               []commandMenuItem
 	selected            int
-	popUp               *widget.PopUp
+	overlay             *commandMenuOverlay
 	canvas              fyne.Canvas
 	onDismiss           func()
 	resetTransientState func(string)
@@ -91,10 +91,8 @@ func (m *CommandMenu) ShowAtPosition(c fyne.Canvas, pos fyne.Position) {
 		return
 	}
 	m.canvas = c
-	content := menuThemeOverride(m)
-	m.popUp = widget.NewPopUp(content, c)
-	m.popUp.Resize(content.MinSize())
-	m.popUp.ShowAtPosition(pos)
+	m.overlay = newCommandMenuOverlay(m, c, pos)
+	m.overlay.Show()
 	c.Focus(m)
 }
 
@@ -102,8 +100,9 @@ func (m *CommandMenu) FocusGained() {
 	m.resetInputState("command-menu-focus-gained")
 }
 
+// FocusLost dismisses the menu. Dismiss itself resets transient input state,
+// so no separate reset happens here.
 func (m *CommandMenu) FocusLost() {
-	m.resetInputState("command-menu-focus-lost")
 	m.Dismiss()
 }
 
@@ -138,8 +137,8 @@ func (m *CommandMenu) Dismiss() {
 	}
 	m.dismissed = true
 	m.resetInputState("command-menu-dismiss")
-	if m.popUp != nil {
-		m.popUp.Hide()
+	if m.overlay != nil {
+		m.overlay.Hide()
 	}
 	if m.onDismiss != nil {
 		m.onDismiss()
@@ -150,6 +149,162 @@ func (m *CommandMenu) resetInputState(label string) {
 	if m.resetTransientState != nil {
 		m.resetTransientState(label)
 	}
+}
+
+// commandMenuOverlay is a full-canvas overlay root that hosts the command
+// menu box at a fixed position on the canvas.
+//
+// Fyne v2.7.3's widget.PopUp.Tapped hides itself directly on an outside tap
+// (see widget/popup.go), bypassing CommandMenu.Dismiss and therefore skipping
+// resetInputState and onDismiss. It's the same shape as widget.PopUpMenu's
+// fix for that problem: PopUpMenu wraps its Menu in an internal
+// widget.OverlayContainer, whose own Tapped routes through Dismiss instead of
+// Hide. That type lives in an internal package we cannot import, so this
+// replicates the same small amount of logic: a Tappable/SecondaryTappable
+// root sized to the canvas, hosting the menu box (background rectangle +
+// menuThemeOverride content) at a clamped position, that calls
+// CommandMenu.Dismiss() whenever the tap lands outside the box.
+type commandMenuOverlay struct {
+	widget.BaseWidget
+
+	menu       *CommandMenu
+	canvas     fyne.Canvas
+	content    fyne.CanvasObject
+	background *canvas.Rectangle
+	requested  fyne.Position
+	boxSize    fyne.Size
+	shown      bool
+}
+
+var (
+	_ fyne.Widget            = (*commandMenuOverlay)(nil)
+	_ fyne.Tappable          = (*commandMenuOverlay)(nil)
+	_ fyne.SecondaryTappable = (*commandMenuOverlay)(nil)
+)
+
+func newCommandMenuOverlay(menu *CommandMenu, c fyne.Canvas, pos fyne.Position) *commandMenuOverlay {
+	content := menuThemeOverride(menu)
+	o := &commandMenuOverlay{
+		menu:       menu,
+		canvas:     c,
+		content:    content,
+		background: canvas.NewRectangle(color.Transparent),
+		requested:  pos,
+	}
+	o.ExtendBaseWidget(o)
+	o.boxSize = content.MinSize().Add(o.padding())
+	return o
+}
+
+// padding is the inset kept between the menu box's background rectangle and
+// its content, matching widget.PopUp's own inner padding so the menu keeps
+// its familiar look now that it is no longer hosted in a widget.PopUp.
+func (o *commandMenuOverlay) padding() fyne.Size {
+	return fyne.NewSquareSize(o.Theme().Size(theme.SizeNameInnerPadding))
+}
+
+func (o *commandMenuOverlay) contentOffset() fyne.Position {
+	return fyne.NewSquareOffsetPos(o.Theme().Size(theme.SizeNameInnerPadding) / 2)
+}
+
+// Show adds the overlay to the canvas's overlay stack, sized to the full
+// canvas, and reveals it. The explicit Refresh mirrors widget.PopUp.Show:
+// BaseWidget.Show is a no-op when Hidden's zero value (false) already reads
+// as visible, so without it the background rectangle would never pick up its
+// themed fill color.
+func (o *commandMenuOverlay) Show() {
+	if !o.shown {
+		o.canvas.Overlays().Add(o)
+		o.shown = true
+	}
+	o.BaseWidget.Resize(o.canvas.Size())
+	o.Refresh()
+	o.BaseWidget.Show()
+}
+
+// Hide removes the overlay from the canvas's overlay stack.
+func (o *commandMenuOverlay) Hide() {
+	if o.shown {
+		o.canvas.Overlays().Remove(o)
+		o.shown = false
+	}
+	o.BaseWidget.Hide()
+}
+
+// Tapped dismisses the menu when the tap lands outside the menu box.
+func (o *commandMenuOverlay) Tapped(ev *fyne.PointEvent) {
+	if ev != nil && o.isInsideBox(ev.Position) {
+		return
+	}
+	if o.menu != nil {
+		o.menu.Dismiss()
+	}
+}
+
+// TappedSecondary dismisses the menu the same way Tapped does; the overlay
+// has no right-click behavior of its own.
+func (o *commandMenuOverlay) TappedSecondary(ev *fyne.PointEvent) {
+	o.Tapped(ev)
+}
+
+func (o *commandMenuOverlay) isInsideBox(pos fyne.Position) bool {
+	boxPos := o.clampedBoxPosition()
+	return pos.X >= boxPos.X && pos.Y >= boxPos.Y &&
+		pos.X <= boxPos.X+o.boxSize.Width && pos.Y <= boxPos.Y+o.boxSize.Height
+}
+
+// clampedBoxPosition keeps the menu box within the canvas's interactive
+// area, mirroring widget.PopUpMenu.adjustedPosition.
+func (o *commandMenuOverlay) clampedBoxPosition() fyne.Position {
+	x, y := o.requested.X, o.requested.Y
+	_, areaSize := o.canvas.InteractiveArea()
+	if x+o.boxSize.Width > areaSize.Width {
+		x = areaSize.Width - o.boxSize.Width
+		if x < 0 {
+			x = 0
+		}
+	}
+	if y+o.boxSize.Height > areaSize.Height {
+		y = areaSize.Height - o.boxSize.Height
+		if y < 0 {
+			y = 0
+		}
+	}
+	return fyne.NewPos(x, y)
+}
+
+func (o *commandMenuOverlay) CreateRenderer() fyne.WidgetRenderer {
+	return &commandMenuOverlayRenderer{overlay: o, objects: []fyne.CanvasObject{o.background, o.content}}
+}
+
+type commandMenuOverlayRenderer struct {
+	overlay *commandMenuOverlay
+	objects []fyne.CanvasObject
+}
+
+func (r *commandMenuOverlayRenderer) Destroy() {}
+
+func (r *commandMenuOverlayRenderer) Objects() []fyne.CanvasObject { return r.objects }
+
+func (r *commandMenuOverlayRenderer) Layout(fyne.Size) {
+	boxPos := r.overlay.clampedBoxPosition()
+	r.overlay.background.Move(boxPos)
+	r.overlay.background.Resize(r.overlay.boxSize)
+	r.overlay.content.Move(boxPos.Add(r.overlay.contentOffset()))
+	r.overlay.content.Resize(r.overlay.boxSize.Subtract(r.overlay.padding()))
+}
+
+func (r *commandMenuOverlayRenderer) MinSize() fyne.Size {
+	return r.overlay.canvas.Size()
+}
+
+func (r *commandMenuOverlayRenderer) Refresh() {
+	th := r.overlay.Theme()
+	variant := fyne.CurrentApp().Settings().ThemeVariant()
+	r.overlay.background.FillColor = th.Color(theme.ColorNameOverlayBackground, variant)
+	r.Layout(fyne.Size{})
+	r.overlay.background.Refresh()
+	r.overlay.content.Refresh()
 }
 
 func (m *CommandMenu) CreateRenderer() fyne.WidgetRenderer {

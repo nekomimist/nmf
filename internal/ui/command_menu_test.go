@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/test"
 
 	"nmf/internal/keymanager"
 )
@@ -161,7 +162,9 @@ func TestCommandMenuResetsTransientStateOnFocusLost(t *testing.T) {
 
 	menu.FocusLost()
 
-	want := []string{"command-menu-focus-lost", "command-menu-dismiss"}
+	// FocusLost only calls Dismiss (which itself resets transient state), so
+	// exactly one reset happens, not a separate focus-lost reset plus dismiss.
+	want := []string{"command-menu-dismiss"}
 	if len(labels) != len(want) {
 		t.Fatalf("reset labels = %#v, want %#v", labels, want)
 	}
@@ -172,5 +175,49 @@ func TestCommandMenuResetsTransientStateOnFocusLost(t *testing.T) {
 	}
 	if dismissed != 1 {
 		t.Fatalf("dismiss count = %d, want 1", dismissed)
+	}
+}
+
+// TestCommandMenuOutsideTapDismissesViaOverlay is a regression test for a bug
+// where widget.PopUp's own Tapped hid the popup directly on an outside tap,
+// bypassing CommandMenu.Dismiss and therefore skipping resetInputState
+// (KeyManager.ResetTransientState) and onDismiss (FocusFileList). The menu
+// now shows itself in a dedicated overlay whose outside tap always routes
+// through Dismiss.
+func TestCommandMenuOutsideTapDismissesViaOverlay(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	c := test.NewCanvas()
+
+	dismissed := 0
+	var labels []string
+	menu := NewCommandMenu([]keymanager.CommandMenuItem{
+		{Label: "One", Action: func() {}},
+	}, func() { dismissed++ })
+	menu.SetTransientStateReset(func(label string) {
+		labels = append(labels, label)
+	})
+
+	menu.ShowAtPosition(c, fyne.NewPos(10, 10))
+
+	if got := len(c.Overlays().List()); got != 1 {
+		t.Fatalf("overlay count after show = %d, want 1", got)
+	}
+	overlay := menu.overlay
+	if overlay == nil {
+		t.Fatal("menu overlay was not created")
+	}
+
+	outside := fyne.NewPos(overlay.boxSize.Width+500, overlay.boxSize.Height+500)
+	overlay.Tapped(&fyne.PointEvent{Position: outside})
+
+	if dismissed != 1 {
+		t.Fatalf("onDismiss calls = %d, want 1", dismissed)
+	}
+	if len(labels) == 0 || labels[len(labels)-1] != "command-menu-dismiss" {
+		t.Fatalf("reset labels = %#v, want the last entry to be command-menu-dismiss", labels)
+	}
+	if got := len(c.Overlays().List()); got != 0 {
+		t.Fatalf("overlay count after outside tap = %d, want 0", got)
 	}
 }
