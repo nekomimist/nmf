@@ -359,7 +359,7 @@ type conflictNameEntry struct {
 
 func newConflictNameEntry(km *keymanager.KeyManager, onCancel func(), bindings ...[]config.KeyBindingEntry) *conflictNameEntry {
 	e := &conflictNameEntry{
-		LineEditEntry: NewLineEditEntry(onCancel),
+		LineEditEntry: newLineEditEntryForEmbedding(onCancel),
 		km:            km,
 	}
 	var configured []config.KeyBindingEntry

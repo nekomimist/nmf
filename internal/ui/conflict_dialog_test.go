@@ -203,3 +203,41 @@ func TestConflictNameEntryUsesLineEditCursorColor(t *testing.T) {
 		t.Fatalf("conflict rename caret color = %#v, want cursor color %#v", caret, cursor)
 	}
 }
+
+// The conflict name entry embeds a LineEditEntry; if the embedded entry
+// claims the widget impl slot first (ExtendBaseWidget is a no-op once set),
+// theme lookups resolve against the embedded entry, which is not in the
+// object tree, and the scoped line-edit override misses. This asserts the
+// override actually reaches the entry's own theme resolution, which drives
+// the base Entry cursor and selection colors.
+func TestConflictNameEntryResolvesLineEditThemeOverride(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	cfg := &config.Config{
+		Theme: config.ThemeConfig{
+			Colors: map[string]config.ThemeColorConfig{
+				customtheme.ColorLineEditCursor: {
+					Value: &config.ThemeColorValue{RGBA: [4]uint8{1, 2, 3, 4}, IsRGBA: true},
+				},
+				customtheme.ColorLineEditSelection: {
+					Value: &config.ThemeColorValue{RGBA: [4]uint8{5, 6, 7, 8}, IsRGBA: true},
+				},
+			},
+		},
+	}
+	appTheme := customtheme.NewCustomTheme(cfg, func(string, ...interface{}) {})
+	app.Settings().SetTheme(appTheme)
+
+	entry := newConflictNameEntry(nil, nil)
+	w := test.NewWindow(lineEditThemeOverride(entry))
+	defer w.Close()
+
+	variant := app.Settings().ThemeVariant()
+	if got := color.RGBAModel.Convert(entry.Theme().Color(fynetheme.ColorNamePrimary, variant)); got != (color.RGBA{1, 2, 3, 4}) {
+		t.Fatalf("entry theme primary = %#v, want line edit cursor color {1 2 3 4}", got)
+	}
+	if got := color.RGBAModel.Convert(entry.Theme().Color(fynetheme.ColorNameSelection, variant)); got != (color.RGBA{5, 6, 7, 8}) {
+		t.Fatalf("entry theme selection = %#v, want line edit selection color {5 6 7 8}", got)
+	}
+}

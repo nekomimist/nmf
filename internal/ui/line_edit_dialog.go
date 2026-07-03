@@ -247,6 +247,18 @@ type LineEditEntry struct {
 
 // NewLineEditEntry creates an entry for LineEditDialog.
 func NewLineEditEntry(onCancel func(), km ...*keymanager.KeyManager) *LineEditEntry {
+	e := newLineEditEntryForEmbedding(onCancel, km...)
+	e.ExtendBaseWidget(e)
+	return e
+}
+
+// newLineEditEntryForEmbedding builds a LineEditEntry without claiming the
+// widget impl slot. ExtendBaseWidget is a no-op once an impl is set, so a
+// wrapper widget embedding this entry must take the impl slot itself;
+// otherwise theme and renderer lookups resolve against the embedded entry,
+// which is not in the object tree, and scoped line-edit theme overrides
+// (cursor/selection colors) silently miss.
+func newLineEditEntryForEmbedding(onCancel func(), km ...*keymanager.KeyManager) *LineEditEntry {
 	e := &LineEditEntry{onCancel: onCancel}
 	if len(km) > 0 {
 		e.km = km[0]
@@ -254,7 +266,6 @@ func NewLineEditEntry(onCancel func(), km ...*keymanager.KeyManager) *LineEditEn
 	e.acceptTab = true
 	e.TextStyle = fyne.TextStyle{Monospace: true}
 	e.Wrapping = fyne.TextWrap(fyne.TextTruncateClip)
-	e.ExtendBaseWidget(e)
 	return e
 }
 
