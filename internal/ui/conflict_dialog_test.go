@@ -102,6 +102,50 @@ func TestConflictNameEntryKeepsNonAltShortcuts(t *testing.T) {
 	}
 }
 
+// TestConflictNameEntryTypedKeyUsesTrackedModifierState is a regression test
+// for a bug where conflictNameEntry.TypedKey passed a hardcoded zero
+// ModifierState to its lineHandler, so Shift+Left/Right/Home/End falsely
+// matched the unmodified lineEdit bindings: the cursor moved but Fyne's
+// native shift-selection in the TypedKey fallthrough never ran. TypedKey must
+// use the KeyManager's tracked modifier state instead, which KeyDown/KeyUp
+// already feed.
+func TestConflictNameEntryTypedKeyUsesTrackedModifierState(t *testing.T) {
+	// Shift+Left tracked via KeyDown must reach TypedKey's modifier check, so
+	// the plain "Left" lineEdit binding does not falsely match: the event
+	// should fall through to the base entry's native shift-selection instead
+	// of the lineEdit cursor-left command.
+	shiftKm := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	shiftEntry := newConflictNameEntry(shiftKm, nil)
+	shiftEntry.SetText("abcd")
+	shiftEntry.MoveCursorEnd()
+
+	shiftEntry.KeyDown(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
+	shiftEntry.TypedKey(&fyne.KeyEvent{Name: fyne.KeyLeft})
+
+	if shiftEntry.CursorColumn != 3 {
+		t.Fatalf("cursor after shift+left = %d, want 3", shiftEntry.CursorColumn)
+	}
+	if got := shiftEntry.SelectedText(); got != "d" {
+		t.Fatalf("selection after shift+left = %q, want %q (event should fall through to native selection, not the lineEdit cursor-left command)", got, "d")
+	}
+
+	// Without Shift tracked, the same key must still hit the lineEdit
+	// cursor-left command and must not create a selection.
+	plainKm := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	plainEntry := newConflictNameEntry(plainKm, nil)
+	plainEntry.SetText("abcd")
+	plainEntry.MoveCursorEnd()
+
+	plainEntry.TypedKey(&fyne.KeyEvent{Name: fyne.KeyLeft})
+
+	if plainEntry.CursorColumn != 3 {
+		t.Fatalf("cursor after plain left = %d, want 3", plainEntry.CursorColumn)
+	}
+	if got := plainEntry.SelectedText(); got != "" {
+		t.Fatalf("selection after plain left = %q, want empty (lineEdit cursor-left command should intercept)", got)
+	}
+}
+
 func TestConflictNameEntryUsesLineEditBindings(t *testing.T) {
 	entry := newConflictNameEntry(nil, nil, []config.KeyBindingEntry{
 		{Target: keymanager.KeyBindingTargetLineEdit, Key: "C-A", Command: keymanager.CommandNoop},

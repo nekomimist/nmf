@@ -376,7 +376,11 @@ func newConflictNameEntry(km *keymanager.KeyManager, onCancel func(), bindings .
 }
 
 func (e *conflictNameEntry) TypedKey(ev *fyne.KeyEvent) {
-	if e.lineHandler != nil && e.lineHandler.OnKeyActivated(ev, keymanager.ModifierState{}) {
+	modifiers := keymanager.ModifierState{}
+	if e.km != nil {
+		modifiers = e.km.GetModifierState()
+	}
+	if e.lineHandler != nil && e.lineHandler.OnKeyActivated(ev, modifiers) {
 		e.UpdateIMEAnchor()
 		return
 	}
