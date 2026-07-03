@@ -47,14 +47,16 @@ type LineEditDialogKeyHandler struct {
 }
 
 // NewLineEditDialogKeyHandler creates a line edit dialog key handler.
-func NewLineEditDialogKeyHandler(d LineEditDialogInterface, configuredBindings ...[]config.KeyBindingEntry) *LineEditDialogKeyHandler {
+func NewLineEditDialogKeyHandler(d LineEditDialogInterface, debugPrint func(format string, args ...interface{}), configuredBindings ...[]config.KeyBindingEntry) *LineEditDialogKeyHandler {
 	var configured []config.KeyBindingEntry
 	if len(configuredBindings) > 0 {
 		configured = configuredBindings[0]
 	}
-	h := &LineEditDialogKeyHandler{
-		dialog:     d,
-		debugPrint: func(string, ...interface{}) {},
+	h := &LineEditDialogKeyHandler{dialog: d}
+	if debugPrint != nil {
+		h.debugPrint = debugPrint
+	} else {
+		h.debugPrint = func(string, ...interface{}) {}
 	}
 	h.commands = h.defaultCommands()
 	h.bindings = buildTargetKeyBindings(

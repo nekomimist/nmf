@@ -83,6 +83,18 @@ func NewKeyManager(debugPrint func(format string, args ...interface{})) *KeyMana
 	}
 }
 
+// Debugf forwards to the app's debugPrint, using the same source-prefix
+// convention as KeyManager's own debug logs. Target key handlers (FileViewer,
+// LineEditDialog) accept a debugPrint of this shape so their construction-time
+// warnings (invalid key spec, unknown command, deprecated event field) surface
+// instead of being silently dropped by a hardcoded no-op.
+func (km *KeyManager) Debugf(format string, args ...interface{}) {
+	if km == nil || km.debugPrint == nil {
+		return
+	}
+	km.debugPrint(format, args...)
+}
+
 // queueOnFyneMain schedules fn onto the next Fyne main-loop iteration, after
 // the current event batch (including the trailing TypedRune of the same key
 // press) has been processed. Without a running app (headless tests) it runs

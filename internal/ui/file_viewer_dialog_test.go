@@ -893,8 +893,13 @@ func TestFileViewerDialogSlashFocusesSearchAfterKeyRelease(t *testing.T) {
 	d.ShowDialog(w)
 	defer d.CancelDialog()
 
+	// Slash is a rune-path binding (see fileViewerRunePathSpec), so a real
+	// press delivers KeyDown, an unhandled TypedKey, and the TypedRune that
+	// actually triggers the command -- mirroring what Fyne's GLFW driver
+	// sends for one physical "/" press.
 	d.textGrid.KeyDown(&fyne.KeyEvent{Name: fyne.KeySlash})
 	d.textGrid.TypedKey(&fyne.KeyEvent{Name: fyne.KeySlash})
+	d.textGrid.TypedRune('/')
 
 	// The focus transition is queued; under the test driver the queue runs
 	// synchronously, standing in for the next main-loop iteration.

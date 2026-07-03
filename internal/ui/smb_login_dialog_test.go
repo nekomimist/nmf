@@ -68,7 +68,7 @@ func TestSMBLoginDialogDoesNotFallThroughToUnderlyingHandler(t *testing.T) {
 	underlying := &smbLoginRecordingHandler{}
 	km.PushHandler(underlying)
 	d := newSMBLoginDialog("server", "share", nil, km, nil, nil)
-	handler := newSMBLoginKeyHandler(d, nil)
+	handler := newSMBLoginKeyHandler(d, nil, km.Debugf)
 	km.PushHandler(handler)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyDown})

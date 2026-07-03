@@ -116,7 +116,7 @@ func (d *smbLoginDialog) show() {
 	)
 
 	if d.km != nil {
-		handler := newSMBLoginKeyHandler(d, d.bindings)
+		handler := newSMBLoginKeyHandler(d, d.bindings, d.km.Debugf)
 		d.kmToken = d.km.PushHandler(handler)
 	}
 
@@ -252,10 +252,10 @@ type smbLoginKeyHandler struct {
 	lineEdit *keymanager.LineEditDialogKeyHandler
 }
 
-func newSMBLoginKeyHandler(d *smbLoginDialog, bindings []config.KeyBindingEntry) *smbLoginKeyHandler {
+func newSMBLoginKeyHandler(d *smbLoginDialog, bindings []config.KeyBindingEntry, debugPrint func(format string, args ...interface{})) *smbLoginKeyHandler {
 	return &smbLoginKeyHandler{
 		dialog:   d,
-		lineEdit: keymanager.NewLineEditDialogKeyHandler(d, bindings),
+		lineEdit: keymanager.NewLineEditDialogKeyHandler(d, debugPrint, bindings),
 	}
 }
 

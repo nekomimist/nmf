@@ -77,6 +77,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 	fm.searchHandler.SetTransitionGate(fm.keyManager.BeginOwnerTransition)
 
 	// Setup KeyManager with main screen handler
+	keymanager.WarnUnknownKeyBindingTargets(config.UI.KeyBindings, debugPrint)
 	var scriptCommands keymanager.CommandRegistry
 	if configScript != nil {
 		scriptCommands = configScript.Commands

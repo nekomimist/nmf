@@ -226,7 +226,7 @@ func TestLineEditEntryMoveClearsSelectionWithoutSyntheticShiftKeyUp(t *testing.T
 			entry := NewLineEditEntry(nil, km)
 			entry.SetText("note.txt")
 			entry.SelectRange(0, 4)
-			handler := keymanager.NewLineEditDialogKeyHandler(lineEditEntryTestAdapter{entry: entry})
+			handler := keymanager.NewLineEditDialogKeyHandler(lineEditEntryTestAdapter{entry: entry}, km.Debugf)
 			km.PushHandler(handler)
 			logs = nil
 
@@ -303,7 +303,7 @@ func TestLineEditEntryConfiguredNoopDoesNotFallBackToReadlineShortcut(t *testing
 	entry := NewLineEditEntry(nil, km)
 	entry.SetText("abcd")
 	entry.MoveCursorEnd()
-	handler := keymanager.NewLineEditDialogKeyHandler(lineEditEntryTestAdapter{entry: entry}, []config.KeyBindingEntry{
+	handler := keymanager.NewLineEditDialogKeyHandler(lineEditEntryTestAdapter{entry: entry}, km.Debugf, []config.KeyBindingEntry{
 		{Target: keymanager.KeyBindingTargetLineEdit, Key: "C-A", Command: keymanager.CommandNoop},
 	})
 	km.PushHandler(handler)

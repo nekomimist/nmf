@@ -769,6 +769,8 @@ func (rt *Runtime) appendKeyBinding(fnName string, args starlark.Tuple, kwargs [
 	var command string
 	var event string
 	var target string
+	var callable starlark.Callable
+	var hasCallable bool
 	if len(fixedCommand) > 0 {
 		command = fixedCommand[0]
 		if err := starlark.UnpackArgs(fnName, args, kwargs, "key", &key, "event?", &event, "target?", &target); err != nil {
@@ -786,27 +788,23 @@ func (rt *Runtime) appendKeyBinding(fnName string, args starlark.Tuple, kwargs [
 		if err != nil {
 			return nil, err
 		}
-		callable, hasCallable, err := optionalCallable(fnValue, "fn")
+		callable, hasCallable, err = optionalCallable(fnValue, "fn")
 		if err != nil {
 			return nil, err
 		}
 		if hasCommand == hasCallable {
 			return nil, fmt.Errorf("key binding must specify exactly one of cmd or fn")
 		}
-		normalizedTarget, err := normalizeKeyBindingTarget(target)
-		if err != nil {
-			return nil, err
-		}
-		if hasCallable && normalizedTarget != keymanager.KeyBindingTargetMain {
-			return nil, fmt.Errorf("fn key bindings are only supported for target main")
-		}
-		if hasCallable {
-			command = rt.registerGeneratedKeyCommand(callable)
-		}
 	}
 	normalizedTarget, err := normalizeKeyBindingTarget(target)
 	if err != nil {
 		return nil, err
+	}
+	if hasCallable && normalizedTarget != keymanager.KeyBindingTargetMain {
+		return nil, fmt.Errorf("fn key bindings are only supported for target main")
+	}
+	if hasCallable {
+		command = rt.registerGeneratedKeyCommand(callable)
 	}
 	if strings.TrimSpace(key) == "" {
 		return nil, fmt.Errorf("key must not be empty")

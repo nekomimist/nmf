@@ -366,7 +366,11 @@ func newConflictNameEntry(km *keymanager.KeyManager, onCancel func(), bindings .
 	if len(bindings) > 0 {
 		configured = bindings[0]
 	}
-	e.lineHandler = keymanager.NewLineEditDialogKeyHandler(conflictLineEditAdapter{entry: e}, configured)
+	var debugPrint func(format string, args ...interface{})
+	if km != nil {
+		debugPrint = km.Debugf
+	}
+	e.lineHandler = keymanager.NewLineEditDialogKeyHandler(conflictLineEditAdapter{entry: e}, debugPrint, configured)
 	e.ExtendBaseWidget(e)
 	return e
 }

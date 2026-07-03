@@ -1566,3 +1566,21 @@ func TestMainScreenDeprecatedEventBindingStillFires(t *testing.T) {
 		t.Fatalf("logs = %#v, want deprecation warning", logs)
 	}
 }
+
+func TestKeyManagerDebugfForwardsToAppDebugPrint(t *testing.T) {
+	var logs []string
+	km := NewKeyManager(func(format string, args ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	})
+
+	km.Debugf("FileViewer: WARNING invalid key binding key=%q", "not-a-key")
+
+	if len(logs) != 1 || !strings.Contains(logs[0], "invalid key binding") {
+		t.Fatalf("logs = %#v, want a single forwarded message", logs)
+	}
+}
+
+func TestKeyManagerDebugfNilReceiverIsNoop(t *testing.T) {
+	var km *KeyManager
+	km.Debugf("should not panic") // nil receiver, nil debugPrint field
+}

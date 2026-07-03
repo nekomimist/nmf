@@ -1,9 +1,11 @@
 package keymanager
 
 import (
+	"fmt"
 	"testing"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/driver/desktop"
 
 	"nmf/internal/config"
 )
@@ -52,7 +54,7 @@ func (f *fakeFileViewer) ViewerSelectAll()      { f.all++ }
 
 func TestFileViewerHandlerLessKeys(t *testing.T) {
 	viewer := &fakeFileViewer{}
-	handler := NewFileViewerKeyHandler(viewer)
+	handler := NewFileViewerKeyHandler(viewer, nil)
 
 	for _, r := range []rune{'j', 'k', 'h', 'l', 'f', 'b', 'g', 'G', 'w', 't', 'm', 'x', 'n', 'N', '/', ':', 'q'} {
 		if !handler.OnTypedRune(r, ModifierState{}) {
@@ -71,7 +73,7 @@ func TestFileViewerHandlerLessKeys(t *testing.T) {
 
 func TestFileViewerHandlerCtrlCCopiesSelection(t *testing.T) {
 	viewer := &fakeFileViewer{}
-	handler := NewFileViewerKeyHandler(viewer)
+	handler := NewFileViewerKeyHandler(viewer, nil)
 
 	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyC}, ModifierState{CtrlPressed: true}) {
 		t.Fatal("Ctrl+C should be handled")
@@ -86,7 +88,7 @@ func TestFileViewerHandlerCtrlCCopiesSelection(t *testing.T) {
 
 func TestFileViewerHandlerCtrlASelectsAll(t *testing.T) {
 	viewer := &fakeFileViewer{}
-	handler := NewFileViewerKeyHandler(viewer)
+	handler := NewFileViewerKeyHandler(viewer, nil)
 
 	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyA}, ModifierState{CtrlPressed: true}) {
 		t.Fatal("Ctrl+A should be handled")
@@ -101,7 +103,7 @@ func TestFileViewerHandlerCtrlASelectsAll(t *testing.T) {
 
 func TestFileViewerHandlerNavigationKeys(t *testing.T) {
 	viewer := &fakeFileViewer{}
-	handler := NewFileViewerKeyHandler(viewer)
+	handler := NewFileViewerKeyHandler(viewer, nil)
 
 	for _, key := range []fyne.KeyName{
 		fyne.KeyDown,
@@ -127,7 +129,7 @@ func TestFileViewerHandlerNavigationKeys(t *testing.T) {
 
 func TestFileViewerConfiguredBindingOverridesDefaultRune(t *testing.T) {
 	viewer := &fakeFileViewer{}
-	handler := NewFileViewerKeyHandler(viewer, []config.KeyBindingEntry{
+	handler := NewFileViewerKeyHandler(viewer, nil, []config.KeyBindingEntry{
 		{Target: KeyBindingTargetFileViewer, Key: "J", Command: CommandFileViewerPageDown},
 		{Target: KeyBindingTargetFileViewer, Key: "S-Semicolon", Command: CommandNoop},
 	})
@@ -146,9 +148,76 @@ func TestFileViewerConfiguredBindingOverridesDefaultRune(t *testing.T) {
 	}
 }
 
+// TestFileViewerHandlerLetterFiresOnceThroughKeyManager is a regression test
+// for a bug where letter bindings fired twice per physical press. Fyne's
+// GLFW driver delivers both a TypedKey and a TypedRune for one physical
+// printable-letter press, and KeyManager's gate forwards both events of the
+// same press to the current handler. Before the fix, FileViewerKeyHandler
+// matched the same binding list from both OnKeyActivated (raw key) and
+// OnTypedRune (via fileViewerRuneKey's reverse mapping), so a single press
+// executed the bound command twice. Each case below drives the KeyManager
+// through the real event sequence a press produces.
+func TestFileViewerHandlerLetterFiresOnceThroughKeyManager(t *testing.T) {
+	t.Run("j line down", func(t *testing.T) {
+		viewer := &fakeFileViewer{}
+		km := NewKeyManager(func(string, ...interface{}) {})
+		km.PushHandler(NewFileViewerKeyHandler(viewer, nil))
+
+		km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyJ})
+		km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyJ})
+		km.HandleTypedRune('j')
+
+		if viewer.down != 1 {
+			t.Fatalf("line-down calls = %d, want 1", viewer.down)
+		}
+	})
+
+	t.Run("w toggle wrap", func(t *testing.T) {
+		viewer := &fakeFileViewer{}
+		km := NewKeyManager(func(string, ...interface{}) {})
+		km.PushHandler(NewFileViewerKeyHandler(viewer, nil))
+
+		km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyW})
+		km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyW})
+		km.HandleTypedRune('w')
+
+		if viewer.wrap != 1 {
+			t.Fatalf("wrap toggle calls = %d, want 1", viewer.wrap)
+		}
+	})
+
+	t.Run("shift+g end", func(t *testing.T) {
+		viewer := &fakeFileViewer{}
+		km := NewKeyManager(func(string, ...interface{}) {})
+		km.PushHandler(NewFileViewerKeyHandler(viewer, nil))
+
+		km.HandleKeyDown(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
+		km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyG})
+		km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyG})
+		km.HandleTypedRune('G')
+
+		if viewer.end != 1 {
+			t.Fatalf("end calls = %d, want 1", viewer.end)
+		}
+	})
+
+	t.Run("down arrow has no rune", func(t *testing.T) {
+		viewer := &fakeFileViewer{}
+		km := NewKeyManager(func(string, ...interface{}) {})
+		km.PushHandler(NewFileViewerKeyHandler(viewer, nil))
+
+		km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyDown})
+		km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyDown})
+
+		if viewer.down != 1 {
+			t.Fatalf("line-down calls = %d, want 1", viewer.down)
+		}
+	})
+}
+
 func TestFileViewerConfiguredBindingOverridesDefaultCtrlA(t *testing.T) {
 	viewer := &fakeFileViewer{}
-	handler := NewFileViewerKeyHandler(viewer, []config.KeyBindingEntry{
+	handler := NewFileViewerKeyHandler(viewer, nil, []config.KeyBindingEntry{
 		{Target: KeyBindingTargetFileViewer, Key: "C-A", Command: CommandNoop},
 	})
 
@@ -157,5 +226,27 @@ func TestFileViewerConfiguredBindingOverridesDefaultCtrlA(t *testing.T) {
 	}
 	if viewer.all != 0 {
 		t.Fatalf("select all calls = %d, want 0", viewer.all)
+	}
+}
+
+// TestNewFileViewerKeyHandlerSurfacesConstructionWarnings is a regression
+// test for a bug where NewFileViewerKeyHandler hardcoded a no-op debugPrint,
+// so buildTargetKeyBindings warnings (invalid key spec, unknown command) were
+// silently dropped instead of reaching the caller-supplied debugPrint.
+func TestNewFileViewerKeyHandlerSurfacesConstructionWarnings(t *testing.T) {
+	var messages []string
+	debugPrint := func(format string, args ...interface{}) {
+		messages = append(messages, fmt.Sprintf(format, args...))
+	}
+	viewer := &fakeFileViewer{}
+	handler := NewFileViewerKeyHandler(viewer, debugPrint, []config.KeyBindingEntry{
+		{Target: KeyBindingTargetFileViewer, Key: "not-a-real-key", Command: CommandFileViewerClose},
+		{Target: KeyBindingTargetFileViewer, Key: "J", Command: "not.a.real.command"},
+	})
+	if handler == nil {
+		t.Fatal("handler should still be constructed despite invalid bindings")
+	}
+	if len(messages) != 2 {
+		t.Fatalf("construction warnings = %#v, want 2 (invalid key spec + unknown command)", messages)
 	}
 }

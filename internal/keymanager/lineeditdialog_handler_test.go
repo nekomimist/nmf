@@ -1,6 +1,7 @@
 package keymanager
 
 import (
+	"fmt"
 	"testing"
 
 	"fyne.io/fyne/v2"
@@ -59,7 +60,7 @@ func TestLineEditDialogHandlerReadlineKeys(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dialog := &fakeLineEditDialog{}
-			handler := NewLineEditDialogKeyHandler(dialog)
+			handler := NewLineEditDialogKeyHandler(dialog, nil)
 
 			handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: tt.key}, ModifierState{CtrlPressed: true})
 
@@ -75,7 +76,7 @@ func TestLineEditDialogHandlerReadlineKeys(t *testing.T) {
 
 func TestLineEditDialogHandlerAcceptsAndCancels(t *testing.T) {
 	dialog := &fakeLineEditDialog{}
-	handler := NewLineEditDialogKeyHandler(dialog)
+	handler := NewLineEditDialogKeyHandler(dialog, nil)
 
 	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{}) {
 		t.Fatal("Return should be handled")
@@ -108,7 +109,7 @@ func TestLineEditDialogHandlerFallbackTypedKeyEditing(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dialog := &fakeLineEditDialog{}
-			handler := NewLineEditDialogKeyHandler(dialog)
+			handler := NewLineEditDialogKeyHandler(dialog, nil)
 
 			if !handler.OnKeyActivated(&fyne.KeyEvent{Name: tt.key}, ModifierState{}) {
 				t.Fatal("OnKeyActivated should handle fallback edit key")
@@ -122,7 +123,7 @@ func TestLineEditDialogHandlerFallbackTypedKeyEditing(t *testing.T) {
 
 func TestLineEditDialogHandlerFallbackTypedRune(t *testing.T) {
 	dialog := &fakeLineEditDialog{}
-	handler := NewLineEditDialogKeyHandler(dialog)
+	handler := NewLineEditDialogKeyHandler(dialog, nil)
 
 	if !handler.OnTypedRune('x', ModifierState{}) {
 		t.Fatal("printable rune should be handled")
@@ -137,7 +138,7 @@ func TestLineEditDialogHandlerFallbackTypedRune(t *testing.T) {
 
 func TestLineEditDialogConfiguredBindingOverridesDefault(t *testing.T) {
 	dialog := &fakeLineEditDialog{}
-	handler := NewLineEditDialogKeyHandler(dialog, []config.KeyBindingEntry{
+	handler := NewLineEditDialogKeyHandler(dialog, nil, []config.KeyBindingEntry{
 		{Target: KeyBindingTargetLineEdit, Key: "C-A", Command: CommandNoop},
 		{Target: KeyBindingTargetLineEdit, Key: "C-Z", Command: CommandLineEditCursorEnd},
 	})
@@ -153,5 +154,28 @@ func TestLineEditDialogConfiguredBindingOverridesDefault(t *testing.T) {
 	}
 	if dialog.end != 1 {
 		t.Fatalf("end calls = %d, want 1", dialog.end)
+	}
+}
+
+// TestNewLineEditDialogKeyHandlerSurfacesConstructionWarnings is a regression
+// test for a bug where NewLineEditDialogKeyHandler hardcoded a no-op
+// debugPrint, so buildTargetKeyBindings warnings (invalid key spec, unknown
+// command) were silently dropped instead of reaching the caller-supplied
+// debugPrint.
+func TestNewLineEditDialogKeyHandlerSurfacesConstructionWarnings(t *testing.T) {
+	var messages []string
+	debugPrint := func(format string, args ...interface{}) {
+		messages = append(messages, fmt.Sprintf(format, args...))
+	}
+	dialog := &fakeLineEditDialog{}
+	handler := NewLineEditDialogKeyHandler(dialog, debugPrint, []config.KeyBindingEntry{
+		{Target: KeyBindingTargetLineEdit, Key: "not-a-real-key", Command: CommandLineEditAccept},
+		{Target: KeyBindingTargetLineEdit, Key: "C-A", Command: "not.a.real.command"},
+	})
+	if handler == nil {
+		t.Fatal("handler should still be constructed despite invalid bindings")
+	}
+	if len(messages) != 2 {
+		t.Fatalf("construction warnings = %#v, want 2 (invalid key spec + unknown command)", messages)
 	}
 }

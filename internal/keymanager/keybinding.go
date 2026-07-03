@@ -105,6 +105,25 @@ func buildTargetKeyBindings(
 	return bindings
 }
 
+// WarnUnknownKeyBindingTargets logs one warning per entry whose normalized
+// target is not a recognized key-binding target (main, lineEdit, fileViewer).
+// targetKeyBindingEntries filters entries by target before validation, so a
+// config.json entry with a mistyped target (e.g. "fileviewr") would otherwise
+// silently vanish from every target's binding list without any diagnostic.
+// Call this once at startup, after the config's key bindings are loaded.
+func WarnUnknownKeyBindingTargets(entries []config.KeyBindingEntry, debugPrint func(format string, args ...interface{})) {
+	if debugPrint == nil {
+		return
+	}
+	for _, entry := range entries {
+		switch normalizeKeyBindingTarget(entry.Target) {
+		case KeyBindingTargetMain, KeyBindingTargetLineEdit, KeyBindingTargetFileViewer:
+			continue
+		}
+		debugPrint("KeyBinding: WARNING unknown key binding target=%q key=%q command=%s", entry.Target, entry.Key, entry.Command)
+	}
+}
+
 func targetKeyBindingEntries(entries []config.KeyBindingEntry, target string) []config.KeyBindingEntry {
 	var filtered []config.KeyBindingEntry
 	for _, entry := range entries {

@@ -188,7 +188,7 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	stepStart = time.Now()
 
 	if d.km != nil {
-		d.kmToken = d.km.PushHandler(keymanager.NewFileViewerKeyHandler(d, d.bindings))
+		d.kmToken = d.km.PushHandler(keymanager.NewFileViewerKeyHandler(d, d.km.Debugf, d.bindings))
 		d.handlerSet = true
 	}
 	d.debug("FileViewer: handler elapsed=%s", time.Since(stepStart))
