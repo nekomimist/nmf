@@ -47,6 +47,11 @@ on Fyne upgrades at the named locations in the Fyne source):
    (`internal/driver/glfw/loop.go` `runOnMainWithWait` + run loop).
 5. Window focus loss reaches the focused widget's `FocusLost()`
    (`internal/app/focus_manager.go` `FocusManager.FocusLost`).
+6. A printable-key press delivers both a TypedKey and a separate TypedRune to
+   the focused object (`internal/driver/glfw/window.go` `processKeyPressed`
+   and `processCharInput`). Any handler that matches key bindings from both
+   callbacks must assign each key spec to exactly one of the two paths;
+   matching the same binding list on both makes one press fire twice.
 
 Event delivery paths:
 
@@ -102,6 +107,12 @@ Configurable bindings:
   and `Delete`.
 - Modifiers are limited to `S`, `A`, and `C`; unknown modifiers or key names are
   logged as warnings and that binding entry is ignored.
+- Unknown `target` values are warned once at startup and the entry is
+  ignored; without that check the entry would be silently filtered out of
+  every target before per-entry validation runs. The line-edit and
+  file-viewer handlers log their construction-time warnings (invalid key
+  spec, unknown command, deprecated `event`) through the KeyManager debug
+  printer, same as the main screen.
 - Bindings fire on activation; whether that is the typed-key or shortcut path
   is derived from the key spec. The legacy `event` field (`typed`/`down`/`up`)
   is deprecated: it is accepted but ignored with a warning.
@@ -126,7 +137,16 @@ Text entries that must not steal Tab:
 - Use `ui.TabEntry` (`AcceptsTab` aware entry wrapper).
 - One-line edit dialogs use the `lineEdit` target. The copy/move conflict
   dialog's rename entry uses the same line-edit bindings while preserving the
-  conflict choice Alt shortcuts.
+  conflict choice Alt shortcuts; it feeds key down/up into the KeyManager and
+  matches its private line-edit handler against the tracked modifier state,
+  so Shift-modified keys skip the unmodified bindings and fall through to the
+  entry's native selection handling.
+- Wrappers that embed an already-extended widget must take the widget impl
+  slot themselves: `ExtendBaseWidget` is a no-op once an impl is set, so the
+  embedded part is built unextended (`newLineEditEntryForEmbedding` in
+  `internal/ui/line_edit_dialog.go`). Otherwise theme lookups and refreshes
+  resolve against the embedded object, which is not in the object tree, and
+  scoped line-edit theme overrides (cursor/selection colors) silently miss.
 
 ## Dialog Handler Lifecycle Pattern
 
@@ -141,6 +161,21 @@ Required sequence for keyboard-driven dialogs:
 5. Optionally call parent `Canvas().Unfocus()` to avoid stale focus targets.
 
 This pattern is used in history/filter/tree/directory-jump/copy-move/jobs/quit dialogs.
+
+Popup dismissal (command menu):
+
+- A non-modal `widget.PopUp` dismisses an outside tap by calling `Hide()`
+  directly, and removing an overlay discards its focus manager without
+  calling `FocusLost` (verified in Fyne v2.7.3 `widget/popup.go` and
+  `internal/overlay_stack.go`; re-verify on Fyne upgrades). A popup that
+  relies on those built-in paths never gets a chance to reset input state or
+  restore focus when the user clicks elsewhere.
+- Popup-style surfaces therefore route every close path, including outside
+  taps, through their own `Dismiss()`, which resets KeyManager transient
+  state exactly once and runs the dismiss callback. The command menu hosts
+  itself in `commandMenuOverlay` (`internal/ui/command_menu.go`), a
+  full-canvas overlay that replicates Fyne's `PopUpMenu` overlay-container
+  pattern and forwards outside taps to `Dismiss()`.
 
 Dialog sizing:
 
@@ -164,6 +199,13 @@ Built-in file viewer:
   `/`, `:`, `q`) and pane switching keys (`t`, `m`, `x`) so keys do not fall
   through to the main file list if focus moves to non-text parts of the dialog.
 - These keys are configurable through the `fileViewer` target.
+- Because of driver fact 6, viewer bindings are split at construction into a
+  typed-key set and a rune set (`fileViewerRunePathSpec` in
+  `internal/keymanager/fileviewer_handler.go`): bare and Shift-modified
+  letters, unmodified `/`, and Shift+`;` (`:`) fire only on the rune path;
+  everything else (arrows, Escape, Space, Ctrl/Alt combos, function keys)
+  fires only on the typed-key path. Each binding activates exactly once per
+  press.
 - The Text, Markdown, and hex panes use a TextGrid PoC that renders only visible text for
   faster initial display. It supports less-like vertical movement, line jumps,
   horizontal movement, a wrap toggle, mouse drag selection, keyboard select-all,
@@ -234,4 +276,6 @@ When directory loading enters busy mode:
 - Do not add per-dialog "skip first typed rune" guards for opener keys. Input-owner
   transitions must rely on the central `KeyManager` transition gate so the next
   real typed character is accepted by the new owner.
+- Popup dismissal, including outside taps, must go through the popup's
+  `Dismiss()`; never rely on `widget.PopUp`'s built-in outside-tap `Hide()`.
 - For list cursor UX, unselect default list selection and keep a single visual cursor model.

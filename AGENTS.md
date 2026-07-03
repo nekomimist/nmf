@@ -77,6 +77,8 @@ v2.7.3 (VFS with local/SMB/archive support, background jobs, multi-window).
 - Normalize path input using resolver helpers in `internal/fileinfo/path_resolve.go`.
 - For keyboard-driven dialogs, keep key handler push/pop balanced and retain focus on `ui.KeySink`.
 - Always release lifecycle hooks on close (jobs unsubscribe, watcher stop, dialog handler pop).
+- Match each key binding on exactly one activation path (typed-key vs rune), and route popup dismissal, including outside taps, through `Dismiss()` (details: `docs/architecture/ui-input.md`).
+- When a wrapper embeds an already-extended widget, build the embedded part unextended so the wrapper claims the widget impl slot (e.g. `newLineEditEntryForEmbedding`); otherwise scoped theme overrides silently miss.
 
 ## Communication Style
 - Important: Do not remove or rename this section. Keep the header exactly as "## Communication Style". This section is mandatory.

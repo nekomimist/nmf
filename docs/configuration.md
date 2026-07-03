@@ -349,7 +349,8 @@ Supported aliases:
 - `Del` -> `Delete`
 
 Invalid key names, invalid modifiers, and unknown commands are logged as
-warnings and only that binding entry is ignored.
+warnings and only that binding entry is ignored. Unknown `target` values are
+also warned at startup, and the entry is ignored.
 
 Bindings fire when the key combination activates (Fyne typed key or shortcut,
 chosen automatically from the key spec) and repeat while the key is held. The

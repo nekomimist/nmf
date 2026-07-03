@@ -52,6 +52,19 @@
 - 詳細な設計は `docs/architecture/vfs-smb.md` を参照する。
 
 # DONE 以下は終わったもの
+## キーハンドリングレビューのフォローアップ修正
+- d7bfa767以降のキーハンドリング変更をレビューし、4件を修正した。
+- File Viewerの文字キーバインドがTypedKeyとTypedRuneの両経路で照合され
+  1押下2回発火していたのを、キースペック由来の経路分割で修正した。
+- Conflict DialogのRename入力欄が修飾キー状態を無視していたのを修正し、
+  Shift+矢印のテキスト選択とShift付きlineEditバインドが効くようにした。
+- コマンドメニューの外側クリックがDismissを経由せずキー状態リセットと
+  フォーカス復帰をスキップしていたのを、専用オーバーレイ化で修正した。
+- Rename入力欄の埋め込みLineEditEntryがwidget implを先取りしてテーマ
+  オーバーライドが効かず、カーソル/選択色がFyne標準のままだったのを修正した。
+- 設計上の契約はdocs/architecture/ui-input.mdへ反映した(driver fact 6、
+  経路分割、popup dismissal、埋め込みwidgetのimplスロット)。
+
 ## 簡易viewerのテキスト全選択
 - File ViewerのText/Markdown/Hex各ペインで、C-aに全選択をバインドした。
 - C-a後のC-cで、現在ペインの表示テキスト全体をクリップボードへコピーできる。
