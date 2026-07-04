@@ -48,6 +48,8 @@ func (fm *FileManager) SetCursorByIndex(index int) {
 }
 
 // RefreshCursor updates only the cursor display without affecting selection.
+// Only safe when fm.files content has NOT changed since the last refresh;
+// after a content change use refreshListAndCursor instead (see its comment).
 func (fm *FileManager) RefreshCursor() {
 	cursorIdx := fm.GetCurrentCursorIndex()
 	if cursorIdx < 0 {
@@ -59,6 +61,24 @@ func (fm *FileManager) RefreshCursor() {
 	// (widget/list.go:246-257), so an explicit Refresh here would double the
 	// per-keypress render cost. Re-verify on Fyne upgrades.
 	fm.fileList.ScrollTo(widget.ListItemID(cursorIdx))
+}
+
+// refreshListAndCursor refreshes the list after fm.files was replaced, then
+// scrolls to the cursor. The leading Refresh is load-bearing, not redundant:
+// ScrollTo clamps its offset against the scroller's *current* content size,
+// which only updates during a refresh/layout pass. In Fyne v2.7.3, scrolling
+// first leaves the stale content size at or below the viewport, so
+// internal/widget/scroller.go updateOffset silently resets the scroll offset
+// to zero while the list keeps laying rows out for the requested offset —
+// every row lands outside the viewport and the list looks empty until the
+// next full relayout (observed on Windows with a restored cursor beyond the
+// first viewport). Costs one extra viewport render per structural change;
+// cursor-only moves must keep using RefreshCursor.
+func (fm *FileManager) refreshListAndCursor() {
+	fm.fileList.Refresh()
+	if cursorIdx := fm.GetCurrentCursorIndex(); cursorIdx >= 0 {
+		fm.fileList.ScrollTo(widget.ListItemID(cursorIdx))
+	}
 }
 
 // FileCount returns the number of files in the current listing without copying it.
@@ -171,15 +191,14 @@ func (fm *FileManager) ApplyFilter(entry *config.FilterEntry) {
 	fm.sortFilesWithConfig(fm.CurrentSort())
 	fm.updateStatusBar()
 
-	// Reset cursor to first item if available
+	// Reset cursor to first item if available; refreshListAndCursor handles
+	// both the cursor scroll and the no-match case (content was replaced).
+	// cursorPath is deliberately left as-is when nothing matches so the
+	// cursor can reappear when the filter is cleared.
 	if len(fm.files) > 0 {
 		fm.SetCursorByIndex(0)
-		fm.RefreshCursor()
-	} else {
-		// No items left to show: RefreshCursor is skipped above, so refresh
-		// explicitly to shrink the displayed rows to zero.
-		fm.fileList.Refresh()
 	}
+	fm.refreshListAndCursor()
 
 	debugPrint("FileManager: Applied filter: %s (effective=%s matched %d/%d files)", entry.Pattern, effectivePattern, len(fm.files), len(baseFiles))
 }

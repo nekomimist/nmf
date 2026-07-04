@@ -312,13 +312,12 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 					fm.SetCursorByIndex(0)
 				}
 			}
-			fm.RefreshCursor()
 		} else {
 			fm.cursorPath = ""
-			// No RefreshCursor call above: refresh explicitly so the list
-			// widget's length func is re-queried and old rows are cleared.
-			fm.fileList.Refresh()
 		}
+		// Content was replaced: refresh before the cursor scroll (see
+		// refreshListAndCursor) and re-query the list length even when empty.
+		fm.refreshListAndCursor()
 		fm.updateStatusBar()
 
 		// Hide busy only now that list state and cursor are rendered-ready,
