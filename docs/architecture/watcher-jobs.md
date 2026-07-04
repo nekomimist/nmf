@@ -23,6 +23,15 @@ Concurrency model:
   - `GetFiles`
   - `UpdateFiles`
   - `RemoveFromSelections`
+  - `ApplyChanges`
+- Detected changes are merged via `ApplyChanges` only, and the watcher invokes
+  it inside `fyne.Do`: `fm.files`/`fm.selectedFiles` are otherwise accessed
+  without locks by UI-thread code, so the merge must stay confined to the Fyne
+  main goroutine. Do not call `GetFiles`/`RemoveFromSelections` from watcher
+  background goroutines.
+- `ApplyChanges` skips the re-sort for modify-only change sets under
+  name/extension sort (a modify event cannot change those keys); adds and
+  deletes always re-sort.
 
 Watch behavior:
 

@@ -52,6 +52,10 @@ on Fyne upgrades at the named locations in the Fyne source):
    and `processCharInput`). Any handler that matches key bindings from both
    callbacks must assign each key spec to exactly one of the two paths;
    matching the same binding list on both makes one press fire twice.
+7. `widget.List.ScrollTo` unconditionally ends with a full `Refresh()`
+   (`widget/list.go` `ScrollTo`). `RefreshCursor` relies on this to repaint
+   with a single render pass; adding an explicit `Refresh()` next to a
+   `ScrollTo` doubles the per-keypress render cost.
 
 Event delivery paths:
 
@@ -279,3 +283,6 @@ When directory loading enters busy mode:
 - Popup dismissal, including outside taps, must go through the popup's
   `Dismiss()`; never rely on `widget.PopUp`'s built-in outside-tap `Hide()`.
 - For list cursor UX, unselect default list selection and keep a single visual cursor model.
+- Each list-mutating operation (load, filter, sort, rename, create, watcher
+  merge) must end in exactly one Refresh-family call (`RefreshCursor()` or
+  `fileList.Refresh()`), per driver fact 7.
