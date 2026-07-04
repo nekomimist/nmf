@@ -105,12 +105,6 @@ func (fm *FileManager) applyRenameToList(oldPath, newName, newPath string) {
 		return
 	}
 
-	items := make([]interface{}, 0, len(fm.files))
-	for i, file := range fm.files {
-		items = append(items, fileinfo.ListItem{Index: i, FileInfo: file})
-	}
-	fm.fileBinding.Set(items)
-	fm.fileList.Refresh()
 	fm.RefreshCursor()
 	fm.mu.Unlock()
 

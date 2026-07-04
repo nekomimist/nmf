@@ -76,11 +76,10 @@ func (fm *FileManager) applyCreatedPathToList(path string, isDir bool) {
 	if fm.GetCurrentCursorIndex() < 0 && len(fm.files) > 0 {
 		fm.SetCursorByIndex(0)
 	}
-	if fm.fileBinding != nil {
-		fm.rebuildFileBinding()
-	}
 	if fm.fileList != nil {
-		fm.fileList.Refresh()
+		// RefreshCursor alone covers the redraw: it calls fileList.Refresh
+		// directly when there's no cursor, or ScrollTo (which itself ends in
+		// a full Refresh) when there is one.
 		fm.RefreshCursor()
 	}
 	fm.updateStatusBar()

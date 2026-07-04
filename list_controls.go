@@ -169,15 +169,16 @@ func (fm *FileManager) ApplyFilter(entry *config.FilterEntry) {
 
 	fm.files = filtered
 	fm.sortFilesWithConfig(fm.CurrentSort())
-
-	// Update UI
-	fm.rebuildFileBinding()
 	fm.updateStatusBar()
 
 	// Reset cursor to first item if available
 	if len(fm.files) > 0 {
 		fm.SetCursorByIndex(0)
 		fm.RefreshCursor()
+	} else {
+		// No items left to show: RefreshCursor is skipped above, so refresh
+		// explicitly to shrink the displayed rows to zero.
+		fm.fileList.Refresh()
 	}
 
 	debugPrint("FileManager: Applied filter: %s (effective=%s matched %d/%d files)", entry.Pattern, effectivePattern, len(fm.files), len(baseFiles))
@@ -194,7 +195,7 @@ func (fm *FileManager) ClearFilter() {
 		fm.sortFilesWithConfig(fm.CurrentSort())
 
 		// Update UI
-		fm.rebuildFileBinding()
+		fm.fileList.Refresh()
 		fm.updateStatusBar()
 	}
 
@@ -221,7 +222,7 @@ func (fm *FileManager) DisableFilter() {
 		fm.sortFilesWithConfig(fm.CurrentSort())
 
 		// Update UI
-		fm.rebuildFileBinding()
+		fm.fileList.Refresh()
 		fm.updateStatusBar()
 	}
 
@@ -488,75 +489,79 @@ func (fm *FileManager) SetCursorToFile(file *fileinfo.FileInfo) {
 	}
 }
 
-// sortFiles sorts the fm.files slice according to the configuration.
-func (fm *FileManager) sortFiles() {
-	fm.sortFilesWithConfig(fm.CurrentSort())
-}
-
 func (fm *FileManager) sortFilesWithConfig(sortConfig config.SortConfig) {
 	debugPrint("FileManager: Sorting files: sortBy=%s, order=%s, dirFirst=%t",
 		sortConfig.SortBy, sortConfig.SortOrder, sortConfig.DirectoriesFirst)
 
-	if len(fm.files) <= 1 {
-		return // No need to sort 0 or 1 items
+	fm.files = sortFileInfoSlice(fm.files, sortConfig)
+}
+
+// sortFileInfoSlice returns files reordered per sortConfig. It pins ".." at
+// index 0 (if present) and, when DirectoriesFirst is set, sorts directories
+// and regular files as separate groups; otherwise sorts everything but the
+// parent entry together. It touches no FileManager state, so it is safe to
+// call from a background goroutine (see loadDirectoryAsync).
+func sortFileInfoSlice(files []fileinfo.FileInfo, sortConfig config.SortConfig) []fileinfo.FileInfo {
+	if len(files) <= 1 {
+		return files // No need to sort 0 or 1 items
 	}
 
 	// If DirectoriesFirst is enabled, separate directories and files
 	if sortConfig.DirectoriesFirst {
 		var dirs []fileinfo.FileInfo
-		var files []fileinfo.FileInfo
+		var regularFiles []fileinfo.FileInfo
 
-		for _, file := range fm.files {
+		for _, file := range files {
 			if file.Name == ".." {
 				// Keep parent directory at the very top
 				continue
 			} else if file.IsDir {
 				dirs = append(dirs, file)
 			} else {
-				files = append(files, file)
+				regularFiles = append(regularFiles, file)
 			}
 		}
 
 		// Sort directories and files separately
-		fm.sortSlice(dirs, sortConfig)
-		fm.sortSlice(files, sortConfig)
+		sortSlice(dirs, sortConfig)
+		sortSlice(regularFiles, sortConfig)
 
 		// Rebuild the files slice: parent directory first, then sorted directories, then sorted files
-		newFiles := []fileinfo.FileInfo{}
-		for _, file := range fm.files {
+		newFiles := make([]fileinfo.FileInfo, 0, len(files))
+		for _, file := range files {
 			if file.Name == ".." {
 				newFiles = append(newFiles, file)
 				break
 			}
 		}
 		newFiles = append(newFiles, dirs...)
-		newFiles = append(newFiles, files...)
-
-		fm.files = newFiles
-	} else {
-		// Sort all files together (except parent directory)
-		var parentDir *fileinfo.FileInfo
-		var regularFiles []fileinfo.FileInfo
-
-		for _, file := range fm.files {
-			if file.Name == ".." {
-				parentDir = &file
-			} else {
-				regularFiles = append(regularFiles, file)
-			}
-		}
-
-		fm.sortSlice(regularFiles, sortConfig)
-
-		// Rebuild with parent directory first if it exists
-		newFiles := []fileinfo.FileInfo{}
-		if parentDir != nil {
-			newFiles = append(newFiles, *parentDir)
-		}
 		newFiles = append(newFiles, regularFiles...)
 
-		fm.files = newFiles
+		return newFiles
 	}
+
+	// Sort all files together (except parent directory)
+	var parentDir *fileinfo.FileInfo
+	var regularFiles []fileinfo.FileInfo
+
+	for _, file := range files {
+		if file.Name == ".." {
+			parentDir = &file
+		} else {
+			regularFiles = append(regularFiles, file)
+		}
+	}
+
+	sortSlice(regularFiles, sortConfig)
+
+	// Rebuild with parent directory first if it exists
+	newFiles := make([]fileinfo.FileInfo, 0, len(files))
+	if parentDir != nil {
+		newFiles = append(newFiles, *parentDir)
+	}
+	newFiles = append(newFiles, regularFiles...)
+
+	return newFiles
 }
 
 func (fm *FileManager) applySort(sortConfig config.SortConfig) {
@@ -564,7 +569,6 @@ func (fm *FileManager) applySort(sortConfig config.SortConfig) {
 	fm.activeSort = sortConfig
 
 	fm.sortFilesWithConfig(sortConfig)
-	fm.rebuildFileBinding()
 
 	if currentPath != "" {
 		fm.cursorPath = currentPath
@@ -580,14 +584,6 @@ func (fm *FileManager) applySort(sortConfig config.SortConfig) {
 	fm.RefreshCursor()
 }
 
-func (fm *FileManager) rebuildFileBinding() {
-	items := make([]interface{}, 0, len(fm.files))
-	for i, file := range fm.files {
-		items = append(items, fileinfo.ListItem{Index: i, FileInfo: file})
-	}
-	fm.fileBinding.Set(items)
-}
-
 // sortKey precomputes the lowercase comparison keys for a file so sortSlice
 // avoids recomputing strings.ToLower/filepath.Ext on every comparison.
 type sortKey struct {
@@ -598,8 +594,9 @@ type sortKey struct {
 
 // sortSlice sorts a slice of FileInfo according to the sort configuration.
 // It decorates each entry with precomputed comparison keys, sorts the
-// decorated slice once, then writes the reordered files back.
-func (fm *FileManager) sortSlice(files []fileinfo.FileInfo, sortConfig config.SortConfig) {
+// decorated slice once, then writes the reordered files back. It touches no
+// FileManager state, so it is safe to call from a background goroutine.
+func sortSlice(files []fileinfo.FileInfo, sortConfig config.SortConfig) {
 	if len(files) <= 1 {
 		return
 	}

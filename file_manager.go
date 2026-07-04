@@ -7,7 +7,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/config"
@@ -39,7 +38,6 @@ type FileManager struct {
 	selectedFiles     map[string]bool // Set of selected file paths
 	storageInfo       fileinfo.StorageInfo
 	storageKnown      bool
-	fileBinding       binding.UntypedList
 	config            *config.Config
 	configManager     *config.Manager
 	configScript      *configscript.Runtime
@@ -97,7 +95,19 @@ func (fm *FileManager) GetFiles() []fileinfo.FileInfo {
 	return result
 }
 
+// UpdateFiles replaces the current listing with files and always re-sorts.
+// It implements the watcher.FileManager interface; ApplyChanges is the sole
+// production caller, and it goes through updateFiles directly so it can skip
+// the re-sort when safe. Keep this exported entry point always-sorting so any
+// other future caller gets the conservative, always-correct behavior.
 func (fm *FileManager) UpdateFiles(files []fileinfo.FileInfo) {
+	fm.updateFiles(files, true)
+}
+
+// updateFiles applies files as the new listing. resort is false only when the
+// caller has already proven the update cannot change relative order (see the
+// sortAffected computation in ApplyChanges).
+func (fm *FileManager) updateFiles(files []fileinfo.FileInfo, resort bool) {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
 
@@ -117,12 +127,12 @@ func (fm *FileManager) UpdateFiles(files []fileinfo.FileInfo) {
 		fm.files = files
 	}
 
-	fm.sortFilesWithConfig(fm.CurrentSort())
+	if resort {
+		fm.sortFilesWithConfig(fm.CurrentSort())
+	}
 
-	// Update binding to reflect all changes
-	fm.rebuildFileBinding()
-
-	// Explicitly refresh on file deletions or modifications, since Fyne only auto-updates on additions.
+	// widget.List is not data-bound, so it never redraws on its own; refresh
+	// explicitly to reflect additions, deletions, and modifications.
 	fm.fileList.Refresh()
 	fm.updateStatusBar()
 }
@@ -168,5 +178,22 @@ func (fm *FileManager) ApplyChanges(added, deleted, modified []fileinfo.FileInfo
 		files = append(files, addedFile)
 	}
 
-	fm.UpdateFiles(files)
+	// Skip the re-sort when this merge cannot change relative order.
+	// Adds/deletes always change the member set, which can change order under
+	// any sort key, so those always re-sort. A modify-only merge only changes
+	// order under "size" or "modified", since those are the only keys whose
+	// comparison value a plain content modification can change; under
+	// "name"/"extension" (and any other key), a modify event never changes
+	// the file's name, so its position is correct by construction and the
+	// ".."-pinning invariant (sortFilesWithConfig always pins ".." at index 0)
+	// still holds untouched.
+	sortAffected := len(added) > 0 || len(deleted) > 0
+	if !sortAffected {
+		switch fm.CurrentSort().SortBy {
+		case "size", "modified":
+			sortAffected = true
+		}
+	}
+
+	fm.updateFiles(files, sortAffected)
 }

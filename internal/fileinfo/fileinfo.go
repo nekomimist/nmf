@@ -44,12 +44,6 @@ type FileInfo struct {
 	Status   FileStatus // ファイルの現在のステータス
 }
 
-// ListItem wraps FileInfo with index for rendering
-type ListItem struct {
-	Index    int
-	FileInfo FileInfo
-}
-
 // DetermineFileType determines the file type based on file attributes
 func DetermineFileType(path string, name string, isDir bool) FileType {
 	metadata, err := InspectPath(path, name, nil)

@@ -290,23 +290,3 @@ func TestFileInfo(t *testing.T) {
 		t.Errorf("Expected Status Normal, got %v", fileInfo.Status)
 	}
 }
-
-func TestListItem(t *testing.T) {
-	fileInfo := FileInfo{
-		Name: "test.txt",
-		Path: "/home/user/test.txt",
-	}
-
-	listItem := ListItem{
-		Index:    5,
-		FileInfo: fileInfo,
-	}
-
-	if listItem.Index != 5 {
-		t.Errorf("Expected Index 5, got %d", listItem.Index)
-	}
-
-	if listItem.FileInfo.Name != "test.txt" {
-		t.Errorf("Expected FileInfo.Name 'test.txt', got '%s'", listItem.FileInfo.Name)
-	}
-}

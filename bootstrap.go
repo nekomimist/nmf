@@ -6,7 +6,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
-	"fyne.io/fyne/v2/data/binding"
 
 	"nmf/internal/config"
 	"nmf/internal/configscript"
@@ -29,7 +28,6 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 		cursorPath:        "",
 		cursorIndex:       -1,
 		selectedFiles:     make(map[string]bool),
-		fileBinding:       binding.NewUntypedList(),
 		config:            config,
 		configManager:     configManager,
 		configScript:      configScript,

@@ -10,7 +10,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -30,8 +29,8 @@ func (fm *FileManager) setupUI() {
 	fm.statusLabel.TextStyle = fyne.TextStyle{Monospace: true}
 
 	// Create file list
-	fm.fileList = widget.NewListWithData(
-		fm.fileBinding,
+	fm.fileList = widget.NewList(
+		func() int { return len(fm.files) },
 		func() fyne.CanvasObject {
 			// Create tappable icon (onTapped will be set in UpdateItem)
 			icon := ui.NewTappableIcon(theme.FolderIcon(), nil)
@@ -52,12 +51,12 @@ func (fm *FileManager) setupUI() {
 			// Use normal container with max layout to hold content and decorations
 			return container.NewMax(borderContainer)
 		},
-		func(item binding.DataItem, obj fyne.CanvasObject) {
-			dataItem := item.(binding.Untyped)
-			data, _ := dataItem.Get()
-			listItem := data.(fileinfo.ListItem)
-			fileInfo := listItem.FileInfo
-			index := listItem.Index
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			if id < 0 || int(id) >= len(fm.files) {
+				return
+			}
+			fileInfo := fm.files[id]
+			index := int(id)
 
 			// obj is a container with border and optional cursor/selection elements
 			outerContainer := obj.(*fyne.Container)

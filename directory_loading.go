@@ -11,6 +11,7 @@ import (
 
 	"fyne.io/fyne/v2"
 
+	"nmf/internal/config"
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 )
@@ -166,12 +167,17 @@ func (fm *FileManager) LoadDirectory(path string) {
 	// Indicate busy and block input while loading
 	fm.beginBusy(fmt.Sprintf("Loading %s...", path), fm.cancelActiveDirectoryLoad)
 
+	// Capture the sort config on the UI thread: fm.config is mutated by the
+	// sort dialog on the UI thread, so the background goroutine below must
+	// never read it directly (that would be a data race).
+	sortCfg := fm.config.UI.Sort
+
 	// Load directory asynchronously to avoid blocking UI (applies to both local and remote paths)
-	go fm.loadDirectoryAsync(ctx, loadID, path, previousPath)
+	go fm.loadDirectoryAsync(ctx, loadID, path, previousPath, sortCfg)
 }
 
 // loadDirectoryAsync lists a path in a background goroutine and applies UI updates on the main thread.
-func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, path string, previousPath string) {
+func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, path string, previousPath string, sortCfg config.SortConfig) {
 	entries, err := fileinfo.ReadDirPortableContext(ctx, path)
 	if err != nil {
 		if fm.ignoreCanceledDirectoryLoad(ctx, loadID, err) {
@@ -237,6 +243,16 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 		files = append(files, fi)
 	}
 
+	// Sort off the UI thread using the sort config captured before this
+	// goroutine started (see LoadDirectory).
+	files = sortFileInfoSlice(files, sortCfg)
+	if fm.ignoreCanceledDirectoryLoad(ctx, loadID, nil) {
+		return
+	}
+
+	originalFiles := make([]fileinfo.FileInfo, len(files))
+	copy(originalFiles, files)
+
 	// Apply UI updates on main thread
 	fyne.Do(func() {
 		if !fm.finishDirectoryLoad(loadID) {
@@ -255,15 +271,13 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 		fm.currentPath = path
 		fm.setPathDisplay(path)
 		fm.files = files
-		fm.originalFiles = make([]fileinfo.FileInfo, len(files))
-		copy(fm.originalFiles, files)
+		fm.originalFiles = originalFiles
 		fm.storageInfo = storage
 		fm.storageKnown = storageErr == nil
-		fm.activeSort = fm.config.UI.Sort
+		fm.activeSort = sortCfg
 
-		// Sort and build items
-		fm.sortFiles()
-		fm.rebuildFileBinding()
+		// files/originalFiles arrive pre-sorted from the background goroutine
+		// above; no sort call needed here.
 
 		// Clear selections and restore cursor
 		fm.selectedFiles = make(map[string]bool)
@@ -301,6 +315,9 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 			fm.RefreshCursor()
 		} else {
 			fm.cursorPath = ""
+			// No RefreshCursor call above: refresh explicitly so the list
+			// widget's length func is re-queried and old rows are cleared.
+			fm.fileList.Refresh()
 		}
 		fm.updateStatusBar()
 

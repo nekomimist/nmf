@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 
@@ -19,7 +18,6 @@ func TestUpdateFilesUsesActiveTemporarySort(t *testing.T) {
 	defer app.Quit()
 
 	fm := &FileManager{
-		fileBinding: binding.NewUntypedList(),
 		fileList: widget.NewList(
 			func() int { return 0 },
 			func() fyne.CanvasObject { return widget.NewLabel("") },
@@ -48,7 +46,6 @@ func TestApplyFilterUsesEffectivePatternBeforeComment(t *testing.T) {
 	defer app.Quit()
 
 	fm := &FileManager{
-		fileBinding: binding.NewUntypedList(),
 		fileList: widget.NewList(
 			func() int { return 0 },
 			func() fyne.CanvasObject { return widget.NewLabel("") },
@@ -161,11 +158,10 @@ func TestSortSliceEquivalence(t *testing.T) {
 		{"extension", "desc", []string{"Banana.txt", "apple.TXT", "zeta.md", "README", "notes"}},
 	}
 
-	fm := &FileManager{}
 	for _, tt := range tests {
 		t.Run(tt.sortBy+"_"+tt.sortOrder, func(t *testing.T) {
 			files := newFiles()
-			fm.sortSlice(files, config.SortConfig{SortBy: tt.sortBy, SortOrder: tt.sortOrder})
+			sortSlice(files, config.SortConfig{SortBy: tt.sortBy, SortOrder: tt.sortOrder})
 			got := make([]string, len(files))
 			for i, f := range files {
 				got[i] = f.Name
@@ -175,4 +171,77 @@ func TestSortSliceEquivalence(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestSortFileInfoSlicePure exercises sortFileInfoSlice as a pure function
+// (no *FileManager involved), verifying it neither mutates the input slice
+// header's backing semantics unexpectedly nor touches any FileManager state,
+// and that it keeps the ".."-pinning invariant under both DirectoriesFirst
+// settings.
+func TestSortFileInfoSlicePure(t *testing.T) {
+	input := func() []fileinfo.FileInfo {
+		return []fileinfo.FileInfo{
+			{Name: "..", IsDir: true},
+			{Name: "zeta", IsDir: true},
+			{Name: "banana.txt"},
+			{Name: "apple", IsDir: true},
+			{Name: "cherry.txt"},
+		}
+	}
+
+	t.Run("DirectoriesFirst", func(t *testing.T) {
+		got := sortFileInfoSlice(input(), config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true})
+		names := make([]string, len(got))
+		for i, f := range got {
+			names[i] = f.Name
+		}
+		want := []string{"..", "apple", "zeta", "banana.txt", "cherry.txt"}
+		if !reflect.DeepEqual(names, want) {
+			t.Fatalf("sortFileInfoSlice(DirectoriesFirst=true) = %v, want %v", names, want)
+		}
+		if !got[0].IsDir || got[0].Name != ".." {
+			t.Fatalf("expected \"..\" pinned at index 0, got %+v", got[0])
+		}
+	})
+
+	t.Run("FlatSort", func(t *testing.T) {
+		got := sortFileInfoSlice(input(), config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: false})
+		names := make([]string, len(got))
+		for i, f := range got {
+			names[i] = f.Name
+		}
+		want := []string{"..", "apple", "banana.txt", "cherry.txt", "zeta"}
+		if !reflect.DeepEqual(names, want) {
+			t.Fatalf("sortFileInfoSlice(DirectoriesFirst=false) = %v, want %v", names, want)
+		}
+		if got[0].Name != ".." {
+			t.Fatalf("expected \"..\" pinned at index 0, got %+v", got[0])
+		}
+	})
+
+	t.Run("NoParentEntry", func(t *testing.T) {
+		files := []fileinfo.FileInfo{
+			{Name: "b", IsDir: true},
+			{Name: "a.txt"},
+		}
+		got := sortFileInfoSlice(files, config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true})
+		names := make([]string, len(got))
+		for i, f := range got {
+			names[i] = f.Name
+		}
+		want := []string{"b", "a.txt"}
+		if !reflect.DeepEqual(names, want) {
+			t.Fatalf("sortFileInfoSlice(no parent) = %v, want %v", names, want)
+		}
+	})
+
+	t.Run("ShortCircuitsBelowTwoEntries", func(t *testing.T) {
+		if got := sortFileInfoSlice(nil, config.SortConfig{SortBy: "name"}); got != nil {
+			t.Fatalf("sortFileInfoSlice(nil) = %v, want nil", got)
+		}
+		single := []fileinfo.FileInfo{{Name: "only"}}
+		if got := sortFileInfoSlice(single, config.SortConfig{SortBy: "name"}); len(got) != 1 || got[0].Name != "only" {
+			t.Fatalf("sortFileInfoSlice(single) = %v, want unchanged single-element slice", got)
+		}
+	})
 }
