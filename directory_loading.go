@@ -242,8 +242,6 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 		if !fm.finishDirectoryLoad(loadID) {
 			return
 		}
-		// Clear busy state on success just before applying changes
-		fm.endBusy()
 		// Stop existing watcher (if any) before applying
 		if fm.dirWatcher != nil {
 			fm.dirWatcher.Stop()
@@ -305,6 +303,10 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 			fm.cursorPath = ""
 		}
 		fm.updateStatusBar()
+
+		// Hide busy only now that list state and cursor are rendered-ready,
+		// so input stays blocked until the new listing is actually usable.
+		fm.endBusy()
 
 		// Restart watcher with appropriate interval when the provider can be watched.
 		if fm.dirWatcher != nil && fm.shouldWatchPath(path) {

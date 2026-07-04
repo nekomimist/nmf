@@ -71,6 +71,8 @@ type FileManagerInterface interface {
 	LoadDirectory(path string)
 	GetCurrentPath() string
 	GetFiles() []fileinfo.FileInfo
+	FileCount() int
+	FileAt(index int) (fileinfo.FileInfo, bool)
 	CurrentSort() config.SortConfig
 	ApplyTemporarySort(sortConfig config.SortConfig)
 
@@ -436,8 +438,7 @@ func (mh *MainScreenKeyHandler) cursorUp(CommandContext) {
 
 func (mh *MainScreenKeyHandler) cursorDown(CommandContext) {
 	currentIdx := mh.fileManager.GetCurrentCursorIndex()
-	files := mh.fileManager.GetFiles()
-	if currentIdx < len(files)-1 {
+	if currentIdx < mh.fileManager.FileCount()-1 {
 		mh.fileManager.SetCursorByIndex(currentIdx + 1)
 		mh.fileManager.RefreshCursor()
 	}
@@ -445,8 +446,7 @@ func (mh *MainScreenKeyHandler) cursorDown(CommandContext) {
 
 func (mh *MainScreenKeyHandler) cursorPageUp(CommandContext) {
 	currentIdx := mh.fileManager.GetCurrentCursorIndex()
-	files := mh.fileManager.GetFiles()
-	if len(files) == 0 {
+	if mh.fileManager.FileCount() == 0 {
 		return
 	}
 	newIdx := currentIdx - 20
@@ -459,60 +459,53 @@ func (mh *MainScreenKeyHandler) cursorPageUp(CommandContext) {
 
 func (mh *MainScreenKeyHandler) cursorPageDown(CommandContext) {
 	currentIdx := mh.fileManager.GetCurrentCursorIndex()
-	files := mh.fileManager.GetFiles()
-	if len(files) == 0 {
+	count := mh.fileManager.FileCount()
+	if count == 0 {
 		return
 	}
 	newIdx := currentIdx + 20
-	if newIdx >= len(files) {
-		newIdx = len(files) - 1
+	if newIdx >= count {
+		newIdx = count - 1
 	}
 	mh.fileManager.SetCursorByIndex(newIdx)
 	mh.fileManager.RefreshCursor()
 }
 
 func (mh *MainScreenKeyHandler) cursorFirst(CommandContext) {
-	files := mh.fileManager.GetFiles()
-	if len(files) > 0 {
+	if mh.fileManager.FileCount() > 0 {
 		mh.fileManager.SetCursorByIndex(0)
 		mh.fileManager.RefreshCursor()
 	}
 }
 
 func (mh *MainScreenKeyHandler) cursorLast(CommandContext) {
-	files := mh.fileManager.GetFiles()
-	if len(files) > 0 {
-		mh.fileManager.SetCursorByIndex(len(files) - 1)
+	count := mh.fileManager.FileCount()
+	if count > 0 {
+		mh.fileManager.SetCursorByIndex(count - 1)
 		mh.fileManager.RefreshCursor()
 	}
 }
 
 func (mh *MainScreenKeyHandler) openCurrent(CommandContext) {
 	currentIdx := mh.fileManager.GetCurrentCursorIndex()
-	files := mh.fileManager.GetFiles()
-	if currentIdx >= 0 && currentIdx < len(files) {
-		fileInfo := files[currentIdx]
+	if fileInfo, ok := mh.fileManager.FileAt(currentIdx); ok {
 		mh.fileManager.OpenFile(&fileInfo)
 	}
 }
 
 func (mh *MainScreenKeyHandler) openCurrentDefaultApp(CommandContext) {
 	currentIdx := mh.fileManager.GetCurrentCursorIndex()
-	files := mh.fileManager.GetFiles()
-	if currentIdx >= 0 && currentIdx < len(files) {
-		fileInfo := files[currentIdx]
+	if fileInfo, ok := mh.fileManager.FileAt(currentIdx); ok {
 		mh.fileManager.OpenFileDefaultApp(&fileInfo)
 	}
 }
 
 func (mh *MainScreenKeyHandler) toggleSelection(CommandContext) {
 	currentIdx := mh.fileManager.GetCurrentCursorIndex()
-	files := mh.fileManager.GetFiles()
-	if currentIdx < 0 || currentIdx >= len(files) {
+	fileInfo, ok := mh.fileManager.FileAt(currentIdx)
+	if !ok {
 		return
 	}
-
-	fileInfo := files[currentIdx]
 	if fileInfo.Name == ".." || fileInfo.Status == fileinfo.StatusDeleted {
 		return
 	}
@@ -521,7 +514,7 @@ func (mh *MainScreenKeyHandler) toggleSelection(CommandContext) {
 	mh.fileManager.SetFileSelected(fileInfo.Path, !selectedFiles[fileInfo.Path])
 	mh.fileManager.RefreshFileList()
 
-	if currentIdx < len(files)-1 {
+	if currentIdx < mh.fileManager.FileCount()-1 {
 		mh.fileManager.SetCursorByIndex(currentIdx + 1)
 		mh.fileManager.RefreshCursor()
 	}

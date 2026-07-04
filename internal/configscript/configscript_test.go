@@ -1963,6 +1963,13 @@ func (f *configScriptFakeFileManager) RefreshCursor()                {}
 func (f *configScriptFakeFileManager) LoadDirectory(path string)     { f.currentPath = path }
 func (f *configScriptFakeFileManager) GetCurrentPath() string        { return f.currentPath }
 func (f *configScriptFakeFileManager) GetFiles() []fileinfo.FileInfo { return f.files }
+func (f *configScriptFakeFileManager) FileCount() int                { return len(f.files) }
+func (f *configScriptFakeFileManager) FileAt(index int) (fileinfo.FileInfo, bool) {
+	if index < 0 || index >= len(f.files) {
+		return fileinfo.FileInfo{}, false
+	}
+	return f.files[index], true
+}
 func (f *configScriptFakeFileManager) CurrentSort() config.SortConfig {
 	if f.currentSort.SortBy == "" {
 		return config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}

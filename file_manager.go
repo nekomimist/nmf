@@ -34,6 +34,7 @@ type FileManager struct {
 	pathDisplay       *widget.Label
 	statusLabel       *widget.Label
 	cursorPath        string          // Current cursor file path
+	cursorIndex       int             // Cache of cursorPath's index in files; validated against cursorPath on every read in GetCurrentCursorIndex, so direct cursorPath assignments elsewhere self-heal
 	cursorAnchor      cursorRowAnchor // Last visible row object for shell menu positioning
 	selectedFiles     map[string]bool // Set of selected file paths
 	storageInfo       fileinfo.StorageInfo
@@ -130,4 +131,42 @@ func (fm *FileManager) RemoveFromSelections(path string) {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
 	delete(fm.selectedFiles, path)
+}
+
+// ApplyChanges merges watcher-detected added/deleted/modified files into the
+// current listing. Must only run on the Fyne main goroutine: the watcher
+// marshals into this call via fyne.Do (internal/watcher/watcher.go
+// applyDataChanges), since fm.files/fm.selectedFiles are otherwise mutated
+// without synchronization from UI-thread code such as SetFileSelected.
+func (fm *FileManager) ApplyChanges(added, deleted, modified []fileinfo.FileInfo) {
+	files := fm.GetFiles()
+
+	// Handle deleted files - mark as deleted but keep in list
+	for _, deletedFile := range deleted {
+		for i, file := range files {
+			if file.Path == deletedFile.Path {
+				files[i].Status = fileinfo.StatusDeleted
+				// Remove from selections if selected
+				fm.RemoveFromSelections(deletedFile.Path)
+				break
+			}
+		}
+	}
+
+	// Handle modified files - update status
+	for _, modifiedFile := range modified {
+		for i, file := range files {
+			if file.Path == modifiedFile.Path {
+				files[i] = modifiedFile
+				break
+			}
+		}
+	}
+
+	// Handle added files - append to end
+	for _, addedFile := range added {
+		files = append(files, addedFile)
+	}
+
+	fm.UpdateFiles(files)
 }

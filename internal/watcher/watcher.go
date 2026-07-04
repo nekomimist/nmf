@@ -14,6 +14,10 @@ type FileManager interface {
 	GetFiles() []fileinfo.FileInfo
 	UpdateFiles(files []fileinfo.FileInfo)
 	RemoveFromSelections(path string)
+	// ApplyChanges merges watcher-detected added/deleted/modified files into
+	// the current listing. Implementations must run this only on the Fyne
+	// main goroutine (see applyDataChanges, which marshals via fyne.Do).
+	ApplyChanges(added, deleted, modified []fileinfo.FileInfo)
 }
 
 // DirectoryWatcher handles incremental directory change detection
@@ -237,49 +241,23 @@ func (dw *DirectoryWatcher) detectChanges(currentFiles map[string]fileinfo.FileI
 	return added, deleted, modified
 }
 
-// applyDataChanges applies detected changes to the file manager data (thread-safe)
+// applyDataChanges applies detected changes to the file manager data. The
+// merge itself (fm.ApplyChanges) and the snapshot refresh run inside a single
+// fyne.Do so they're confined to the Fyne main goroutine, alongside all other
+// fm.files/fm.selectedFiles access; the previous background-goroutine merge
+// (calling GetFiles/RemoveFromSelections here directly) raced with UI-thread
+// code such as SetFileSelected, which mutates fm.selectedFiles without a lock.
 func (dw *DirectoryWatcher) applyDataChanges(added, deleted, modified []fileinfo.FileInfo) {
+	if len(added) == 0 && len(deleted) == 0 && len(modified) == 0 {
+		return
+	}
 	dw.debugPrint("DirectoryWatcher: Applying changes: %d added, %d deleted, %d modified", len(added), len(deleted), len(modified))
 
-	// Get current files (this is now thread-safe as GetFiles() returns a copy)
-	files := dw.fm.GetFiles()
-	needsUpdate := len(added) > 0 || len(deleted) > 0 || len(modified) > 0
-
-	// Handle deleted files - mark as deleted but keep in list
-	for _, deletedFile := range deleted {
-		for i, file := range files {
-			if file.Path == deletedFile.Path {
-				files[i].Status = fileinfo.StatusDeleted
-				// Remove from selections if selected (already thread-safe)
-				dw.fm.RemoveFromSelections(deletedFile.Path)
-				break
-			}
-		}
-	}
-
-	// Handle modified files - update status
-	for _, modifiedFile := range modified {
-		for i, file := range files {
-			if file.Path == modifiedFile.Path {
-				files[i] = modifiedFile
-				break
-			}
-		}
-	}
-
-	// Handle added files - append to end
-	for _, addedFile := range added {
-		files = append(files, addedFile)
-	}
-
-	// UI update must happen on the main thread
-	if needsUpdate {
-		fyne.Do(func() {
-			dw.fm.UpdateFiles(files)
-			// Update snapshot after UI update to ensure consistency
-			dw.updateSnapshot()
-		})
-	}
+	fyne.Do(func() {
+		dw.fm.ApplyChanges(added, deleted, modified)
+		// Update snapshot after UI update to ensure consistency
+		dw.updateSnapshot()
+	})
 }
 
 // applyPendingChanges applies a queued change set only when it belongs to the active watcher run.

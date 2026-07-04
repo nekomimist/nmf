@@ -44,12 +44,12 @@ func countMarkedFiles(selected map[string]bool) int {
 	return count
 }
 
+// countEntriesExcludingParent relies on the sort invariant that
+// sortFilesWithConfig always pins ".." at index 0.
 func countEntriesExcludingParent(files []fileinfo.FileInfo) int {
-	count := 0
-	for _, file := range files {
-		if file.Name != ".." {
-			count++
-		}
+	n := len(files)
+	if n > 0 && files[0].Name == ".." {
+		n--
 	}
-	return count
+	return n
 }

@@ -1,8 +1,9 @@
 package main
 
 import (
+	"cmp"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -15,15 +16,23 @@ import (
 )
 
 // GetCurrentCursorIndex returns the current cursor index based on cursor path.
+// cursorIndex is a cache validated against cursorPath on every call: a hit
+// avoids the linear scan, and any direct cursorPath assignment elsewhere
+// self-heals here (cache miss falls back to scanning and re-caches).
 func (fm *FileManager) GetCurrentCursorIndex() int {
 	if fm.cursorPath == "" {
 		return -1
 	}
+	if fm.cursorIndex >= 0 && fm.cursorIndex < len(fm.files) && fm.files[fm.cursorIndex].Path == fm.cursorPath {
+		return fm.cursorIndex
+	}
 	for i, file := range fm.files {
 		if file.Path == fm.cursorPath {
+			fm.cursorIndex = i
 			return i
 		}
 	}
+	fm.cursorIndex = -1
 	return -1
 }
 
@@ -31,21 +40,36 @@ func (fm *FileManager) GetCurrentCursorIndex() int {
 func (fm *FileManager) SetCursorByIndex(index int) {
 	if index >= 0 && index < len(fm.files) {
 		fm.cursorPath = fm.files[index].Path
+		fm.cursorIndex = index
 	} else {
 		fm.cursorPath = ""
+		fm.cursorIndex = -1
 	}
 }
 
 // RefreshCursor updates only the cursor display without affecting selection.
 func (fm *FileManager) RefreshCursor() {
-	// First refresh the list to ensure all items are updated
-	fm.fileList.Refresh()
-
-	// Then scroll to cursor position after refresh completes
 	cursorIdx := fm.GetCurrentCursorIndex()
-	if cursorIdx >= 0 {
-		fm.fileList.ScrollTo(widget.ListItemID(cursorIdx))
+	if cursorIdx < 0 {
+		// No cursor: refresh to clear any stale cursor decoration.
+		fm.fileList.Refresh()
+		return
 	}
+	// Fyne v2.7.3 List.ScrollTo unconditionally ends with a full Refresh()
+	// (widget/list.go:246-257), so an explicit Refresh here would double the
+	// per-keypress render cost. Re-verify on Fyne upgrades.
+	fm.fileList.ScrollTo(widget.ListItemID(cursorIdx))
+}
+
+// FileCount returns the number of files in the current listing without copying it.
+func (fm *FileManager) FileCount() int { return len(fm.files) }
+
+// FileAt returns the file at index without copying the whole listing.
+func (fm *FileManager) FileAt(index int) (fileinfo.FileInfo, bool) {
+	if index < 0 || index >= len(fm.files) {
+		return fileinfo.FileInfo{}, false
+	}
+	return fm.files[index], true
 }
 
 // GetSelectedFiles returns the map of selected files.
@@ -564,46 +588,66 @@ func (fm *FileManager) rebuildFileBinding() {
 	fm.fileBinding.Set(items)
 }
 
+// sortKey precomputes the lowercase comparison keys for a file so sortSlice
+// avoids recomputing strings.ToLower/filepath.Ext on every comparison.
+type sortKey struct {
+	file      fileinfo.FileInfo
+	lowerName string
+	lowerExt  string
+}
+
 // sortSlice sorts a slice of FileInfo according to the sort configuration.
+// It decorates each entry with precomputed comparison keys, sorts the
+// decorated slice once, then writes the reordered files back.
 func (fm *FileManager) sortSlice(files []fileinfo.FileInfo, sortConfig config.SortConfig) {
-	sort.Slice(files, func(i, j int) bool {
-		fileI := files[i]
-		fileJ := files[j]
+	if len(files) <= 1 {
+		return
+	}
 
-		var less bool
+	keys := make([]sortKey, len(files))
+	for i, file := range files {
+		k := sortKey{file: file, lowerName: strings.ToLower(file.Name)}
+		if sortConfig.SortBy == "extension" {
+			k.lowerExt = strings.ToLower(filepath.Ext(file.Name))
+		}
+		keys[i] = k
+	}
 
+	desc := sortConfig.SortOrder == "desc"
+
+	slices.SortFunc(keys, func(a, b sortKey) int {
+		var c int
 		switch sortConfig.SortBy {
-		case "name":
-			less = strings.ToLower(fileI.Name) < strings.ToLower(fileJ.Name)
 		case "size":
-			less = fileI.Size < fileJ.Size
+			c = cmp.Compare(a.file.Size, b.file.Size)
 		case "modified":
-			less = fileI.Modified.Before(fileJ.Modified)
+			c = a.file.Modified.Compare(b.file.Modified)
 		case "extension":
-			extI := strings.ToLower(filepath.Ext(fileI.Name))
-			extJ := strings.ToLower(filepath.Ext(fileJ.Name))
 			// Files without extensions come first
-			if extI == "" && extJ != "" {
-				less = true
-			} else if extI != "" && extJ == "" {
-				less = false
-			} else {
-				less = extI < extJ
+			switch {
+			case a.lowerExt == "" && b.lowerExt != "":
+				c = -1
+			case a.lowerExt != "" && b.lowerExt == "":
+				c = 1
+			default:
+				c = cmp.Compare(a.lowerExt, b.lowerExt)
 				// If extensions are the same, sort by name
-				if extI == extJ {
-					less = strings.ToLower(fileI.Name) < strings.ToLower(fileJ.Name)
+				if c == 0 {
+					c = cmp.Compare(a.lowerName, b.lowerName)
 				}
 			}
 		default:
-			// Default to name sorting
-			less = strings.ToLower(fileI.Name) < strings.ToLower(fileJ.Name)
+			// "name" and unknown SortBy default to name sorting
+			c = cmp.Compare(a.lowerName, b.lowerName)
 		}
 
-		// Apply sort order (asc/desc)
-		if sortConfig.SortOrder == "desc" {
-			less = !less
+		if desc {
+			c = -c
 		}
-
-		return less
+		return c
 	})
+
+	for i, k := range keys {
+		files[i] = k.file
+	}
 }

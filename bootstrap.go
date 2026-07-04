@@ -27,6 +27,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 		window:            app.NewWindow("File Manager"),
 		currentPath:       path,
 		cursorPath:        "",
+		cursorIndex:       -1,
 		selectedFiles:     make(map[string]bool),
 		fileBinding:       binding.NewUntypedList(),
 		config:            config,

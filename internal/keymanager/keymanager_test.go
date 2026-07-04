@@ -438,6 +438,13 @@ func (f *mainScreenFakeFileManager) RefreshCursor()                {}
 func (f *mainScreenFakeFileManager) LoadDirectory(path string)     { f.loadDirectoryPath = path }
 func (f *mainScreenFakeFileManager) GetCurrentPath() string        { return f.currentPath }
 func (f *mainScreenFakeFileManager) GetFiles() []fileinfo.FileInfo { return f.files }
+func (f *mainScreenFakeFileManager) FileCount() int                { return len(f.files) }
+func (f *mainScreenFakeFileManager) FileAt(index int) (fileinfo.FileInfo, bool) {
+	if index < 0 || index >= len(f.files) {
+		return fileinfo.FileInfo{}, false
+	}
+	return f.files[index], true
+}
 func (f *mainScreenFakeFileManager) CurrentSort() config.SortConfig {
 	return config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}
 }
@@ -584,6 +591,125 @@ func TestMainScreenConfiguredBindingCanRunOpenDefaultApp(t *testing.T) {
 	}
 	if fm.openDefaultAppPath != "/dir/book.xlsx" {
 		t.Fatalf("OpenFileDefaultApp path = %q, want /dir/book.xlsx", fm.openDefaultAppPath)
+	}
+}
+
+func TestMainScreenCursorDownUsesFileCountAndFileAt(t *testing.T) {
+	fm := &mainScreenFakeFileManager{
+		files: []fileinfo.FileInfo{
+			{Name: "a.txt", Path: "/dir/a.txt"},
+			{Name: "b.txt", Path: "/dir/b.txt"},
+		},
+		cursorIndex:    0,
+		setCursorIndex: -1,
+	}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyDown}, ModifierState{})
+
+	if !handled {
+		t.Fatal("Down should be handled")
+	}
+	if fm.setCursorIndex != 1 {
+		t.Fatalf("cursor.down SetCursorByIndex = %d, want 1", fm.setCursorIndex)
+	}
+}
+
+func TestMainScreenCursorDownAtLastFileIsNoop(t *testing.T) {
+	fm := &mainScreenFakeFileManager{
+		files: []fileinfo.FileInfo{
+			{Name: "a.txt", Path: "/dir/a.txt"},
+		},
+		cursorIndex:    0,
+		setCursorIndex: -1,
+	}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyDown}, ModifierState{})
+
+	if fm.setCursorIndex != -1 {
+		t.Fatalf("cursor.down at last file should not move cursor, SetCursorByIndex = %d", fm.setCursorIndex)
+	}
+}
+
+func TestMainScreenCursorFirstAndLastUseFileCount(t *testing.T) {
+	fm := &mainScreenFakeFileManager{
+		files: []fileinfo.FileInfo{
+			{Name: "a.txt", Path: "/dir/a.txt"},
+			{Name: "b.txt", Path: "/dir/b.txt"},
+			{Name: "c.txt", Path: "/dir/c.txt"},
+		},
+		cursorIndex: 1,
+	}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyComma}, ModifierState{ShiftPressed: true}) {
+		t.Fatal("S-Comma (cursor.first) should be handled")
+	}
+	if fm.setCursorIndex != 0 {
+		t.Fatalf("cursor.first SetCursorByIndex = %d, want 0", fm.setCursorIndex)
+	}
+
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyPeriod}, ModifierState{ShiftPressed: true}) {
+		t.Fatal("S-Period (cursor.last) should be handled")
+	}
+	if fm.setCursorIndex != 2 {
+		t.Fatalf("cursor.last SetCursorByIndex = %d, want 2", fm.setCursorIndex)
+	}
+}
+
+func TestMainScreenCursorFirstAndLastNoopWhenEmpty(t *testing.T) {
+	fm := &mainScreenFakeFileManager{
+		files:          []fileinfo.FileInfo{},
+		cursorIndex:    0,
+		setCursorIndex: -1,
+	}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyComma}, ModifierState{ShiftPressed: true})
+	if fm.setCursorIndex != -1 {
+		t.Fatalf("cursor.first on empty list should not move cursor, SetCursorByIndex = %d", fm.setCursorIndex)
+	}
+
+	handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyPeriod}, ModifierState{ShiftPressed: true})
+	if fm.setCursorIndex != -1 {
+		t.Fatalf("cursor.last on empty list should not move cursor, SetCursorByIndex = %d", fm.setCursorIndex)
+	}
+}
+
+func TestMainScreenOpenCurrentUsesFileAt(t *testing.T) {
+	fm := &mainScreenFakeFileManager{
+		files: []fileinfo.FileInfo{
+			{Name: "a.txt", Path: "/dir/a.txt"},
+			{Name: "book.xlsx", Path: "/dir/book.xlsx"},
+		},
+		cursorIndex: 1,
+	}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{})
+
+	if !handled {
+		t.Fatal("Return should be handled")
+	}
+	if fm.openFilePath != "/dir/book.xlsx" {
+		t.Fatalf("OpenFile path = %q, want /dir/book.xlsx", fm.openFilePath)
+	}
+}
+
+func TestMainScreenOpenCurrentNoopWhenCursorOutOfRange(t *testing.T) {
+	fm := &mainScreenFakeFileManager{
+		files: []fileinfo.FileInfo{
+			{Name: "a.txt", Path: "/dir/a.txt"},
+		},
+		cursorIndex: -1,
+	}
+	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+
+	handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{})
+
+	if fm.openFilePath != "" {
+		t.Fatalf("OpenFile path = %q, want empty when cursor is out of range", fm.openFilePath)
 	}
 }
 

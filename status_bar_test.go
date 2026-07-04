@@ -19,6 +19,23 @@ func TestCountEntriesExcludingParent(t *testing.T) {
 	}
 }
 
+func TestCountEntriesExcludingParentWithoutParent(t *testing.T) {
+	files := []fileinfo.FileInfo{
+		{Name: "alpha.txt"},
+		{Name: "docs", IsDir: true},
+	}
+
+	if got := countEntriesExcludingParent(files); got != 2 {
+		t.Fatalf("countEntriesExcludingParent got %d, want 2", got)
+	}
+}
+
+func TestCountEntriesExcludingParentEmpty(t *testing.T) {
+	if got := countEntriesExcludingParent(nil); got != 0 {
+		t.Fatalf("countEntriesExcludingParent got %d, want 0", got)
+	}
+}
+
 func TestCountMarkedFilesCountsOnlyTrueValues(t *testing.T) {
 	selected := map[string]bool{
 		"/tmp/a": true,
