@@ -10,11 +10,13 @@ delivered straight to the window).
 
 Usage: uv run inject_keys.py <title-substr> <keyspec> <count> <delay_ms>
   keyspec: named key ("Down", "Up", "Return", "space", "Period", "Comma",
-           "Escape", "BackSpace", "F2"), a single character ("q", "r"),
-           or a shifted combo ("S-Period", "S-s").
+           "Escape", "BackSpace", "Delete", "Tab", "F1".."F12"), a single
+           character ("q", "r"), with optional modifier prefixes "S-"
+           (Shift), "C-" (Control), "A-" (Alt), combinable as "C-S-x".
 Examples:
   uv run inject_keys.py "File Manager" Down 200 5     # hold-down simulation
   uv run inject_keys.py "File Manager" S-Period 1 50  # cursor to last entry
+  uv run inject_keys.py "File Manager" C-F 1 50       # Ctrl+F
 """
 
 import sys
@@ -25,13 +27,23 @@ from Xlib import X, XK, display, protocol
 NAMED = {
     "Down": XK.XK_Down,
     "Up": XK.XK_Up,
+    "Left": XK.XK_Left,
+    "Right": XK.XK_Right,
     "Return": XK.XK_Return,
     "space": XK.XK_space,
     "Period": XK.XK_period,
     "Comma": XK.XK_comma,
     "Escape": XK.XK_Escape,
     "BackSpace": XK.XK_BackSpace,
-    "F2": XK.XK_F2,
+    "Delete": XK.XK_Delete,
+    "Tab": XK.XK_Tab,
+}
+NAMED.update({f"F{i}": getattr(XK, f"XK_F{i}") for i in range(1, 13)})
+
+MODIFIERS = {
+    "S": X.ShiftMask,
+    "C": X.ControlMask,
+    "A": X.Mod1Mask,
 }
 
 
@@ -85,8 +97,11 @@ def main():
         int(sys.argv[3]),
         float(sys.argv[4]),
     )
-    shift = keyspec.startswith("S-")
-    keyname = keyspec[2:] if shift else keyspec
+    keyname = keyspec
+    state = 0
+    while len(keyname) > 2 and keyname[1] == "-" and keyname[0] in MODIFIERS:
+        state |= MODIFIERS[keyname[0]]
+        keyname = keyname[2:]
     d = display.Display()
     root = d.screen().root
     win = find_window(d, root, title)
@@ -94,15 +109,22 @@ def main():
         print(f"ERROR: window containing '{title}' not found", file=sys.stderr)
         sys.exit(1)
     keycode = d.keysym_to_keycode(keysym_for(keyname))
-    shift_kc = d.keysym_to_keycode(XK.XK_Shift_L)
+    mod_keycodes = [
+        d.keysym_to_keycode(sym)
+        for mask, sym in (
+            (X.ShiftMask, XK.XK_Shift_L),
+            (X.ControlMask, XK.XK_Control_L),
+            (X.Mod1Mask, XK.XK_Alt_L),
+        )
+        if state & mask
+    ]
     for _ in range(count):
-        if shift:
-            send_key(d, root, win, shift_kc, True)
-        state = X.ShiftMask if shift else 0
+        for kc in mod_keycodes:
+            send_key(d, root, win, kc, True)
         send_key(d, root, win, keycode, True, state)
         send_key(d, root, win, keycode, False, state)
-        if shift:
-            send_key(d, root, win, shift_kc, False)
+        for kc in reversed(mod_keycodes):
+            send_key(d, root, win, kc, False)
         d.flush()
         if delay_ms > 0:
             time.sleep(delay_ms / 1000.0)
