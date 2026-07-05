@@ -134,23 +134,8 @@ func (sd *SortDialog) Show(parent fyne.Window, keyHandler interface{}) {
 	// Create content layout
 	content := sd.createContent()
 
-	// Create custom confirm dialog
-	sd.dialog = dialog.NewCustomConfirm(
-		"Sort Settings",
-		"Apply",
-		"Cancel",
-		content,
-		func(response bool) {
-			if response {
-				// Apply button was clicked
-				sd.applySettings()
-			} else {
-				// Cancel button was clicked
-				sd.cancel()
-			}
-		},
-		parent,
-	)
+	// Create custom dialog without stock buttons (bar lives inside content)
+	sd.dialog = dialog.NewCustomWithoutButtons("Sort Settings", content, parent)
 	sd.dialog.Resize(metricsSize(sortDialogWidth, sortDialogHeight))
 
 	// Show dialog
@@ -189,6 +174,7 @@ func (sd *SortDialog) createContent() *fyne.Container {
 		optionsContainer,
 		widget.NewSeparator(),
 		shortcutsHelp,
+		dialogButtonBar(dialogCancelButton("Cancel", sd.CancelDialog), dialogConfirmButton("Apply", sd.AcceptSettings)),
 	)
 
 	return content

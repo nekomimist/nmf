@@ -80,7 +80,7 @@ func (d *MaintenanceDialog) createWidgets() {
 		},
 	)
 
-	d.scanButton = widget.NewButtonWithIcon("Scan", theme.SearchIcon(), d.Scan)
+	d.scanButton = dialogAuxButton("Scan", theme.SearchIcon(), d.Scan)
 	d.applyButton = dialogConfirmButton("Apply Cleanup", d.Apply)
 	d.applyButton.Disable()
 }
@@ -121,10 +121,10 @@ func (d *MaintenanceDialog) createContent() fyne.CanvasObject {
 	listScroll := container.NewScroll(d.resultList)
 	listScroll.SetMinSize(metricsSize(maintenanceDialogWidth-60, maintenanceListHeight))
 
-	buttons := container.NewHBox(
+	buttons := dialogButtonBar(
 		d.scanButton,
-		d.applyButton,
 		dialogCancelButton("Close", d.Cancel),
+		d.applyButton,
 	)
 
 	return container.NewBorder(

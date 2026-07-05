@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/fileinfo"
@@ -189,10 +190,10 @@ func (fm *FileManager) showDropActionDialog(paths []string, dest string) {
 	content := container.NewVBox(
 		summary,
 		targetsScroll,
-		container.NewGridWithColumns(3,
-			widget.NewButton("Copy", func() { queue(ui.OpCopy) }),
-			widget.NewButton("Move", func() { queue(ui.OpMove) }),
-			widget.NewButton("Cancel", closeDialog),
+		ui.DialogButtonBar(
+			ui.DialogAuxButton("Copy", theme.ContentCopyIcon(), func() { queue(ui.OpCopy) }),
+			ui.DialogAuxButton("Move", theme.ContentCutIcon(), func() { queue(ui.OpMove) }),
+			ui.DialogCancelButton("Cancel", closeDialog),
 		),
 	)
 

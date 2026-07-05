@@ -257,10 +257,10 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 	// Create main content
 	content := container.NewBorder(
 		buttonPanel, // top
-		nil,         // bottom
-		nil,         // left
-		nil,         // right
-		treeScroll,  // center
+		dialogButtonBar(dialogCancelButton("Cancel", dtd.CancelDialog), dialogConfirmButton("OK", dtd.AcceptSelection)), // bottom
+		nil,        // left
+		nil,        // right
+		treeScroll, // center
 	)
 
 	// Set minimum size for the entire content
@@ -281,20 +281,7 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 	dtd.sink = NewKeySink(content, dtd.keyManager, WithTabCapture(true))
 
 	// Create dialog with custom content (wrapped by sink)
-	dtd.dialog = dialog.NewCustomConfirm(
-		"Select Directory",
-		"OK",
-		"Cancel",
-		dtd.sink,
-		func(response bool) {
-			if response {
-				dtd.AcceptSelection()
-			} else {
-				dtd.CancelDialog()
-			}
-		},
-		parent,
-	)
+	dtd.dialog = dialog.NewCustomWithoutButtons("Select Directory", dtd.sink, parent)
 
 	// Show the dialog
 	dtd.dialog.Show()

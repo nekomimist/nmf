@@ -8,7 +8,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -71,7 +70,7 @@ func NewJobsWindow(app fyne.App, debugPrint func(format string, args ...interfac
 	}
 
 	// Buttons
-	cancelBtn := widget.NewButtonWithIcon("Cancel Selected", theme.CancelIcon(), func() { jd.cancelSelected() })
+	cancelBtn := dialogAuxButton("Cancel Selected", theme.CancelIcon(), func() { jd.cancelSelected() })
 	closeBtn := dialogConfirmButton("Close", func() {
 		jd.Close()
 	})
@@ -83,7 +82,7 @@ func NewJobsWindow(app fyne.App, debugPrint func(format string, args ...interfac
 	detailsScroll.SetMinSize(metricsSize(jobsDetailsWidth, jobsDetailsHeight))
 	split := container.NewVSplit(dialogListThemeOverride(jd.list), detailsScroll)
 	split.Offset = 0.5
-	bottom := container.NewHBox(layout.NewSpacer(), cancelBtn, closeBtn)
+	bottom := dialogButtonBar(cancelBtn, closeBtn)
 	content := container.NewBorder(container.NewVBox(header), bottom, nil, nil, split)
 
 	handler := keymanager.NewJobsDialogKeyHandler(jd, jd.debugPrint)

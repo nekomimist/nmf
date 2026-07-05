@@ -195,14 +195,30 @@ Dialog sizing:
 - Navigation History, Copy/Move, Compare Directories, Tree Dialog, and
   Directory Jump keep their previous fixed widths as minimums, then expand
   horizontally to about 90% of the parent File Manager canvas when opened.
-- These dialogs keep their existing fixed heights. Standard OK/Cancel button
-  rows are left to Fyne's dialog layout so buttons stay at their natural size
-  instead of stretching with the content width.
+- These dialogs keep their existing fixed heights.
 - Rename opts into responsive one-line editing width separately: the dialog
   keeps the default line-edit width as its minimum, expands to about 70% of the
   parent width, and caps at 960px. Other line-edit dialogs stay fixed width.
 - The built-in viewer has its own parent-size ratio and
   `viewer.maxWidth`/`viewer.maxHeight` caps.
+
+Dialog button bar:
+
+- Every dialog (and the Jobs window) builds its bottom action row via
+  `dialogButtonBar` (`internal/ui/dialog_buttons.go`): buttons are centered as
+  a group, each with a minimum-width floor (`dialogButtonMinWidth`) — longer
+  labels grow naturally and are never clipped.
+- Order is `[auxiliary...] [Cancel/dismiss] [Affirmative, rightmost]`.
+  `HighImportance` (blue) marks the default action activated by Enter —
+  normally the rightmost affirmative (`ConfirmIcon`); cancel =
+  `CancelIcon`+default importance. When the safe action is the Enter default
+  (Quit with active jobs), the cancel button carries `HighImportance` instead
+  and the destructive affirmative uses `WarningIcon`+`DangerImportance`,
+  still rightmost. A lone dismiss with no separate affirmative (Jobs window
+  "Close") is the default and styled accordingly.
+- Dialogs now uniformly use `dialog.NewCustomWithoutButtons`; the button bar
+  lives inside the `KeySink`-wrapped content and calls the same methods the
+  keymanager handlers invoke, so keyboard and mouse activation stay in sync.
 
 Built-in file viewer:
 

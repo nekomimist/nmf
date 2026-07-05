@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
@@ -31,7 +32,7 @@ func (p *ArchivePasswordProvider) GetArchivePassword(ctx context.Context, req fi
 
 	fyne.Do(func() {
 		passEntry := widget.NewPasswordEntry()
-		var form dialog.Dialog
+		var d dialog.Dialog
 		finish := func(ok bool) {
 			finishOnce.Do(func() {
 				defer close(done)
@@ -49,8 +50,8 @@ func (p *ArchivePasswordProvider) GetArchivePassword(ctx context.Context, req fi
 		passEntry.SetPlaceHolder("password")
 		passEntry.OnSubmitted = func(string) {
 			finish(true)
-			if form != nil {
-				form.Hide()
+			if d != nil {
+				d.Hide()
 			}
 		}
 		passEntry.OnChanged = func(string) {
@@ -69,20 +70,26 @@ func (p *ArchivePasswordProvider) GetArchivePassword(ctx context.Context, req fi
 			label = req.Format + " Password"
 		}
 
-		form = dialog.NewForm(
-			title,
-			"Open",
-			"Cancel",
-			[]*widget.FormItem{
-				widget.NewFormItem(label, passEntry),
-			},
-			func(ok bool) {
-				finish(ok)
-			},
-			p.parent,
+		cancelBtn := dialogCancelButton("Cancel", func() {
+			finish(false)
+			if d != nil {
+				d.Hide()
+			}
+		})
+		openBtn := dialogConfirmButton("Open", func() {
+			finish(true)
+			if d != nil {
+				d.Hide()
+			}
+		})
+		content := container.NewVBox(
+			container.NewBorder(nil, nil, widget.NewLabel(label), nil, passEntry),
+			dialogButtonBar(cancelBtn, openBtn),
 		)
-		form.Resize(metricsSize(archivePasswordDialogWidth, archivePasswordDialogHeight))
-		form.Show()
+
+		d = dialog.NewCustomWithoutButtons(title, content, p.parent)
+		d.Resize(metricsSize(archivePasswordDialogWidth, archivePasswordDialogHeight))
+		d.Show()
 		if p.parent != nil {
 			p.parent.Canvas().Focus(passEntry)
 		}

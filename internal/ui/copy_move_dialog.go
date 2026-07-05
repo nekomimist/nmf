@@ -220,6 +220,7 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveRe
 	if d.preserveCB != nil {
 		contentObjects = append(contentObjects, d.preserveCB)
 	}
+	contentObjects = append(contentObjects, dialogButtonBar(dialogCancelButton("Cancel", d.CancelDialog), dialogConfirmButton("OK", d.AcceptSelection)))
 	content := container.NewVBox(contentObjects...)
 
 	// Push key handler and wrap content with KeySink
@@ -228,21 +229,8 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveRe
 	d.sink = NewKeySink(content, d.keyManager, WithTabCapture(true))
 	d.searchEntry.SetFocusRedirect(parent, d.sink)
 
-	// Custom confirm dialog
-	d.dialog = dialog.NewCustomConfirm(
-		fmt.Sprintf("%s To...", strings.Title(string(d.op))),
-		"OK",
-		"Cancel",
-		d.sink,
-		func(resp bool) {
-			if resp {
-				d.AcceptSelection()
-			} else {
-				d.CancelDialog()
-			}
-		},
-		parent,
-	)
+	// Custom dialog without stock buttons (bar lives inside content)
+	d.dialog = dialog.NewCustomWithoutButtons(fmt.Sprintf("%s To...", strings.Title(string(d.op))), d.sink, parent)
 	d.dialog.Show()
 	if d.parent != nil && d.sink != nil {
 		d.parent.Canvas().Focus(d.sink)

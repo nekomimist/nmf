@@ -174,6 +174,7 @@ func (d *CompareDialog) ShowDialog(parent fyne.Window, onAccept func(CompareResu
 		widget.NewSeparator(),
 		searchSection,
 		fixed,
+		dialogButtonBar(dialogCancelButton("Cancel", d.CancelDialog), dialogConfirmButton("Compare", d.AcceptSelection)),
 	)
 
 	handler := keymanager.NewCompareDialogKeyHandler(d, d.debugPrint)
@@ -181,20 +182,7 @@ func (d *CompareDialog) ShowDialog(parent fyne.Window, onAccept func(CompareResu
 	d.sink = NewKeySink(content, d.keyManager, WithTabCapture(true))
 	d.searchEntry.SetFocusRedirect(parent, d.sink)
 
-	d.dialog = dialog.NewCustomConfirm(
-		"Compare Directories",
-		"Compare",
-		"Cancel",
-		d.sink,
-		func(resp bool) {
-			if resp {
-				d.AcceptSelection()
-			} else {
-				d.CancelDialog()
-			}
-		},
-		parent,
-	)
+	d.dialog = dialog.NewCustomWithoutButtons("Compare Directories", d.sink, parent)
 	d.dialog.Show()
 	if d.parent != nil && d.sink != nil {
 		d.parent.Canvas().Focus(d.sink)

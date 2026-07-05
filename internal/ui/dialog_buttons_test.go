@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -35,17 +36,11 @@ func TestDialogButtonRowUsesCancelAndPrimaryConfirmButtons(t *testing.T) {
 
 func TestDialogOKButtonRowUsesPrimaryConfirmButton(t *testing.T) {
 	row := dialogOKButtonRow(func() {})
-	container, ok := row.(*fyne.Container)
-	if !ok {
-		t.Fatalf("row type = %T, want *fyne.Container", row)
+	buttons := barButtons(t, row)
+	if len(buttons) != 1 {
+		t.Fatalf("button count = %d, want 1", len(buttons))
 	}
-	if len(container.Objects) != 1 {
-		t.Fatalf("button count = %d, want 1", len(container.Objects))
-	}
-	button, ok := container.Objects[0].(*widget.Button)
-	if !ok {
-		t.Fatalf("button type = %T, want *widget.Button", container.Objects[0])
-	}
+	button := buttons[0]
 	if button.Text != "OK" {
 		t.Fatalf("button text = %q, want OK", button.Text)
 	}
@@ -57,22 +52,117 @@ func TestDialogOKButtonRowUsesPrimaryConfirmButton(t *testing.T) {
 	}
 }
 
-func rowButtons(t *testing.T, row interface{}) (*widget.Button, *widget.Button) {
+func TestDialogButtonBarAppliesMinWidthFloor(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	button := widget.NewButtonWithIcon("OK", theme.ConfirmIcon(), func() {})
+	bar := dialogButtonBar(button)
+	wrappers := barWrappers(t, bar)
+	if len(wrappers) != 1 {
+		t.Fatalf("wrapper count = %d, want 1", len(wrappers))
+	}
+
+	rawWidth := button.MinSize().Width
+	gotWidth := wrappers[0].MinSize().Width
+	if gotWidth != dialogButtonMinWidth {
+		t.Fatalf("wrapper MinSize().Width = %v, want %v", gotWidth, dialogButtonMinWidth)
+	}
+	if gotWidth < rawWidth {
+		t.Fatalf("wrapper MinSize().Width = %v, want >= raw button width %v", gotWidth, rawWidth)
+	}
+}
+
+func TestDialogButtonBarDoesNotCapLongLabels(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	button := widget.NewButtonWithIcon("This Is A Deliberately Long Label", theme.ConfirmIcon(), func() {})
+	bar := dialogButtonBar(button)
+	wrappers := barWrappers(t, bar)
+	if len(wrappers) != 1 {
+		t.Fatalf("wrapper count = %d, want 1", len(wrappers))
+	}
+
+	rawWidth := button.MinSize().Width
+	if rawWidth <= dialogButtonMinWidth {
+		t.Fatalf("raw button width = %v, want > floor %v for this test to be meaningful", rawWidth, dialogButtonMinWidth)
+	}
+	if got := wrappers[0].MinSize().Width; got != rawWidth {
+		t.Fatalf("wrapper MinSize().Width = %v, want unchanged raw width %v", got, rawWidth)
+	}
+}
+
+func TestDialogButtonBarPreservesOrder(t *testing.T) {
+	first := widget.NewButton("First", func() {})
+	second := widget.NewButton("Second", func() {})
+	third := widget.NewButton("Third", func() {})
+
+	bar := dialogButtonBar(first, second, third)
+	buttons := barButtons(t, bar)
+	if len(buttons) != 3 {
+		t.Fatalf("button count = %d, want 3", len(buttons))
+	}
+	want := []string{"First", "Second", "Third"}
+	for i, b := range buttons {
+		if b.Text != want[i] {
+			t.Fatalf("button[%d] text = %q, want %q", i, b.Text, want[i])
+		}
+	}
+}
+
+// barWrappers peels a dialogButtonBar's Center -> HBox nesting and returns
+// the per-button minWidth wrapper containers, in bar order.
+func barWrappers(t *testing.T, bar fyne.CanvasObject) []*fyne.Container {
 	t.Helper()
-	container, ok := row.(*fyne.Container)
+	center, ok := bar.(*fyne.Container)
 	if !ok {
-		t.Fatalf("row type = %T, want *fyne.Container", row)
+		t.Fatalf("bar type = %T, want *fyne.Container", bar)
 	}
-	if len(container.Objects) != 2 {
-		t.Fatalf("button count = %d, want 2", len(container.Objects))
+	if len(center.Objects) != 1 {
+		t.Fatalf("center object count = %d, want 1", len(center.Objects))
 	}
-	cancel, ok := container.Objects[0].(*widget.Button)
+	hbox, ok := center.Objects[0].(*fyne.Container)
 	if !ok {
-		t.Fatalf("cancel type = %T, want *widget.Button", container.Objects[0])
+		t.Fatalf("hbox type = %T, want *fyne.Container", center.Objects[0])
 	}
-	confirm, ok := container.Objects[1].(*widget.Button)
-	if !ok {
-		t.Fatalf("confirm type = %T, want *widget.Button", container.Objects[1])
+	wrappers := make([]*fyne.Container, len(hbox.Objects))
+	for i, obj := range hbox.Objects {
+		wrapper, ok := obj.(*fyne.Container)
+		if !ok {
+			t.Fatalf("wrapper %d type = %T, want *fyne.Container", i, obj)
+		}
+		wrappers[i] = wrapper
 	}
-	return cancel, confirm
+	return wrappers
+}
+
+// barButtons peels wrapper containers down to their wrapped buttons, in
+// bar order.
+func barButtons(t *testing.T, bar fyne.CanvasObject) []*widget.Button {
+	t.Helper()
+	wrappers := barWrappers(t, bar)
+	buttons := make([]*widget.Button, len(wrappers))
+	for i, wrapper := range wrappers {
+		if len(wrapper.Objects) != 1 {
+			t.Fatalf("wrapper %d object count = %d, want 1", i, len(wrapper.Objects))
+		}
+		button, ok := wrapper.Objects[0].(*widget.Button)
+		if !ok {
+			t.Fatalf("wrapper %d child type = %T, want *widget.Button", i, wrapper.Objects[0])
+		}
+		buttons[i] = button
+	}
+	return buttons
+}
+
+// rowButtons is a convenience wrapper for the common two-button case (used
+// by dialog_buttons_test.go and quit_dialog_test.go).
+func rowButtons(t *testing.T, row fyne.CanvasObject) (*widget.Button, *widget.Button) {
+	t.Helper()
+	buttons := barButtons(t, row)
+	if len(buttons) != 2 {
+		t.Fatalf("button count = %d, want 2", len(buttons))
+	}
+	return buttons[0], buttons[1]
 }

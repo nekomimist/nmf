@@ -127,6 +127,7 @@ func (d *ConflictDialog) ShowDialog(parent fyne.Window, callback func(jobs.Confl
 		d.applyRest,
 		d.errorLabel,
 		widget.NewLabel(""),
+		dialogButtonBar(dialogCancelButton("Cancel Job", d.CancelJob), dialogConfirmButton("Continue", d.Continue)),
 	)
 
 	handler := keymanager.NewConflictDialogKeyHandler(d)
@@ -139,20 +140,7 @@ func (d *ConflictDialog) ShowDialog(parent fyne.Window, callback func(jobs.Confl
 		dialogContent = d.sink
 	}
 
-	d.dialog = dialog.NewCustomConfirm(
-		"Name conflict",
-		"Continue",
-		"Cancel Job",
-		dialogContent,
-		func(ok bool) {
-			if ok {
-				d.Continue()
-			} else {
-				d.CancelJob()
-			}
-		},
-		parent,
-	)
+	d.dialog = dialog.NewCustomWithoutButtons("Name conflict", dialogContent, parent)
 	d.dialog.SetOnClosed(func() {
 		d.CancelJob()
 	})

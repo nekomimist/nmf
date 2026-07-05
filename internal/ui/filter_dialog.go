@@ -253,8 +253,8 @@ func (fd *FilterDialog) ShowDialog(parent fyne.Window, callback func(*config.Fil
 
 	// Create main content
 	content := container.NewBorder(
-		container.NewVBox(titleLabel, searchSection, fd.previewLabel), // top
-		nil,            // bottom
+		container.NewVBox(titleLabel, searchSection, fd.previewLabel),                                                 // top
+		dialogButtonBar(dialogCancelButton("Cancel", fd.CancelDialog), dialogConfirmButton("OK", fd.AcceptSelection)), // bottom
 		nil,            // left
 		nil,            // right
 		fixedContainer, // center - fixed size container
@@ -279,20 +279,7 @@ func (fd *FilterDialog) ShowDialog(parent fyne.Window, callback func(*config.Fil
 	fd.searchEntry.SetFocusRedirect(parent, fd.sink)
 
 	// Create custom dialog with proper focus handling (wrapped by sink)
-	fd.dialog = dialog.NewCustomConfirm(
-		"Apply Filter",
-		"OK",
-		"Cancel",
-		fd.sink,
-		func(response bool) {
-			if response {
-				fd.AcceptSelection()
-			} else {
-				fd.CancelDialog()
-			}
-		},
-		parent,
-	)
+	fd.dialog = dialog.NewCustomWithoutButtons("Apply Filter", fd.sink, parent)
 
 	// Show dialog and ensure focus stays on sink so KeyManager gets keys
 	fd.dialog.Show()

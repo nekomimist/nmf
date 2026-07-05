@@ -238,7 +238,7 @@ func (d *DirectoryJumpDialog) ShowDialog(parent fyne.Window, callback func(strin
 
 	content := container.NewBorder(
 		container.NewVBox(titleLabel, searchSection),
-		nil,
+		dialogButtonBar(dialogCancelButton("Cancel", d.CancelDialog), dialogConfirmButton("OK", d.AcceptSelection)),
 		nil,
 		nil,
 		fixedContainer,
@@ -254,20 +254,7 @@ func (d *DirectoryJumpDialog) ShowDialog(parent fyne.Window, callback func(strin
 	d.sink = NewKeySink(content, d.keyManager, WithTabCapture(true))
 	d.searchEntry.SetFocusRedirect(parent, d.sink)
 
-	d.dialog = dialog.NewCustomConfirm(
-		"Jump To Directory",
-		"OK",
-		"Cancel",
-		d.sink,
-		func(response bool) {
-			if response {
-				d.AcceptSelection()
-			} else {
-				d.CancelDialog()
-			}
-		},
-		parent,
-	)
+	d.dialog = dialog.NewCustomWithoutButtons("Jump To Directory", d.sink, parent)
 
 	d.dialog.Show()
 	if d.parent != nil && d.sink != nil {

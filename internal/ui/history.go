@@ -277,7 +277,7 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 	// Create main content
 	content := container.NewBorder(
 		container.NewVBox(titleLabel, searchSection), // top
-		nil,            // bottom
+		dialogButtonBar(dialogCancelButton("Cancel", nhd.CancelDialog), dialogConfirmButton("OK", nhd.AcceptSelection)), // bottom
 		nil,            // left
 		nil,            // right
 		fixedContainer, // center - fixed size container
@@ -304,20 +304,7 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 	nhd.searchEntry.SetFocusRedirect(parent, nhd.sink)
 
 	// Create custom dialog with proper focus handling (wrapped by sink)
-	nhd.dialog = dialog.NewCustomConfirm(
-		"Select Directory",
-		"OK",
-		"Cancel",
-		nhd.sink,
-		func(response bool) {
-			if response {
-				nhd.AcceptSelection()
-			} else {
-				nhd.CancelDialog()
-			}
-		},
-		parent,
-	)
+	nhd.dialog = dialog.NewCustomWithoutButtons("Select Directory", nhd.sink, parent)
 
 	// Show dialog and ensure focus stays on sink so KeyManager gets keys
 	nhd.dialog.Show()

@@ -8,7 +8,6 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/keymanager"
@@ -97,22 +96,13 @@ func (qcd *QuitConfirmDialog) buttonTexts() (confirmText string, cancelText stri
 
 func (qcd *QuitConfirmDialog) buttonRow() fyne.CanvasObject {
 	confirmText, cancelText := qcd.buttonTexts()
+	cancel := dialogCancelButton(cancelText, qcd.CancelQuit)
 	if qcd.activeJobs <= 0 {
-		return container.NewGridWithColumns(
-			2,
-			dialogCancelButton(cancelText, qcd.CancelQuit),
-			dialogConfirmButton(confirmText, qcd.ConfirmQuit),
-		)
+		return dialogButtonBar(cancel, dialogConfirmButton(confirmText, qcd.ConfirmQuit))
 	}
-	quitAnyway := widget.NewButtonWithIcon(confirmText, theme.WarningIcon(), qcd.ConfirmQuit)
-	quitAnyway.Importance = widget.WarningImportance
-	no := dialogCancelButton(cancelText, qcd.CancelQuit)
-	no.Importance = widget.HighImportance
-	return container.NewGridWithColumns(
-		2,
-		quitAnyway,
-		no,
-	)
+	// With active jobs, Enter runs CancelQuit; blue marks that default.
+	cancel.Importance = widget.HighImportance
+	return dialogButtonBar(cancel, dialogDangerButton(confirmText, qcd.ConfirmQuit))
 }
 
 func quitDialogSpacer(height float32) fyne.CanvasObject {

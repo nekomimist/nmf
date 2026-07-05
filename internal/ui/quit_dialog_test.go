@@ -52,17 +52,17 @@ func TestQuitConfirmDialogButtonOrderWithActiveJobs(t *testing.T) {
 	dialog := NewQuitConfirmDialog(nil, func(string, ...interface{}) {}, 1)
 	left, right := rowButtons(t, dialog.buttonRow())
 
-	if left.Text != "Quit Anyway" || right.Text != "No" {
-		t.Fatalf("button order = %q/%q, want Quit Anyway/No", left.Text, right.Text)
+	if left.Text != "No" || right.Text != "Quit Anyway" {
+		t.Fatalf("button order = %q/%q, want No/Quit Anyway", left.Text, right.Text)
 	}
-	if left.Importance != widget.WarningImportance {
-		t.Fatalf("Quit Anyway importance = %v, want warning", left.Importance)
+	if left.Importance != widget.HighImportance {
+		t.Fatalf("No importance = %v, want high (Enter default) with active jobs", left.Importance)
 	}
-	if left.Icon == nil || left.Icon.Name() != theme.WarningIcon().Name() {
-		t.Fatalf("Quit Anyway icon = %v, want warning icon", left.Icon)
+	if right.Importance != widget.DangerImportance {
+		t.Fatalf("Quit Anyway importance = %v, want danger", right.Importance)
 	}
-	if right.Importance != widget.HighImportance {
-		t.Fatalf("No importance = %v, want high", right.Importance)
+	if right.Icon == nil || right.Icon.Name() != theme.WarningIcon().Name() {
+		t.Fatalf("Quit Anyway icon = %v, want warning icon", right.Icon)
 	}
 }
 
