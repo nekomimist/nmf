@@ -51,7 +51,8 @@ v2.7.3 (VFS with local/SMB/archive support, background jobs, multi-window).
 - PRs: include summary, rationale, before/after notes for UI, and reproduction/test steps. Link issues when available; add screenshots/GIFs for visual changes.
 
 ## Configuration Tips
-- Config file: OS‑specific path ending in `config.json` (XDG/AppData conventions). Use `internal/config.Manager` to load/save.
+- Config file: OS‑specific path ending in `config.json` (XDG/AppData conventions). Use `internal/config.Manager` to load it; it is read-only from the app (never saved back to).
+- Runtime state (cursor memory, navigation history, file filter history, last-applied sort) lives in a separate `state.json`, managed by `internal/config.StateManager`; see "Runtime State" in `docs/configuration.md`.
 - Debugging: run `go run . -d` or `./dist/nmf -d` after `make build` to enable verbose logs via `debugPrint`.
 - Config schema source of truth: `internal/config/config.go`.
 - Default main-screen key bindings: `defaultMainScreenBindings()` in

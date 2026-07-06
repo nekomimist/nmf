@@ -8,7 +8,10 @@ NMF loads `config.json` from the OS-specific app config directory:
 - Windows: `%APPDATA%\nekomimist\nmf\config.json`
 
 The schema source of truth is `internal/config/config.go`. Missing fields use
-defaults, and some runtime state is saved back into this file.
+defaults. `config.json` is read-only from the app's point of view: NMF never
+writes to it. Frequently-changing runtime state (remembered cursor positions,
+navigation history, file filter history, and the last-applied sort) instead
+lives in a separate `state.json`; see [Runtime State](#runtime-state) below.
 
 After `config.json` is loaded, NMF also loads an optional `init.star` from the
 same directory. Starlark settings overlay JSON for the current run and can define
@@ -243,24 +246,91 @@ default even when `value` is set.
 
 ## Runtime State
 
-These fields are managed by the app and normally do not need manual editing:
+NMF persists frequently-changing runtime state — remembered cursor positions,
+navigation history (including saved History Jump paths), file filter history
+plus the currently applied filter, and the last-applied sort — to a separate
+`state.json` file, not to `config.json`. `config.json` is never written to by
+the app.
 
-- `ui.cursorMemory`: remembered cursor positions per directory.
-- `ui.navigationHistory`: recent navigation paths plus saved History Jump paths.
-- `ui.fileFilter`: filter history and current filter state.
+`state.json` location:
 
-If manually editing them, preserve their JSON shape:
+- Linux/Unix: `$XDG_STATE_HOME/nekomimist/nmf/state.json`, or
+  `~/.local/state/nekomimist/nmf/state.json`
+- macOS: `~/Library/Application Support/nekomimist/nmf/state.json`
+- Windows: `%LOCALAPPDATA%\nekomimist\nmf\state.json`
 
+Saves are debounced (~500ms after the last change) and written atomically
+(temp file, then rename), and pending writes are flushed on shutdown.
+
+Shape of `state.json`:
+
+```json
+{
+  "cursorMemory": {
+    "entries": {},
+    "lastUsed": {}
+  },
+  "navigationHistory": {
+    "entries": [],
+    "lastUsed": {},
+    "useCount": {},
+    "pinned": []
+  },
+  "fileFilter": {
+    "entries": [],
+    "current": null,
+    "enabled": false
+  },
+  "sort": {
+    "sortBy": "name",
+    "sortOrder": "asc",
+    "directoriesFirst": true
+  }
+}
+```
+
+- `cursorMemory.entries`/`lastUsed`: remembered cursor file name per
+  directory, and its LRU timestamp. The entry limit is
+  `ui.cursorMemory.maxEntries` (in `config.json`).
+- `navigationHistory.entries`/`lastUsed`/`useCount`: visited-path history,
+  shown sorted by zoxide-style frecency. `useCount` stores usage counters;
+  missing values are migrated to `1`. The entry limit is
+  `ui.navigationHistory.maxEntries` (in `config.json`).
+- `navigationHistory.pinned`: saved History Jump paths. They are shown before
+  regular history and are never pruned by `maxEntries`.
+- `fileFilter.entries`/`current`/`enabled`: filter history, the currently
+  applied filter, and whether it is enabled. Entries use `pattern`,
+  `lastUsed`, and `useCount`; text after `;;` in a pattern is a searchable
+  comment, and only the text before `;;` is used for matching. The entry
+  limit is `ui.fileFilter.maxEntries` (in `config.json`).
+- `sort`: the sort last applied through the Sort dialog, omitted until a sort
+  has been applied. While present, it overrides `ui.sort` from `config.json`;
+  `config.json`'s `ui.sort` is only used as the initial default before any
+  sort has been applied, or after the `sort` key is removed from
+  `state.json`.
 - history timestamps use Go's JSON `time.Time` format.
-- navigation history `useCount` stores frecency usage counters; missing values
-  are migrated to `1`.
-- `navigationHistory.pinned` stores saved History Jump paths. They are shown
-  before regular history and are not pruned by `maxEntries`.
-- `fileFilter.entries` and `fileFilter.current` use `pattern`, `lastUsed`, and
-  `useCount`. For filter patterns, text after `;;` is treated as a searchable
-  comment; the glob matcher applies only the text before `;;`.
 - navigation history paths are normalized when recorded or shown; SMB/UNC forms
   are stored as canonical `smb://host/share/...` paths.
+
+`config.json` keeps only the entry-count knobs for these features
+(`ui.cursorMemory.maxEntries`, `ui.navigationHistory.maxEntries`,
+`ui.fileFilter.maxEntries`) plus `ui.sort`, used as described above.
+
+### Migration from older config.json
+
+Older NMF versions stored this runtime state directly in `config.json` under
+`ui.cursorMemory`, `ui.navigationHistory`, and `ui.fileFilter`. The first time
+NMF runs with no `state.json` present, it performs a one-time migration: it
+reads those legacy keys out of `config.json` (without ever writing to
+`config.json`) and uses them to seed a new `state.json`.
+
+This migration is triggered by `state.json` being absent, not by any marker
+in `config.json`. Deleting `state.json` while the old runtime keys are still
+present in `config.json` re-triggers migration and resurrects that old
+cursor/history/filter data on the next startup. To fully reset runtime state,
+also remove the old `entries`/`current`/`enabled`/etc. sub-fields from
+`ui.cursorMemory`, `ui.navigationHistory`, and `ui.fileFilter` in
+`config.json` by hand, leaving only `maxEntries` in each.
 
 ## Search Matching
 

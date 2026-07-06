@@ -6,8 +6,8 @@
 > may include breaking changes.
 
 NMF can load an optional Starlark initialization file after `config.json`.
-This gives users a programmable configuration layer while preserving the
-existing JSON file and runtime state persistence.
+This gives users a programmable configuration layer on top of the existing
+JSON file.
 
 ## Load Order
 
@@ -17,9 +17,11 @@ Startup loads configuration in this order:
 2. `config.json` from the OS-specific config directory.
 3. `init.star` from the same directory, if present.
 
-The Starlark file is an overlay. Values set by `init.star` affect the running
-app, but they are not written back into `config.json` by routine runtime saves.
-Runtime state such as cursor memory and navigation history is still saved.
+The Starlark file is an overlay: values set by `init.star` affect the running
+app only. `config.json` is read-only from the app's point of view and is
+never written back to, with or without `init.star`. Runtime state such as
+cursor memory and navigation history is saved separately, to `state.json`;
+see "Runtime State" in `docs/configuration.md`.
 
 Paths:
 
@@ -357,7 +359,8 @@ Command-only helpers:
 - `nmf.current_sort()` returns the active file-list sort as a struct with
   `by`, `order`, and `directories_first` fields.
 - `nmf.sort(..., temporary = True)` re-sorts the active file list without
-  changing configuration or saving to `config.json`. It can only be used while a
+  persisting the change to `state.json` (the sort last applied through the
+  Sort dialog is what's normally saved there). It can only be used while a
   custom command is running.
 - `nmf.show_menu(name)` displays a Starlark-defined menu. It can only be used
   while a custom command is running. When launched from a key binding, the menu
@@ -383,16 +386,20 @@ the process.
 
 ## Persistence Model
 
-`config.json` remains the persistence target for runtime state and existing JSON
-settings. When `init.star` overlays a setting, NMF records that the field was
-owned by Starlark for this run. Before `Manager.Save` or `Manager.SaveAsync`
-writes a snapshot, the save transform restores Starlark-owned fields to the
-pre-overlay JSON value.
+`config.json` is read-only from the app: NMF loads it once at startup and
+never writes to it, regardless of whether `init.star` is present. There is no
+save-time reconciliation between Starlark-owned fields and JSON, because
+there is no save path for `config.json` at all. `init.star` overlays therefore
+only ever affect the current run; edit `init.star` itself for durable changes
+to the fields it sets.
 
-This prevents normal runtime saves from converting a Starlark preference into
-JSON. Runtime subfields that are not owned by Starlark, such as cursor memory
-entries, continue to be persisted.
+Runtime state — cursor memory, navigation history, file filter history, and
+the last-applied sort — is unaffected by any of this: it lives in a separate
+`state.json`, managed independently by `internal/config.StateManager`. See
+"Runtime State" in `docs/configuration.md`.
 
-If a GUI setting changes a field that `init.star` also owns during the same run,
-the Starlark overlay currently wins for persistence. Edit `init.star` for durable
-changes to Starlark-owned fields.
+Note that `nmf.sort(...)` in `init.star` sets the `ui.sort` *default*, which
+only applies while `state.json` has no `sort` override. Once a sort has been
+applied through the Sort dialog, the persisted `state.json` value takes
+precedence over the `init.star` sort on every subsequent run, until the
+`sort` key is removed from `state.json`.

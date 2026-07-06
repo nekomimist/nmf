@@ -8,7 +8,9 @@ This document describes runtime composition, package boundaries, and core state 
 
 1. `main.go`
    - Parse CLI flags (`-d`, `-path`) and normalize startup path via `resolveDirectoryPath` (`internal/fileinfo.ResolveDirectoryPath`).
-   - Load config via `internal/config.Manager`, set up configured debug logging,
+   - Load config via `internal/config.Manager`, then load runtime state via
+     `internal/config.StateManager` (migrating legacy `config.json` runtime
+     keys into `state.json` on first run), set up configured debug logging,
      then apply optional `init.star` via `internal/configscript`.
    - Create Fyne app and apply custom theme.
    - Install jobs debug hook (`internal/jobs.SetDebug`).
@@ -35,7 +37,7 @@ This document describes runtime composition, package boundaries, and core state 
 - key manager stack and search overlay
 - watcher instance and jobs indicator state
 - shared watcher hub reference
-- config/config manager handles
+- config/config manager handles, plus state/state manager handles (`state.json`)
 
 Cross-window/global state:
 
@@ -57,7 +59,8 @@ menus and outbound file dragging, are summarized in `platform-behavior.md`.
 
 ## Package Boundaries
 
-- `internal/config`: configuration schema and async persistence.
+- `internal/config`: read-only `config.json` schema/loading (`Manager`) plus
+  `state.json` runtime state and its async persistence (`StateManager`).
 - `internal/configscript`: optional Starlark overlay configuration and custom command registration.
 - `internal/fileinfo`: path resolver, VFS abstraction, platform file openers,
   bounded preview loading, SMB support, icon service.
@@ -69,7 +72,8 @@ menus and outbound file dragging, are summarized in `platform-behavior.md`.
 
 ## Configuration Model
 
-Source of truth: `internal/config/config.go`.
+Source of truth: `internal/config/config.go` (`config.json`, read-only from
+the app) and `internal/config/state.go` (`state.json`, runtime state).
 
 User-facing `config.json` syntax and examples are documented in
 `docs/configuration.md`. Optional Starlark configuration is documented in
@@ -84,9 +88,9 @@ Top-level config sections:
 - `ui`:
   - `showHiddenFiles`, `sort`, `itemSpacing`
   - `cursorStyle`
-  - `cursorMemory`
-  - `navigationHistory`
-  - `fileFilter`
+  - `cursorMemory` (`maxEntries` only; see Runtime State below)
+  - `navigationHistory` (`maxEntries` only; see Runtime State below)
+  - `fileFilter` (`maxEntries` only; see Runtime State below)
   - `directoryJumps`
   - `keyBindings`
   - `externalCommands`
@@ -100,9 +104,9 @@ maintenance tools are exposed through the `maintenance.show` command.
 If `init.star` is present next to `config.json`, it is loaded after JSON and
 before Fyne theme/window construction. Starlark can overlay all user-editable
 configuration fields, append or replace list-style configuration, and register
-`user.*` command IDs for key bindings. Config saves pass through a transform
-that restores Starlark-owned fields to the pre-overlay JSON values while
-preserving runtime state.
+`user.*` command IDs for key bindings. Since `config.json` is never written by
+the app, there is no save-time transform to reconcile Starlark-owned fields
+with JSON; the overlay only affects the running process.
 
 Configured debug logging creates one `nmf-*.log` file per startup under the
 configured log directory and prunes old matching logs. When enabled, the main
@@ -111,12 +115,41 @@ routing failures.
 
 Operational notes:
 
-- Use `Manager.SaveAsync` for interactive updates.
-- Call `Manager.Close` on shutdown to flush pending writes.
-- Navigation history keeps `lastUsed` and `useCount` runtime stats, sorts saved
-  entries by zoxide-style frecency, and defaults to retaining 10000 paths.
-  `navigationHistory.pinned` stores saved History Jump paths outside that
-  pruning limit.
+- `Manager.Load` is the only operation on `config.json`; the app never saves
+  to it.
+- Interactive updates (cursor memory, navigation history, file filter, sort)
+  go through `StateManager.SaveAsync` against `state.json` instead. See
+  "Runtime State (state.json)" below.
+
+## Runtime State (state.json)
+
+Frequently-changing runtime state that used to live in `config.json` —
+remembered cursor positions, navigation history (including pinned History
+Jump paths), file filter history plus the currently applied filter, and the
+last-applied sort — is now owned by `internal/config/state.go`'s `State`
+struct and persisted separately to `state.json`, managed by `StateManager`.
+Full JSON shape and OS-specific paths are documented in
+`docs/configuration.md`'s "Runtime State" section.
+
+- `StateManager` mirrors `Manager`'s former debounced background-save worker:
+  `SaveAsync` schedules a write coalesced over a 500ms window, `Flush` forces
+  a pending write immediately, and `Close` flushes and stops the worker.
+  `main.go` calls `stateManager.Close()` on shutdown so no in-flight state is
+  lost.
+- Writes are atomic: `saveState` marshals to a temp file in the state
+  directory, then renames it over `state.json`, so a crash mid-write cannot
+  leave a corrupt file behind.
+- One-time migration: `StateManager.Load` seeds `state.json` from legacy
+  runtime keys in `config.json` only when `state.json` does not yet exist,
+  then writes `state.json` so its existence marks the migration as done.
+  `config.json` is never modified by this process; deleting `state.json`
+  while old runtime keys remain in `config.json` re-runs the migration.
+- Sort precedence: `State.EffectiveSort` returns `state.Sort` when a sort has
+  been applied via the Sort dialog, otherwise falls back to `config.json`'s
+  `ui.sort`. Navigation history keeps `lastUsed` and `useCount` runtime
+  stats, sorts saved entries by zoxide-style frecency, and defaults to
+  retaining 10000 paths; `navigationHistory.pinned` stores saved History Jump
+  paths outside that pruning limit.
 
 ## Architecture Invariants
 
