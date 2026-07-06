@@ -11,7 +11,13 @@ import (
 	"nmf/internal/ui"
 )
 
-func showStartupConfigScriptErrorAndExit(cfg *config.Config, err error) {
+// showStartupErrorAndExit shows a modal error dialog in a transient Fyne app
+// and blocks until it is dismissed. cfg may be nil; defaults are used for theming.
+func showStartupErrorAndExit(cfg *config.Config, title, message string) {
+	if cfg == nil {
+		cfg = config.Default()
+	}
+
 	fyneApp := fyneapp.NewWithID(appID)
 	fyneApp.SetIcon(appIconResource)
 	fyneApp.Settings().SetTheme(customtheme.NewCustomTheme(cfg, debugPrint))
@@ -25,8 +31,8 @@ func showStartupConfigScriptErrorAndExit(cfg *config.Config, err error) {
 
 	ui.ShowCompactMessageDialogWithOnClose(
 		window,
-		"init.star error",
-		startupConfigScriptErrorMessage(err),
+		title,
+		message,
 		func() {
 			fyneApp.Quit()
 		},
@@ -34,8 +40,17 @@ func showStartupConfigScriptErrorAndExit(cfg *config.Config, err error) {
 	fyneApp.Run()
 }
 
+func showStartupConfigScriptErrorAndExit(cfg *config.Config, err error) {
+	showStartupErrorAndExit(cfg, "init.star error", startupConfigScriptErrorMessage(err))
+}
+
+// startupFailureMessage formats a startup failure for the error dialog.
+func startupFailureMessage(what string, err error) string {
+	return fmt.Sprintf("%s.\n\n%s\n\nnmf will exit.", what, err)
+}
+
 func startupConfigScriptErrorMessage(err error) string {
-	return fmt.Sprintf("Failed to load init.star.\n\n%s\n\nnmf will exit.", err)
+	return startupFailureMessage("Failed to load init.star", err)
 }
 
 func startupErrorWindowSize() fyne.Size {

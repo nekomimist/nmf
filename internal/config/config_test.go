@@ -580,3 +580,20 @@ func TestManagerLoadReadsHandWrittenConfigFile(t *testing.T) {
 		t.Errorf("Expected loaded directory jumps to preserve order and value, got %+v", loadedConfig.UI.DirectoryJumps.Entries)
 	}
 }
+
+func TestManagerLoadRejectsCorruptExistingConfigFile(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "test_config.json")
+
+	if err := os.WriteFile(configPath, []byte("{not valid json"), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	dummyDebugPrint := func(format string, args ...interface{}) {}
+	manager := NewManager(dummyDebugPrint)
+	manager.configPath = configPath
+
+	if _, err := manager.Load(); err == nil {
+		t.Fatal("expected error loading corrupt config.json")
+	}
+}

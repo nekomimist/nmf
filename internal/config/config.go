@@ -445,6 +445,11 @@ func cloneThemeColorConfig(src ThemeColorConfig) ThemeColorConfig {
 	return clone
 }
 
+// Default returns the default configuration without reading any file.
+func Default() *Config {
+	return getDefaultConfig()
+}
+
 // getDefaultConfig returns the default configuration
 func getDefaultConfig() *Config {
 	return &Config{

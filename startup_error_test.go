@@ -19,3 +19,17 @@ func TestStartupConfigScriptErrorMessage(t *testing.T) {
 		}
 	}
 }
+
+func TestStartupFailureMessage(t *testing.T) {
+	msg := startupFailureMessage("Failed to load config.json", errors.New("open config.json: permission denied"))
+
+	for _, want := range []string{
+		"Failed to load config.json",
+		"open config.json: permission denied",
+		"nmf will exit.",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("startupFailureMessage() = %q, want %q", msg, want)
+		}
+	}
+}

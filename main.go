@@ -79,7 +79,9 @@ func main() {
 	var debugLogFile *os.File
 	debugLogFile, err := setupDebugLogging(debugLogPath)
 	if err != nil {
-		log.Fatalf("Error opening debug log '%s': %v", debugLogPath, err)
+		log.Printf("Error opening debug log '%s': %v", debugLogPath, err)
+		showStartupErrorAndExit(nil, "startup error", startupFailureMessage(fmt.Sprintf("Failed to open debug log '%s'", debugLogPath), err))
+		return
 	}
 	if debugLogFile == nil {
 		debugPrint("App: version=%s", appVersion())
@@ -102,7 +104,9 @@ func main() {
 	configManager := config.NewManager(debugPrint)
 	cfg, err := configManager.Load()
 	if err != nil {
-		log.Fatalf("Error loading configuration: %v", err)
+		log.Printf("Error loading configuration: %v", err)
+		showStartupErrorAndExit(nil, "config.json error", startupFailureMessage("Failed to load config.json", err))
+		return
 	}
 
 	// Load runtime state (state.json), migrating legacy config.json runtime
@@ -112,7 +116,9 @@ func main() {
 	stateManager := config.NewStateManager(debugPrint)
 	state, err := stateManager.Load(configManager.ConfigPath())
 	if err != nil {
-		log.Fatalf("Error loading runtime state: %v", err)
+		log.Printf("Error loading runtime state: %v", err)
+		showStartupErrorAndExit(cfg, "state.json error", startupFailureMessage("Failed to load runtime state (state.json)", err))
+		return
 	}
 	defer func() {
 		if err := stateManager.Close(); err != nil {
@@ -152,7 +158,9 @@ func main() {
 		return nil
 	}
 	if err := applyConfigDebug(cfg.Debug); err != nil {
-		log.Fatalf("Error opening configured debug log: %v", err)
+		log.Printf("Error opening configured debug log: %v", err)
+		showStartupErrorAndExit(cfg, "startup error", startupFailureMessage("Failed to open configured debug log", err))
+		return
 	}
 	displayInfo := display.Primary(debugPrint)
 	configScript, err := configscript.LoadWithDisplayAndDebugHook(configscript.ScriptPath(configManager.ConfigPath()), cfg, displayInfo, debugPrint, applyConfigDebug)
@@ -167,11 +175,15 @@ func main() {
 	}
 	startPath, err = selectStartupPath(startPath, cliStartPath, cfg)
 	if err != nil {
-		log.Fatalf("Error selecting startup path: %v", err)
+		log.Printf("Error selecting startup path: %v", err)
+		showStartupErrorAndExit(cfg, "startup error", startupFailureMessage("Failed to select startup path", err))
+		return
 	}
 	resolvedStartPath, _, err := resolveDirectoryPath(startPath)
 	if err != nil {
-		log.Fatalf("Error accessing path '%s': %v", startPath, err)
+		log.Printf("Error accessing path '%s': %v", startPath, err)
+		showStartupErrorAndExit(cfg, "startup error", startupFailureMessage(fmt.Sprintf("Failed to access path '%s'", startPath), err))
+		return
 	}
 	startPath = resolvedStartPath
 	ime.SetEnabled(cfg.UI.IME.Enabled)
