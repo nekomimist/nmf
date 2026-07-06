@@ -11,18 +11,19 @@ func TestCreateDirectoryAddsNewPathToNavigationHistory(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.UI.NavigationHistory = config.NavigationHistoryConfig{
 		MaxEntries: 100,
-		Entries:    []string{},
 	}
+	st := &config.State{}
 	fm := &FileManager{
 		currentPath: tmpDir,
 		config:      cfg,
+		state:       st,
 	}
 
 	if !fm.CreateDirectory("created") {
 		t.Fatal("CreateDirectory returned false")
 	}
 
-	history := cfg.GetNavigationHistory()
+	history := st.GetNavigationHistory()
 	if len(history) == 0 {
 		t.Fatal("navigation history is empty")
 	}

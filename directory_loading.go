@@ -24,10 +24,11 @@ func (fm *FileManager) SaveCursorPosition(dirPath string) {
 	}
 
 	fileName := fm.files[currentIdx].Name
-	cursorMemory := &fm.config.UI.CursorMemory
+	cursorMemory := &fm.state.CursorMemory
+	maxEntries := fm.config.UI.CursorMemory.MaxEntries
 
 	// Clean up old entries if we exceed max entries
-	if len(cursorMemory.Entries) >= cursorMemory.MaxEntries {
+	if len(cursorMemory.Entries) >= maxEntries {
 		fm.cleanupOldCursorEntries()
 	}
 
@@ -35,15 +36,17 @@ func (fm *FileManager) SaveCursorPosition(dirPath string) {
 	cursorMemory.Entries[dirPath] = fileName
 	cursorMemory.LastUsed[dirPath] = time.Now()
 
-	// Save config to disk
-	if err := fm.configManager.SaveAsync(fm.config); err != nil {
-		debugPrint("FileManager: Error saving cursor position config: %v", err)
+	// Save state to disk
+	if fm.stateManager != nil {
+		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+			debugPrint("FileManager: Error saving cursor position state: %v", err)
+		}
 	}
 }
 
 // restoreCursorPosition restores the cursor position for the given directory.
 func (fm *FileManager) restoreCursorPosition(dirPath string) string {
-	cursorMemory := &fm.config.UI.CursorMemory
+	cursorMemory := &fm.state.CursorMemory
 
 	fileName, exists := cursorMemory.Entries[dirPath]
 	if !exists {
@@ -58,9 +61,10 @@ func (fm *FileManager) restoreCursorPosition(dirPath string) string {
 
 // cleanupOldCursorEntries removes the oldest entries when maxEntries is exceeded.
 func (fm *FileManager) cleanupOldCursorEntries() {
-	cursorMemory := &fm.config.UI.CursorMemory
+	cursorMemory := &fm.state.CursorMemory
+	maxEntries := fm.config.UI.CursorMemory.MaxEntries
 
-	if len(cursorMemory.Entries) < cursorMemory.MaxEntries {
+	if len(cursorMemory.Entries) < maxEntries {
 		return
 	}
 
@@ -167,10 +171,10 @@ func (fm *FileManager) LoadDirectory(path string) {
 	// Indicate busy and block input while loading
 	fm.beginBusy(fmt.Sprintf("Loading %s...", path), fm.cancelActiveDirectoryLoad)
 
-	// Capture the sort config on the UI thread: fm.config is mutated by the
+	// Capture the sort config on the UI thread: fm.state is mutated by the
 	// sort dialog on the UI thread, so the background goroutine below must
 	// never read it directly (that would be a data race).
-	sortCfg := fm.config.UI.Sort
+	sortCfg := fm.state.EffectiveSort(fm.config.UI.Sort)
 
 	// Load directory asynchronously to avoid blocking UI (applies to both local and remote paths)
 	go fm.loadDirectoryAsync(ctx, loadID, path, previousPath, sortCfg)

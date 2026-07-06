@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestGetDefaultConfig(t *testing.T) {
@@ -95,37 +94,19 @@ func TestGetDefaultConfig(t *testing.T) {
 		t.Errorf("Expected default cursor thickness 2, got %d", config.UI.CursorStyle.Thickness)
 	}
 
-	// Test CursorMemory defaults
+	// Test CursorMemory defaults (entries/lastUsed live in state.json now)
 	if config.UI.CursorMemory.MaxEntries != 100 {
 		t.Errorf("Expected default cursor memory max entries 100, got %d", config.UI.CursorMemory.MaxEntries)
 	}
-	if config.UI.CursorMemory.Entries == nil {
-		t.Error("Expected cursor memory entries to be initialized")
-	}
 
-	// Test NavigationHistory defaults
+	// Test NavigationHistory defaults (entries/lastUsed/useCount/pinned live in state.json now)
 	if config.UI.NavigationHistory.MaxEntries != 10000 {
 		t.Errorf("Expected default navigation history max entries 10000, got %d", config.UI.NavigationHistory.MaxEntries)
 	}
-	if config.UI.NavigationHistory.Entries == nil {
-		t.Error("Expected navigation history entries to be initialized")
-	}
-	if config.UI.NavigationHistory.UseCount == nil {
-		t.Error("Expected navigation history useCount to be initialized")
-	}
-	if config.UI.NavigationHistory.Pinned == nil {
-		t.Error("Expected navigation history pinned entries to be initialized")
-	}
 
-	// Test FileFilter defaults
+	// Test FileFilter defaults (entries/current/enabled live in state.json now)
 	if config.UI.FileFilter.MaxEntries != 30 {
 		t.Errorf("Expected default file filter max entries 30, got %d", config.UI.FileFilter.MaxEntries)
-	}
-	if config.UI.FileFilter.Enabled {
-		t.Error("Expected file filter to be disabled by default")
-	}
-	if config.UI.FileFilter.Current != nil {
-		t.Error("Expected file filter current to be nil by default")
 	}
 
 	// Test DirectoryJumps defaults
@@ -167,45 +148,29 @@ func TestMergeConfigsWindowPositionAndStartupDirectory(t *testing.T) {
 	}
 }
 
-func TestNavigationHistoryMigratesMissingUseCount(t *testing.T) {
+func TestMergeConfigsMergesMaxEntriesForTrimmedSections(t *testing.T) {
 	cfg := getDefaultConfig()
-	lastUsed := time.Now().Add(-time.Hour)
+	cursorMax := 5
+	historyMax := 6
+	filterMax := 7
 	fileConfig := &rawConfig{
 		UI: rawUIConfig{
-			NavigationHistory: rawNavigationHistoryConfig{
-				Entries:  []string{"/tmp/one"},
-				LastUsed: map[string]time.Time{"/tmp/one": lastUsed},
-			},
+			CursorMemory:      rawCursorMemoryConfig{MaxEntries: &cursorMax},
+			NavigationHistory: rawNavigationHistoryConfig{MaxEntries: &historyMax},
+			FileFilter:        rawFileFilterConfig{MaxEntries: &filterMax},
 		},
 	}
 
 	mergeConfigs(cfg, fileConfig)
 
-	if got := cfg.UI.NavigationHistory.UseCount["/tmp/one"]; got != 1 {
-		t.Fatalf("useCount = %d, want migrated 1", got)
+	if cfg.UI.CursorMemory.MaxEntries != 5 {
+		t.Errorf("cursor memory max entries = %d, want 5", cfg.UI.CursorMemory.MaxEntries)
 	}
-}
-
-func TestMergeConfigsPreservesPinnedNavigationHistory(t *testing.T) {
-	cfg := getDefaultConfig()
-	fileConfig := &rawConfig{
-		UI: rawUIConfig{
-			NavigationHistory: rawNavigationHistoryConfig{
-				Pinned: []string{"/rare", "/monthly"},
-			},
-		},
+	if cfg.UI.NavigationHistory.MaxEntries != 6 {
+		t.Errorf("navigation history max entries = %d, want 6", cfg.UI.NavigationHistory.MaxEntries)
 	}
-
-	mergeConfigs(cfg, fileConfig)
-
-	want := []string{"/rare", "/monthly"}
-	if len(cfg.UI.NavigationHistory.Pinned) != len(want) {
-		t.Fatalf("pinned = %#v, want %#v", cfg.UI.NavigationHistory.Pinned, want)
-	}
-	for i := range want {
-		if cfg.UI.NavigationHistory.Pinned[i] != want[i] {
-			t.Fatalf("pinned = %#v, want %#v", cfg.UI.NavigationHistory.Pinned, want)
-		}
+	if cfg.UI.FileFilter.MaxEntries != 7 {
+		t.Errorf("file filter max entries = %d, want 7", cfg.UI.FileFilter.MaxEntries)
 	}
 }
 
@@ -271,109 +236,6 @@ func TestMergeConfigsIgnoresInvalidDebugMaxLogFiles(t *testing.T) {
 	}
 }
 
-func TestNavigationHistoryFrecencyOrdering(t *testing.T) {
-	now := time.Now()
-	cfg := getDefaultConfig()
-	cfg.UI.NavigationHistory.Entries = []string{"/recent", "/frequent", "/old"}
-	cfg.UI.NavigationHistory.LastUsed = map[string]time.Time{
-		"/recent":   now.Add(-30 * time.Minute),
-		"/frequent": now.Add(-2 * time.Hour),
-		"/old":      now.Add(-8 * 24 * time.Hour),
-	}
-	cfg.UI.NavigationHistory.UseCount = map[string]int{
-		"/recent":   1,
-		"/frequent": 4,
-		"/old":      100,
-	}
-
-	got := cfg.GetNavigationHistory()
-	want := []string{"/old", "/frequent", "/recent"}
-	if len(got) != len(want) {
-		t.Fatalf("history length = %d, want %d: %#v", len(got), len(want), got)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("history = %#v, want %#v", got, want)
-		}
-	}
-}
-
-func TestAddToNavigationHistoryIncrementsUseCountAndPrunesByScore(t *testing.T) {
-	now := time.Now()
-	cfg := getDefaultConfig()
-	cfg.UI.NavigationHistory.MaxEntries = 2
-	cfg.UI.NavigationHistory.Entries = []string{"/keep", "/drop"}
-	cfg.UI.NavigationHistory.LastUsed = map[string]time.Time{
-		"/keep": now.Add(-30 * time.Minute),
-		"/drop": now.Add(-8 * 24 * time.Hour),
-	}
-	cfg.UI.NavigationHistory.UseCount = map[string]int{
-		"/keep": 1,
-		"/drop": 1,
-	}
-
-	cfg.AddToNavigationHistory("/keep")
-	cfg.AddToNavigationHistory("/new")
-
-	if got := cfg.UI.NavigationHistory.UseCount["/keep"]; got != 2 {
-		t.Fatalf("useCount for /keep = %d, want 2", got)
-	}
-	if _, ok := cfg.UI.NavigationHistory.LastUsed["/drop"]; ok {
-		t.Fatal("/drop lastUsed should be pruned")
-	}
-	if _, ok := cfg.UI.NavigationHistory.UseCount["/drop"]; ok {
-		t.Fatal("/drop useCount should be pruned")
-	}
-	want := []string{"/keep", "/new"}
-	if len(cfg.UI.NavigationHistory.Entries) != len(want) {
-		t.Fatalf("entries = %#v, want %#v", cfg.UI.NavigationHistory.Entries, want)
-	}
-	for i := range want {
-		if cfg.UI.NavigationHistory.Entries[i] != want[i] {
-			t.Fatalf("entries = %#v, want %#v", cfg.UI.NavigationHistory.Entries, want)
-		}
-	}
-}
-
-func TestPinnedNavigationHistoryDoesNotCountAgainstHistoryLimit(t *testing.T) {
-	cfg := getDefaultConfig()
-	cfg.UI.NavigationHistory.MaxEntries = 1
-	cfg.UI.NavigationHistory.Pinned = []string{"/rare"}
-
-	cfg.AddToNavigationHistory("/one")
-	cfg.AddToNavigationHistory("/two")
-
-	if len(cfg.UI.NavigationHistory.Entries) != 1 {
-		t.Fatalf("history entries = %#v, want one pruned entry", cfg.UI.NavigationHistory.Entries)
-	}
-	if len(cfg.UI.NavigationHistory.Pinned) != 1 || cfg.UI.NavigationHistory.Pinned[0] != "/rare" {
-		t.Fatalf("pinned = %#v, want /rare retained", cfg.UI.NavigationHistory.Pinned)
-	}
-}
-
-func TestPinAndUnpinNavigationPath(t *testing.T) {
-	cfg := getDefaultConfig()
-
-	if !cfg.PinNavigationPath("/rare") {
-		t.Fatal("first pin should add path")
-	}
-	if cfg.PinNavigationPath("/rare") {
-		t.Fatal("second pin should not duplicate path")
-	}
-	if !cfg.IsNavigationPathPinned("/rare") {
-		t.Fatal("/rare should be pinned")
-	}
-	if !cfg.UnpinNavigationPath("/rare") {
-		t.Fatal("unpin should remove existing path")
-	}
-	if cfg.IsNavigationPathPinned("/rare") {
-		t.Fatal("/rare should no longer be pinned")
-	}
-	if cfg.UnpinNavigationPath("/rare") {
-		t.Fatal("unpin should report false for missing path")
-	}
-}
-
 func TestEffectiveFilterPatternStripsComment(t *testing.T) {
 	tests := []struct {
 		in   string
@@ -389,70 +251,6 @@ func TestEffectiveFilterPatternStripsComment(t *testing.T) {
 		if got := EffectiveFilterPattern(tt.in); got != tt.want {
 			t.Fatalf("EffectiveFilterPattern(%q) = %q, want %q", tt.in, got, tt.want)
 		}
-	}
-}
-
-func TestFileFilterHistoryUsesFrecencyOrdering(t *testing.T) {
-	now := time.Now()
-	cfg := getDefaultConfig()
-	cfg.UI.FileFilter.Entries = []FilterEntry{
-		{Pattern: "*.go", LastUsed: now.Add(-30 * time.Minute), UseCount: 1},
-		{Pattern: "*.md", LastUsed: now.Add(-2 * time.Hour), UseCount: 4},
-		{Pattern: "*.log", LastUsed: now.Add(-8 * 24 * time.Hour), UseCount: 100},
-	}
-
-	got := cfg.GetFileFilterEntries()
-	want := []string{"*.log", "*.md", "*.go"}
-	if len(got) != len(want) {
-		t.Fatalf("filter history length = %d, want %d: %#v", len(got), len(want), got)
-	}
-	for i := range want {
-		if got[i].Pattern != want[i] {
-			t.Fatalf("filter history = %#v, want patterns %#v", got, want)
-		}
-	}
-}
-
-func TestAddToFileFilterHistoryIncrementsUseCountAndPrunesByScore(t *testing.T) {
-	now := time.Now()
-	cfg := getDefaultConfig()
-	cfg.UI.FileFilter.MaxEntries = 2
-	cfg.UI.FileFilter.Entries = []FilterEntry{
-		{Pattern: "*.keep", LastUsed: now.Add(-2 * time.Hour), UseCount: 4},
-		{Pattern: "*.drop", LastUsed: now.Add(-8 * 24 * time.Hour), UseCount: 1},
-	}
-
-	cfg.AddToFileFilterHistory(&FilterEntry{Pattern: "*.new ;; 日本語"})
-	cfg.AddToFileFilterHistory(&FilterEntry{Pattern: "*.keep"})
-
-	if len(cfg.UI.FileFilter.Entries) != 2 {
-		t.Fatalf("entries = %#v, want two entries", cfg.UI.FileFilter.Entries)
-	}
-	if cfg.UI.FileFilter.Entries[0].Pattern != "*.keep" || cfg.UI.FileFilter.Entries[0].UseCount != 5 {
-		t.Fatalf("first entry = %#v, want incremented *.keep", cfg.UI.FileFilter.Entries[0])
-	}
-	if cfg.UI.FileFilter.Entries[1].Pattern != "*.new ;; 日本語" {
-		t.Fatalf("entries = %#v, want new entry retained", cfg.UI.FileFilter.Entries)
-	}
-	for _, entry := range cfg.UI.FileFilter.Entries {
-		if entry.Pattern == "*.drop" {
-			t.Fatalf("entries = %#v, drop should be pruned", cfg.UI.FileFilter.Entries)
-		}
-	}
-}
-
-func TestRemoveFileFilterEntryRemovesExactPattern(t *testing.T) {
-	cfg := getDefaultConfig()
-	cfg.UI.FileFilter.Entries = []FilterEntry{
-		{Pattern: "*.go ;; Go"},
-		{Pattern: "*.go ;; Golang"},
-	}
-
-	if !cfg.RemoveFileFilterEntry("*.go ;; Go") {
-		t.Fatal("RemoveFileFilterEntry should report removal")
-	}
-	if len(cfg.UI.FileFilter.Entries) != 1 || cfg.UI.FileFilter.Entries[0].Pattern != "*.go ;; Golang" {
-		t.Fatalf("entries = %#v, want only exact non-deleted pattern", cfg.UI.FileFilter.Entries)
 	}
 }
 
@@ -659,12 +457,6 @@ func TestManagerInterface(t *testing.T) {
 	// Note: Manager now requires debugPrint function
 	dummyDebugPrint := func(format string, args ...interface{}) {}
 	manager := NewManager(dummyDebugPrint)
-	manager.configPath = filepath.Join(os.TempDir(), "test_config.json")
-	defer func() {
-		if err := manager.Close(); err != nil {
-			t.Fatalf("manager.Close failed: %v", err)
-		}
-	}()
 
 	var managerInterface ManagerInterface = manager
 
@@ -720,11 +512,6 @@ func TestManagerLoadNonExistentFile(t *testing.T) {
 	dummyDebugPrint := func(format string, args ...interface{}) {}
 	manager := NewManager(dummyDebugPrint)
 	manager.configPath = filepath.Join(os.TempDir(), "nonexistent", "config.json")
-	defer func() {
-		if err := manager.Close(); err != nil {
-			t.Fatalf("manager.Close failed: %v", err)
-		}
-	}()
 
 	config, err := manager.Load()
 
@@ -743,66 +530,40 @@ func TestManagerLoadNonExistentFile(t *testing.T) {
 	}
 }
 
-func TestManagerSaveAndLoad(t *testing.T) {
-	// Create a temporary file for testing
+func TestManagerLoadReadsHandWrittenConfigFile(t *testing.T) {
+	// Manager is read-only now (no Save/SaveAsync/Flush/Close): write
+	// config.json by hand and verify Load merges it with defaults.
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "test_config.json")
+
+	raw := `{
+		"window": {"width": 1200, "height": 800},
+		"theme": {"dark": false, "fontSize": 18},
+		"ui": {
+			"showHiddenFiles": true,
+			"sort": {"sortBy": "modified", "sortOrder": "desc", "directoriesFirst": true},
+			"cursorStyle": {"type": "background", "thickness": 5},
+			"directoryJumps": {"entries": [
+				{"shortcut": "p", "directory": "/projects"},
+				{"shortcut": "", "directory": "/tmp"},
+				{"shortcut": "P", "directory": "/duplicate"}
+			]}
+		}
+	}`
+	if err := os.WriteFile(configPath, []byte(raw), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
 
 	dummyDebugPrint := func(format string, args ...interface{}) {}
 	manager := NewManager(dummyDebugPrint)
 	manager.configPath = configPath
-	defer func() {
-		if err := manager.Close(); err != nil {
-			t.Fatalf("manager.Close failed: %v", err)
-		}
-	}()
 
-	// Create a test config
-	testConfig := &Config{
-		Window: WindowConfig{Width: 1200, Height: 800},
-		Theme:  ThemeConfig{Dark: false, FontSize: 18},
-		UI: UIConfig{
-			ShowHiddenFiles: true,
-			Sort: SortConfig{
-				SortBy:           "modified",
-				SortOrder:        "desc",
-				DirectoriesFirst: true,
-			},
-			CursorStyle: CursorStyleConfig{
-				Type:      "background",
-				Thickness: 5,
-			},
-			DirectoryJumps: DirectoryJumpsConfig{
-				Entries: []DirectoryJumpEntry{
-					{Shortcut: "p", Directory: "/projects"},
-					{Shortcut: "", Directory: "/tmp"},
-					{Shortcut: "P", Directory: "/duplicate"},
-				},
-			},
-		},
-	}
-
-	// Save the config synchronously
-	if err := manager.Save(testConfig); err != nil {
-		t.Fatalf("Save failed: %v", err)
-	}
-
-	if err := manager.Flush(); err != nil {
-		t.Fatalf("Flush failed: %v", err)
-	}
-
-	// Check that file was created
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		t.Fatal("Config file was not created")
-	}
-
-	// Load the config
 	loadedConfig, err := manager.Load()
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
 
-	// Verify loaded values match saved values (merged with defaults)
+	// Verify loaded values match the hand-written file (merged with defaults)
 	if loadedConfig.Window.Width != 1200 {
 		t.Errorf("Expected loaded width 1200, got %d", loadedConfig.Window.Width)
 	}
@@ -817,85 +578,5 @@ func TestManagerSaveAndLoad(t *testing.T) {
 	}
 	if loadedConfig.UI.DirectoryJumps.Entries[2].Shortcut != "P" || loadedConfig.UI.DirectoryJumps.Entries[2].Directory != "/duplicate" {
 		t.Errorf("Expected loaded directory jumps to preserve order and value, got %+v", loadedConfig.UI.DirectoryJumps.Entries)
-	}
-}
-
-func TestManagerSaveUsesTransform(t *testing.T) {
-	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, "test_config.json")
-
-	manager := NewManager(func(string, ...interface{}) {})
-	manager.configPath = configPath
-	defer func() {
-		if err := manager.Close(); err != nil {
-			t.Fatalf("manager.Close failed: %v", err)
-		}
-	}()
-
-	cfg := getDefaultConfig()
-	cfg.Window.Width = 1200
-	manager.SetSaveTransform(func(snapshot *Config) *Config {
-		snapshot.Window.Width = 800
-		return snapshot
-	})
-
-	if err := manager.Save(cfg); err != nil {
-		t.Fatalf("Save failed: %v", err)
-	}
-
-	loaded, err := manager.Load()
-	if err != nil {
-		t.Fatalf("Load failed: %v", err)
-	}
-	if loaded.Window.Width != 800 {
-		t.Fatalf("loaded window width = %d, want transformed 800", loaded.Window.Width)
-	}
-}
-
-func TestCloneConfigDeepCopiesDirectoryJumps(t *testing.T) {
-	cfg := getDefaultConfig()
-	cfg.UI.DirectoryJumps.Entries = []DirectoryJumpEntry{
-		{Shortcut: "p", Directory: "/projects"},
-	}
-
-	clone := cloneConfig(cfg)
-	clone.UI.DirectoryJumps.Entries[0].Directory = "/changed"
-
-	if cfg.UI.DirectoryJumps.Entries[0].Directory != "/projects" {
-		t.Errorf("Expected original directory jump to remain unchanged, got %q", cfg.UI.DirectoryJumps.Entries[0].Directory)
-	}
-}
-
-func TestCloneConfigDeepCopiesPinnedNavigationHistory(t *testing.T) {
-	cfg := getDefaultConfig()
-	cfg.UI.NavigationHistory.Pinned = []string{"/rare"}
-
-	clone := cloneConfig(cfg)
-	clone.UI.NavigationHistory.Pinned[0] = "/changed"
-
-	if cfg.UI.NavigationHistory.Pinned[0] != "/rare" {
-		t.Errorf("Expected original pinned history path to remain unchanged, got %q", cfg.UI.NavigationHistory.Pinned[0])
-	}
-}
-
-func TestCloneConfigDeepCopiesExternalCommands(t *testing.T) {
-	cfg := getDefaultConfig()
-	cfg.UI.ExternalCommands = []ExternalCommandEntry{
-		{Name: "Open", Extensions: []string{"go"}, Command: "vim", Args: []string{"{file}"}, Cwd: "{dir}"},
-	}
-
-	clone := cloneConfig(cfg)
-	clone.UI.ExternalCommands[0].Extensions[0] = "md"
-	clone.UI.ExternalCommands[0].Args[0] = "{name}"
-	clone.UI.ExternalCommands[0].Cwd = "/tmp"
-
-	if cfg.UI.ExternalCommands[0].Extensions[0] != "go" {
-		t.Errorf("Expected original extension to remain unchanged, got %q", cfg.UI.ExternalCommands[0].Extensions[0])
-	}
-	if cfg.UI.ExternalCommands[0].Args[0] != "{file}" {
-		t.Errorf("Expected original arg to remain unchanged, got %q", cfg.UI.ExternalCommands[0].Args[0])
-	}
-	if cfg.UI.ExternalCommands[0].Cwd != "{dir}" {
-		t.Errorf("Expected original cwd to remain unchanged, got %q", cfg.UI.ExternalCommands[0].Cwd)
 	}
 }

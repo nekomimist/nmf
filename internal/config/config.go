@@ -2,14 +2,11 @@ package config
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -105,24 +102,15 @@ type rawArchiveConfig struct {
 }
 
 type rawCursorMemoryConfig struct {
-	MaxEntries *int                 `json:"maxEntries"`
-	Entries    map[string]string    `json:"entries"`
-	LastUsed   map[string]time.Time `json:"lastUsed"`
+	MaxEntries *int `json:"maxEntries"`
 }
 
 type rawNavigationHistoryConfig struct {
-	MaxEntries *int                 `json:"maxEntries"`
-	Entries    []string             `json:"entries"`
-	LastUsed   map[string]time.Time `json:"lastUsed"`
-	UseCount   map[string]int       `json:"useCount"`
-	Pinned     []string             `json:"pinned"`
+	MaxEntries *int `json:"maxEntries"`
 }
 
 type rawFileFilterConfig struct {
-	MaxEntries *int          `json:"maxEntries"`
-	Entries    []FilterEntry `json:"entries"`
-	Enabled    *bool         `json:"enabled"`
-	Current    *FilterEntry  `json:"current"`
+	MaxEntries *int `json:"maxEntries"`
 }
 
 type rawDirectoryJumpsConfig struct {
@@ -335,20 +323,18 @@ type CursorStyleConfig struct {
 	Thickness int    `json:"thickness"` // Line thickness for underline/border
 }
 
-// CursorMemoryConfig represents cursor position memory settings
+// CursorMemoryConfig represents cursor position memory settings. The actual
+// remembered positions live in state.json (see State.CursorMemory); this is
+// just the user-configured entry limit.
 type CursorMemoryConfig struct {
-	MaxEntries int                  `json:"maxEntries"` // Maximum number of directories to remember
-	Entries    map[string]string    `json:"entries"`    // key: dirPath, value: fileName
-	LastUsed   map[string]time.Time `json:"lastUsed"`   // LRU management
+	MaxEntries int `json:"maxEntries"` // Maximum number of directories to remember
 }
 
-// NavigationHistoryConfig represents navigation history settings
+// NavigationHistoryConfig represents navigation history settings. The actual
+// history data lives in state.json (see State.NavigationHistory); this is
+// just the user-configured entry limit.
 type NavigationHistoryConfig struct {
-	MaxEntries int                  `json:"maxEntries"` // Maximum number of paths to remember
-	Entries    []string             `json:"entries"`    // Path history (frecency order)
-	LastUsed   map[string]time.Time `json:"lastUsed"`   // Last usage timestamp
-	UseCount   map[string]int       `json:"useCount"`   // Usage frequency counter
-	Pinned     []string             `json:"pinned"`     // Saved paths that do not count against history pruning
+	MaxEntries int `json:"maxEntries"` // Maximum number of paths to remember
 }
 
 // FilterEntry represents a single filter pattern with metadata
@@ -358,12 +344,11 @@ type FilterEntry struct {
 	UseCount int       `json:"useCount"` // Usage frequency counter
 }
 
-// FileFilterConfig represents file filter settings
+// FileFilterConfig represents file filter settings. The actual filter history
+// and currently applied filter live in state.json (see State.FileFilter);
+// this is just the user-configured entry limit.
 type FileFilterConfig struct {
-	MaxEntries int           `json:"maxEntries"` // Maximum number of filter patterns to remember
-	Entries    []FilterEntry `json:"entries"`    // Filter history (most recent first)
-	Enabled    bool          `json:"enabled"`    // Current filter enabled state
-	Current    *FilterEntry  `json:"current"`    // Currently applied filter pattern
+	MaxEntries int `json:"maxEntries"` // Maximum number of filter patterns to remember
 }
 
 // DirectoryJumpEntry represents a configured directory jump target.
@@ -396,53 +381,26 @@ type ExternalCommandEntry struct {
 	Edit       bool     `json:"edit,omitempty"`       // Confirm and edit the final command line before running
 }
 
-// Manager provides configuration management functionality
+// Manager loads configuration from config.json. config.json is treated as
+// read-only application state: runtime state that used to be saved back into
+// it (cursor memory, navigation history, file filter history, last-applied
+// sort) now lives in state.json, managed separately by StateManager.
 type Manager struct {
 	configPath string
 	debugPrint func(format string, args ...interface{})
-
-	saveTransformMu sync.RWMutex
-	saveTransform   SaveTransform
-
-	saveDelay     time.Duration
-	saveRequests  chan *Config
-	flushRequests chan chan error
-	closeRequests chan chan error
-	stopped       chan struct{}
 }
-
-// SaveTransform can adjust a config snapshot before it is persisted.
-type SaveTransform func(*Config) *Config
-
-// ErrManagerClosed is returned when operations are attempted after Close has been called.
-var ErrManagerClosed = errors.New("config manager closed")
 
 // NewManager creates a new configuration manager
 func NewManager(debugPrint func(format string, args ...interface{})) *Manager {
-	m := &Manager{
-		configPath:    getConfigPath(),
-		debugPrint:    debugPrint,
-		saveDelay:     500 * time.Millisecond,
-		saveRequests:  make(chan *Config, 1),
-		flushRequests: make(chan chan error),
-		closeRequests: make(chan chan error),
-		stopped:       make(chan struct{}),
+	return &Manager{
+		configPath: getConfigPath(),
+		debugPrint: debugPrint,
 	}
-
-	m.startWorker()
-	return m
 }
 
 // ConfigPath returns the full config.json path used by this manager.
 func (m *Manager) ConfigPath() string {
 	return m.configPath
-}
-
-// SetSaveTransform installs a hook used to adjust snapshots before saving.
-func (m *Manager) SetSaveTransform(transform SaveTransform) {
-	m.saveTransformMu.Lock()
-	defer m.saveTransformMu.Unlock()
-	m.saveTransform = transform
 }
 
 // Load loads configuration from file and merges with defaults
@@ -467,212 +425,6 @@ func (m *Manager) Load() (*Config, error) {
 	return config, nil
 }
 
-// Save saves configuration to file
-func (m *Manager) Save(config *Config) error {
-	if err := m.Flush(); err != nil && !errors.Is(err, ErrManagerClosed) {
-		return err
-	}
-
-	configCopy := m.prepareForSave(config)
-	return m.saveConfig(configCopy)
-}
-
-// SaveAsync schedules the configuration to be saved after a short debounce window.
-func (m *Manager) SaveAsync(config *Config) error {
-	select {
-	case <-m.stopped:
-		return ErrManagerClosed
-	default:
-	}
-
-	configCopy := m.prepareForSave(config)
-
-	select {
-	case m.saveRequests <- configCopy:
-		return nil
-	case <-m.stopped:
-		return ErrManagerClosed
-	}
-}
-
-func (m *Manager) prepareForSave(config *Config) *Config {
-	configCopy := cloneConfig(config)
-
-	m.saveTransformMu.RLock()
-	transform := m.saveTransform
-	m.saveTransformMu.RUnlock()
-	if transform == nil {
-		return configCopy
-	}
-	transformed := transform(configCopy)
-	if transformed == nil {
-		return configCopy
-	}
-	return transformed
-}
-
-// Flush forces any pending asynchronous save to be written immediately.
-func (m *Manager) Flush() error {
-	select {
-	case <-m.stopped:
-		return ErrManagerClosed
-	default:
-	}
-
-	reply := make(chan error, 1)
-	select {
-	case m.flushRequests <- reply:
-	case <-m.stopped:
-		return ErrManagerClosed
-	}
-
-	return <-reply
-}
-
-// Close flushes pending writes and stops the background worker.
-func (m *Manager) Close() error {
-	select {
-	case <-m.stopped:
-		return nil
-	default:
-	}
-
-	reply := make(chan error, 1)
-	select {
-	case m.closeRequests <- reply:
-	case <-m.stopped:
-		return nil
-	}
-
-	return <-reply
-}
-
-func (m *Manager) startWorker() {
-	go m.saveWorker()
-}
-
-func (m *Manager) saveWorker() {
-	var pending *Config
-	var timer *time.Timer
-
-	for {
-		var timerChan <-chan time.Time
-		if timer != nil {
-			timerChan = timer.C
-		}
-
-		select {
-		case cfg := <-m.saveRequests:
-			pending = cfg
-			if timer == nil {
-				timer = time.NewTimer(m.saveDelay)
-			} else {
-				stopTimer(timer)
-				timer.Reset(m.saveDelay)
-			}
-		case <-timerChan:
-			if pending != nil {
-				if err := m.saveConfig(pending); err != nil {
-					m.debugPrint("Config: Error saving config: %v", err)
-				}
-				pending = nil
-			}
-			timer = nil
-		case reply := <-m.flushRequests:
-			stopTimer(timer)
-			timer = nil
-			var err error
-			if pending != nil {
-				err = m.saveConfig(pending)
-				pending = nil
-			}
-			reply <- err
-		case reply := <-m.closeRequests:
-			stopTimer(timer)
-			timer = nil
-			var err error
-			if pending != nil {
-				err = m.saveConfig(pending)
-				pending = nil
-			}
-			reply <- err
-			close(m.stopped)
-			return
-		}
-	}
-}
-
-func (m *Manager) saveConfig(config *Config) error {
-	configDir := filepath.Dir(m.configPath)
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		return fmt.Errorf("error creating config directory: %w", err)
-	}
-
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return fmt.Errorf("error marshaling config: %w", err)
-	}
-
-	if err := os.WriteFile(m.configPath, data, 0644); err != nil {
-		return fmt.Errorf("error writing config file: %w", err)
-	}
-
-	return nil
-}
-
-func stopTimer(t *time.Timer) {
-	if t == nil {
-		return
-	}
-	if !t.Stop() {
-		select {
-		case <-t.C:
-		default:
-		}
-	}
-}
-
-func cloneConfig(cfg *Config) *Config {
-	if cfg == nil {
-		return nil
-	}
-
-	copyConfig := *cfg
-	copyConfig.Window = cloneWindowConfig(cfg.Window)
-	copyConfig.Theme = cloneThemeConfig(cfg.Theme)
-	copyConfig.UI = cloneUIConfig(cfg.UI)
-	return &copyConfig
-}
-
-// Clone returns a deep copy of cfg suitable for independent mutation.
-func Clone(cfg *Config) *Config {
-	return cloneConfig(cfg)
-}
-
-func cloneWindowConfig(src WindowConfig) WindowConfig {
-	clone := src
-	if src.X != nil {
-		x := *src.X
-		clone.X = &x
-	}
-	if src.Y != nil {
-		y := *src.Y
-		clone.Y = &y
-	}
-	return clone
-}
-
-func cloneThemeConfig(src ThemeConfig) ThemeConfig {
-	clone := src
-	if src.Colors != nil {
-		clone.Colors = make(map[string]ThemeColorConfig, len(src.Colors))
-		for k, v := range src.Colors {
-			clone.Colors[k] = cloneThemeColorConfig(v)
-		}
-	}
-	return clone
-}
-
 func cloneThemeColorConfig(src ThemeColorConfig) ThemeColorConfig {
 	clone := ThemeColorConfig{
 		DarkDefault:  src.DarkDefault,
@@ -689,109 +441,6 @@ func cloneThemeColorConfig(src ThemeColorConfig) ThemeColorConfig {
 	if src.Light != nil {
 		light := *src.Light
 		clone.Light = &light
-	}
-	return clone
-}
-
-func cloneUIConfig(src UIConfig) UIConfig {
-	clone := src
-	clone.CursorMemory = cloneCursorMemoryConfig(src.CursorMemory)
-	clone.NavigationHistory = cloneNavigationHistoryConfig(src.NavigationHistory)
-	clone.FileFilter = cloneFileFilterConfig(src.FileFilter)
-	clone.DirectoryJumps = cloneDirectoryJumpsConfig(src.DirectoryJumps)
-	clone.KeyBindings = cloneKeyBindingEntries(src.KeyBindings)
-	clone.ExternalCommands = cloneExternalCommandEntries(src.ExternalCommands)
-	return clone
-}
-
-func cloneCursorMemoryConfig(src CursorMemoryConfig) CursorMemoryConfig {
-	clone := src
-	if src.Entries != nil {
-		clone.Entries = make(map[string]string, len(src.Entries))
-		for k, v := range src.Entries {
-			clone.Entries[k] = v
-		}
-	}
-	if src.LastUsed != nil {
-		clone.LastUsed = make(map[string]time.Time, len(src.LastUsed))
-		for k, v := range src.LastUsed {
-			clone.LastUsed[k] = v
-		}
-	}
-	return clone
-}
-
-func cloneNavigationHistoryConfig(src NavigationHistoryConfig) NavigationHistoryConfig {
-	clone := src
-	if src.Entries != nil {
-		clone.Entries = make([]string, len(src.Entries))
-		copy(clone.Entries, src.Entries)
-	}
-	if src.LastUsed != nil {
-		clone.LastUsed = make(map[string]time.Time, len(src.LastUsed))
-		for k, v := range src.LastUsed {
-			clone.LastUsed[k] = v
-		}
-	}
-	if src.UseCount != nil {
-		clone.UseCount = make(map[string]int, len(src.UseCount))
-		for k, v := range src.UseCount {
-			clone.UseCount[k] = v
-		}
-	}
-	if src.Pinned != nil {
-		clone.Pinned = make([]string, len(src.Pinned))
-		copy(clone.Pinned, src.Pinned)
-	}
-	return clone
-}
-
-func cloneFileFilterConfig(src FileFilterConfig) FileFilterConfig {
-	clone := src
-	if src.Entries != nil {
-		clone.Entries = make([]FilterEntry, len(src.Entries))
-		copy(clone.Entries, src.Entries)
-	}
-	if src.Current != nil {
-		currentCopy := *src.Current
-		clone.Current = &currentCopy
-	}
-	return clone
-}
-
-func cloneDirectoryJumpsConfig(src DirectoryJumpsConfig) DirectoryJumpsConfig {
-	clone := src
-	if src.Entries != nil {
-		clone.Entries = make([]DirectoryJumpEntry, len(src.Entries))
-		copy(clone.Entries, src.Entries)
-	}
-	return clone
-}
-
-func cloneKeyBindingEntries(src []KeyBindingEntry) []KeyBindingEntry {
-	if src == nil {
-		return nil
-	}
-	clone := make([]KeyBindingEntry, len(src))
-	copy(clone, src)
-	return clone
-}
-
-func cloneExternalCommandEntries(src []ExternalCommandEntry) []ExternalCommandEntry {
-	if src == nil {
-		return nil
-	}
-	clone := make([]ExternalCommandEntry, len(src))
-	for i, entry := range src {
-		clone[i] = entry
-		if entry.Extensions != nil {
-			clone[i].Extensions = make([]string, len(entry.Extensions))
-			copy(clone[i].Extensions, entry.Extensions)
-		}
-		if entry.Args != nil {
-			clone[i].Args = make([]string, len(entry.Args))
-			copy(clone[i].Args, entry.Args)
-		}
 	}
 	return clone
 }
@@ -847,21 +496,12 @@ func getDefaultConfig() *Config {
 			},
 			CursorMemory: CursorMemoryConfig{
 				MaxEntries: 100,
-				Entries:    make(map[string]string),
-				LastUsed:   make(map[string]time.Time),
 			},
 			NavigationHistory: NavigationHistoryConfig{
 				MaxEntries: 10000,
-				Entries:    make([]string, 0),
-				LastUsed:   make(map[string]time.Time),
-				UseCount:   make(map[string]int),
-				Pinned:     make([]string, 0),
 			},
 			FileFilter: FileFilterConfig{
 				MaxEntries: 30,
-				Entries:    make([]FilterEntry, 0),
-				Enabled:    false,
-				Current:    nil,
 			},
 			DirectoryJumps: DirectoryJumpsConfig{
 				Entries: make([]DirectoryJumpEntry, 0),
@@ -1022,45 +662,15 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) {
 	if fileConfig.UI.CursorMemory.MaxEntries != nil && *fileConfig.UI.CursorMemory.MaxEntries != 0 {
 		defaultConfig.UI.CursorMemory.MaxEntries = *fileConfig.UI.CursorMemory.MaxEntries
 	}
-	if fileConfig.UI.CursorMemory.Entries != nil {
-		defaultConfig.UI.CursorMemory.Entries = fileConfig.UI.CursorMemory.Entries
-	}
-	if fileConfig.UI.CursorMemory.LastUsed != nil {
-		defaultConfig.UI.CursorMemory.LastUsed = fileConfig.UI.CursorMemory.LastUsed
-	}
 
 	// Merge NavigationHistory config
 	if fileConfig.UI.NavigationHistory.MaxEntries != nil && *fileConfig.UI.NavigationHistory.MaxEntries != 0 {
 		defaultConfig.UI.NavigationHistory.MaxEntries = *fileConfig.UI.NavigationHistory.MaxEntries
 	}
-	if fileConfig.UI.NavigationHistory.Entries != nil {
-		defaultConfig.UI.NavigationHistory.Entries = fileConfig.UI.NavigationHistory.Entries
-	}
-	if fileConfig.UI.NavigationHistory.LastUsed != nil {
-		defaultConfig.UI.NavigationHistory.LastUsed = fileConfig.UI.NavigationHistory.LastUsed
-	}
-	if fileConfig.UI.NavigationHistory.UseCount != nil {
-		defaultConfig.UI.NavigationHistory.UseCount = fileConfig.UI.NavigationHistory.UseCount
-	}
-	if fileConfig.UI.NavigationHistory.Pinned != nil {
-		defaultConfig.UI.NavigationHistory.Pinned = fileConfig.UI.NavigationHistory.Pinned
-	}
-	ensureNavigationHistoryStats(&defaultConfig.UI.NavigationHistory)
-	ensureNavigationHistoryPinned(&defaultConfig.UI.NavigationHistory)
 
 	// Merge FileFilter config
 	if fileConfig.UI.FileFilter.MaxEntries != nil && *fileConfig.UI.FileFilter.MaxEntries != 0 {
 		defaultConfig.UI.FileFilter.MaxEntries = *fileConfig.UI.FileFilter.MaxEntries
-	}
-	if fileConfig.UI.FileFilter.Entries != nil {
-		defaultConfig.UI.FileFilter.Entries = fileConfig.UI.FileFilter.Entries
-	}
-	if fileConfig.UI.FileFilter.Enabled != nil {
-		defaultConfig.UI.FileFilter.Enabled = *fileConfig.UI.FileFilter.Enabled
-	}
-	if fileConfig.UI.FileFilter.Current != nil {
-		copyEntry := *fileConfig.UI.FileFilter.Current
-		defaultConfig.UI.FileFilter.Current = &copyEntry
 	}
 
 	// Merge DirectoryJumps config
@@ -1084,253 +694,8 @@ func normalizeViewerDefaultPane(pane string) string {
 	}
 }
 
-// AddToNavigationHistory adds a path to navigation history
-func (c *Config) AddToNavigationHistory(path string) {
-	now := time.Now()
-	history := &c.UI.NavigationHistory
-	ensureNavigationHistoryStats(history)
-
-	found := false
-	for _, entry := range history.Entries {
-		if entry == path {
-			found = true
-			break
-		}
-	}
-	if !found {
-		history.Entries = append(history.Entries, path)
-	}
-
-	history.LastUsed[path] = now
-	history.UseCount[path]++
-	sortNavigationHistory(history, now)
-	pruneNavigationHistory(history, now)
-}
-
-// GetNavigationHistory returns the navigation history entries sorted by frecency.
-func (c *Config) GetNavigationHistory() []string {
-	history := &c.UI.NavigationHistory
-	ensureNavigationHistoryStats(history)
-	entries := history.Entries
-	if len(entries) <= 1 {
-		return entries
-	}
-
-	sorted := make([]string, len(entries))
-	copy(sorted, entries)
-	sortNavigationHistoryEntries(sorted, history.LastUsed, history.UseCount, time.Now())
-
-	return sorted
-}
-
-func ensureNavigationHistoryStats(history *NavigationHistoryConfig) {
-	if history.LastUsed == nil {
-		history.LastUsed = make(map[string]time.Time)
-	}
-	if history.UseCount == nil {
-		history.UseCount = make(map[string]int)
-	}
-	for _, path := range history.Entries {
-		if _, ok := history.UseCount[path]; !ok {
-			history.UseCount[path] = 1
-		}
-	}
-}
-
-func ensureNavigationHistoryPinned(history *NavigationHistoryConfig) {
-	if history.Pinned == nil {
-		history.Pinned = make([]string, 0)
-	}
-}
-
-// PinNavigationPath saves a path for History Jump without adding it to prunable history.
-func (c *Config) PinNavigationPath(path string) bool {
-	if path == "" {
-		return false
-	}
-	history := &c.UI.NavigationHistory
-	ensureNavigationHistoryPinned(history)
-	for _, entry := range history.Pinned {
-		if entry == path {
-			return false
-		}
-	}
-	history.Pinned = append(history.Pinned, path)
-	return true
-}
-
-// UnpinNavigationPath removes a saved History Jump path.
-func (c *Config) UnpinNavigationPath(path string) bool {
-	history := &c.UI.NavigationHistory
-	ensureNavigationHistoryPinned(history)
-	for i, entry := range history.Pinned {
-		if entry == path {
-			history.Pinned = append(history.Pinned[:i], history.Pinned[i+1:]...)
-			return true
-		}
-	}
-	return false
-}
-
-// IsNavigationPathPinned reports whether a path is saved for History Jump.
-func (c *Config) IsNavigationPathPinned(path string) bool {
-	history := &c.UI.NavigationHistory
-	ensureNavigationHistoryPinned(history)
-	for _, entry := range history.Pinned {
-		if entry == path {
-			return true
-		}
-	}
-	return false
-}
-
-func sortNavigationHistory(history *NavigationHistoryConfig, now time.Time) {
-	sortNavigationHistoryEntries(history.Entries, history.LastUsed, history.UseCount, now)
-}
-
-func sortNavigationHistoryEntries(entries []string, lastUsed map[string]time.Time, useCount map[string]int, now time.Time) {
-	sort.SliceStable(entries, func(i, j int) bool {
-		scoreI := frecencyScore(useCount[entries[i]], lastUsed[entries[i]], now)
-		scoreJ := frecencyScore(useCount[entries[j]], lastUsed[entries[j]], now)
-		if scoreI != scoreJ {
-			return scoreI > scoreJ
-		}
-		timeI := lastUsed[entries[i]]
-		timeJ := lastUsed[entries[j]]
-		if !timeI.Equal(timeJ) {
-			return timeI.After(timeJ)
-		}
-		return entries[i] < entries[j]
-	})
-}
-
-func pruneNavigationHistory(history *NavigationHistoryConfig, now time.Time) {
-	if history.MaxEntries <= 0 || len(history.Entries) <= history.MaxEntries {
-		return
-	}
-	sortNavigationHistory(history, now)
-	for _, path := range history.Entries[history.MaxEntries:] {
-		delete(history.LastUsed, path)
-		delete(history.UseCount, path)
-	}
-	history.Entries = history.Entries[:history.MaxEntries]
-}
-
-func frecencyScore(useCount int, lastUsed time.Time, now time.Time) float64 {
-	if useCount <= 0 {
-		useCount = 1
-	}
-	age := now.Sub(lastUsed)
-	switch {
-	case lastUsed.IsZero():
-		return float64(useCount) * 0.25
-	case age <= time.Hour:
-		return float64(useCount) * 4
-	case age <= 24*time.Hour:
-		return float64(useCount) * 2
-	case age <= 7*24*time.Hour:
-		return float64(useCount) * 0.5
-	default:
-		return float64(useCount) * 0.25
-	}
-}
-
-// EffectiveFilterPattern returns the glob portion of a saved filter entry.
-// Text after ";;" is treated as a searchable user comment.
-func EffectiveFilterPattern(pattern string) string {
-	if idx := strings.Index(pattern, ";;"); idx >= 0 {
-		pattern = pattern[:idx]
-	}
-	return strings.TrimSpace(pattern)
-}
-
-// GetFileFilterEntries returns filter history sorted by frecency.
-func (c *Config) GetFileFilterEntries() []FilterEntry {
-	entries := c.UI.FileFilter.Entries
-	if len(entries) <= 1 {
-		return entries
-	}
-	sorted := make([]FilterEntry, len(entries))
-	copy(sorted, entries)
-	sortFileFilterEntries(sorted, time.Now())
-	return sorted
-}
-
-// AddToFileFilterHistory records a filter pattern use and prunes by frecency.
-func (c *Config) AddToFileFilterHistory(entry *FilterEntry) {
-	if entry == nil || strings.TrimSpace(entry.Pattern) == "" || EffectiveFilterPattern(entry.Pattern) == "" {
-		return
-	}
-	filter := &c.UI.FileFilter
-	now := time.Now()
-	for i := range filter.Entries {
-		if filter.Entries[i].Pattern == entry.Pattern {
-			filter.Entries[i].LastUsed = now
-			filter.Entries[i].UseCount++
-			sortFileFilterEntries(filter.Entries, now)
-			pruneFileFilterEntries(filter, now)
-			return
-		}
-	}
-
-	newEntry := *entry
-	newEntry.LastUsed = now
-	if newEntry.UseCount <= 0 {
-		newEntry.UseCount = 1
-	}
-	filter.Entries = append(filter.Entries, newEntry)
-	sortFileFilterEntries(filter.Entries, now)
-	pruneFileFilterEntries(filter, now)
-}
-
-// RemoveFileFilterEntry removes an exact saved filter pattern from history.
-func (c *Config) RemoveFileFilterEntry(pattern string) bool {
-	entries := c.UI.FileFilter.Entries
-	for i := range entries {
-		if entries[i].Pattern == pattern {
-			c.UI.FileFilter.Entries = append(entries[:i], entries[i+1:]...)
-			return true
-		}
-	}
-	return false
-}
-
-func sortFileFilterEntries(entries []FilterEntry, now time.Time) {
-	sort.SliceStable(entries, func(i, j int) bool {
-		scoreI := frecencyScore(entries[i].UseCount, entries[i].LastUsed, now)
-		scoreJ := frecencyScore(entries[j].UseCount, entries[j].LastUsed, now)
-		if scoreI != scoreJ {
-			return scoreI > scoreJ
-		}
-		if !entries[i].LastUsed.Equal(entries[j].LastUsed) {
-			return entries[i].LastUsed.After(entries[j].LastUsed)
-		}
-		return entries[i].Pattern < entries[j].Pattern
-	})
-}
-
-func pruneFileFilterEntries(filter *FileFilterConfig, now time.Time) {
-	if filter.MaxEntries <= 0 || len(filter.Entries) <= filter.MaxEntries {
-		return
-	}
-	sortFileFilterEntries(filter.Entries, now)
-	filter.Entries = filter.Entries[:filter.MaxEntries]
-}
-
-// FilterNavigationHistory filters history entries by query (case-insensitive partial match)
-func (c *Config) FilterNavigationHistory(query string) []string {
-	if query == "" {
-		return c.UI.NavigationHistory.Entries
-	}
-
-	query = strings.ToLower(query)
-	var filtered []string
-
-	for _, path := range c.UI.NavigationHistory.Entries {
-		if strings.Contains(strings.ToLower(path), query) {
-			filtered = append(filtered, path)
-		}
-	}
-
-	return filtered
-}
+// frecencyScore, sortNavigationHistoryEntries, sortFileFilterEntries,
+// EffectiveFilterPattern, and stopTimer moved to state.go: after the
+// config.json/state.json split, Config no longer has any use for them (the
+// history/filter accessors that called them now live on *State), and
+// stopTimer's only remaining caller is StateManager's save worker.

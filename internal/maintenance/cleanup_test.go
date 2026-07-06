@@ -9,16 +9,16 @@ import (
 )
 
 func TestPlanFindsInaccessibleEntries(t *testing.T) {
-	cfg := testConfig()
-	cfg.UI.CursorMemory.Entries["/missing-cursor"] = "file.txt"
-	cfg.UI.CursorMemory.LastUsed["/missing-cursor"] = time.Now()
-	cfg.UI.CursorMemory.Entries["/ok-cursor"] = "file.txt"
-	cfg.UI.CursorMemory.LastUsed["/ok-cursor"] = time.Now()
-	cfg.UI.NavigationHistory.Entries = []string{"/ok-history", "/missing-history"}
-	cfg.UI.NavigationHistory.LastUsed["/ok-history"] = time.Now()
-	cfg.UI.NavigationHistory.LastUsed["/missing-history"] = time.Now()
-	cfg.UI.NavigationHistory.UseCount["/ok-history"] = 1
-	cfg.UI.NavigationHistory.UseCount["/missing-history"] = 1
+	cfg := testState()
+	cfg.CursorMemory.Entries["/missing-cursor"] = "file.txt"
+	cfg.CursorMemory.LastUsed["/missing-cursor"] = time.Now()
+	cfg.CursorMemory.Entries["/ok-cursor"] = "file.txt"
+	cfg.CursorMemory.LastUsed["/ok-cursor"] = time.Now()
+	cfg.NavigationHistory.Entries = []string{"/ok-history", "/missing-history"}
+	cfg.NavigationHistory.LastUsed["/ok-history"] = time.Now()
+	cfg.NavigationHistory.LastUsed["/missing-history"] = time.Now()
+	cfg.NavigationHistory.UseCount["/ok-history"] = 1
+	cfg.NavigationHistory.UseCount["/missing-history"] = 1
 
 	result := Plan(cfg, DefaultOptions(), classifyNone, func(path string) error {
 		if path == "/missing-cursor" || path == "/missing-history" {
@@ -39,9 +39,9 @@ func TestPlanFindsInaccessibleEntries(t *testing.T) {
 }
 
 func TestPlanRespectsTaskSelection(t *testing.T) {
-	cfg := testConfig()
-	cfg.UI.CursorMemory.Entries["/missing-cursor"] = "file.txt"
-	cfg.UI.NavigationHistory.Entries = []string{"/missing-history"}
+	cfg := testState()
+	cfg.CursorMemory.Entries["/missing-cursor"] = "file.txt"
+	cfg.NavigationHistory.Entries = []string{"/missing-history"}
 
 	options := DefaultOptions()
 	options.CleanCursorMemory = false
@@ -58,10 +58,10 @@ func TestPlanRespectsTaskSelection(t *testing.T) {
 }
 
 func TestPlanSkipsNetworkAndRemovable(t *testing.T) {
-	cfg := testConfig()
-	cfg.UI.CursorMemory.Entries["/network"] = "file.txt"
-	cfg.UI.CursorMemory.Entries["/removable"] = "file.txt"
-	cfg.UI.CursorMemory.Entries["/local"] = "file.txt"
+	cfg := testState()
+	cfg.CursorMemory.Entries["/network"] = "file.txt"
+	cfg.CursorMemory.Entries["/removable"] = "file.txt"
+	cfg.CursorMemory.Entries["/local"] = "file.txt"
 
 	result := Plan(cfg, DefaultOptions(), func(path string) (PathClass, error) {
 		switch path {
@@ -88,16 +88,16 @@ func TestPlanSkipsNetworkAndRemovable(t *testing.T) {
 }
 
 func TestApplyRemovesOnlyLatestCandidates(t *testing.T) {
-	cfg := testConfig()
-	cfg.UI.CursorMemory.Entries["/remove-cursor"] = "file.txt"
-	cfg.UI.CursorMemory.LastUsed["/remove-cursor"] = time.Now()
-	cfg.UI.CursorMemory.Entries["/keep-cursor"] = "file.txt"
-	cfg.UI.CursorMemory.LastUsed["/keep-cursor"] = time.Now()
-	cfg.UI.NavigationHistory.Entries = []string{"/remove-history", "/keep-history"}
-	cfg.UI.NavigationHistory.LastUsed["/remove-history"] = time.Now()
-	cfg.UI.NavigationHistory.LastUsed["/keep-history"] = time.Now()
-	cfg.UI.NavigationHistory.UseCount["/remove-history"] = 1
-	cfg.UI.NavigationHistory.UseCount["/keep-history"] = 1
+	cfg := testState()
+	cfg.CursorMemory.Entries["/remove-cursor"] = "file.txt"
+	cfg.CursorMemory.LastUsed["/remove-cursor"] = time.Now()
+	cfg.CursorMemory.Entries["/keep-cursor"] = "file.txt"
+	cfg.CursorMemory.LastUsed["/keep-cursor"] = time.Now()
+	cfg.NavigationHistory.Entries = []string{"/remove-history", "/keep-history"}
+	cfg.NavigationHistory.LastUsed["/remove-history"] = time.Now()
+	cfg.NavigationHistory.LastUsed["/keep-history"] = time.Now()
+	cfg.NavigationHistory.UseCount["/remove-history"] = 1
+	cfg.NavigationHistory.UseCount["/keep-history"] = 1
 
 	removed := Apply(cfg, Result{Candidates: []Candidate{
 		{Task: TaskCursorMemory, Path: "/remove-cursor"},
@@ -107,22 +107,22 @@ func TestApplyRemovesOnlyLatestCandidates(t *testing.T) {
 	if removed != 2 {
 		t.Fatalf("removed = %d, want 2", removed)
 	}
-	if _, exists := cfg.UI.CursorMemory.Entries["/remove-cursor"]; exists {
+	if _, exists := cfg.CursorMemory.Entries["/remove-cursor"]; exists {
 		t.Fatal("cursor memory entry was not removed")
 	}
-	if _, exists := cfg.UI.CursorMemory.LastUsed["/remove-cursor"]; exists {
+	if _, exists := cfg.CursorMemory.LastUsed["/remove-cursor"]; exists {
 		t.Fatal("cursor memory lastUsed was not removed")
 	}
-	if _, exists := cfg.UI.CursorMemory.Entries["/keep-cursor"]; !exists {
+	if _, exists := cfg.CursorMemory.Entries["/keep-cursor"]; !exists {
 		t.Fatal("cursor memory keep entry was removed")
 	}
-	if got := cfg.UI.NavigationHistory.Entries; len(got) != 1 || got[0] != "/keep-history" {
+	if got := cfg.NavigationHistory.Entries; len(got) != 1 || got[0] != "/keep-history" {
 		t.Fatalf("history entries = %#v, want only /keep-history", got)
 	}
-	if _, exists := cfg.UI.NavigationHistory.LastUsed["/remove-history"]; exists {
+	if _, exists := cfg.NavigationHistory.LastUsed["/remove-history"]; exists {
 		t.Fatal("history lastUsed was not removed")
 	}
-	if _, exists := cfg.UI.NavigationHistory.UseCount["/remove-history"]; exists {
+	if _, exists := cfg.NavigationHistory.UseCount["/remove-history"]; exists {
 		t.Fatal("history useCount was not removed")
 	}
 }
@@ -131,18 +131,16 @@ func classifyNone(path string) (PathClass, error) {
 	return PathClass{}, nil
 }
 
-func testConfig() *config.Config {
-	return &config.Config{
-		UI: config.UIConfig{
-			CursorMemory: config.CursorMemoryConfig{
-				Entries:  make(map[string]string),
-				LastUsed: make(map[string]time.Time),
-			},
-			NavigationHistory: config.NavigationHistoryConfig{
-				Entries:  make([]string, 0),
-				LastUsed: make(map[string]time.Time),
-				UseCount: make(map[string]int),
-			},
+func testState() *config.State {
+	return &config.State{
+		CursorMemory: config.CursorMemoryState{
+			Entries:  make(map[string]string),
+			LastUsed: make(map[string]time.Time),
+		},
+		NavigationHistory: config.NavigationHistoryState{
+			Entries:  make([]string, 0),
+			LastUsed: make(map[string]time.Time),
+			UseCount: make(map[string]int),
 		},
 	}
 }

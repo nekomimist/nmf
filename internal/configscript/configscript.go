@@ -43,7 +43,6 @@ type Runtime struct {
 	debugPrint func(format string, args ...interface{})
 	debugHook  func(config.DebugConfig) error
 	loaded     bool
-	saveMask   saveMask
 
 	moduleCache   map[string]starlark.StringDict
 	loading       map[string]bool
@@ -65,26 +64,6 @@ type MenuItem struct {
 	Command   string
 	Separator bool
 	Callable  starlark.Callable
-}
-
-type saveMask struct {
-	debug                       bool
-	window                      bool
-	startup                     bool
-	theme                       bool
-	uiShowHiddenFiles           bool
-	uiSort                      bool
-	uiItemSpacing               bool
-	uiCopy                      bool
-	uiViewer                    bool
-	uiArchive                   bool
-	uiCursorStyle               bool
-	uiCursorMemoryMaxEntries    bool
-	uiNavigationHistoryMaxEntry bool
-	uiFileFilterMaxEntries      bool
-	uiDirectoryJumps            bool
-	uiKeyBindings               bool
-	uiExternalCommands          bool
 }
 
 // ScriptPath returns the init.star path next to config.json.
@@ -148,72 +127,6 @@ func newRuntime(path string, cfg *config.Config, displayInfo display.Info, debug
 // Loaded reports whether an init.star file was found and executed.
 func (rt *Runtime) Loaded() bool {
 	return rt != nil && rt.loaded
-}
-
-// SaveTransform returns a config save hook that strips Starlark-only overrides.
-func (rt *Runtime) SaveTransform(base *config.Config) config.SaveTransform {
-	if rt == nil {
-		return nil
-	}
-	baseCopy := config.Clone(base)
-	mask := rt.saveMask
-	return func(current *config.Config) *config.Config {
-		if current == nil || baseCopy == nil {
-			return current
-		}
-		if mask.window {
-			current.Window = baseCopy.Window
-		}
-		if mask.startup {
-			current.Startup = baseCopy.Startup
-		}
-		if mask.theme {
-			current.Theme = baseCopy.Theme
-		}
-		if mask.debug {
-			current.Debug = baseCopy.Debug
-		}
-		if mask.uiShowHiddenFiles {
-			current.UI.ShowHiddenFiles = baseCopy.UI.ShowHiddenFiles
-		}
-		if mask.uiSort {
-			current.UI.Sort = baseCopy.UI.Sort
-		}
-		if mask.uiItemSpacing {
-			current.UI.ItemSpacing = baseCopy.UI.ItemSpacing
-		}
-		if mask.uiCopy {
-			current.UI.Copy = baseCopy.UI.Copy
-		}
-		if mask.uiViewer {
-			current.UI.Viewer = baseCopy.UI.Viewer
-		}
-		if mask.uiArchive {
-			current.UI.Archive = baseCopy.UI.Archive
-		}
-		if mask.uiCursorStyle {
-			current.UI.CursorStyle = baseCopy.UI.CursorStyle
-		}
-		if mask.uiCursorMemoryMaxEntries {
-			current.UI.CursorMemory.MaxEntries = baseCopy.UI.CursorMemory.MaxEntries
-		}
-		if mask.uiNavigationHistoryMaxEntry {
-			current.UI.NavigationHistory.MaxEntries = baseCopy.UI.NavigationHistory.MaxEntries
-		}
-		if mask.uiFileFilterMaxEntries {
-			current.UI.FileFilter.MaxEntries = baseCopy.UI.FileFilter.MaxEntries
-		}
-		if mask.uiDirectoryJumps {
-			current.UI.DirectoryJumps = baseCopy.UI.DirectoryJumps
-		}
-		if mask.uiKeyBindings {
-			current.UI.KeyBindings = baseCopy.UI.KeyBindings
-		}
-		if mask.uiExternalCommands {
-			current.UI.ExternalCommands = baseCopy.UI.ExternalCommands
-		}
-		return current
-	}
 }
 
 func (rt *Runtime) execFile(path string, data []byte) error {
@@ -408,7 +321,6 @@ func (rt *Runtime) builtinWindow(_ *starlark.Thread, fn *starlark.Builtin, args 
 		rt.cfg.Window.X = &x
 		rt.cfg.Window.Y = &y
 	}
-	rt.saveMask.window = true
 	return starlark.None, nil
 }
 
@@ -418,7 +330,6 @@ func (rt *Runtime) builtinStartup(_ *starlark.Thread, fn *starlark.Builtin, args
 		return nil, err
 	}
 	rt.cfg.Startup.Directory = strings.TrimSpace(directory)
-	rt.saveMask.startup = true
 	return starlark.None, nil
 }
 
@@ -462,7 +373,6 @@ func (rt *Runtime) builtinTheme(_ *starlark.Thread, fn *starlark.Builtin, args s
 	rt.cfg.Theme.FontPath = fontPath
 	rt.cfg.Theme.MonospaceFontName = strings.TrimSpace(monospaceFontName)
 	rt.cfg.Theme.MonospaceFontPath = monospaceFontPath
-	rt.saveMask.theme = true
 	return starlark.None, nil
 }
 
@@ -523,7 +433,6 @@ func (rt *Runtime) builtinColor(_ *starlark.Thread, fn *starlark.Builtin, args s
 		}
 	}
 	rt.cfg.Theme.Colors[name] = colorConfig
-	rt.saveMask.theme = true
 	return starlark.None, nil
 }
 
@@ -554,7 +463,6 @@ func (rt *Runtime) builtinDebugLogging(_ *starlark.Thread, fn *starlark.Builtin,
 	rt.cfg.Debug.Enabled = enabled
 	rt.cfg.Debug.LogDirectory = strings.TrimSpace(logDirectory)
 	rt.cfg.Debug.MaxLogFiles = maxFiles
-	rt.saveMask.debug = true
 	if rt.debugHook != nil {
 		if err := rt.debugHook(rt.cfg.Debug); err != nil {
 			return nil, err
@@ -580,8 +488,6 @@ func (rt *Runtime) builtinUI(_ *starlark.Thread, fn *starlark.Builtin, args star
 	}
 	rt.cfg.UI.ShowHiddenFiles = showHiddenFiles
 	rt.cfg.UI.ItemSpacing = itemSpacing
-	rt.saveMask.uiShowHiddenFiles = true
-	rt.saveMask.uiItemSpacing = true
 	return starlark.None, nil
 }
 
@@ -591,7 +497,6 @@ func (rt *Runtime) builtinCopy(_ *starlark.Thread, fn *starlark.Builtin, args st
 		return nil, err
 	}
 	rt.cfg.UI.Copy.PreserveTimestamps = preserveTimestamps
-	rt.saveMask.uiCopy = true
 	return starlark.None, nil
 }
 
@@ -611,7 +516,6 @@ func (rt *Runtime) builtinViewer(_ *starlark.Thread, fn *starlark.Builtin, args 
 	rt.cfg.UI.Viewer.MaxWidth = maxWidth
 	rt.cfg.UI.Viewer.MaxHeight = maxHeight
 	rt.cfg.UI.Viewer.DefaultPane = defaultPane
-	rt.saveMask.uiViewer = true
 	return starlark.None, nil
 }
 
@@ -633,7 +537,6 @@ func (rt *Runtime) builtinArchive(_ *starlark.Thread, fn *starlark.Builtin, args
 		return nil, err
 	}
 	rt.cfg.UI.Archive.ZipNameEncoding = strings.TrimSpace(zipNameEncoding)
-	rt.saveMask.uiArchive = true
 	return starlark.None, nil
 }
 
@@ -669,7 +572,6 @@ func (rt *Runtime) builtinSort(thread *starlark.Thread, fn *starlark.Builtin, ar
 		return starlark.None, nil
 	}
 	rt.cfg.UI.Sort = sortConfig
-	rt.saveMask.uiSort = true
 	return starlark.None, nil
 }
 
@@ -687,7 +589,6 @@ func (rt *Runtime) builtinCursorStyle(_ *starlark.Thread, fn *starlark.Builtin, 
 	}
 	rt.cfg.UI.CursorStyle.Type = styleType
 	rt.cfg.UI.CursorStyle.Thickness = thickness
-	rt.saveMask.uiCursorStyle = true
 	return starlark.None, nil
 }
 
@@ -700,7 +601,6 @@ func (rt *Runtime) builtinCursorMemory(_ *starlark.Thread, fn *starlark.Builtin,
 		return nil, fmt.Errorf("max_entries must be positive")
 	}
 	rt.cfg.UI.CursorMemory.MaxEntries = maxEntries
-	rt.saveMask.uiCursorMemoryMaxEntries = true
 	return starlark.None, nil
 }
 
@@ -713,7 +613,6 @@ func (rt *Runtime) builtinNavigationHistory(_ *starlark.Thread, fn *starlark.Bui
 		return nil, fmt.Errorf("max_entries must be positive")
 	}
 	rt.cfg.UI.NavigationHistory.MaxEntries = maxEntries
-	rt.saveMask.uiNavigationHistoryMaxEntry = true
 	return starlark.None, nil
 }
 
@@ -726,7 +625,6 @@ func (rt *Runtime) builtinFileFilter(_ *starlark.Thread, fn *starlark.Builtin, a
 		return nil, fmt.Errorf("max_entries must be positive")
 	}
 	rt.cfg.UI.FileFilter.MaxEntries = maxEntries
-	rt.saveMask.uiFileFilterMaxEntries = true
 	return starlark.None, nil
 }
 
@@ -743,7 +641,6 @@ func (rt *Runtime) builtinDirectoryJump(_ *starlark.Thread, fn *starlark.Builtin
 		Shortcut:  shortcut,
 		Directory: directory,
 	})
-	rt.saveMask.uiDirectoryJumps = true
 	return starlark.None, nil
 }
 
@@ -752,7 +649,6 @@ func (rt *Runtime) builtinClearDirectoryJumps(_ *starlark.Thread, _ *starlark.Bu
 		return nil, err
 	}
 	rt.cfg.UI.DirectoryJumps.Entries = nil
-	rt.saveMask.uiDirectoryJumps = true
 	return starlark.None, nil
 }
 
@@ -820,7 +716,6 @@ func (rt *Runtime) appendKeyBinding(fnName string, args starlark.Tuple, kwargs [
 		Key:     key,
 		Command: command,
 	})
-	rt.saveMask.uiKeyBindings = true
 	return starlark.None, nil
 }
 
@@ -845,7 +740,6 @@ func (rt *Runtime) builtinClearKeys(_ *starlark.Thread, _ *starlark.Builtin, arg
 		return nil, err
 	}
 	rt.cfg.UI.KeyBindings = removeKeyBindingsForTarget(rt.cfg.UI.KeyBindings, normalizedTarget)
-	rt.saveMask.uiKeyBindings = true
 	return starlark.None, nil
 }
 
@@ -926,7 +820,6 @@ func (rt *Runtime) builtinExternalCommand(_ *starlark.Thread, fn *starlark.Built
 		Cwd:        cwd,
 		Edit:       edit,
 	})
-	rt.saveMask.uiExternalCommands = true
 	return starlark.None, nil
 }
 
@@ -935,7 +828,6 @@ func (rt *Runtime) builtinClearExternalCommands(_ *starlark.Thread, _ *starlark.
 		return nil, err
 	}
 	rt.cfg.UI.ExternalCommands = nil
-	rt.saveMask.uiExternalCommands = true
 	return starlark.None, nil
 }
 

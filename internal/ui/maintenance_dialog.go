@@ -16,7 +16,7 @@ import (
 )
 
 type MaintenanceDialog struct {
-	config     *config.Config
+	state      *config.State
 	keyManager *keymanager.KeyManager
 	kmToken    keymanager.HandlerToken
 	debugPrint func(format string, args ...interface{})
@@ -40,9 +40,9 @@ type MaintenanceDialog struct {
 	closed   bool
 }
 
-func NewMaintenanceDialog(cfg *config.Config, km *keymanager.KeyManager, debugPrint func(format string, args ...interface{})) *MaintenanceDialog {
+func NewMaintenanceDialog(state *config.State, km *keymanager.KeyManager, debugPrint func(format string, args ...interface{})) *MaintenanceDialog {
 	d := &MaintenanceDialog{
-		config:     cfg,
+		state:      state,
 		keyManager: km,
 		debugPrint: debugPrint,
 	}
@@ -154,7 +154,7 @@ func (d *MaintenanceDialog) Scan() {
 		return
 	}
 	d.debugPrint("MaintenanceDialog: Scan started")
-	d.lastScan = maintenance.Plan(d.config, d.options(), nil, nil)
+	d.lastScan = maintenance.Plan(d.state, d.options(), nil, nil)
 	d.scanned = true
 	d.updateResults()
 	d.debugPrint("MaintenanceDialog: Scan finished candidates=%d", len(d.lastScan.Candidates))

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 )
@@ -340,6 +341,70 @@ func pruneFileFilterEntriesState(filter *FileFilterState, maxEntries int, now ti
 	filter.Entries = filter.Entries[:maxEntries]
 }
 
+// sortNavigationHistoryEntries sorts path entries by frecency (highest score
+// first), breaking ties by most-recent use and then lexically for stability.
+func sortNavigationHistoryEntries(entries []string, lastUsed map[string]time.Time, useCount map[string]int, now time.Time) {
+	sort.SliceStable(entries, func(i, j int) bool {
+		scoreI := frecencyScore(useCount[entries[i]], lastUsed[entries[i]], now)
+		scoreJ := frecencyScore(useCount[entries[j]], lastUsed[entries[j]], now)
+		if scoreI != scoreJ {
+			return scoreI > scoreJ
+		}
+		timeI := lastUsed[entries[i]]
+		timeJ := lastUsed[entries[j]]
+		if !timeI.Equal(timeJ) {
+			return timeI.After(timeJ)
+		}
+		return entries[i] < entries[j]
+	})
+}
+
+// frecencyScore favors entries used recently and/or often, decaying the
+// weight of a use-count as its age bucket grows.
+func frecencyScore(useCount int, lastUsed time.Time, now time.Time) float64 {
+	if useCount <= 0 {
+		useCount = 1
+	}
+	age := now.Sub(lastUsed)
+	switch {
+	case lastUsed.IsZero():
+		return float64(useCount) * 0.25
+	case age <= time.Hour:
+		return float64(useCount) * 4
+	case age <= 24*time.Hour:
+		return float64(useCount) * 2
+	case age <= 7*24*time.Hour:
+		return float64(useCount) * 0.5
+	default:
+		return float64(useCount) * 0.25
+	}
+}
+
+// EffectiveFilterPattern returns the glob portion of a saved filter entry.
+// Text after ";;" is treated as a searchable user comment.
+func EffectiveFilterPattern(pattern string) string {
+	if idx := strings.Index(pattern, ";;"); idx >= 0 {
+		pattern = pattern[:idx]
+	}
+	return strings.TrimSpace(pattern)
+}
+
+// sortFileFilterEntries sorts filter entries by frecency (highest score
+// first), breaking ties by most-recent use and then lexically for stability.
+func sortFileFilterEntries(entries []FilterEntry, now time.Time) {
+	sort.SliceStable(entries, func(i, j int) bool {
+		scoreI := frecencyScore(entries[i].UseCount, entries[i].LastUsed, now)
+		scoreJ := frecencyScore(entries[j].UseCount, entries[j].LastUsed, now)
+		if scoreI != scoreJ {
+			return scoreI > scoreJ
+		}
+		if !entries[i].LastUsed.Equal(entries[j].LastUsed) {
+			return entries[i].LastUsed.After(entries[j].LastUsed)
+		}
+		return entries[i].Pattern < entries[j].Pattern
+	})
+}
+
 // EffectiveSort returns the state's recorded sort override, or configDefault
 // (typically cfg.UI.Sort) when no sort has been applied yet.
 func (s *State) EffectiveSort(configDefault SortConfig) SortConfig {
@@ -635,6 +700,20 @@ func (m *StateManager) saveWorker() {
 			reply <- err
 			close(m.stopped)
 			return
+		}
+	}
+}
+
+// stopTimer stops t and drains a pending fire so it can be safely reused or
+// discarded, per the standard library's documented Timer.Stop idiom.
+func stopTimer(t *time.Timer) {
+	if t == nil {
+		return
+	}
+	if !t.Stop() {
+		select {
+		case <-t.C:
+		default:
 		}
 	}
 }

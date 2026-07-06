@@ -166,7 +166,7 @@ func (fm *FileManager) showTransferDestinationDialog(op ui.Operation, targets []
 	if len(dest) == 0 {
 		debugPrint("FileManager: No destination candidates available")
 	}
-	dlg := ui.NewCopyMoveDialog(op, targets, dest, fm.config.UI.NavigationHistory.LastUsed, fm.config.UI.Copy.PreserveTimestamps, fm.keyManager, debugPrint, fm.searchMatchers)
+	dlg := ui.NewCopyMoveDialog(op, targets, dest, fm.state.NavigationHistory.LastUsed, fm.config.UI.Copy.PreserveTimestamps, fm.keyManager, debugPrint, fm.searchMatchers)
 	openDest := destinationCandidateOpenMap(dest)
 	refreshDestinations := func(preferredPath string) {
 		dest = fm.buildDestinationCandidates()
@@ -364,7 +364,7 @@ func (fm *FileManager) buildDestinationCandidates() []ui.DestinationCandidate {
 	}
 
 	// Append navigation history skipping dups
-	for _, p := range fm.config.GetNavigationHistory() {
+	for _, p := range fm.state.GetNavigationHistory() {
 		if fileinfo.IsArchivePath(p) {
 			continue
 		}

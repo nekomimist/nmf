@@ -26,7 +26,7 @@ func (fm *FileManager) ReopenClosedWindow() {
 }
 
 func (fm *FileManager) openWindowAtPath(path string) {
-	newFM := NewFileManager(fyne.CurrentApp(), path, fm.config, fm.configManager, fm.customTheme, fm.configScript, fm.watchHub)
+	newFM := NewFileManager(fyne.CurrentApp(), path, fm.config, fm.configManager, fm.state, fm.stateManager, fm.customTheme, fm.configScript, fm.watchHub)
 	newFM.window.Show()
 	positionWindowNextTo(fm.window, newFM.window)
 }
@@ -44,13 +44,13 @@ func (fm *FileManager) ShowDirectoryTreeDialog() {
 // ShowNavigationHistoryDialog shows the navigation history dialog.
 func (fm *FileManager) ShowNavigationHistoryDialog() {
 	fm.normalizeNavigationHistoryForRuntimeState()
-	historyPaths := fm.config.GetNavigationHistory()
+	historyPaths := fm.state.GetNavigationHistory()
 	openPathList, openPaths := fm.openPathsInOtherWindows()
 
 	enhancedPaths, unpinRemovesPath := buildEnhancedNavigationHistoryPaths(
 		fm.currentPath,
 		openPathList,
-		fm.config.UI.NavigationHistory.Pinned,
+		fm.state.NavigationHistory.Pinned,
 		historyPaths,
 	)
 
@@ -62,9 +62,9 @@ func (fm *FileManager) ShowNavigationHistoryDialog() {
 	dialog := ui.NewNavigationHistoryDialog(
 		enhancedPaths,
 		openPaths,
-		pinnedNavigationPathMap(fm.config.UI.NavigationHistory.Pinned),
+		pinnedNavigationPathMap(fm.state.NavigationHistory.Pinned),
 		unpinRemovesPath,
-		fm.config.UI.NavigationHistory.LastUsed,
+		fm.state.NavigationHistory.LastUsed,
 		fm.keyManager,
 		debugPrint,
 		fm.searchMatchers,
@@ -137,17 +137,17 @@ func buildEnhancedNavigationHistoryPaths(currentPath string, openPaths []string,
 
 func (fm *FileManager) PinCurrentHistoryPath() {
 	path := canonicalNavigationHistoryPath(fm.currentPath)
-	if path == "" || fm.config == nil {
+	if path == "" || fm.state == nil {
 		return
 	}
 
-	if !fm.config.PinNavigationPath(path) {
+	if !fm.state.PinNavigationPath(path) {
 		debugPrint("FileManager: History path already pinned path=%s", path)
 		fm.ShowMessageDialog("History Jump", "Already saved:\n"+path)
 		return
 	}
-	if fm.configManager != nil {
-		if err := fm.configManager.SaveAsync(fm.config); err != nil {
+	if fm.stateManager != nil {
+		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
 			debugPrint("FileManager: Error saving pinned history path: %v", err)
 			fm.ShowMessageDialog("History Jump", err.Error())
 			return
@@ -160,14 +160,14 @@ func (fm *FileManager) PinCurrentHistoryPath() {
 
 func (fm *FileManager) UnpinHistoryPath(path string) bool {
 	path = canonicalNavigationHistoryPath(path)
-	if path == "" || fm.config == nil {
+	if path == "" || fm.state == nil {
 		return false
 	}
-	if !fm.config.UnpinNavigationPath(path) {
+	if !fm.state.UnpinNavigationPath(path) {
 		return false
 	}
-	if fm.configManager != nil {
-		if err := fm.configManager.SaveAsync(fm.config); err != nil {
+	if fm.stateManager != nil {
+		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
 			debugPrint("FileManager: Error saving unpinned history path: %v", err)
 			fm.ShowMessageDialog("History Jump", err.Error())
 			return false
@@ -215,15 +215,17 @@ func (fm *FileManager) ShowDirectoryJumpDialog() {
 // ShowMaintenanceDialog opens maintenance tools for runtime state cleanup.
 func (fm *FileManager) ShowMaintenanceDialog() {
 	fm.normalizeNavigationHistoryForRuntimeState()
-	dialog := ui.NewMaintenanceDialog(fm.config, fm.keyManager, debugPrint)
+	dialog := ui.NewMaintenanceDialog(fm.state, fm.keyManager, debugPrint)
 	dialog.ShowDialog(fm.window, func(result maintenance.Result) (int, error) {
-		removed := maintenance.Apply(fm.config, result)
+		removed := maintenance.Apply(fm.state, result)
 		if removed == 0 {
 			return 0, nil
 		}
-		if err := fm.configManager.SaveAsync(fm.config); err != nil {
-			debugPrint("FileManager: Error saving maintenance cleanup: %v", err)
-			return removed, err
+		if fm.stateManager != nil {
+			if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+				debugPrint("FileManager: Error saving maintenance cleanup: %v", err)
+				return removed, err
+			}
 		}
 		debugPrint("FileManager: Maintenance cleanup removed=%d", removed)
 		return removed, nil
@@ -231,8 +233,8 @@ func (fm *FileManager) ShowMaintenanceDialog() {
 }
 
 func (fm *FileManager) normalizeNavigationHistoryForRuntimeState() {
-	if normalizeNavigationHistory(fm.config) {
-		if err := fm.configManager.SaveAsync(fm.config); err != nil {
+	if normalizeNavigationHistory(fm.state) && fm.stateManager != nil {
+		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
 			debugPrint("FileManager: Error saving normalized navigation history: %v", err)
 		}
 	}
@@ -240,13 +242,13 @@ func (fm *FileManager) normalizeNavigationHistoryForRuntimeState() {
 
 func (fm *FileManager) recordNavigationHistory(path string) {
 	path = canonicalNavigationHistoryPath(path)
-	if path == "" || fm.config == nil {
+	if path == "" || fm.state == nil {
 		return
 	}
 
-	fm.config.AddToNavigationHistory(path)
-	if fm.configManager != nil {
-		if err := fm.configManager.SaveAsync(fm.config); err != nil {
+	fm.state.AddToNavigationHistory(path, fm.config.UI.NavigationHistory.MaxEntries)
+	if fm.stateManager != nil {
+		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
 			debugPrint("FileManager: Error saving navigation history: %v", err)
 		}
 	}

@@ -40,6 +40,8 @@ type FileManager struct {
 	storageKnown      bool
 	config            *config.Config
 	configManager     *config.Manager
+	state             *config.State
+	stateManager      *config.StateManager
 	configScript      *configscript.Runtime
 	initialWindowSize fyne.Size
 	activeSort        config.SortConfig

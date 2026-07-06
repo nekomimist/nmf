@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"nmf/internal/config"
 	"nmf/internal/display"
@@ -272,78 +271,6 @@ nmf.debug("font_size=" + str(18))
 	}
 	if !reflect.DeepEqual(logs, want) {
 		t.Fatalf("logs = %#v, want %#v", logs, want)
-	}
-}
-
-func TestSaveTransformStripsStarlarkOverlayAndPreservesRuntimeState(t *testing.T) {
-	base := testConfig()
-	base.Window.Width = 900
-	base.Startup.Directory = "/base"
-	base.UI.Sort.SortBy = "name"
-	base.UI.Copy.PreserveTimestamps = false
-	base.UI.Viewer = config.ViewerConfig{MaxWidth: 0, MaxHeight: 0, DefaultPane: "auto"}
-	base.UI.Archive.ZipNameEncoding = "shift_jis"
-	base.UI.CursorMemory.MaxEntries = 100
-	base.UI.KeyBindings = []config.KeyBindingEntry{{Key: "X", Command: "jobs.show"}}
-	base.Debug = config.DebugConfig{Enabled: false, LogDirectory: "", MaxLogFiles: 10}
-
-	rt := &Runtime{saveMask: saveMask{
-		debug:                    true,
-		window:                   true,
-		startup:                  true,
-		uiSort:                   true,
-		uiCopy:                   true,
-		uiViewer:                 true,
-		uiArchive:                true,
-		uiCursorMemoryMaxEntries: true,
-		uiKeyBindings:            true,
-	}}
-	current := config.Clone(base)
-	current.Debug = config.DebugConfig{Enabled: true, LogDirectory: "logs", MaxLogFiles: 2}
-	current.Window.Width = 1200
-	current.Startup.Directory = "/overlay"
-	current.UI.Sort.SortBy = "size"
-	current.UI.Copy.PreserveTimestamps = true
-	current.UI.Viewer = config.ViewerConfig{MaxWidth: 1200, MaxHeight: 900, DefaultPane: "text"}
-	current.UI.Archive.ZipNameEncoding = "cp437"
-	current.UI.CursorMemory.MaxEntries = 5
-	current.UI.CursorMemory.Entries["/tmp"] = "file.txt"
-	current.UI.CursorMemory.LastUsed["/tmp"] = time.Unix(10, 0)
-	current.UI.KeyBindings = append(current.UI.KeyBindings, config.KeyBindingEntry{
-		Key:     "C-P",
-		Command: "user.parent",
-	})
-
-	saved := rt.SaveTransform(base)(current)
-	if saved.Window.Width != 900 {
-		t.Fatalf("saved window width = %d, want base 900", saved.Window.Width)
-	}
-	if saved.Debug.Enabled || saved.Debug.LogDirectory != "" || saved.Debug.MaxLogFiles != 10 {
-		t.Fatalf("saved debug = %+v, want base debug config", saved.Debug)
-	}
-	if saved.Startup.Directory != "/base" {
-		t.Fatalf("saved startup directory = %q, want /base", saved.Startup.Directory)
-	}
-	if saved.UI.Sort.SortBy != "name" {
-		t.Fatalf("saved sort = %s, want base name", saved.UI.Sort.SortBy)
-	}
-	if saved.UI.Copy.PreserveTimestamps {
-		t.Fatalf("saved copy preserve timestamps = true, want base false")
-	}
-	if saved.UI.Viewer.MaxWidth != 0 || saved.UI.Viewer.MaxHeight != 0 || saved.UI.Viewer.DefaultPane != "auto" {
-		t.Fatalf("saved viewer = %+v, want base uncapped", saved.UI.Viewer)
-	}
-	if saved.UI.Archive.ZipNameEncoding != "shift_jis" {
-		t.Fatalf("saved archive encoding = %s, want base shift_jis", saved.UI.Archive.ZipNameEncoding)
-	}
-	if saved.UI.CursorMemory.MaxEntries != 100 {
-		t.Fatalf("saved cursor max entries = %d, want base 100", saved.UI.CursorMemory.MaxEntries)
-	}
-	if saved.UI.CursorMemory.Entries["/tmp"] != "file.txt" {
-		t.Fatalf("runtime cursor memory was not preserved: %+v", saved.UI.CursorMemory.Entries)
-	}
-	if len(saved.UI.KeyBindings) != 1 || saved.UI.KeyBindings[0].Command != "jobs.show" {
-		t.Fatalf("saved key bindings = %+v, want base binding only", saved.UI.KeyBindings)
 	}
 }
 
@@ -1913,18 +1840,12 @@ func testConfig() *config.Config {
 			},
 			CursorMemory: config.CursorMemoryConfig{
 				MaxEntries: 100,
-				Entries:    map[string]string{},
-				LastUsed:   map[string]time.Time{},
 			},
 			NavigationHistory: config.NavigationHistoryConfig{
 				MaxEntries: 10000,
-				Entries:    []string{},
-				LastUsed:   map[string]time.Time{},
-				UseCount:   map[string]int{},
 			},
 			FileFilter: config.FileFilterConfig{
 				MaxEntries: 30,
-				Entries:    []config.FilterEntry{},
 			},
 			DirectoryJumps: config.DirectoryJumpsConfig{
 				Entries: []config.DirectoryJumpEntry{{Shortcut: "d", Directory: "~/Downloads"}},

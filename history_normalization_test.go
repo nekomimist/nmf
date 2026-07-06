@@ -18,60 +18,56 @@ func TestCanonicalNavigationHistoryPathNormalizesWSLAliases(t *testing.T) {
 func TestNormalizeNavigationHistoryDeduplicatesCanonicalPaths(t *testing.T) {
 	older := time.Now().Add(-time.Hour)
 	newer := time.Now()
-	cfg := &config.Config{
-		UI: config.UIConfig{
-			NavigationHistory: config.NavigationHistoryConfig{
-				Entries: []string{
-					`\\wsl$\Ubuntu\home\neko`,
-					"smb://wsl.localhost/Ubuntu/home/neko",
-				},
-				LastUsed: map[string]time.Time{
-					`\\wsl$\Ubuntu\home\neko`:              older,
-					"smb://wsl.localhost/Ubuntu/home/neko": newer,
-				},
-				UseCount: map[string]int{
-					`\\wsl$\Ubuntu\home\neko`:              2,
-					"smb://wsl.localhost/Ubuntu/home/neko": 3,
-				},
+	state := &config.State{
+		NavigationHistory: config.NavigationHistoryState{
+			Entries: []string{
+				`\\wsl$\Ubuntu\home\neko`,
+				"smb://wsl.localhost/Ubuntu/home/neko",
+			},
+			LastUsed: map[string]time.Time{
+				`\\wsl$\Ubuntu\home\neko`:              older,
+				"smb://wsl.localhost/Ubuntu/home/neko": newer,
+			},
+			UseCount: map[string]int{
+				`\\wsl$\Ubuntu\home\neko`:              2,
+				"smb://wsl.localhost/Ubuntu/home/neko": 3,
 			},
 		},
 	}
 
-	if !normalizeNavigationHistory(cfg) {
+	if !normalizeNavigationHistory(state) {
 		t.Fatal("normalizeNavigationHistory should report changes")
 	}
-	if len(cfg.UI.NavigationHistory.Entries) != 1 {
-		t.Fatalf("entries = %#v, want one deduplicated entry", cfg.UI.NavigationHistory.Entries)
+	if len(state.NavigationHistory.Entries) != 1 {
+		t.Fatalf("entries = %#v, want one deduplicated entry", state.NavigationHistory.Entries)
 	}
-	path := cfg.UI.NavigationHistory.Entries[0]
+	path := state.NavigationHistory.Entries[0]
 	if path != "smb://wsl.localhost/Ubuntu/home/neko" {
 		t.Fatalf("entry = %q, want canonical WSL path", path)
 	}
-	if !cfg.UI.NavigationHistory.LastUsed[path].Equal(newer) {
-		t.Fatalf("lastUsed = %v, want newest %v", cfg.UI.NavigationHistory.LastUsed[path], newer)
+	if !state.NavigationHistory.LastUsed[path].Equal(newer) {
+		t.Fatalf("lastUsed = %v, want newest %v", state.NavigationHistory.LastUsed[path], newer)
 	}
-	if got := cfg.UI.NavigationHistory.UseCount[path]; got != 5 {
+	if got := state.NavigationHistory.UseCount[path]; got != 5 {
 		t.Fatalf("useCount = %d, want summed 5", got)
 	}
 }
 
 func TestNormalizeNavigationHistoryDeduplicatesPinnedPaths(t *testing.T) {
-	cfg := &config.Config{
-		UI: config.UIConfig{
-			NavigationHistory: config.NavigationHistoryConfig{
-				Pinned: []string{
-					`\\wsl$\Ubuntu\home\neko`,
-					"smb://wsl.localhost/Ubuntu/home/neko",
-				},
+	state := &config.State{
+		NavigationHistory: config.NavigationHistoryState{
+			Pinned: []string{
+				`\\wsl$\Ubuntu\home\neko`,
+				"smb://wsl.localhost/Ubuntu/home/neko",
 			},
 		},
 	}
 
-	if !normalizeNavigationHistory(cfg) {
+	if !normalizeNavigationHistory(state) {
 		t.Fatal("normalizeNavigationHistory should report pinned changes")
 	}
 	want := []string{"smb://wsl.localhost/Ubuntu/home/neko"}
-	if len(cfg.UI.NavigationHistory.Pinned) != len(want) || cfg.UI.NavigationHistory.Pinned[0] != want[0] {
-		t.Fatalf("pinned = %#v, want %#v", cfg.UI.NavigationHistory.Pinned, want)
+	if len(state.NavigationHistory.Pinned) != len(want) || state.NavigationHistory.Pinned[0] != want[0] {
+		t.Fatalf("pinned = %#v, want %#v", state.NavigationHistory.Pinned, want)
 	}
 }

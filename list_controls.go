@@ -115,7 +115,7 @@ func (fm *FileManager) CurrentSort() config.SortConfig {
 		if fm.config == nil {
 			return config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}
 		}
-		return fm.config.UI.Sort
+		return fm.state.EffectiveSort(fm.config.UI.Sort)
 	}
 	return fm.activeSort
 }
@@ -128,8 +128,8 @@ func (fm *FileManager) ApplyTemporarySort(sortConfig config.SortConfig) {
 
 // ShowFilterDialog displays the file filter dialog.
 func (fm *FileManager) ShowFilterDialog() {
-	// Get current filter entries from config
-	entries := fm.config.GetFileFilterEntries()
+	// Get current filter entries from state
+	entries := fm.state.GetFileFilterEntries()
 
 	// Use originalFiles if available, otherwise use current files
 	currentFiles := fm.originalFiles
@@ -146,8 +146,8 @@ func (fm *FileManager) ShowFilterDialog() {
 		}
 		fm.focusFileList("filter-dialog-closed")
 	}, func(pattern string) {
-		if fm.config.RemoveFileFilterEntry(pattern) {
-			if err := fm.configManager.SaveAsync(fm.config); err != nil {
+		if fm.state.RemoveFileFilterEntry(pattern) && fm.stateManager != nil {
+			if err := fm.stateManager.SaveAsync(fm.state); err != nil {
 				debugPrint("FileManager: Error saving filter history deletion: %v", err)
 			}
 		}
@@ -169,8 +169,13 @@ func (fm *FileManager) ApplyFilter(entry *config.FilterEntry) {
 	}
 
 	fm.currentFilter = entry
-	fm.config.UI.FileFilter.Current = entry
-	fm.config.UI.FileFilter.Enabled = true
+	fm.state.FileFilter.Current = entry
+	fm.state.FileFilter.Enabled = true
+	if fm.stateManager != nil {
+		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+			debugPrint("FileManager: Error saving applied filter state: %v", err)
+		}
+	}
 
 	// Use originalFiles if available, otherwise use current files as base
 	baseFiles := fm.originalFiles
@@ -206,8 +211,13 @@ func (fm *FileManager) ApplyFilter(entry *config.FilterEntry) {
 // ClearFilter completely removes the current filter (for Ctrl+Shift+F).
 func (fm *FileManager) ClearFilter() {
 	fm.currentFilter = nil
-	fm.config.UI.FileFilter.Current = nil // Complete clear
-	fm.config.UI.FileFilter.Enabled = false
+	fm.state.FileFilter.Current = nil // Complete clear
+	fm.state.FileFilter.Enabled = false
+	if fm.stateManager != nil {
+		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+			debugPrint("FileManager: Error saving cleared filter state: %v", err)
+		}
+	}
 
 	if len(fm.originalFiles) > 0 {
 		fm.files = fm.originalFiles
@@ -223,18 +233,23 @@ func (fm *FileManager) ClearFilter() {
 
 // ToggleFilter toggles the current filter on/off.
 func (fm *FileManager) ToggleFilter() {
-	if fm.config.UI.FileFilter.Enabled && fm.currentFilter != nil {
+	if fm.state.FileFilter.Enabled && fm.currentFilter != nil {
 		fm.DisableFilter()
-	} else if fm.config.UI.FileFilter.Current != nil {
-		fm.ApplyFilter(fm.config.UI.FileFilter.Current)
+	} else if fm.state.FileFilter.Current != nil {
+		fm.ApplyFilter(fm.state.FileFilter.Current)
 	}
 }
 
 // DisableFilter temporarily disables the current filter (for toggle functionality).
 func (fm *FileManager) DisableFilter() {
 	fm.currentFilter = nil
-	// Keep fm.config.UI.FileFilter.Current for toggle functionality
-	fm.config.UI.FileFilter.Enabled = false
+	// Keep fm.state.FileFilter.Current for toggle functionality
+	fm.state.FileFilter.Enabled = false
+	if fm.stateManager != nil {
+		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+			debugPrint("FileManager: Error saving disabled filter state: %v", err)
+		}
+	}
 
 	if len(fm.originalFiles) > 0 {
 		fm.files = fm.originalFiles
@@ -254,11 +269,13 @@ func (fm *FileManager) saveFilterToHistory(entry *config.FilterEntry) {
 		return
 	}
 
-	fm.config.AddToFileFilterHistory(entry)
+	fm.state.AddToFileFilterHistory(entry, fm.config.UI.FileFilter.MaxEntries)
 
-	// Save config to disk
-	if err := fm.configManager.SaveAsync(fm.config); err != nil {
-		debugPrint("FileManager: Error saving filter history: %v", err)
+	// Save state to disk
+	if fm.stateManager != nil {
+		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+			debugPrint("FileManager: Error saving filter history: %v", err)
+		}
 	}
 }
 
@@ -289,7 +306,7 @@ func (fm *FileManager) ShowSortDialog() {
 	debugPrint("FileManager: Showing sort dialog")
 
 	// Get current sort configuration
-	currentConfig := fm.config.UI.Sort
+	currentConfig := fm.state.EffectiveSort(fm.config.UI.Sort)
 
 	// Create sort dialog
 	sortDialog := ui.NewSortDialog(currentConfig, debugPrint)
@@ -298,12 +315,15 @@ func (fm *FileManager) ShowSortDialog() {
 	sortDialog.SetOnApply(func(sortConfig config.SortConfig) {
 		debugPrint("FileManager: Applying sort configuration: %+v", sortConfig)
 
-		// Update configuration
-		fm.config.UI.Sort = sortConfig
+		// Persist the applied sort as a state override
+		appliedSort := sortConfig
+		fm.state.Sort = &appliedSort
 
-		// Save configuration to file
-		if err := fm.configManager.SaveAsync(fm.config); err != nil {
-			debugPrint("FileManager: Failed to save sort configuration: %v", err)
+		// Save state to file
+		if fm.stateManager != nil {
+			if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+				debugPrint("FileManager: Failed to save sort state: %v", err)
+			}
 		}
 
 		fm.applySort(sortConfig)

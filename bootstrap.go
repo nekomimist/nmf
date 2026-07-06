@@ -18,7 +18,7 @@ import (
 	"nmf/internal/watcher"
 )
 
-func NewFileManager(app fyne.App, path string, config *config.Config, configManager *config.Manager, customTheme *customtheme.CustomTheme, configScript *configscript.Runtime, watchHub *watcher.WatchHub) *FileManager {
+func NewFileManager(app fyne.App, path string, config *config.Config, configManager *config.Manager, state *config.State, stateManager *config.StateManager, customTheme *customtheme.CustomTheme, configScript *configscript.Runtime, watchHub *watcher.WatchHub) *FileManager {
 	if watchHub == nil {
 		watchHub = watcher.NewWatchHub(debugPrint)
 	}
@@ -30,10 +30,12 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 		selectedFiles:     make(map[string]bool),
 		config:            config,
 		configManager:     configManager,
+		state:             state,
+		stateManager:      stateManager,
 		configScript:      configScript,
 		initialWindowSize: fyne.NewSize(float32(config.Window.Width), float32(config.Window.Height)),
 		windowActive:      true,
-		activeSort:        config.UI.Sort,
+		activeSort:        state.EffectiveSort(config.UI.Sort),
 		customTheme:       customTheme,
 		cursorRenderer:    ui.NewCursorRenderer(config.UI.CursorStyle),
 		keyManager:        keymanager.NewKeyManager(debugPrint),

@@ -62,7 +62,7 @@ func DefaultAccessible(path string) error {
 	return err
 }
 
-func Plan(cfg *config.Config, options Options, classify ClassifyFunc, accessible AccessibleFunc) Result {
+func Plan(state *config.State, options Options, classify ClassifyFunc, accessible AccessibleFunc) Result {
 	if classify == nil {
 		classify = DefaultClassify
 	}
@@ -71,19 +71,19 @@ func Plan(cfg *config.Config, options Options, classify ClassifyFunc, accessible
 	}
 
 	var result Result
-	if cfg == nil {
+	if state == nil {
 		return result
 	}
 
 	if options.CleanCursorMemory {
-		for path := range cfg.UI.CursorMemory.Entries {
+		for path := range state.CursorMemory.Entries {
 			result.ScannedCursorMemory++
 			result.inspect(TaskCursorMemory, path, options, classify, accessible)
 		}
 	}
 
 	if options.CleanNavigationHistory {
-		for _, path := range cfg.UI.NavigationHistory.Entries {
+		for _, path := range state.NavigationHistory.Entries {
 			result.ScannedNavigationHistory++
 			result.inspect(TaskNavigationHistory, path, options, classify, accessible)
 		}
@@ -114,8 +114,8 @@ func (r *Result) inspect(task Task, path string, options Options, classify Class
 	}
 }
 
-func Apply(cfg *config.Config, result Result) int {
-	if cfg == nil {
+func Apply(state *config.State, result Result) int {
+	if state == nil {
 		return 0
 	}
 
@@ -132,25 +132,25 @@ func Apply(cfg *config.Config, result Result) int {
 
 	removed := 0
 	for path := range removedCursor {
-		if _, exists := cfg.UI.CursorMemory.Entries[path]; exists {
-			delete(cfg.UI.CursorMemory.Entries, path)
-			delete(cfg.UI.CursorMemory.LastUsed, path)
+		if _, exists := state.CursorMemory.Entries[path]; exists {
+			delete(state.CursorMemory.Entries, path)
+			delete(state.CursorMemory.LastUsed, path)
 			removed++
 		}
 	}
 
 	if len(removedHistory) > 0 {
-		entries := cfg.UI.NavigationHistory.Entries[:0]
-		for _, path := range cfg.UI.NavigationHistory.Entries {
+		entries := state.NavigationHistory.Entries[:0]
+		for _, path := range state.NavigationHistory.Entries {
 			if removedHistory[path] {
-				delete(cfg.UI.NavigationHistory.LastUsed, path)
-				delete(cfg.UI.NavigationHistory.UseCount, path)
+				delete(state.NavigationHistory.LastUsed, path)
+				delete(state.NavigationHistory.UseCount, path)
 				removed++
 				continue
 			}
 			entries = append(entries, path)
 		}
-		cfg.UI.NavigationHistory.Entries = entries
+		state.NavigationHistory.Entries = entries
 	}
 
 	return removed

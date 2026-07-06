@@ -18,13 +18,13 @@ func canonicalNavigationHistoryPath(p string) string {
 	return resolved
 }
 
-func normalizeNavigationHistory(cfg *config.Config) bool {
-	if cfg == nil {
+func normalizeNavigationHistory(state *config.State) bool {
+	if state == nil {
 		return false
 	}
-	entries := cfg.UI.NavigationHistory.Entries
-	lastUsed := cfg.UI.NavigationHistory.LastUsed
-	useCount := cfg.UI.NavigationHistory.UseCount
+	entries := state.NavigationHistory.Entries
+	lastUsed := state.NavigationHistory.LastUsed
+	useCount := state.NavigationHistory.UseCount
 	normalized := make([]string, 0, len(entries))
 	seen := make(map[string]bool, len(entries))
 	normalizedLastUsed := make(map[string]timeValue, len(lastUsed))
@@ -57,17 +57,17 @@ func normalizeNavigationHistory(cfg *config.Config) bool {
 		changed = true
 	}
 	if !changed {
-		return normalizePinnedNavigationHistory(cfg)
+		return normalizePinnedNavigationHistory(state)
 	}
 
 	newLastUsed := make(map[string]time.Time, len(normalizedLastUsed))
 	for path, when := range normalizedLastUsed {
 		newLastUsed[path] = when.Time
 	}
-	cfg.UI.NavigationHistory.Entries = normalized
-	cfg.UI.NavigationHistory.LastUsed = newLastUsed
-	cfg.UI.NavigationHistory.UseCount = normalizedUseCount
-	normalizePinnedNavigationHistory(cfg)
+	state.NavigationHistory.Entries = normalized
+	state.NavigationHistory.LastUsed = newLastUsed
+	state.NavigationHistory.UseCount = normalizedUseCount
+	normalizePinnedNavigationHistory(state)
 	return true
 }
 
@@ -75,13 +75,13 @@ type timeValue struct {
 	Time time.Time
 }
 
-func normalizePinnedNavigationHistory(cfg *config.Config) bool {
-	if cfg == nil {
+func normalizePinnedNavigationHistory(state *config.State) bool {
+	if state == nil {
 		return false
 	}
-	pinned := cfg.UI.NavigationHistory.Pinned
+	pinned := state.NavigationHistory.Pinned
 	if pinned == nil {
-		cfg.UI.NavigationHistory.Pinned = make([]string, 0)
+		state.NavigationHistory.Pinned = make([]string, 0)
 		return true
 	}
 	normalized := make([]string, 0, len(pinned))
@@ -103,7 +103,7 @@ func normalizePinnedNavigationHistory(cfg *config.Config) bool {
 		changed = true
 	}
 	if changed {
-		cfg.UI.NavigationHistory.Pinned = normalized
+		state.NavigationHistory.Pinned = normalized
 	}
 	return changed
 }

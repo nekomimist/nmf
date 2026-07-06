@@ -100,15 +100,25 @@ func main() {
 
 	// Load configuration
 	configManager := config.NewManager(debugPrint)
-	defer func() {
-		if err := configManager.Close(); err != nil {
-			log.Printf("Error closing config manager: %v", err)
-		}
-	}()
 	cfg, err := configManager.Load()
 	if err != nil {
 		log.Fatalf("Error loading configuration: %v", err)
 	}
+
+	// Load runtime state (state.json), migrating legacy config.json runtime
+	// keys on first run. config.json is never written back to; state.json
+	// takes over all cursor memory/navigation history/file filter/sort
+	// persistence from here on.
+	stateManager := config.NewStateManager(debugPrint)
+	state, err := stateManager.Load(configManager.ConfigPath())
+	if err != nil {
+		log.Fatalf("Error loading runtime state: %v", err)
+	}
+	defer func() {
+		if err := stateManager.Close(); err != nil {
+			log.Printf("Error closing state manager: %v", err)
+		}
+	}()
 	activeConfigLogDir := ""
 	activeConfigLogMax := 0
 	applyConfigDebug := func(debugCfg config.DebugConfig) error {
@@ -144,16 +154,12 @@ func main() {
 	if err := applyConfigDebug(cfg.Debug); err != nil {
 		log.Fatalf("Error opening configured debug log: %v", err)
 	}
-	persistentConfig := config.Clone(cfg)
 	displayInfo := display.Primary(debugPrint)
 	configScript, err := configscript.LoadWithDisplayAndDebugHook(configscript.ScriptPath(configManager.ConfigPath()), cfg, displayInfo, debugPrint, applyConfigDebug)
 	if err != nil {
 		log.Printf("Error loading Starlark configuration: %v", err)
 		showStartupConfigScriptErrorAndExit(cfg, err)
 		return
-	}
-	if configScript.Loaded() {
-		configManager.SetSaveTransform(configScript.SaveTransform(persistentConfig))
 	}
 	if err := fileinfo.SetArchiveOptions(fileinfo.ArchiveOptions{ZipNameEncoding: cfg.UI.Archive.ZipNameEncoding}); err != nil {
 		debugPrint("Config: Invalid archive ZIP name encoding %q: %v; using %s", cfg.UI.Archive.ZipNameEncoding, err, fileinfo.DefaultArchiveZipNameEncoding)
@@ -183,7 +189,7 @@ func main() {
 	shellmenu.Debugf = debugPrint
 
 	watchHub := watcher.NewWatchHub(debugPrint)
-	fm := NewFileManager(fyneApp, startPath, cfg, configManager, customTheme, configScript, watchHub)
+	fm := NewFileManager(fyneApp, startPath, cfg, configManager, state, stateManager, customTheme, configScript, watchHub)
 	fm.window.Show()
 	applyInitialWindowPosition(fm.window, cfg.Window)
 	fyneApp.Run()

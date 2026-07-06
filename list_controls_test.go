@@ -57,6 +57,7 @@ func TestApplyFilterUsesEffectivePatternBeforeComment(t *testing.T) {
 				Sort:       config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true},
 			},
 		},
+		state: &config.State{},
 		files: []fileinfo.FileInfo{
 			{Name: "main.go", Path: "/tmp/main.go"},
 			{Name: "notes.md", Path: "/tmp/notes.md"},
