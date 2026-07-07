@@ -299,20 +299,6 @@ func (fm *FileManager) setupUI() {
 	// Ensure initial focus sits on the tabbable list view
 	fm.FocusFileList()
 
-	// Setup window close handler to properly stop DirectoryWatcher
-	fm.window.SetCloseIntercept(func() {
-		debugPrint("FileManager: Window close intercepted - initiating cleanup for path: %s", fm.currentPath)
-		if fm.dirWatcher != nil {
-			debugPrint("FileManager: Stopping DirectoryWatcher...")
-			fm.dirWatcher.Stop()
-			debugPrint("FileManager: DirectoryWatcher.Stop() completed successfully")
-		} else {
-			debugPrint("FileManager: DirectoryWatcher was nil, skipping stop")
-		}
-		debugPrint("FileManager: Proceeding with window close")
-		fm.window.Close()
-	})
-
 	// Setup keyboard handling via KeyManager.
 	// Fyne's GLFW driver delivers each key event either to the focused object
 	// or, only when nothing has focus, to these canvas-level callbacks. While
