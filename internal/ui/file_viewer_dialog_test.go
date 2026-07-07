@@ -364,8 +364,11 @@ func TestFileViewerDialogTabLabelsIncludeShortcuts(t *testing.T) {
 	d.ShowDialog(w)
 	defer d.CancelDialog()
 
-	if d.textTab.Text != "Text (t)" || d.mdTab.Text != "Markdown (m)" || d.hexTab.Text != "Hex (x)" {
-		t.Fatalf("tab labels = %q, %q, %q; want shortcuts", d.textTab.Text, d.mdTab.Text, d.hexTab.Text)
+	gotText := d.tabBar.Label(viewerPaneText)
+	gotMarkdown := d.tabBar.Label(viewerPaneMarkdown)
+	gotHex := d.tabBar.Label(viewerPaneHex)
+	if gotText != "Text (t)" || gotMarkdown != "Markdown (m)" || gotHex != "Hex (x)" {
+		t.Fatalf("tab labels = %q, %q, %q; want shortcuts", gotText, gotMarkdown, gotHex)
 	}
 }
 
@@ -412,7 +415,7 @@ func TestFileViewerDialogLazyLoadsHexTextGrid(t *testing.T) {
 	if d.hexGrid != nil {
 		t.Fatal("hexGrid loaded before Hex tab selection")
 	}
-	d.tabs.Select(d.hexTab)
+	d.ViewerShowHex()
 	if d.hexGrid == nil {
 		t.Fatal("hexGrid is nil after Hex tab selection")
 	}
@@ -437,15 +440,15 @@ func TestFileViewerDialogLazyLoadsMarkdownView(t *testing.T) {
 	if d.mdView != nil {
 		t.Fatal("markdown view loaded before Markdown tab selection")
 	}
-	if _, ok := d.mdTab.Content.(*widget.Label); !ok {
-		t.Fatalf("mdTab content = %T, want placeholder *widget.Label", d.mdTab.Content)
+	if _, ok := d.paneObjects[viewerPaneMarkdown].(*widget.Label); !ok {
+		t.Fatalf("markdown pane content = %T, want placeholder *widget.Label", d.paneObjects[viewerPaneMarkdown])
 	}
-	d.tabs.Select(d.mdTab)
+	d.ViewerShowMarkdown()
 	if d.mdView == nil {
 		t.Fatal("markdown view is nil after Markdown tab selection")
 	}
-	if d.mdTab.Content != d.mdView {
-		t.Fatal("mdTab content not replaced by lazy-loaded markdown view")
+	if d.paneObjects[viewerPaneMarkdown] != d.mdView {
+		t.Fatal("markdown pane content not replaced by lazy-loaded markdown view")
 	}
 }
 
@@ -474,6 +477,115 @@ func TestFileViewerDialogSwitchesViewerTabs(t *testing.T) {
 	d.ViewerShowText()
 	if d.activeName != "Text" {
 		t.Fatalf("active after text = %q, want Text", d.activeName)
+	}
+}
+
+func TestFileViewerDialogTabBarHighlightsActivePane(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path: "note.txt",
+		Text: "hello",
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	if got := d.tabBar.buttons[viewerPaneText].Importance; got != widget.HighImportance {
+		t.Fatalf("text tab importance = %v, want HighImportance", got)
+	}
+	if got := d.tabBar.buttons[viewerPaneHex].Importance; got != widget.MediumImportance {
+		t.Fatalf("hex tab importance = %v, want MediumImportance", got)
+	}
+
+	d.ViewerShowHex()
+
+	if got := d.tabBar.buttons[viewerPaneHex].Importance; got != widget.HighImportance {
+		t.Fatalf("hex tab importance after switch = %v, want HighImportance", got)
+	}
+	if got := d.tabBar.buttons[viewerPaneText].Importance; got != widget.MediumImportance {
+		t.Fatalf("text tab importance after switch = %v, want MediumImportance", got)
+	}
+	if got := d.tabBar.buttons[viewerPaneMarkdown].Importance; got != widget.MediumImportance {
+		t.Fatalf("markdown tab importance = %v, want MediumImportance", got)
+	}
+}
+
+func TestFileViewerDialogWrapButtonTracksWrapState(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path: "note.txt",
+		Text: "hello",
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	if got := d.wrapButton.Importance; got != widget.MediumImportance {
+		t.Fatalf("wrapButton importance = %v, want MediumImportance before wrap", got)
+	}
+
+	d.ViewerToggleWrap()
+	if got := d.wrapButton.Importance; got != widget.HighImportance {
+		t.Fatalf("wrapButton importance = %v, want HighImportance after wrap", got)
+	}
+
+	d.ViewerToggleWrap()
+	if got := d.wrapButton.Importance; got != widget.MediumImportance {
+		t.Fatalf("wrapButton importance = %v, want MediumImportance after unwrap", got)
+	}
+}
+
+func TestFileViewerDialogSearchButtonsUseUpDownIcons(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path: "note.txt",
+		Text: "hello",
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	if got := d.prevButton.Icon.Name(); got != fynetheme.MoveUpIcon().Name() {
+		t.Fatalf("prevButton icon = %q, want MoveUpIcon", got)
+	}
+	if got := d.nextButton.Icon.Name(); got != fynetheme.MoveDownIcon().Name() {
+		t.Fatalf("nextButton icon = %q, want MoveDownIcon", got)
+	}
+}
+
+func TestFileViewerDialogCloseButtonClosesDialog(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path: "note.txt",
+		Text: "hello",
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	if d.closeButton.Text != "" {
+		t.Fatalf("closeButton.Text = %q, want empty", d.closeButton.Text)
+	}
+	if d.closeButton.Icon.Name() != fynetheme.CancelIcon().Name() {
+		t.Fatalf("closeButton.Icon = %q, want %q", d.closeButton.Icon.Name(), fynetheme.CancelIcon().Name())
+	}
+
+	test.Tap(d.closeButton)
+
+	if !d.closed {
+		t.Fatal("closed = false after tapping close button")
 	}
 }
 
@@ -864,8 +976,7 @@ func TestFileViewerDialogFindSwitchesMarkdownToText(t *testing.T) {
 	d.ShowDialog(w)
 	defer d.CancelDialog()
 
-	d.tabs.SelectIndex(1)
-	d.activeName = "Markdown"
+	d.ViewerShowMarkdown()
 	d.search.SetText("body")
 	d.findNext()
 

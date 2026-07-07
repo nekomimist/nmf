@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/yuin/goldmark"
@@ -45,20 +46,22 @@ type FileViewerDialog struct {
 	parent  fyne.Window
 	dialog  dialog.Dialog
 
-	textGrid   *fileViewerTextGrid
-	hexGrid    *fileViewerTextGrid
-	mdGrid     *fileViewerTextGrid
-	search     *IMEEntry
-	jump       *IMEEntry
-	status     *widget.Label
-	lineLabel  *widget.Label
-	wrapButton *widget.Button
-	tabs       *container.AppTabs
+	textGrid    *fileViewerTextGrid
+	hexGrid     *fileViewerTextGrid
+	mdGrid      *fileViewerTextGrid
+	search      *IMEEntry
+	jump        *IMEEntry
+	status      *widget.Label
+	lineLabel   *widget.Label
+	wrapButton  *widget.Button
+	prevButton  *widget.Button
+	nextButton  *widget.Button
+	closeButton *widget.Button
 
-	textTab *container.TabItem
-	hexTab  *container.TabItem
-	mdTab   *container.TabItem
-	mdView  fyne.CanvasObject
+	tabBar      *fileViewerTabBar
+	paneStack   *fyne.Container
+	paneObjects map[string]fyne.CanvasObject
+	mdView      fyne.CanvasObject
 
 	activeName  string
 	closed      bool
@@ -145,44 +148,45 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	d.debug("FileViewer: controls elapsed=%s", time.Since(stepStart))
 	stepStart = time.Now()
 
-	d.textTab = container.NewTabItem("Text (t)", d.textGrid)
-	d.hexTab = container.NewTabItem("Hex (x)", hexContent)
-	d.mdTab = container.NewTabItem("Markdown (m)", widget.NewLabel("Markdown preview will load when selected."))
-	d.tabs = container.NewAppTabs(d.textTab, d.mdTab, d.hexTab)
-	d.tabs.OnSelected = func(item *container.TabItem) {
-		if item == d.hexTab {
-			d.ensureHexGrid()
-		}
-		if item == d.mdTab {
-			d.ensureMarkdownView()
-		}
-		d.activeName = viewerPaneNameForTab(d, item)
-		d.updateLineDisplay()
+	mdPlaceholder := widget.NewLabel("Markdown preview will load when selected.")
+	d.paneObjects = map[string]fyne.CanvasObject{
+		viewerPaneText:     d.textGrid,
+		viewerPaneMarkdown: mdPlaceholder,
+		viewerPaneHex:      hexContent,
 	}
+	d.paneStack = container.NewStack(d.textGrid, mdPlaceholder, hexContent)
+	d.tabBar = newFileViewerTabBar(d.showViewerPane)
 	d.selectInitialTab()
 	d.debug("FileViewer: tabs elapsed=%s active=%s", time.Since(stepStart), d.activeName)
 	stepStart = time.Now()
 
-	d.wrapButton = widget.NewButtonWithIcon("", theme.ViewRefreshIcon(), d.ViewerToggleWrap)
-	toolbar := container.NewBorder(nil, nil, nil, container.NewHBox(
-		d.wrapButton,
-		widget.NewButtonWithIcon("", theme.ContentCopyIcon(), d.copySelection),
-		widget.NewButtonWithIcon("", theme.CancelIcon(), d.CancelDialog),
-	), container.NewHBox(
-		container.NewGridWrap(fyne.NewSize(fileViewerSearchWidth, d.search.MinSize().Height), lineEditThemeOverride(d.search)),
-		widget.NewButtonWithIcon("", theme.NavigateBackIcon(), d.findPrevious),
-		widget.NewButtonWithIcon("", theme.NavigateNextIcon(), d.findNext),
-		widget.NewSeparator(),
-		container.NewGridWrap(fyne.NewSize(fileViewerLineWidth, d.jump.MinSize().Height), lineEditThemeOverride(d.jump)),
-		widget.NewButtonWithIcon("", theme.ConfirmIcon(), d.jumpToLine),
-	))
+	d.wrapButton = widget.NewButton("Wrap", d.ViewerToggleWrap)
+	d.closeButton = widget.NewButtonWithIcon("", theme.CancelIcon(), d.CancelDialog)
+	d.prevButton = widget.NewButtonWithIcon("", theme.MoveUpIcon(), d.findPrevious)
+	d.nextButton = widget.NewButtonWithIcon("", theme.MoveDownIcon(), d.findNext)
+	copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), d.copySelection)
+	confirmBtn := widget.NewButtonWithIcon("", theme.ConfirmIcon(), d.jumpToLine)
+	toolbar := container.NewBorder(nil, nil, nil,
+		container.NewHBox(d.wrapButton, copyBtn),
+		container.NewHBox(
+			container.NewCenter(container.NewGridWrap(fyne.NewSize(fileViewerSearchWidth, d.search.MinSize().Height), lineEditThemeOverride(d.search))),
+			d.prevButton,
+			d.nextButton,
+			widget.NewSeparator(),
+			container.NewCenter(container.NewGridWrap(fyne.NewSize(fileViewerLineWidth, d.jump.MinSize().Height), lineEditThemeOverride(d.jump))),
+			confirmBtn,
+		))
+
+	nameLabel := widget.NewLabel(filepath.Base(d.preview.Path))
+	nameRow := container.NewBorder(nil, nil, nil, d.closeButton,
+		container.NewVBox(layout.NewSpacer(), nameLabel, layout.NewSpacer()))
 
 	content := container.NewBorder(
-		container.NewVBox(widget.NewLabel(filepath.Base(d.preview.Path)), d.status, container.NewBorder(nil, nil, nil, d.lineLabel, toolbar)),
+		container.NewVBox(nameRow, d.status, container.NewBorder(nil, nil, nil, container.NewCenter(d.lineLabel), toolbar)),
 		nil,
 		nil,
 		nil,
-		d.tabs,
+		container.NewBorder(d.tabBar.Container(), nil, nil, nil, d.paneStack),
 	)
 	d.debug("FileViewer: layout elapsed=%s", time.Since(stepStart))
 	stepStart = time.Now()
@@ -251,10 +255,7 @@ func (d *FileViewerDialog) createMarkdownGrid() *fileViewerTextGrid {
 }
 
 func (d *FileViewerDialog) ensureMarkdownView() {
-	if d.mdTab == nil {
-		return
-	}
-	if d.mdView != nil && d.mdTab.Content == d.mdView {
+	if d.mdView != nil {
 		return
 	}
 	stepStart := time.Now()
@@ -263,11 +264,21 @@ func (d *FileViewerDialog) ensureMarkdownView() {
 	} else {
 		d.mdView = d.markdownView()
 	}
-	d.mdTab.Content = d.mdView
-	if d.tabs != nil {
-		d.tabs.Refresh()
-	}
+	d.replacePaneObject(viewerPaneMarkdown, d.mdView)
 	d.debug("FileViewer: markdown-lazy-load elapsed=%s", time.Since(stepStart))
+}
+
+// replacePaneObject swaps the pane's current canvas object (e.g. a lazy-load
+// placeholder) for obj and rebuilds paneStack from the fixed text/markdown/hex
+// ordering, then refreshes it.
+func (d *FileViewerDialog) replacePaneObject(pane string, obj fyne.CanvasObject) {
+	d.paneObjects[pane] = obj
+	d.paneStack.Objects = []fyne.CanvasObject{
+		d.paneObjects[viewerPaneText],
+		d.paneObjects[viewerPaneMarkdown],
+		d.paneObjects[viewerPaneHex],
+	}
+	d.paneStack.Refresh()
 }
 
 func (d *FileViewerDialog) createHexGrid() *fileViewerTextGrid {
@@ -283,14 +294,11 @@ func (d *FileViewerDialog) createHexGrid() *fileViewerTextGrid {
 }
 
 func (d *FileViewerDialog) ensureHexGrid() {
-	if d.hexGrid != nil || d.hexTab == nil {
+	if d.hexGrid != nil {
 		return
 	}
 	stepStart := time.Now()
-	d.hexTab.Content = d.createHexGrid()
-	if d.tabs != nil {
-		d.tabs.Refresh()
-	}
+	d.replacePaneObject(viewerPaneHex, d.createHexGrid())
 	d.debug("FileViewer: hex-lazy-load elapsed=%s", time.Since(stepStart))
 }
 
@@ -324,11 +332,11 @@ func normalizeViewerPane(pane string) string {
 	}
 }
 
-func viewerPaneNameForTab(d *FileViewerDialog, item *container.TabItem) string {
-	switch item {
-	case d.hexTab:
+func viewerPaneDisplayName(pane string) string {
+	switch pane {
+	case viewerPaneHex:
 		return "Hex"
-	case d.mdTab:
+	case viewerPaneMarkdown:
 		return "Markdown"
 	default:
 		return "Text"
@@ -336,28 +344,33 @@ func viewerPaneNameForTab(d *FileViewerDialog, item *container.TabItem) string {
 }
 
 func (d *FileViewerDialog) selectViewerTab(pane string) bool {
-	if d.tabs == nil {
+	if d.paneStack == nil {
 		return false
 	}
-	switch normalizeViewerPane(pane) {
-	case viewerPaneText:
-		if d.textTab == nil {
-			return false
-		}
-		d.tabs.Select(d.textTab)
-	case viewerPaneMarkdown:
-		if d.mdTab == nil {
-			return false
-		}
-		d.tabs.Select(d.mdTab)
-	case viewerPaneHex:
-		if d.hexTab == nil {
-			return false
-		}
-		d.tabs.Select(d.hexTab)
+	normalized := normalizeViewerPane(pane)
+	switch normalized {
+	case viewerPaneText, viewerPaneMarkdown, viewerPaneHex:
 	default:
 		return false
 	}
+	// ensure* may replace a pane's placeholder object, so it must run before
+	// the show/hide loop below walks paneObjects for the final objects.
+	switch normalized {
+	case viewerPaneMarkdown:
+		d.ensureMarkdownView()
+	case viewerPaneHex:
+		d.ensureHexGrid()
+	}
+	for key, obj := range d.paneObjects {
+		if key == normalized {
+			obj.Show()
+		} else {
+			obj.Hide()
+		}
+	}
+	d.paneStack.Refresh()
+	d.tabBar.SetActive(normalized)
+	d.activeName = viewerPaneDisplayName(normalized)
 	return true
 }
 
@@ -1203,9 +1216,26 @@ func (d *FileViewerDialog) updateLineDisplay() {
 			mode = "wrap"
 		}
 		d.lineLabel.SetText(fmt.Sprintf("line=%d/%d  %s", grid.CurrentLine(), grid.TotalLines(), mode))
+		d.setWrapButtonWrapped(grid.Wrap())
 		return
 	}
 	d.lineLabel.SetText("")
+	d.setWrapButtonWrapped(false)
+}
+
+func (d *FileViewerDialog) setWrapButtonWrapped(wrapped bool) {
+	if d.wrapButton == nil {
+		return
+	}
+	importance := widget.MediumImportance
+	if wrapped {
+		importance = widget.HighImportance
+	}
+	if d.wrapButton.Importance == importance {
+		return
+	}
+	d.wrapButton.Importance = importance
+	d.wrapButton.Refresh()
 }
 
 func (d *FileViewerDialog) setStatusSuffix(suffix string) {
