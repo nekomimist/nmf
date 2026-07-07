@@ -166,9 +166,13 @@ func (fm *FileManager) ApplyChanges(added, deleted, modified []fileinfo.FileInfo
 	}
 
 	// Handle modified files - update status
+	typeFlipped := false
 	for _, modifiedFile := range modified {
 		for i, file := range files {
 			if file.Path == modifiedFile.Path {
+				if file.IsDir != modifiedFile.IsDir {
+					typeFlipped = true
+				}
 				files[i] = modifiedFile
 				break
 			}
@@ -186,10 +190,16 @@ func (fm *FileManager) ApplyChanges(added, deleted, modified []fileinfo.FileInfo
 	// order under "size" or "modified", since those are the only keys whose
 	// comparison value a plain content modification can change; under
 	// "name"/"extension" (and any other key), a modify event never changes
-	// the file's name, so its position is correct by construction and the
-	// ".."-pinning invariant (sortFilesWithConfig always pins ".." at index 0)
-	// still holds untouched.
-	sortAffected := len(added) > 0 || len(deleted) > 0
+	// the file's name, so its position within its DirectoriesFirst group is
+	// correct by construction and the ".."-pinning invariant
+	// (sortFilesWithConfig always pins ".." at index 0) still holds untouched.
+	// The one exception is typeFlipped: if a path's IsDir changed (e.g. a
+	// file removed and replaced by a same-named directory between polls),
+	// sortFileInfoSlice's DirectoriesFirst grouping puts it in a different
+	// group regardless of sort key, so that always forces a re-sort too. This
+	// event is rare and the re-sort itself is cheap, so we don't bother
+	// gating it on whether DirectoriesFirst is actually enabled.
+	sortAffected := len(added) > 0 || len(deleted) > 0 || typeFlipped
 	if !sortAffected {
 		switch fm.CurrentSort().SortBy {
 		case "size", "modified":

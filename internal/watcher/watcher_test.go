@@ -107,6 +107,40 @@ func TestDetectChanges_AddedDeletedModified(t *testing.T) {
 	}
 }
 
+// TestDetectChanges_IsDirFlipWithSameMtimeSize verifies that a path whose
+// IsDir changed (e.g. "beta" was removed and replaced by a same-named
+// directory between polls) is reported as modified even when Modified and
+// Size happen to be identical, since neither reliably changes across a
+// file-to-directory swap.
+func TestDetectChanges_IsDirFlipWithSameMtimeSize(t *testing.T) {
+	m := &mockFM{path: "/tmp"}
+	dw := NewDirectoryWatcher(m, nil, dummyDebug)
+
+	t1 := time.Now().Add(-time.Hour)
+
+	prev := []fileinfo.FileInfo{
+		fi("/tmp/beta", "beta", 5, t1),
+	}
+	m.files = prev
+	dw.updateSnapshot()
+
+	// current: beta is now a directory with identical Modified/Size.
+	betaAsDir := fi("/tmp/beta", "beta", 5, t1)
+	betaAsDir.IsDir = true
+	betaAsDir.FileType = fileinfo.FileTypeDirectory
+	current := map[string]fileinfo.FileInfo{
+		"/tmp/beta": betaAsDir,
+	}
+
+	added, deleted, modified := dw.detectChanges(current)
+	if len(added) != 0 || len(deleted) != 0 {
+		t.Fatalf("expected no added/deleted, got added=%#v deleted=%#v", added, deleted)
+	}
+	if len(modified) != 1 || modified[0].Name != "beta" || !modified[0].IsDir || modified[0].Status != fileinfo.StatusModified {
+		t.Fatalf("expected 1 modified beta reported as directory, got %#v", modified)
+	}
+}
+
 func TestUpdateSnapshot_ExcludesParentAndDeleted(t *testing.T) {
 	m := &mockFM{path: "/tmp"}
 	dw := NewDirectoryWatcher(m, nil, dummyDebug)

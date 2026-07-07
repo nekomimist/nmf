@@ -224,7 +224,7 @@ func (dw *DirectoryWatcher) detectChanges(currentFiles map[string]fileinfo.FileI
 		} else {
 			// Check for modifications
 			prevFile := dw.previousFiles[path]
-			if !file.Modified.Equal(prevFile.Modified) || file.Size != prevFile.Size {
+			if !file.Modified.Equal(prevFile.Modified) || file.Size != prevFile.Size || file.IsDir != prevFile.IsDir {
 				file.Status = fileinfo.StatusModified
 				modified = append(modified, file)
 			}

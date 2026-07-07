@@ -106,3 +106,33 @@ func TestApplyChangesModifyOnlyUnderSizeSortResorts(t *testing.T) {
 		t.Fatalf("modify-only ApplyChanges under size sort did not resort: got %v, want %v", got, want)
 	}
 }
+
+// TestApplyChangesModifyOnlyIsDirFlipResorts verifies that a modify-only
+// merge still resorts when a modified entry's IsDir flips (e.g. "beta" is
+// removed and replaced by a same-named directory between watcher polls),
+// even under a "name" sort that would otherwise skip the resort. With
+// DirectoriesFirst enabled, sortFileInfoSlice groups entries by IsDir before
+// sorting each group by name, so skipping the resort would leave the flipped
+// entry stranded in the file group instead of moving it into the directory
+// group.
+func TestApplyChangesModifyOnlyIsDirFlipResorts(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	files := []fileinfo.FileInfo{
+		{Name: "alpha.txt", Path: "/tmp/alpha.txt", IsDir: false},
+		{Name: "beta", Path: "/tmp/beta", IsDir: false},
+	}
+	fm := newApplyChangesTestFileManager(files, config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true})
+
+	modified := fileinfo.FileInfo{Name: "beta", Path: "/tmp/beta", IsDir: true}
+	fm.ApplyChanges(nil, nil, []fileinfo.FileInfo{modified})
+
+	want := []string{"beta", "alpha.txt"}
+	if got := namesOf(fm.files); !reflect.DeepEqual(got, want) {
+		t.Fatalf("modify-only ApplyChanges with IsDir flip did not resort into directory group: got %v, want %v", got, want)
+	}
+	if !fm.files[0].IsDir {
+		t.Fatalf("expected flipped entry to be marked as a directory: %+v", fm.files[0])
+	}
+}
