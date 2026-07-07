@@ -681,6 +681,11 @@ func (m *StateManager) saveWorker() {
 			}
 			timer = nil
 		case reply := <-m.flushRequests:
+			// select picks ready cases at random, so a SaveAsync that already
+			// returned (its value sitting in saveRequests) can lose to this
+			// case; drain it here so flush never answers success without
+			// having applied the latest queued state.
+			pending = drainPendingSave(m.saveRequests, pending)
 			stopTimer(timer)
 			timer = nil
 			var err error
@@ -690,6 +695,11 @@ func (m *StateManager) saveWorker() {
 			}
 			reply <- err
 		case reply := <-m.closeRequests:
+			// Same race as the flush case above, but here losing it would
+			// discard the state permanently: close(m.stopped) below ends the
+			// worker for good, so anything left in saveRequests would never
+			// be saved.
+			pending = drainPendingSave(m.saveRequests, pending)
 			stopTimer(timer)
 			timer = nil
 			var err error
@@ -701,6 +711,18 @@ func (m *StateManager) saveWorker() {
 			close(m.stopped)
 			return
 		}
+	}
+}
+
+// drainPendingSave non-blockingly checks saveRequests for a state queued by a
+// SaveAsync call that returned before this select ran, so pending is never
+// stale when flush/close happens to win select's random case order.
+func drainPendingSave(saveRequests <-chan *State, pending *State) *State {
+	select {
+	case state := <-saveRequests:
+		return state
+	default:
+		return pending
 	}
 }
 

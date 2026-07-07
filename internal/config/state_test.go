@@ -268,12 +268,6 @@ func TestStateManagerSaveAsyncAndLoadRoundTrip(t *testing.T) {
 	if err := sm.SaveAsync(state); err != nil {
 		t.Fatalf("SaveAsync failed: %v", err)
 	}
-	// Give the worker goroutine a chance to drain the buffered save request
-	// before Flush; otherwise Flush's send on the unbuffered flushRequests
-	// channel can race the already-queued saveRequests value in the worker's
-	// select and win, flushing nothing (mirrors a real caller doing other
-	// work between SaveAsync and a later Flush/Close).
-	time.Sleep(50 * time.Millisecond)
 	if err := sm.Flush(); err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
@@ -292,6 +286,40 @@ func TestStateManagerSaveAsyncAndLoadRoundTrip(t *testing.T) {
 	}
 	if loaded.Sort == nil || loaded.Sort.SortBy != "size" || loaded.Sort.SortOrder != "desc" {
 		t.Fatalf("sort = %#v, want sortBy size/desc", loaded.Sort)
+	}
+}
+
+// TestStateManagerSaveAsyncThenCloseRoundTrip is a regression test for a race
+// in saveWorker: select chooses among ready cases at random, so Close's case
+// could win over a SaveAsync value already sitting in saveRequests and reply
+// success without ever writing it, permanently losing the state. It loops
+// several fresh managers back-to-back (no sleep) to reliably hit that window.
+func TestStateManagerSaveAsyncThenCloseRoundTrip(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		tempDir := t.TempDir()
+		statePath := filepath.Join(tempDir, "state.json")
+		configPath := filepath.Join(tempDir, "config.json")
+
+		sm := newTestStateManager(t, statePath)
+
+		state := newDefaultState()
+		state.NavigationHistory.Entries = []string{"/async-close"}
+
+		if err := sm.SaveAsync(state); err != nil {
+			t.Fatalf("iteration %d: SaveAsync failed: %v", i, err)
+		}
+		if err := sm.Close(); err != nil {
+			t.Fatalf("iteration %d: Close failed: %v", i, err)
+		}
+
+		fresh := newTestStateManager(t, statePath)
+		loaded, err := fresh.Load(configPath)
+		if err != nil {
+			t.Fatalf("iteration %d: Load failed: %v", i, err)
+		}
+		if len(loaded.NavigationHistory.Entries) != 1 || loaded.NavigationHistory.Entries[0] != "/async-close" {
+			t.Fatalf("iteration %d: entries = %#v, want [/async-close]", i, loaded.NavigationHistory.Entries)
+		}
 	}
 }
 
