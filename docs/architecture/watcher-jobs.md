@@ -44,6 +44,14 @@ Watch behavior:
   that source falls back to polling.
 - Default fallback interval is 2 seconds. `SetPollInterval` affects the next
   `Start()` run.
+- `Subscription.Unsubscribe()` detaches its caller from the shared source
+  immediately and never blocks. When the unsubscribing caller was the last
+  subscriber for that path, `WatchHub` removes the source from its map
+  synchronously but tears it down (backend `Remove`/`Close`, or an in-flight
+  poll read) on a detached goroutine, since `DirectoryWatcher.Stop()` runs on
+  the Fyne main thread during window close and must not block on a slow or
+  hung backend. Process exit does not wait for that teardown goroutine; any
+  still in flight are abandoned when the process exits.
 
 ## Jobs Manager Contract
 

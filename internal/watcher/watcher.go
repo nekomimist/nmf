@@ -119,8 +119,9 @@ func (dw *DirectoryWatcher) Stop() {
 	dw.changeChan = nil
 	dw.mu.Unlock()
 
-	// Unsubscribe before signaling so shared path sources stop promptly when
-	// the last window leaves a directory.
+	// Unsubscribe detaches from the shared source immediately; when this was
+	// the last subscriber for the path, the source itself shuts down in the
+	// background rather than blocking this call.
 	if subscription != nil {
 		subscription.Unsubscribe()
 	}

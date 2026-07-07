@@ -140,8 +140,10 @@ func (h *WatchHub) unsubscribe(path string, id uint64) {
 	h.mu.Unlock()
 
 	if empty {
-		src.stop()
-		h.debugPrint("WatchHub: source stop path=%s", path)
+		go func() {
+			src.stop()
+			h.debugPrint("WatchHub: source stop path=%s", path)
+		}()
 	}
 }
 
@@ -230,6 +232,9 @@ func (s *watchSource) start() {
 	go s.loop(backend)
 }
 
+// stop blocks until the source goroutine has exited, including any in-flight
+// backend Remove/Close or directory read. Callers on the UI thread must not
+// invoke this directly; unsubscribe() runs it from a detached goroutine.
 func (s *watchSource) stop() {
 	close(s.stopChan)
 	<-s.stopped

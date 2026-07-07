@@ -16,7 +16,12 @@ type fakeBackend struct {
 	addErr   error
 	addCount int
 	addPath  string
-	closed   bool
+
+	closeMu sync.Mutex
+	closed  bool
+
+	// closeBlock, if non-nil, makes Close() block until the channel is closed.
+	closeBlock chan struct{}
 }
 
 func newFakeBackend() *fakeBackend {
@@ -34,11 +39,38 @@ func (b *fakeBackend) Add(path string, _ fswatcher.Op) error {
 
 func (b *fakeBackend) Remove(string) error { return nil }
 func (b *fakeBackend) Close() error {
+	if b.closeBlock != nil {
+		<-b.closeBlock
+	}
+	b.closeMu.Lock()
 	b.closed = true
+	b.closeMu.Unlock()
 	return nil
 }
 func (b *fakeBackend) Events() <-chan fswatcher.Event { return b.events }
 func (b *fakeBackend) Errors() <-chan error           { return b.errs }
+
+func (b *fakeBackend) isClosed() bool {
+	b.closeMu.Lock()
+	defer b.closeMu.Unlock()
+	return b.closed
+}
+
+// waitFor polls cond until it reports true or timeout elapses, failing the
+// test on timeout.
+func waitFor(t *testing.T, timeout time.Duration, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		if cond() {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for condition")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
 
 func TestWatchHubSharesSourceForSamePath(t *testing.T) {
 	var backends []*fakeBackend
@@ -77,9 +109,68 @@ func TestWatchHubSharesSourceForSamePath(t *testing.T) {
 	if stillPresent {
 		t.Fatal("source should be removed after last subscriber leaves")
 	}
-	if !backends[0].closed {
-		t.Fatal("backend should be closed after source stops")
+	// Source teardown (including backend Close) runs on a detached goroutine,
+	// so wait for it instead of asserting it happened synchronously.
+	waitFor(t, time.Second, backends[0].isClosed)
+}
+
+// TestWatchHubUnsubscribeDoesNotBlockOnHangingClose verifies that Unsubscribe
+// returns promptly even when the backend's Close() blocks indefinitely, and
+// that a fresh Subscribe for the same path works while the old source is
+// still tearing down in the background.
+func TestWatchHubUnsubscribeDoesNotBlockOnHangingClose(t *testing.T) {
+	firstBackend := newFakeBackend()
+	firstBackend.closeBlock = make(chan struct{})
+
+	backendCount := 0
+	var secondBackend *fakeBackend
+	newBackend := func() (watchBackend, error) {
+		backendCount++
+		if backendCount == 1 {
+			return firstBackend, nil
+		}
+		secondBackend = newFakeBackend()
+		return secondBackend, nil
 	}
+
+	hub := newWatchHub(dummyDebug, newBackend, func(string) (Snapshot, error) {
+		return Snapshot{}, nil
+	}, func(path string) (string, bool) {
+		return path, true
+	}, time.Millisecond)
+
+	sub := hub.Subscribe("/tmp/hang", time.Second)
+
+	done := make(chan struct{})
+	go func() {
+		sub.Unsubscribe()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Unsubscribe blocked on hanging backend Close")
+	}
+
+	hub.mu.Lock()
+	_, stillPresent := hub.sources["/tmp/hang"]
+	hub.mu.Unlock()
+	if stillPresent {
+		t.Fatal("source should already be removed from hub map")
+	}
+
+	fresh := hub.Subscribe("/tmp/hang", time.Second)
+	defer fresh.Unsubscribe()
+
+	waitFor(t, time.Second, func() bool {
+		return secondBackend != nil && secondBackend.addCount == 1
+	})
+
+	// Release the hung Close and wait for the old source goroutine to
+	// finish so the test doesn't leak it.
+	close(firstBackend.closeBlock)
+	waitFor(t, time.Second, firstBackend.isClosed)
 }
 
 func TestWatchHubFallsBackToPollingWhenAddFails(t *testing.T) {
