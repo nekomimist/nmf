@@ -515,22 +515,69 @@ func TestLineEditEntryRendererAddsContentInsetAndClampsCaret(t *testing.T) {
 	renderer := test.WidgetRenderer(entry).(*lineEditEntryRenderer)
 	size := fyne.NewSize(220, renderer.MinSize().Height)
 	entry.Resize(size)
-	renderer.Layout(size)
 
+	// Capture the stock widget.Entry layout (which applies its own baseline
+	// border/padding) before our inset is layered on, so the inset delta can
+	// be checked without assuming Fyne's internal padding constants.
+	renderer.base.Layout(size)
 	content := renderer.contentObject()
 	if content == nil {
 		t.Fatal("line edit content object was not found")
 	}
+	beforeHeight := content.Size().Height
+
+	renderer.applyContentInset()
+	renderer.updateCaret()
+
 	if content.Position().X < lineEditEntryHorizontalInset {
 		t.Fatalf("content x inset = %f, want at least %f", content.Position().X, lineEditEntryHorizontalInset)
 	}
-	if content.Size().Height <= size.Height-lineEditEntryVerticalInset {
-		t.Fatalf("content height = %f, want vertical inset kept as extra height within %f", content.Size().Height, size.Height)
+	if wantHeight := beforeHeight - lineEditEntryVerticalInset*2; content.Size().Height != wantHeight {
+		t.Fatalf("content height = %f, want %f (before-inset height minus vertical inset on both sides)", content.Size().Height, wantHeight)
 	}
 
 	caretRight := renderer.caret.Position().X + renderer.caret.Size().Width
 	maxRight := size.Width - lineEditEntryHorizontalInset
 	if caretRight > maxRight {
 		t.Fatalf("caret right edge = %f, want at most %f", caretRight, maxRight)
+	}
+}
+
+// TestLineEditEntryRendererAppliesSymmetricVerticalInset guards against the
+// vertical text offset regression: applyContentInset must shift/shrink the
+// content by lineEditEntryVerticalInset on both axes, matching MinSize()'s
+// symmetric inset*2 addition. The embedded stock widget.Entry renderer adds
+// its own baseline offset before this runs, so the assertion checks the
+// delta applyContentInset introduces rather than an absolute position.
+func TestLineEditEntryRendererAppliesSymmetricVerticalInset(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	entry := NewIMEEntry(nil)
+	w := test.NewWindow(entry)
+	defer w.Close()
+
+	renderer := test.WidgetRenderer(entry).(*lineEditEntryRenderer)
+	size := renderer.MinSize()
+	entry.Resize(size)
+
+	renderer.base.Layout(size)
+	content := renderer.contentObject()
+	if content == nil {
+		t.Fatal("line edit content object was not found")
+	}
+	beforePos := content.Position()
+	beforeSize := content.Size()
+
+	renderer.applyContentInset()
+
+	wantPos := beforePos.Add(fyne.NewPos(lineEditEntryHorizontalInset, lineEditEntryVerticalInset))
+	if content.Position() != wantPos {
+		t.Fatalf("content position = %v, want %v", content.Position(), wantPos)
+	}
+
+	wantSize := beforeSize.Subtract(fyne.NewSize(lineEditEntryHorizontalInset*2, lineEditEntryVerticalInset*2))
+	if content.Size() != wantSize {
+		t.Fatalf("content size = %v, want %v", content.Size(), wantSize)
 	}
 }

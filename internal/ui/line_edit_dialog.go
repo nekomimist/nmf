@@ -654,13 +654,16 @@ func (r *lineEditEntryRenderer) applyContentInset() {
 	if content == nil {
 		return
 	}
-	content.Move(content.Position().Add(fyne.NewPos(lineEditEntryHorizontalInset, 0)))
+	content.Move(content.Position().Add(fyne.NewPos(lineEditEntryHorizontalInset, lineEditEntryVerticalInset)))
 	size := content.Size().Subtract(fyne.NewSize(
 		lineEditEntryHorizontalInset*2,
-		0,
+		lineEditEntryVerticalInset*2,
 	))
 	if size.Width < 0 {
 		size.Width = 0
+	}
+	if size.Height < 0 {
+		size.Height = 0
 	}
 	content.Resize(size)
 }
