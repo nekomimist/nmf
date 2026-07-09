@@ -479,33 +479,16 @@ func (f *mainScreenFakeFileManager) FocusWindowLeft()                  { f.focus
 func (f *mainScreenFakeFileManager) FocusWindowRight()                 { f.focusWindowRightCount++ }
 func (f *mainScreenFakeFileManager) ResetWindowSize()                  { f.resetWindowSizeCount++ }
 func (f *mainScreenFakeFileManager) ResetAllWindowSizes()              { f.resetAllWindowSizesCount++ }
-func (f *mainScreenFakeFileManager) ShowDirectoryTreeDialog()          {}
-func (f *mainScreenFakeFileManager) ShowNavigationHistoryDialog()      { f.showHistoryCount++ }
 func (f *mainScreenFakeFileManager) PinCurrentHistoryPath()            { f.pinCurrentHistoryCount++ }
-func (f *mainScreenFakeFileManager) ShowDirectoryJumpDialog() {
-	f.showDirectoryJumpCount++
-}
-func (f *mainScreenFakeFileManager) ShowFilterDialog()            {}
-func (f *mainScreenFakeFileManager) ClearFilter()                 {}
-func (f *mainScreenFakeFileManager) ToggleFilter()                {}
-func (f *mainScreenFakeFileManager) ShowIncrementalSearchDialog() { f.showSearchCount++ }
-func (f *mainScreenFakeFileManager) ShowSortDialog()              { f.showSortCount++ }
-func (f *mainScreenFakeFileManager) ShowJobsDialog()              { f.showJobsCount++ }
-func (f *mainScreenFakeFileManager) ShowPathEditDialog()          { f.focusPathCount++ }
-func (f *mainScreenFakeFileManager) ShowCreateDirectoryDialog()   { f.showCreateDirCount++ }
+func (f *mainScreenFakeFileManager) ClearFilter()                      {}
+func (f *mainScreenFakeFileManager) ToggleFilter()                     {}
 func (f *mainScreenFakeFileManager) CreateDirectory(name string) bool {
 	f.createDirName = name
 	return f.createDirResult
 }
-func (f *mainScreenFakeFileManager) ShowClipboardTextFileDialog() { f.showClipboardFileCount++ }
 func (f *mainScreenFakeFileManager) CreateClipboardTextFile(name string) bool {
 	f.clipboardFileName = name
 	return f.clipboardFileResult
-}
-func (f *mainScreenFakeFileManager) ShowMessageDialog(title string, message string) {
-	f.messageTitle = title
-	f.messageText = message
-	f.showMessageCount++
 }
 func (f *mainScreenFakeFileManager) SetClipboardText(text string) bool {
 	f.clipboardText = text
@@ -522,27 +505,60 @@ func (f *mainScreenFakeFileManager) OpenFileDefaultApp(file *fileinfo.FileInfo) 
 		f.openDefaultAppPath = file.Path
 	}
 }
-func (f *mainScreenFakeFileManager) ShowCopyDialog()           {}
-func (f *mainScreenFakeFileManager) ShowMoveDialog()           {}
-func (f *mainScreenFakeFileManager) ShowExtractArchiveDialog() {}
-func (f *mainScreenFakeFileManager) ShowCompareDialog()        { f.showCompareCount++ }
-func (f *mainScreenFakeFileManager) ShowRenameDialog()         { f.showRenameCount++ }
-func (f *mainScreenFakeFileManager) ShowDeleteDialog(permanent bool) {
-	f.showDeleteCount++
-	f.deletePermanent = permanent
+
+// fakeDialogActions builds the DialogActions closures MainScreenKeyHandler
+// now calls instead of FileManagerInterface Show* methods, wired to the same
+// counters/fields the removed mock methods used to set. Tests that need to
+// assert a Show* outcome call handler.SetActions(fakeDialogActions(fm)).
+func fakeDialogActions(f *mainScreenFakeFileManager) DialogActions {
+	return DialogActions{
+		ShowDirectoryTreeDialog:     func() {},
+		ShowNavigationHistoryDialog: func() { f.showHistoryCount++ },
+		ShowDirectoryJumpDialog:     func() { f.showDirectoryJumpCount++ },
+		ShowFilterDialog:            func() {},
+		ShowIncrementalSearchDialog: func() { f.showSearchCount++ },
+		ShowSortDialog:              func() { f.showSortCount++ },
+		ShowJobsDialog:              func() { f.showJobsCount++ },
+		ShowPathEditDialog:          func() { f.focusPathCount++ },
+		ShowCreateDirectoryDialog:   func() { f.showCreateDirCount++ },
+		ShowClipboardTextFileDialog: func() { f.showClipboardFileCount++ },
+		ShowMessageDialog: func(title string, message string) {
+			f.messageTitle = title
+			f.messageText = message
+			f.showMessageCount++
+		},
+		ShowCopyDialog:           func() {},
+		ShowMoveDialog:           func() {},
+		ShowExtractArchiveDialog: func() {},
+		ShowCompareDialog:        func() { f.showCompareCount++ },
+		ShowRenameDialog:         func() { f.showRenameCount++ },
+		ShowDeleteDialog: func(permanent bool) {
+			f.showDeleteCount++
+			f.deletePermanent = permanent
+		},
+		ShowExplorerContextMenu: func() { f.showExplorerMenuCount++ },
+		ShowExternalCommandMenu: func() { f.showExternalMenuCount++ },
+		ShowFileViewer:          func() { f.showViewerCount++ },
+		ShowMaintenanceDialog:   func() { f.showMaintenanceCount++ },
+		ShowCommandMenu:         func(title string, items []CommandMenuItem) {},
+	}
 }
-func (f *mainScreenFakeFileManager) ShowExplorerContextMenu() { f.showExplorerMenuCount++ }
-func (f *mainScreenFakeFileManager) ShowExternalCommandMenu() { f.showExternalMenuCount++ }
-func (f *mainScreenFakeFileManager) ShowFileViewer()          { f.showViewerCount++ }
-func (f *mainScreenFakeFileManager) ShowMaintenanceDialog()   { f.showMaintenanceCount++ }
-func (f *mainScreenFakeFileManager) ShowCommandMenu(title string, items []CommandMenuItem) {
+
+// newMainScreenKeyHandlerForTest builds a handler wired with fakeDialogActions
+// so existing Show* assertions on mainScreenFakeFileManager keep working now
+// that MainScreenKeyHandler no longer calls FileManager Show* methods
+// directly; it drives the same commands NewMainScreenKeyHandler would.
+func newMainScreenKeyHandlerForTest(fm *mainScreenFakeFileManager, debugPrint func(string, ...interface{}), configuredBindings ...[]config.KeyBindingEntry) *MainScreenKeyHandler {
+	h := NewMainScreenKeyHandler(fm, debugPrint, configuredBindings...)
+	h.SetActions(fakeDialogActions(fm))
+	return h
 }
 
 func TestMainScreenReturnRunsOpen(t *testing.T) {
 	fm := &mainScreenFakeFileManager{
 		files: []fileinfo.FileInfo{{Name: "book.xlsx", Path: "/dir/book.xlsx"}},
 	}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{})
 
@@ -561,7 +577,7 @@ func TestMainScreenShiftReturnRunsOpenDefaultApp(t *testing.T) {
 	fm := &mainScreenFakeFileManager{
 		files: []fileinfo.FileInfo{{Name: "book.xlsx", Path: "/dir/book.xlsx"}},
 	}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{ShiftPressed: true})
 
@@ -580,7 +596,7 @@ func TestMainScreenConfiguredBindingCanRunOpenDefaultApp(t *testing.T) {
 	fm := &mainScreenFakeFileManager{
 		files: []fileinfo.FileInfo{{Name: "book.xlsx", Path: "/dir/book.xlsx"}},
 	}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
 		{Key: "O", Command: CommandOpenDefaultApp},
 	})
 
@@ -603,7 +619,7 @@ func TestMainScreenCursorDownUsesFileCountAndFileAt(t *testing.T) {
 		cursorIndex:    0,
 		setCursorIndex: -1,
 	}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyDown}, ModifierState{})
 
@@ -623,7 +639,7 @@ func TestMainScreenCursorDownAtLastFileIsNoop(t *testing.T) {
 		cursorIndex:    0,
 		setCursorIndex: -1,
 	}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyDown}, ModifierState{})
 
@@ -641,7 +657,7 @@ func TestMainScreenCursorFirstAndLastUseFileCount(t *testing.T) {
 		},
 		cursorIndex: 1,
 	}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyComma}, ModifierState{ShiftPressed: true}) {
 		t.Fatal("S-Comma (cursor.first) should be handled")
@@ -664,7 +680,7 @@ func TestMainScreenCursorFirstAndLastNoopWhenEmpty(t *testing.T) {
 		cursorIndex:    0,
 		setCursorIndex: -1,
 	}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyComma}, ModifierState{ShiftPressed: true})
 	if fm.setCursorIndex != -1 {
@@ -685,7 +701,7 @@ func TestMainScreenOpenCurrentUsesFileAt(t *testing.T) {
 		},
 		cursorIndex: 1,
 	}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{})
 
@@ -704,7 +720,7 @@ func TestMainScreenOpenCurrentNoopWhenCursorOutOfRange(t *testing.T) {
 		},
 		cursorIndex: -1,
 	}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyReturn}, ModifierState{})
 
@@ -715,7 +731,7 @@ func TestMainScreenOpenCurrentNoopWhenCursorOutOfRange(t *testing.T) {
 
 func TestMainScreenConfiguredBindingCanShowMaintenanceDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
 		{Key: "F12", Command: CommandMaintenanceShow},
 	})
 
@@ -731,7 +747,7 @@ func TestMainScreenConfiguredBindingCanShowMaintenanceDialog(t *testing.T) {
 
 func TestMainScreenJShowsDirectoryJumpDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyJ}, ModifierState{})
 
@@ -748,7 +764,7 @@ func TestMainScreenJShowsDirectoryJumpDialog(t *testing.T) {
 
 func TestMainScreenShiftBPinsCurrentHistoryPath(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyB}, ModifierState{ShiftPressed: true})
 
@@ -762,7 +778,7 @@ func TestMainScreenShiftBPinsCurrentHistoryPath(t *testing.T) {
 
 func TestMainScreenLeftFocusesLeftWindow(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyLeft}, ModifierState{})
 
@@ -779,7 +795,7 @@ func TestMainScreenLeftFocusesLeftWindow(t *testing.T) {
 
 func TestMainScreenRightFocusesRightWindow(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyRight}, ModifierState{})
 
@@ -796,7 +812,7 @@ func TestMainScreenRightFocusesRightWindow(t *testing.T) {
 
 func TestMainScreenShiftJShowsJobsDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyJ}, ModifierState{ShiftPressed: true})
 
@@ -813,7 +829,7 @@ func TestMainScreenShiftJShowsJobsDialog(t *testing.T) {
 
 func TestMainScreenKShowsCreateDirectoryDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyK}, ModifierState{})
 
@@ -827,7 +843,7 @@ func TestMainScreenKShowsCreateDirectoryDialog(t *testing.T) {
 
 func TestMainScreenPShowsClipboardTextFileDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyP}, ModifierState{})
 
@@ -841,7 +857,7 @@ func TestMainScreenPShowsClipboardTextFileDialog(t *testing.T) {
 
 func TestMainScreenF2ShowsRenameDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyF2}, ModifierState{})
 
@@ -855,7 +871,7 @@ func TestMainScreenF2ShowsRenameDialog(t *testing.T) {
 
 func TestMainScreenRShowsRenameDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{})
 
@@ -869,7 +885,7 @@ func TestMainScreenRShowsRenameDialog(t *testing.T) {
 
 func TestMainScreenModifiedRenameKeysDoNotShowRenameDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyF2}, ModifierState{CtrlPressed: true})
 	handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{ShiftPressed: true})
@@ -881,7 +897,7 @@ func TestMainScreenModifiedRenameKeysDoNotShowRenameDialog(t *testing.T) {
 
 func TestMainScreenTabShowsExplorerContextMenu(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyTab}, ModifierState{})
 
@@ -895,7 +911,7 @@ func TestMainScreenTabShowsExplorerContextMenu(t *testing.T) {
 
 func TestMainScreenPeriodRefreshesCurrentDirectory(t *testing.T) {
 	fm := &mainScreenFakeFileManager{currentPath: "/tmp/nmf"}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyPeriod}, ModifierState{})
 
@@ -912,7 +928,7 @@ func TestMainScreenPeriodRefreshesCurrentDirectory(t *testing.T) {
 
 func TestMainScreenModifiedTabDoesNotShowExplorerContextMenu(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyTab}, ModifierState{CtrlPressed: true})
 
@@ -926,7 +942,7 @@ func TestMainScreenModifiedTabDoesNotShowExplorerContextMenu(t *testing.T) {
 
 func TestMainScreenDeleteShowsTrashDeleteDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyDelete}, ModifierState{})
 
@@ -943,7 +959,7 @@ func TestMainScreenDeleteShowsTrashDeleteDialog(t *testing.T) {
 
 func TestMainScreenShiftDeleteShowsPermanentDeleteDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyDelete}, ModifierState{ShiftPressed: true})
 
@@ -960,7 +976,7 @@ func TestMainScreenShiftDeleteShowsPermanentDeleteDialog(t *testing.T) {
 
 func TestMainScreenXShowsExternalCommandMenu(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{})
 
@@ -974,7 +990,7 @@ func TestMainScreenXShowsExternalCommandMenu(t *testing.T) {
 
 func TestMainScreenVShowsFileViewer(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyV}, ModifierState{})
 
@@ -988,7 +1004,7 @@ func TestMainScreenVShowsFileViewer(t *testing.T) {
 
 func TestMainScreenShiftCShowsCompareDialog(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyC}, ModifierState{ShiftPressed: true})
 
@@ -1009,7 +1025,7 @@ func TestMainScreenCtrlAMarksAllSelectableFiles(t *testing.T) {
 			{Name: "sub", Path: "/dir/sub", IsDir: true},
 		},
 	}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyA}, ModifierState{CtrlPressed: true})
 
@@ -1042,7 +1058,7 @@ func TestMainScreenIInvertsFileMarksOnly(t *testing.T) {
 			"/dir/sub":      true,
 		},
 	}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyI}, ModifierState{})
 
@@ -1080,7 +1096,7 @@ func TestMainScreenShiftIInvertsMarksIncludingDirectories(t *testing.T) {
 			"/dir/gone.txt": true,
 		},
 	}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyI}, ModifierState{ShiftPressed: true})
 
@@ -1103,7 +1119,7 @@ func TestMainScreenShiftIInvertsMarksIncludingDirectories(t *testing.T) {
 
 func TestMainScreenConfiguredBindingOverridesDefault(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
 		{Key: "X", Command: CommandJobsShow},
 	})
 
@@ -1122,7 +1138,7 @@ func TestMainScreenConfiguredBindingOverridesDefault(t *testing.T) {
 
 func TestMainScreenIgnoresNonMainTargetBindings(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
 		{Target: KeyBindingTargetFileViewer, Key: "V", Command: CommandNoop},
 	})
 
@@ -1138,7 +1154,7 @@ func TestMainScreenIgnoresNonMainTargetBindings(t *testing.T) {
 
 func TestMainScreenNoopCommandOverridesDefault(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
 		{Key: "S-S", Command: CommandNoop},
 	})
 
@@ -1154,7 +1170,7 @@ func TestMainScreenNoopCommandOverridesDefault(t *testing.T) {
 
 func TestMainScreenConfiguredBindingCanReopenWindow(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
 		{Key: "C-R", Command: CommandWindowReopen},
 	})
 
@@ -1170,7 +1186,7 @@ func TestMainScreenConfiguredBindingCanReopenWindow(t *testing.T) {
 
 func TestMainScreenShiftQResetsCurrentWindowSize(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyQ}, ModifierState{ShiftPressed: true})
 
@@ -1187,7 +1203,7 @@ func TestMainScreenShiftQResetsCurrentWindowSize(t *testing.T) {
 
 func TestMainScreenCtrlShiftQResetsAllWindowSizes(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyQ}, ModifierState{CtrlPressed: true, ShiftPressed: true})
 
@@ -1204,7 +1220,7 @@ func TestMainScreenCtrlShiftQResetsAllWindowSizes(t *testing.T) {
 
 func TestMainScreenNoopCommandOverridesResetSize(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
 		{Key: "S-Q", Command: CommandNoop},
 	})
 
@@ -1220,7 +1236,7 @@ func TestMainScreenNoopCommandOverridesResetSize(t *testing.T) {
 
 func TestMainScreenNoopCommandOverridesResetAllSizes(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
 		{Key: "C-S-Q", Command: CommandNoop},
 	})
 
@@ -1264,7 +1280,7 @@ func TestMainScreenConfiguredBindingCanUseExtraCommand(t *testing.T) {
 func TestMainScreenTransitionCommandRunsOnNextTick(t *testing.T) {
 	km, q := newGatedKeyManager()
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
 		{Key: "S-L", Command: CommandHistoryShow},
 	})
 	handler.SetTransitionGate(km.BeginOwnerTransition)
@@ -1295,7 +1311,7 @@ func TestMainScreenTransitionCommandRunsOnNextTick(t *testing.T) {
 func TestMainScreenMaintenanceDialogTransitionRunsOnNextTick(t *testing.T) {
 	km, q := newGatedKeyManager()
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
 		{Key: "F12", Command: CommandMaintenanceShow},
 	})
 	handler.SetTransitionGate(km.BeginOwnerTransition)
@@ -1327,6 +1343,7 @@ func TestMainScreenDefersRunCommandTransition(t *testing.T) {
 			},
 		},
 	)
+	handler.SetActions(fakeDialogActions(fm))
 	handler.SetTransitionGate(km.BeginOwnerTransition)
 	km.PushHandler(handler)
 
@@ -1344,6 +1361,10 @@ func TestMainScreenDefersRunCommandTransition(t *testing.T) {
 }
 
 func TestMainScreenProvidesTransitionGateToExtraCommand(t *testing.T) {
+	// Extra (Starlark) commands only see CommandContext, not
+	// MainScreenKeyHandler's DialogActions, so they reach FileManager
+	// behavior through kept FileManagerInterface methods like LoadDirectory
+	// rather than the removed Show* methods.
 	km, q := newGatedKeyManager()
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandlerWithCommands(
@@ -1353,7 +1374,7 @@ func TestMainScreenProvidesTransitionGateToExtraCommand(t *testing.T) {
 		CommandRegistry{
 			"user.dialog": func(ctx CommandContext) {
 				ctx.DeferTransition("user.dialog", func() {
-					ctx.FileManager.ShowNavigationHistoryDialog()
+					ctx.FileManager.LoadDirectory("/deferred")
 				})
 			},
 		},
@@ -1364,13 +1385,13 @@ func TestMainScreenProvidesTransitionGateToExtraCommand(t *testing.T) {
 	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyX})
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyX})
 
-	if fm.showHistoryCount != 0 {
-		t.Fatalf("ShowNavigationHistoryDialog count = %d before next tick, want 0", fm.showHistoryCount)
+	if fm.loadDirectoryPath != "" {
+		t.Fatalf("LoadDirectory path = %q before next tick, want empty", fm.loadDirectoryPath)
 	}
 
 	q.runAll()
-	if fm.showHistoryCount != 1 {
-		t.Fatalf("ShowNavigationHistoryDialog count = %d after next tick, want 1", fm.showHistoryCount)
+	if fm.loadDirectoryPath != "/deferred" {
+		t.Fatalf("LoadDirectory path = %q after next tick, want /deferred", fm.loadDirectoryPath)
 	}
 }
 
@@ -1406,7 +1427,7 @@ func TestMainScreenDoesNotDeferNonTransitionCommand(t *testing.T) {
 			{Name: "a.txt", Path: "/dir/a.txt"},
 		},
 	}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 	handler.SetTransitionGate(km.BeginOwnerTransition)
 	km.PushHandler(handler)
 
@@ -1431,6 +1452,7 @@ func TestMainScreenExtraCommandCanRunInternalCommand(t *testing.T) {
 			},
 		},
 	)
+	handler.SetActions(fakeDialogActions(fm))
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyX}, ModifierState{})
 
@@ -1447,7 +1469,7 @@ func TestMainScreenShiftUpUsesPageUpCommand(t *testing.T) {
 		cursorIndex: 30,
 		files:       make([]fileinfo.FileInfo, 40),
 	}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyUp}, ModifierState{ShiftPressed: true})
 
@@ -1464,7 +1486,7 @@ func TestMainScreenShiftDownUsesPageDownCommand(t *testing.T) {
 		cursorIndex: 5,
 		files:       make([]fileinfo.FileInfo, 30),
 	}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 
 	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyDown}, ModifierState{ShiftPressed: true})
 
@@ -1541,7 +1563,7 @@ func TestParseKeySpecAcceptsFyneKeyNameValues(t *testing.T) {
 func TestInvalidConfiguredBindingIsIgnored(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	var logs []string
-	handler := NewMainScreenKeyHandler(fm, func(format string, args ...interface{}) {
+	handler := newMainScreenKeyHandlerForTest(fm, func(format string, args ...interface{}) {
 		logs = append(logs, fmt.Sprintf(format, args...))
 	}, []config.KeyBindingEntry{
 		{Key: "Bogus", Command: CommandJobsShow},
@@ -1650,7 +1672,7 @@ func TestHandleShortcutIgnoresUnknownShortcutTypes(t *testing.T) {
 func TestMainScreenShiftDeleteViaFoldedCutShortcut(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	fm := &mainScreenFakeFileManager{}
-	handler := NewMainScreenKeyHandler(fm, func(string, ...interface{}) {})
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 	km.PushHandler(handler)
 
 	km.HandleKeyDown(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
@@ -1668,7 +1690,7 @@ func TestMainScreenShiftDeleteViaFoldedCutShortcut(t *testing.T) {
 func TestMainScreenDeprecatedEventBindingStillFires(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	var logs []string
-	handler := NewMainScreenKeyHandler(fm, func(format string, args ...interface{}) {
+	handler := newMainScreenKeyHandlerForTest(fm, func(format string, args ...interface{}) {
 		logs = append(logs, fmt.Sprintf(format, args...))
 	}, []config.KeyBindingEntry{
 		{Key: "S-L", Command: CommandWindowResetSize, Event: "down"},

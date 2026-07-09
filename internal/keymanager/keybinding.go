@@ -32,6 +32,16 @@ type CommandContext struct {
 	RunExternalCommand func(command string, args []string, edit bool, cwd string) bool
 	SetClipboard       func(text string) bool
 	DeferTransition    func(label string, action func())
+
+	// UI-launcher closures for the Show* dialogs/menus internal/configscript
+	// exposes to Starlark commands (nmf.show_menu, nmf.message,
+	// nmf.mkdir(edit=True), nmf.save_clipboard(edit=True)). These mirror the
+	// same DialogActions MainScreenKeyHandler uses for its own built-in
+	// commands; see mainscreen_handler.go's executeBinding.
+	ShowCommandMenu             func(title string, items []CommandMenuItem)
+	ShowMessageDialog           func(title string, message string)
+	ShowCreateDirectoryDialog   func()
+	ShowClipboardTextFileDialog func()
 }
 
 // CommandFunc executes an internal command.
@@ -292,10 +302,20 @@ var validKeyNames = map[fyne.KeyName]struct{}{
 }
 
 func (b keyBinding) matches(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	if ev == nil || normalizeDrainKey(ev.Name) != normalizeDrainKey(b.spec.key) {
+	return b.spec.matches(ev, modifiers)
+}
+
+// matches reports whether ev/modifiers is an exact match for this spec: the
+// key name (after folding KP_Enter to Return, same as the rest of keymanager)
+// and every modifier bit must match precisely. This is the single definition
+// of "exact match" shared by the configurable main-screen/file-viewer/line-edit
+// bindings (via keyBinding.matches) and the static per-dialog bindings built
+// by newDialogKeyHandler (dialog_handler.go).
+func (s keySpec) matches(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+	if ev == nil || normalizeDrainKey(ev.Name) != normalizeDrainKey(s.key) {
 		return false
 	}
-	return b.spec.mod.ShiftPressed == modifiers.ShiftPressed &&
-		b.spec.mod.CtrlPressed == modifiers.CtrlPressed &&
-		b.spec.mod.AltPressed == modifiers.AltPressed
+	return s.mod.ShiftPressed == modifiers.ShiftPressed &&
+		s.mod.CtrlPressed == modifiers.CtrlPressed &&
+		s.mod.AltPressed == modifiers.AltPressed
 }

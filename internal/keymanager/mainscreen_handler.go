@@ -89,39 +89,17 @@ type FileManagerInterface interface {
 	FocusWindowRight()
 	ResetWindowSize()
 	ResetAllWindowSizes()
-	ShowDirectoryTreeDialog()
-	ShowNavigationHistoryDialog()
 	PinCurrentHistoryPath()
-	ShowDirectoryJumpDialog()
 
-	ShowFilterDialog()
 	ClearFilter()
 	ToggleFilter()
 
-	ShowIncrementalSearchDialog()
-	ShowSortDialog()
-	ShowJobsDialog()
-	ShowPathEditDialog()
-	ShowCreateDirectoryDialog()
 	CreateDirectory(name string) bool
-	ShowClipboardTextFileDialog()
 	CreateClipboardTextFile(name string) bool
-	ShowMessageDialog(title string, message string)
 	QuitApplication()
 
 	OpenFile(file *fileinfo.FileInfo)
 	OpenFileDefaultApp(file *fileinfo.FileInfo)
-	ShowCopyDialog()
-	ShowMoveDialog()
-	ShowExtractArchiveDialog()
-	ShowCompareDialog()
-	ShowRenameDialog()
-	ShowDeleteDialog(permanent bool)
-	ShowExplorerContextMenu()
-	ShowExternalCommandMenu()
-	ShowFileViewer()
-	ShowMaintenanceDialog()
-	ShowCommandMenu(title string, items []CommandMenuItem)
 }
 
 type externalCommandRunner interface {
@@ -151,6 +129,7 @@ type MainScreenKeyHandler struct {
 	runningCommands map[string]int
 	runningDepth    int
 	deferTransition func(label string, action func())
+	actions         DialogActions
 }
 
 // NewMainScreenKeyHandler creates a new main screen key handler.
@@ -188,6 +167,14 @@ func (mh *MainScreenKeyHandler) GetName() string { return "MainScreen" }
 // SetTransitionGate configures delayed execution for commands that change input owner.
 func (mh *MainScreenKeyHandler) SetTransitionGate(deferTransition func(label string, action func())) {
 	mh.deferTransition = deferTransition
+}
+
+// SetActions configures the UI-launcher closures backing the Show*/menu
+// commands. Call this once after construction (bootstrap.go is the only
+// production caller); unset fields cause the corresponding command to log a
+// debug warning and no-op instead of panicking.
+func (mh *MainScreenKeyHandler) SetActions(actions DialogActions) {
+	mh.actions = actions
 }
 
 // ActivationShortcuts returns the shortcuts the window canvas must register so
@@ -256,6 +243,11 @@ func (mh *MainScreenKeyHandler) executeBinding(ev *fyne.KeyEvent, modifiers Modi
 			Event:           keyEventTyped,
 			FileManager:     mh.fileManager,
 			DeferTransition: mh.deferTransition,
+
+			ShowCommandMenu:             mh.actions.ShowCommandMenu,
+			ShowMessageDialog:           mh.actions.ShowMessageDialog,
+			ShowCreateDirectoryDialog:   mh.actions.ShowCreateDirectoryDialog,
+			ShowClipboardTextFileDialog: mh.actions.ShowClipboardTextFileDialog,
 		}
 		ctx.RunCommand = func(command string) bool {
 			return mh.executeCommand(command, ctx)
@@ -397,35 +389,73 @@ func (mh *MainScreenKeyHandler) defaultCommands() map[string]commandSpec {
 		CommandWindowFocusRight:    {fn: func(CommandContext) { mh.fileManager.FocusWindowRight() }, transition: true},
 		CommandWindowResetSize:     {fn: func(CommandContext) { mh.fileManager.ResetWindowSize() }},
 		CommandWindowResetAllSizes: {fn: func(CommandContext) { mh.fileManager.ResetAllWindowSizes() }},
-		CommandTreeShow:            {fn: func(CommandContext) { mh.fileManager.ShowDirectoryTreeDialog() }, transition: true},
-		CommandHistoryShow:         {fn: func(CommandContext) { mh.fileManager.ShowNavigationHistoryDialog() }, transition: true},
-		CommandHistoryPinCurrent:   {fn: func(CommandContext) { mh.fileManager.PinCurrentHistoryPath() }, transition: true},
-		CommandDirectoryJumpShow:   {fn: func(CommandContext) { mh.fileManager.ShowDirectoryJumpDialog() }, transition: true},
-		CommandFilterShow:          {fn: func(CommandContext) { mh.fileManager.ShowFilterDialog() }, transition: true},
-		CommandFilterClear:         {fn: func(CommandContext) { mh.fileManager.ClearFilter() }},
-		CommandFilterToggle:        {fn: func(CommandContext) { mh.fileManager.ToggleFilter() }},
-		CommandSearchShow:          {fn: func(CommandContext) { mh.fileManager.ShowIncrementalSearchDialog() }, transition: true},
-		CommandSortShow:            {fn: func(CommandContext) { mh.fileManager.ShowSortDialog() }, transition: true},
-		CommandJobsShow:            {fn: func(CommandContext) { mh.fileManager.ShowJobsDialog() }, transition: true},
-		CommandPathEdit:            {fn: func(CommandContext) { mh.fileManager.ShowPathEditDialog() }, transition: true},
-		CommandDirectoryCreate:     {fn: func(CommandContext) { mh.fileManager.ShowCreateDirectoryDialog() }, transition: true},
-		CommandClipboardTextFile:   {fn: func(CommandContext) { mh.fileManager.ShowClipboardTextFileDialog() }, transition: true},
-		CommandQuit:                {fn: func(CommandContext) { mh.fileManager.QuitApplication() }, transition: true},
-		CommandCopyShow:            {fn: func(CommandContext) { mh.fileManager.ShowCopyDialog() }, transition: true},
-		CommandMoveShow:            {fn: func(CommandContext) { mh.fileManager.ShowMoveDialog() }, transition: true},
+		CommandTreeShow: {fn: func(CommandContext) {
+			mh.showDialogAction("ShowDirectoryTreeDialog", mh.actions.ShowDirectoryTreeDialog)
+		}, transition: true},
+		CommandHistoryShow: {fn: func(CommandContext) {
+			mh.showDialogAction("ShowNavigationHistoryDialog", mh.actions.ShowNavigationHistoryDialog)
+		}, transition: true},
+		CommandHistoryPinCurrent: {fn: func(CommandContext) { mh.fileManager.PinCurrentHistoryPath() }, transition: true},
+		CommandDirectoryJumpShow: {fn: func(CommandContext) {
+			mh.showDialogAction("ShowDirectoryJumpDialog", mh.actions.ShowDirectoryJumpDialog)
+		}, transition: true},
+		CommandFilterShow:   {fn: func(CommandContext) { mh.showDialogAction("ShowFilterDialog", mh.actions.ShowFilterDialog) }, transition: true},
+		CommandFilterClear:  {fn: func(CommandContext) { mh.fileManager.ClearFilter() }},
+		CommandFilterToggle: {fn: func(CommandContext) { mh.fileManager.ToggleFilter() }},
+		CommandSearchShow: {fn: func(CommandContext) {
+			mh.showDialogAction("ShowIncrementalSearchDialog", mh.actions.ShowIncrementalSearchDialog)
+		}, transition: true},
+		CommandSortShow: {fn: func(CommandContext) { mh.showDialogAction("ShowSortDialog", mh.actions.ShowSortDialog) }, transition: true},
+		CommandJobsShow: {fn: func(CommandContext) { mh.showDialogAction("ShowJobsDialog", mh.actions.ShowJobsDialog) }, transition: true},
+		CommandPathEdit: {fn: func(CommandContext) { mh.showDialogAction("ShowPathEditDialog", mh.actions.ShowPathEditDialog) }, transition: true},
+		CommandDirectoryCreate: {fn: func(CommandContext) {
+			mh.showDialogAction("ShowCreateDirectoryDialog", mh.actions.ShowCreateDirectoryDialog)
+		}, transition: true},
+		CommandClipboardTextFile: {fn: func(CommandContext) {
+			mh.showDialogAction("ShowClipboardTextFileDialog", mh.actions.ShowClipboardTextFileDialog)
+		}, transition: true},
+		CommandQuit:     {fn: func(CommandContext) { mh.fileManager.QuitApplication() }, transition: true},
+		CommandCopyShow: {fn: func(CommandContext) { mh.showDialogAction("ShowCopyDialog", mh.actions.ShowCopyDialog) }, transition: true},
+		CommandMoveShow: {fn: func(CommandContext) { mh.showDialogAction("ShowMoveDialog", mh.actions.ShowMoveDialog) }, transition: true},
 		// transition was missing from the old shouldDeferCommand switch; the
 		// extract dialog is an input-owner change like copy/move.
-		CommandArchiveExtract:      {fn: func(CommandContext) { mh.fileManager.ShowExtractArchiveDialog() }, transition: true},
-		CommandCompareShow:         {fn: func(CommandContext) { mh.fileManager.ShowCompareDialog() }, transition: true},
-		CommandRenameShow:          {fn: mh.rename, transition: true},
-		CommandDeleteTrash:         {fn: func(CommandContext) { mh.fileManager.ShowDeleteDialog(false) }, transition: true},
-		CommandDeletePermanent:     {fn: func(CommandContext) { mh.fileManager.ShowDeleteDialog(true) }, transition: true},
-		CommandExplorerContextShow: {fn: func(CommandContext) { mh.fileManager.ShowExplorerContextMenu() }, transition: true},
-		CommandExternalCommandMenu: {fn: func(CommandContext) { mh.fileManager.ShowExternalCommandMenu() }, transition: true},
-		CommandViewerShow:          {fn: func(CommandContext) { mh.fileManager.ShowFileViewer() }, transition: true},
-		CommandMaintenanceShow:     {fn: func(CommandContext) { mh.fileManager.ShowMaintenanceDialog() }, transition: true},
-		CommandNoop:                {fn: func(CommandContext) {}},
+		CommandArchiveExtract: {fn: func(CommandContext) {
+			mh.showDialogAction("ShowExtractArchiveDialog", mh.actions.ShowExtractArchiveDialog)
+		}, transition: true},
+		CommandCompareShow:     {fn: func(CommandContext) { mh.showDialogAction("ShowCompareDialog", mh.actions.ShowCompareDialog) }, transition: true},
+		CommandRenameShow:      {fn: mh.rename, transition: true},
+		CommandDeleteTrash:     {fn: func(CommandContext) { mh.showDeleteDialog(false) }, transition: true},
+		CommandDeletePermanent: {fn: func(CommandContext) { mh.showDeleteDialog(true) }, transition: true},
+		CommandExplorerContextShow: {fn: func(CommandContext) {
+			mh.showDialogAction("ShowExplorerContextMenu", mh.actions.ShowExplorerContextMenu)
+		}, transition: true},
+		CommandExternalCommandMenu: {fn: func(CommandContext) {
+			mh.showDialogAction("ShowExternalCommandMenu", mh.actions.ShowExternalCommandMenu)
+		}, transition: true},
+		CommandViewerShow:      {fn: func(CommandContext) { mh.showDialogAction("ShowFileViewer", mh.actions.ShowFileViewer) }, transition: true},
+		CommandMaintenanceShow: {fn: func(CommandContext) { mh.showDialogAction("ShowMaintenanceDialog", mh.actions.ShowMaintenanceDialog) }, transition: true},
+		CommandNoop:            {fn: func(CommandContext) {}},
 	}
+}
+
+// showDialogAction invokes a no-argument UI-launcher closure from
+// DialogActions, or logs a debug warning and no-ops if it was never
+// registered (e.g. a handler built without SetActions, as in unit tests that
+// do not exercise that command).
+func (mh *MainScreenKeyHandler) showDialogAction(name string, action func()) {
+	if action == nil {
+		mh.debugPrint("MainScreen: WARNING no dialog action registered for %s", name)
+		return
+	}
+	action()
+}
+
+func (mh *MainScreenKeyHandler) showDeleteDialog(permanent bool) {
+	if mh.actions.ShowDeleteDialog == nil {
+		mh.debugPrint("MainScreen: WARNING no dialog action registered for ShowDeleteDialog")
+		return
+	}
+	mh.actions.ShowDeleteDialog(permanent)
 }
 
 func (mh *MainScreenKeyHandler) cursorUp(CommandContext) {
@@ -579,6 +609,6 @@ func (mh *MainScreenKeyHandler) homeDirectory(CommandContext) {
 
 func (mh *MainScreenKeyHandler) rename(ctx CommandContext) {
 	if !ctx.Modifiers.CtrlPressed && !ctx.Modifiers.ShiftPressed && !ctx.Modifiers.AltPressed {
-		mh.fileManager.ShowRenameDialog()
+		mh.showDialogAction("ShowRenameDialog", mh.actions.ShowRenameDialog)
 	}
 }

@@ -989,10 +989,12 @@ func (rt *Runtime) builtinShowMenu(thread *starlark.Thread, fn *starlark.Builtin
 	menu, ok := rt.Menus[name]
 	if !ok || len(menu.Items) == 0 {
 		show := func() {
-			ctx.FileManager.ShowCommandMenu(name, []keymanager.CommandMenuItem{{
-				Label:  fmt.Sprintf("Menu %q has no items.", name),
-				Action: func() {},
-			}})
+			if ctx.ShowCommandMenu != nil {
+				ctx.ShowCommandMenu(name, []keymanager.CommandMenuItem{{
+					Label:  fmt.Sprintf("Menu %q has no items.", name),
+					Action: func() {},
+				}})
+			}
 		}
 		deferCommandTransition(ctx, "starlark.show_menu", show)
 		return starlark.None, nil
@@ -1022,7 +1024,9 @@ func (rt *Runtime) builtinShowMenu(thread *starlark.Thread, fn *starlark.Builtin
 		})
 	}
 	show := func() {
-		ctx.FileManager.ShowCommandMenu(menu.Title, items)
+		if ctx.ShowCommandMenu != nil {
+			ctx.ShowCommandMenu(menu.Title, items)
+		}
 	}
 	deferCommandTransition(ctx, "starlark.show_menu", show)
 	return starlark.None, nil
@@ -1075,7 +1079,9 @@ func (rt *Runtime) builtinMessage(thread *starlark.Thread, fn *starlark.Builtin,
 		return starlark.False, nil
 	}
 	show := func() {
-		ctx.FileManager.ShowMessageDialog(title, message)
+		if ctx.ShowMessageDialog != nil {
+			ctx.ShowMessageDialog(title, message)
+		}
 	}
 	deferCommandTransition(ctx, "starlark.message", show)
 	return starlark.True, nil
@@ -1130,7 +1136,9 @@ func (rt *Runtime) builtinMkdir(thread *starlark.Thread, fn *starlark.Builtin, a
 	}
 	if edit {
 		show := func() {
-			ctx.FileManager.ShowCreateDirectoryDialog()
+			if ctx.ShowCreateDirectoryDialog != nil {
+				ctx.ShowCreateDirectoryDialog()
+			}
 		}
 		deferCommandTransition(ctx, "starlark.mkdir.edit", show)
 		return starlark.False, nil
@@ -1171,7 +1179,9 @@ func (rt *Runtime) builtinSaveClipboard(thread *starlark.Thread, fn *starlark.Bu
 	}
 	if edit {
 		show := func() {
-			ctx.FileManager.ShowClipboardTextFileDialog()
+			if ctx.ShowClipboardTextFileDialog != nil {
+				ctx.ShowClipboardTextFileDialog()
+			}
 		}
 		deferCommandTransition(ctx, "starlark.save_clipboard.edit", show)
 		return starlark.False, nil

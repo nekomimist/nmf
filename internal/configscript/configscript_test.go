@@ -690,6 +690,7 @@ nmf.command("user.show_tools", show_tools)
 			gotEdit = edit
 			return true
 		},
+		ShowCommandMenu: fm.ShowCommandMenu,
 	})
 
 	if fm.menuTitle != "Tools" {
@@ -768,6 +769,7 @@ nmf.command("user.show_tools", show_tools)
 			label = gotLabel
 			deferred = action
 		},
+		ShowCommandMenu: fm.ShowCommandMenu,
 	})
 
 	if fm.menuTitle != "" {
@@ -800,7 +802,7 @@ nmf.command("user.show_missing", show_missing)
 	}
 
 	fm := &configScriptFakeFileManager{}
-	rt.Commands["user.show_missing"](keymanager.CommandContext{FileManager: fm})
+	rt.Commands["user.show_missing"](keymanager.CommandContext{FileManager: fm, ShowCommandMenu: fm.ShowCommandMenu})
 
 	if fm.menuTitle != "missing" || len(fm.menuItems) != 1 || fm.menuItems[0].Label == "" {
 		t.Fatalf("missing menu display = title %q items %+v, want one informational item", fm.menuTitle, fm.menuItems)
@@ -1287,6 +1289,7 @@ nmf.command("user.warn", warn)
 			ran = command
 			return true
 		},
+		ShowMessageDialog: fm.ShowMessageDialog,
 	})
 
 	if fm.showMessageCount != 1 || fm.messageTitle != "Compare" || fm.messageText != "Select at least two files." {
@@ -1322,6 +1325,7 @@ nmf.command("user.warn", warn)
 			label = l
 			deferred = action
 		},
+		ShowMessageDialog: fm.ShowMessageDialog,
 	})
 
 	if label != "starlark.message" || deferred == nil {
@@ -1646,6 +1650,7 @@ nmf.command("user.create", create)
 			label = gotLabel
 			deferred = action
 		},
+		ShowCreateDirectoryDialog: fm.ShowCreateDirectoryDialog,
 	})
 
 	if fm.showCreateDirCount != 0 {
@@ -1686,6 +1691,7 @@ nmf.command("user.save", save)
 			label = gotLabel
 			deferred = action
 		},
+		ShowClipboardTextFileDialog: fm.ShowClipboardTextFileDialog,
 	})
 
 	if fm.showClipboardFileCount != 0 {
@@ -1931,45 +1937,32 @@ func (f *configScriptFakeFileManager) FocusWindowLeft()                  {}
 func (f *configScriptFakeFileManager) FocusWindowRight()                 {}
 func (f *configScriptFakeFileManager) ResetWindowSize()                  {}
 func (f *configScriptFakeFileManager) ResetAllWindowSizes()              {}
-func (f *configScriptFakeFileManager) ShowDirectoryTreeDialog()          {}
-func (f *configScriptFakeFileManager) ShowNavigationHistoryDialog()      {}
 func (f *configScriptFakeFileManager) PinCurrentHistoryPath()            {}
-func (f *configScriptFakeFileManager) ShowDirectoryJumpDialog()          {}
-func (f *configScriptFakeFileManager) ShowFilterDialog()                 {}
 func (f *configScriptFakeFileManager) ClearFilter()                      {}
 func (f *configScriptFakeFileManager) ToggleFilter()                     {}
-func (f *configScriptFakeFileManager) ShowIncrementalSearchDialog()      {}
-func (f *configScriptFakeFileManager) ShowSortDialog()                   {}
-func (f *configScriptFakeFileManager) ShowJobsDialog()                   {}
-func (f *configScriptFakeFileManager) ShowPathEditDialog()               {}
-func (f *configScriptFakeFileManager) ShowCreateDirectoryDialog()        { f.showCreateDirCount++ }
 func (f *configScriptFakeFileManager) CreateDirectory(name string) bool {
 	f.createDirName = name
 	return f.createDirResult
 }
-func (f *configScriptFakeFileManager) ShowClipboardTextFileDialog() { f.showClipboardFileCount++ }
 func (f *configScriptFakeFileManager) CreateClipboardTextFile(name string) bool {
 	f.clipboardFileName = name
 	return f.clipboardFileResult
 }
+func (f *configScriptFakeFileManager) QuitApplication()                           {}
+func (f *configScriptFakeFileManager) OpenFile(file *fileinfo.FileInfo)           {}
+func (f *configScriptFakeFileManager) OpenFileDefaultApp(file *fileinfo.FileInfo) {}
+
+// The following are not part of the (reduced) keymanager.FileManagerInterface
+// any more; they exist only so tests can build closures for the CommandContext
+// fields that carry UI-launcher actions to Starlark commands (ShowCommandMenu,
+// ShowMessageDialog, ShowCreateDirectoryDialog, ShowClipboardTextFileDialog).
+func (f *configScriptFakeFileManager) ShowCreateDirectoryDialog()   { f.showCreateDirCount++ }
+func (f *configScriptFakeFileManager) ShowClipboardTextFileDialog() { f.showClipboardFileCount++ }
 func (f *configScriptFakeFileManager) ShowMessageDialog(title string, message string) {
 	f.messageTitle = title
 	f.messageText = message
 	f.showMessageCount++
 }
-func (f *configScriptFakeFileManager) QuitApplication()                           {}
-func (f *configScriptFakeFileManager) OpenFile(file *fileinfo.FileInfo)           {}
-func (f *configScriptFakeFileManager) OpenFileDefaultApp(file *fileinfo.FileInfo) {}
-func (f *configScriptFakeFileManager) ShowCopyDialog()                            {}
-func (f *configScriptFakeFileManager) ShowMoveDialog()                            {}
-func (f *configScriptFakeFileManager) ShowExtractArchiveDialog()                  {}
-func (f *configScriptFakeFileManager) ShowCompareDialog()                         {}
-func (f *configScriptFakeFileManager) ShowRenameDialog()                          {}
-func (f *configScriptFakeFileManager) ShowDeleteDialog(permanent bool)            {}
-func (f *configScriptFakeFileManager) ShowExplorerContextMenu()                   {}
-func (f *configScriptFakeFileManager) ShowExternalCommandMenu()                   {}
-func (f *configScriptFakeFileManager) ShowFileViewer()                            {}
-func (f *configScriptFakeFileManager) ShowMaintenanceDialog()                     {}
 func (f *configScriptFakeFileManager) ShowCommandMenu(title string, items []keymanager.CommandMenuItem) {
 	f.menuTitle = title
 	f.menuItems = items
