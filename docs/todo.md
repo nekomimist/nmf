@@ -5,22 +5,10 @@
 - 以降はユーザーから見える変更はdocs/CHANGELOG.mdに記載する。
 
 # 優先度低めのもの
-## ダイアログ系KeyHandlerの共通化
-- keymanagerパッケージにdialog毎のhandlerが16ファイルあり、
-  Esc=cancel / Enter=accept / ↑↓=移動 のパターンがほぼ重複している。
-- メイン画面だけ宣言的binding+command registry(`keybinding.go`)へ移行済みなので、
-  dialog側にも横展開して共通ベースhandler化したい。
-
-## keymanager.FileManagerInterfaceの縮小
-- 50超メソッドの神インターフェースになっていて、keymanagerがFileManagerの全機能に依存している。
-- `NewMainScreenKeyHandlerWithCommands`のクロージャ登録の仕組みが既にあるので、
-  `Show○○Dialog`系はクロージャ注入へ寄せてインターフェースを削りたい。
-
 ## main packageの構造整理(メモ)
 - FileManagerが70ファイル超に分割されているが、全部`fm *FileManager`のメソッドで
   分割が「ファイル単位」であって「責務単位」になっていない。
-- `jobs_window_controller.go`のパッケージグローバル`jobsWindow`だけシングルトンで、
-  他のインスタンス指向な作りと不揃い。テスタビリティの穴にもなっている。
+- (`jobsWindow`シングルトンの解消は完了。残りは責務単位の再編のみ)
 
 ## ファイルコピーの高速化を検討したい
 - 現状のCopy/Moveは進捗表示のために、汎用的なread -> writeループでコピーしている。
@@ -52,6 +40,40 @@
 - 詳細な設計は `docs/architecture/vfs-smb.md` を参照する。
 
 # DONE 以下は終わったもの
+## ダイアログ系KeyHandlerの共通化
+- keymanagerに宣言的binding表ベースの共通ベースhandler(`dialog_handler.go`)を追加し、
+  16個のdialog handlerのうち13個(sort/history/filter/tree/compare/conflict/copymove/
+  deleteconfirm/directoryjump/jobs/maintenance/quit/incremental_search)を移行した。
+- key specはconfigキーバインドと同じ構文(`parseKeySpec`)を再利用し、修飾キーは厳密一致。
+  旧switch文の緩い一致(修飾キー無視のelse分岐等)は厳密一致へ正規化し、
+  Enter/KP_Enterは全ダイアログ統一で受けるようにした(7ダイアログでKP_Enterが新たに有効)。
+- busy/fileviewer/lineeditは既に宣言的または特殊用途のため対象外のまま維持。
+- 未テストだった8 handlerにテーブル駆動テストを追加し、共通ベース自体のテストも追加した。
+
+## keymanager.FileManagerInterfaceの縮小
+- `Show○○Dialog`系など22のUI起動メソッドを`DialogActions`クロージャ構造体
+  (bootstrapで`SetActions`により注入)へ移し、インターフェースを51→29メソッドに縮小した。
+- コマンドID・キーバインド表・transition属性はkeymanager側の定義サイトに維持した。
+- Starlark(configscript)が使うShow系4メソッドは、既存のRunExternalCommand/SetClipboardと
+  同じ形でCommandContextのクロージャフィールドへ移した。
+
+## jobsWindowシングルトンの解消
+- main package最後のパッケージグローバルだった`jobsWindow`を、bootstrap時に1つ生成して
+  各FileManager(Ctrl-N/再オープン含む)へ注入する`JobsWindowController`へ置き換えた
+  (`WatchHub`と同じ共有パターン)。
+- 挙動は従来どおり: 全ウィンドウで単一Jobs Window共有、ユーザーが閉じた後の再表示、
+  終了時のクローズ。`fyne.io/fyne/v2/test`ベースのユニットテストを追加した。
+
+## Sort DialogのKeySink化 (Tabで入力不能になる潜在バグの修正)
+- Sort DialogだけコンテンツがKeySinkで包まれておらず、TabでFyneネイティブの
+  フォーカス移動がradioItem(TypedKeyがno-op)に着地して以降の全キー入力が
+  飲み込まれる潜在バグをGUI検証中に発見し、修正した。
+- 他のダイアログと同じKeySinkパターン(`WithTabCapture`+表示時フォーカス+
+  `unfocusIfDialogOwned`)へ揃えた。
+- スタブだったTab/S-Tabのフィールド移動を仮想「現在フィールド」ハイライトとして実装し、
+  Spaceで現在フィールドのトグル/サイクルができるようにした。radio/checkのマウス操作は
+  従来どおり有効で、クリック後はsinkへ再フォーカスする。
+
 ## キーハンドリングレビューのフォローアップ修正
 - d7bfa767以降のキーハンドリング変更をレビューし、4件を修正した。
 - File Viewerの文字キーバインドがTypedKeyとTypedRuneの両経路で照合され
