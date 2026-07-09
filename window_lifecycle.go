@@ -40,7 +40,7 @@ func (fm *FileManager) closeWindow() {
 	// If this was the last window, quit the application
 	if remaining == 0 {
 		debugPrint("WindowLifecycle: Last window closed, quitting application")
-		closeJobsWindow()
+		fm.jobsWindowController.Close()
 		fyne.CurrentApp().Quit()
 	}
 }

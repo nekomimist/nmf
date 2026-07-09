@@ -21,42 +21,43 @@ import (
 
 // FileManager is the main file manager struct.
 type FileManager struct {
-	mu                sync.RWMutex // Protects files and selectedFiles from concurrent access
-	window            fyne.Window
-	currentPath       string
-	files             []fileinfo.FileInfo
-	originalFiles     []fileinfo.FileInfo // Original files before filtering
-	fileList          *widget.List
-	fileListView      *ui.KeySink
-	windowHighlight   *canvas.Rectangle
-	windowActive      bool
-	pathDisplay       *widget.Label
-	statusLabel       *widget.Label
-	cursorPath        string          // Current cursor file path
-	cursorIndex       int             // Cache of cursorPath's index in files; validated against cursorPath on every read in GetCurrentCursorIndex, so direct cursorPath assignments elsewhere self-heal
-	cursorAnchor      cursorRowAnchor // Last visible row object for shell menu positioning
-	selectedFiles     map[string]bool // Set of selected file paths
-	storageInfo       fileinfo.StorageInfo
-	storageKnown      bool
-	config            *config.Config
-	configManager     *config.Manager
-	state             *config.State
-	stateManager      *config.StateManager
-	configScript      *configscript.Runtime
-	initialWindowSize fyne.Size
-	activeSort        config.SortConfig
-	customTheme       *customtheme.CustomTheme                // Custom theme for colors
-	cursorRenderer    ui.CursorRenderer                       // Cursor display renderer
-	keyManager        *keymanager.KeyManager                  // Keyboard input manager
-	mainKeyHandler    *keymanager.MainScreenKeyHandler        // Main screen key handler (for canvas shortcut registration)
-	dirWatcher        *watcher.DirectoryWatcher               // Directory change watcher
-	currentFilter     *config.FilterEntry                     // Currently applied filter
-	searchOverlay     *ui.IncrementalSearchOverlay            // Incremental search overlay
-	searchHandler     *keymanager.IncrementalSearchKeyHandler // Search key handler
-	searchToken       keymanager.HandlerToken                 // Token of the pushed search handler
-	searchMatchers    *search.Provider                        // Shared search matcher provider
-	iconSvc           *fileinfo.IconService                   // Async icon service
-	watchHub          *watcher.WatchHub                       // Shared directory watch hub
+	mu                   sync.RWMutex // Protects files and selectedFiles from concurrent access
+	window               fyne.Window
+	currentPath          string
+	files                []fileinfo.FileInfo
+	originalFiles        []fileinfo.FileInfo // Original files before filtering
+	fileList             *widget.List
+	fileListView         *ui.KeySink
+	windowHighlight      *canvas.Rectangle
+	windowActive         bool
+	pathDisplay          *widget.Label
+	statusLabel          *widget.Label
+	cursorPath           string          // Current cursor file path
+	cursorIndex          int             // Cache of cursorPath's index in files; validated against cursorPath on every read in GetCurrentCursorIndex, so direct cursorPath assignments elsewhere self-heal
+	cursorAnchor         cursorRowAnchor // Last visible row object for shell menu positioning
+	selectedFiles        map[string]bool // Set of selected file paths
+	storageInfo          fileinfo.StorageInfo
+	storageKnown         bool
+	config               *config.Config
+	configManager        *config.Manager
+	state                *config.State
+	stateManager         *config.StateManager
+	configScript         *configscript.Runtime
+	initialWindowSize    fyne.Size
+	activeSort           config.SortConfig
+	customTheme          *customtheme.CustomTheme                // Custom theme for colors
+	cursorRenderer       ui.CursorRenderer                       // Cursor display renderer
+	keyManager           *keymanager.KeyManager                  // Keyboard input manager
+	mainKeyHandler       *keymanager.MainScreenKeyHandler        // Main screen key handler (for canvas shortcut registration)
+	dirWatcher           *watcher.DirectoryWatcher               // Directory change watcher
+	currentFilter        *config.FilterEntry                     // Currently applied filter
+	searchOverlay        *ui.IncrementalSearchOverlay            // Incremental search overlay
+	searchHandler        *keymanager.IncrementalSearchKeyHandler // Search key handler
+	searchToken          keymanager.HandlerToken                 // Token of the pushed search handler
+	searchMatchers       *search.Provider                        // Shared search matcher provider
+	iconSvc              *fileinfo.IconService                   // Async icon service
+	watchHub             *watcher.WatchHub                       // Shared directory watch hub
+	jobsWindowController *JobsWindowController                   // Shared Jobs window controller
 	// Busy state while loading directories
 	busyOverlay  *ui.BusyOverlay
 	busyActive   bool

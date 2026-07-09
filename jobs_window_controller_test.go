@@ -6,38 +6,57 @@ import (
 	"fyne.io/fyne/v2/test"
 )
 
-func TestShowJobsWindowReusesSingleton(t *testing.T) {
+func TestJobsWindowControllerShowReusesWindow(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
-	t.Cleanup(func() {
-		closeJobsWindow()
-		jobsWindow = nil
-	})
 
-	showJobsWindow()
-	first := jobsWindow
+	c := NewJobsWindowController(app, debugPrint)
+
+	c.Show()
+	first := c.window
 	if first == nil {
-		t.Fatal("showJobsWindow should create a Jobs window")
+		t.Fatal("Show should create a Jobs window")
 	}
 
-	showJobsWindow()
-	if jobsWindow != first {
-		t.Fatal("showJobsWindow should reuse the existing Jobs window")
+	c.Show()
+	if c.window != first {
+		t.Fatal("Show should reuse the existing Jobs window")
+	}
+
+	c.Close()
+}
+
+func TestJobsWindowControllerCloseClearsWindow(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	c := NewJobsWindowController(app, debugPrint)
+
+	c.Show()
+	c.Close()
+
+	if c.window != nil {
+		t.Fatal("Close should clear the Jobs window")
 	}
 }
 
-func TestCloseJobsWindowClearsSingleton(t *testing.T) {
+func TestJobsWindowControllerShowRecreatesAfterUserClose(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
-	t.Cleanup(func() {
-		closeJobsWindow()
-		jobsWindow = nil
-	})
 
-	showJobsWindow()
-	closeJobsWindow()
+	c := NewJobsWindowController(app, debugPrint)
 
-	if jobsWindow != nil {
-		t.Fatal("closeJobsWindow should clear the Jobs window singleton")
+	c.Show()
+	first := c.window
+	first.Window().Close() // simulate the user closing the window directly
+
+	c.Show()
+	if c.window == nil {
+		t.Fatal("Show should recreate the Jobs window after it was closed")
 	}
+	if c.window == first {
+		t.Fatal("Show should not reuse a window that was already closed")
+	}
+
+	c.Close()
 }

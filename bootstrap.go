@@ -18,29 +18,33 @@ import (
 	"nmf/internal/watcher"
 )
 
-func NewFileManager(app fyne.App, path string, config *config.Config, configManager *config.Manager, state *config.State, stateManager *config.StateManager, customTheme *customtheme.CustomTheme, configScript *configscript.Runtime, watchHub *watcher.WatchHub) *FileManager {
+func NewFileManager(app fyne.App, path string, config *config.Config, configManager *config.Manager, state *config.State, stateManager *config.StateManager, customTheme *customtheme.CustomTheme, configScript *configscript.Runtime, watchHub *watcher.WatchHub, jobsWindowController *JobsWindowController) *FileManager {
 	if watchHub == nil {
 		watchHub = watcher.NewWatchHub(debugPrint)
 	}
+	if jobsWindowController == nil {
+		jobsWindowController = NewJobsWindowController(app, debugPrint)
+	}
 	fm := &FileManager{
-		window:            app.NewWindow("File Manager"),
-		currentPath:       path,
-		cursorPath:        "",
-		cursorIndex:       -1,
-		selectedFiles:     make(map[string]bool),
-		config:            config,
-		configManager:     configManager,
-		state:             state,
-		stateManager:      stateManager,
-		configScript:      configScript,
-		initialWindowSize: fyne.NewSize(float32(config.Window.Width), float32(config.Window.Height)),
-		windowActive:      true,
-		activeSort:        state.EffectiveSort(config.UI.Sort),
-		customTheme:       customTheme,
-		cursorRenderer:    ui.NewCursorRenderer(config.UI.CursorStyle),
-		keyManager:        keymanager.NewKeyManager(debugPrint),
-		searchMatchers:    search.NewProvider(debugPrint),
-		watchHub:          watchHub,
+		window:               app.NewWindow("File Manager"),
+		currentPath:          path,
+		cursorPath:           "",
+		cursorIndex:          -1,
+		selectedFiles:        make(map[string]bool),
+		config:               config,
+		configManager:        configManager,
+		state:                state,
+		stateManager:         stateManager,
+		configScript:         configScript,
+		initialWindowSize:    fyne.NewSize(float32(config.Window.Width), float32(config.Window.Height)),
+		windowActive:         true,
+		activeSort:           state.EffectiveSort(config.UI.Sort),
+		customTheme:          customTheme,
+		cursorRenderer:       ui.NewCursorRenderer(config.UI.CursorStyle),
+		keyManager:           keymanager.NewKeyManager(debugPrint),
+		searchMatchers:       search.NewProvider(debugPrint),
+		watchHub:             watchHub,
+		jobsWindowController: jobsWindowController,
 	}
 
 	// Busy overlay (hidden by default)
@@ -85,6 +89,30 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 	}
 	mainHandler := keymanager.NewMainScreenKeyHandlerWithCommands(fm, debugPrint, config.UI.KeyBindings, scriptCommands)
 	mainHandler.SetTransitionGate(fm.keyManager.BeginOwnerTransition)
+	mainHandler.SetActions(keymanager.DialogActions{
+		ShowDirectoryTreeDialog:     fm.ShowDirectoryTreeDialog,
+		ShowNavigationHistoryDialog: fm.ShowNavigationHistoryDialog,
+		ShowDirectoryJumpDialog:     fm.ShowDirectoryJumpDialog,
+		ShowFilterDialog:            fm.ShowFilterDialog,
+		ShowIncrementalSearchDialog: fm.ShowIncrementalSearchDialog,
+		ShowSortDialog:              fm.ShowSortDialog,
+		ShowJobsDialog:              fm.ShowJobsDialog,
+		ShowPathEditDialog:          fm.ShowPathEditDialog,
+		ShowCreateDirectoryDialog:   fm.ShowCreateDirectoryDialog,
+		ShowClipboardTextFileDialog: fm.ShowClipboardTextFileDialog,
+		ShowMessageDialog:           fm.ShowMessageDialog,
+		ShowCopyDialog:              fm.ShowCopyDialog,
+		ShowMoveDialog:              fm.ShowMoveDialog,
+		ShowExtractArchiveDialog:    fm.ShowExtractArchiveDialog,
+		ShowCompareDialog:           fm.ShowCompareDialog,
+		ShowRenameDialog:            fm.ShowRenameDialog,
+		ShowDeleteDialog:            fm.ShowDeleteDialog,
+		ShowExplorerContextMenu:     fm.ShowExplorerContextMenu,
+		ShowExternalCommandMenu:     fm.ShowExternalCommandMenu,
+		ShowFileViewer:              fm.ShowFileViewer,
+		ShowMaintenanceDialog:       fm.ShowMaintenanceDialog,
+		ShowCommandMenu:             fm.ShowCommandMenu,
+	})
 	fm.mainKeyHandler = mainHandler
 	fm.keyManager.PushHandler(mainHandler)
 

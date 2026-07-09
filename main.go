@@ -201,7 +201,8 @@ func main() {
 	shellmenu.Debugf = debugPrint
 
 	watchHub := watcher.NewWatchHub(debugPrint)
-	fm := NewFileManager(fyneApp, startPath, cfg, configManager, state, stateManager, customTheme, configScript, watchHub)
+	jobsWindowController := NewJobsWindowController(fyneApp, debugPrint)
+	fm := NewFileManager(fyneApp, startPath, cfg, configManager, state, stateManager, customTheme, configScript, watchHub, jobsWindowController)
 	fm.window.Show()
 	applyInitialWindowPosition(fm.window, cfg.Window)
 	fyneApp.Run()

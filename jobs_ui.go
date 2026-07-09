@@ -324,7 +324,7 @@ func archiveTargetNamesAndPaths(files []fileinfo.FileInfo) ([]string, []string) 
 
 // ShowJobsDialog opens the job queue view
 func (fm *FileManager) ShowJobsDialog() {
-	showJobsWindow()
+	fm.jobsWindowController.Show()
 }
 
 // buildDestinationCandidates composes other windows' dirs then history without dups.
