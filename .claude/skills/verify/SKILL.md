@@ -92,3 +92,9 @@ powershell.exe -NoProfile -Command "Stop-Process -Name nmf-verify -Force"
 - On Windows at 150% scale, ScrollTo's first jump can land the cursor row
   just below the viewport (Fyne itemMin estimate; pre-existing) — one cursor
   key corrects it; don't mistake it for the blank-list bug.
+- WSLg render freeze: the window can stop presenting frames while the event
+  loop stays healthy (keys log `handled=true` but `import -window` returns
+  byte-identical images for minutes; looks like a hang). Not an app bug —
+  diagnose by md5-comparing screenshots against the debug log, revive with
+  `uv run scripts/poke_window.py "File Manager"` (±1px resize jiggle; a
+  synthetic Expose alone does not restart painting).
