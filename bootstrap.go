@@ -69,7 +69,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 	// Install SMB credentials provider (cached + interactive prompt fallback)
 	cached := fileinfo.NewCachedCredentialsProvider(ui.NewSMBCredentialsProvider(fm.window, fm.keyManager, config.UI.KeyBindings))
 	fileinfo.SetCredentialsProvider(cached)
-	fileinfo.SetArchivePasswordProvider(fileinfo.NewCachedArchivePasswordProvider(ui.NewArchivePasswordProvider(fm.window)))
+	fileinfo.SetArchivePasswordProvider(fileinfo.NewCachedArchivePasswordProvider(ui.NewArchivePasswordProvider(fm.window, fm.keyManager, config.UI.KeyBindings)))
 
 	// Initialize OS keyring (99designs). If unavailable, continue without persistent store.
 	if store, err := secret.NewKeyringStore(); err == nil {
