@@ -309,7 +309,7 @@ func (fm *FileManager) ShowSortDialog() {
 	currentConfig := fm.state.EffectiveSort(fm.config.UI.Sort)
 
 	// Create sort dialog
-	sortDialog := ui.NewSortDialog(currentConfig, debugPrint)
+	sortDialog := ui.NewSortDialog(currentConfig, fm.keyManager, debugPrint)
 
 	// Set up apply callback
 	sortDialog.SetOnApply(func(sortConfig config.SortConfig) {
@@ -350,7 +350,7 @@ func (fm *FileManager) ShowSortDialog() {
 	sortToken = fm.keyManager.PushHandler(handler)
 
 	// Show dialog
-	sortDialog.Show(fm.window, handler)
+	sortDialog.Show(fm.window, fm.keyManager)
 }
 
 // ShowPathEditDialog opens the path edit dialog.

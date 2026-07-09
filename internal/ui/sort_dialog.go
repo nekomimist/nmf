@@ -1,12 +1,28 @@
 package ui
 
 import (
+	"image/color"
+
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/config"
+	"nmf/internal/keymanager"
+)
+
+// Sort dialog field indices for Tab/Shift-Tab navigation (focusless design:
+// the KeySink keeps real Fyne focus; these track a virtual "current field"
+// cursor highlighted via background color, matching the cursor model used
+// elsewhere for keyboard-driven lists).
+const (
+	sortFieldSortBy = iota
+	sortFieldSortOrder
+	sortFieldOptions
+	sortDialogFieldCount
 )
 
 // SortDialog represents a file sorting configuration dialog
@@ -20,17 +36,26 @@ type SortDialog struct {
 	onApply       func(sortConfig config.SortConfig)
 	onCancel      func()
 	dialog        dialog.Dialog
-	keyHandler    interface{} // KeyHandler interface to avoid circular import
-	closed        bool        // Flag to prevent multiple close calls
-	onCleanup     func()      // Cleanup callback (e.g., pop key handler)
+	closed        bool   // Flag to prevent multiple close calls
+	onCleanup     func() // Cleanup callback (e.g., pop key handler)
+
+	keyManager *keymanager.KeyManager // Keyboard input manager
+	parent     fyne.Window            // Parent window for focus management
+	sink       *KeySink               // Key capturing wrapper
+
+	fieldIndex  int // Currently highlighted field (sortField* constants)
+	sortByBG    *canvas.Rectangle
+	sortOrderBG *canvas.Rectangle
+	optionsBG   *canvas.Rectangle
 }
 
 // NewSortDialog creates a new sort configuration dialog
-func NewSortDialog(currentConfig config.SortConfig,
+func NewSortDialog(currentConfig config.SortConfig, keyManager *keymanager.KeyManager,
 	debugPrint func(format string, args ...interface{})) *SortDialog {
 
 	sd := &SortDialog{
 		currentConfig: currentConfig,
+		keyManager:    keyManager,
 		debugPrint:    debugPrint,
 	}
 
@@ -53,6 +78,7 @@ func (sd *SortDialog) createWidgets() {
 			sd.debugPrint("SortDialog: Preventing sort by deselection, restoring previous selection")
 			sd.loadCurrentSortBySelection()
 		}
+		sd.setCurrentField(sortFieldSortBy)
 	})
 
 	// Sort order radio group
@@ -66,11 +92,13 @@ func (sd *SortDialog) createWidgets() {
 			sd.debugPrint("SortDialog: Preventing sort order deselection, restoring previous selection")
 			sd.loadCurrentSortOrderSelection()
 		}
+		sd.setCurrentField(sortFieldSortOrder)
 	})
 
 	// Directories first checkbox
 	sd.directoriesFirstCB = widget.NewCheck("Directories first", func(checked bool) {
 		sd.debugPrint("SortDialog: Directories first: %t", checked)
+		sd.setCurrentField(sortFieldOptions)
 	})
 
 	// Set current values
@@ -130,36 +158,49 @@ func (sd *SortDialog) loadCurrentSortOrderSelection() {
 }
 
 // Show displays the sort dialog
-func (sd *SortDialog) Show(parent fyne.Window, keyHandler interface{}) {
+func (sd *SortDialog) Show(parent fyne.Window, keyManager *keymanager.KeyManager) {
+	sd.parent = parent
+	sd.keyManager = keyManager
+	// Always open with the first field highlighted, regardless of any field
+	// changes construction-time SetSelected/SetChecked calls triggered.
+	sd.fieldIndex = sortFieldSortBy
+
 	// Create content layout
 	content := sd.createContent()
+	sd.updateFieldHighlight()
+
+	// Wrap content with KeySink to capture Tab and forward keys to KeyManager
+	sd.sink = NewKeySink(content, sd.keyManager, WithTabCapture(true))
 
 	// Create custom dialog without stock buttons (bar lives inside content)
-	sd.dialog = dialog.NewCustomWithoutButtons("Sort Settings", content, parent)
+	sd.dialog = dialog.NewCustomWithoutButtons("Sort Settings", sd.sink, parent)
 	sd.dialog.Resize(metricsSize(sortDialogWidth, sortDialogHeight))
 
-	// Show dialog
+	// Show dialog and ensure focus stays on sink so KeyManager gets keys
 	sd.dialog.Show()
-
-	// Store keyboard handler for cleanup
-	sd.keyHandler = keyHandler
+	if sd.parent != nil && sd.sink != nil {
+		sd.parent.Canvas().Focus(sd.sink)
+	}
 }
 
 // createContent creates the dialog content layout
 func (sd *SortDialog) createContent() *fyne.Container {
 	// Sort by section
 	sortByLabel := widget.NewLabel("Sort by: (1-4)")
-	sortByContainer := container.NewVBox(sortByLabel, sd.sortByRadio)
+	sd.sortByBG = canvas.NewRectangle(color.Transparent)
+	sortByContainer := container.NewStack(sd.sortByBG, container.NewVBox(sortByLabel, sd.sortByRadio))
 
 	// Sort order section
 	sortOrderLabel := widget.NewLabel("")
 	sortOrderLabel2 := widget.NewLabel("Order: (O)")
-	sortOrderContainer := container.NewVBox(sortOrderLabel, sortOrderLabel2, sd.sortOrderRadio)
+	sd.sortOrderBG = canvas.NewRectangle(color.Transparent)
+	sortOrderContainer := container.NewStack(sd.sortOrderBG, container.NewVBox(sortOrderLabel, sortOrderLabel2, sd.sortOrderRadio))
 
 	// Options section
 	optionsLabel := widget.NewLabel("")
 	optionsLabel2 := widget.NewLabel("Options: (D)")
-	optionsContainer := container.NewVBox(optionsLabel, optionsLabel2, sd.directoriesFirstCB)
+	sd.optionsBG = canvas.NewRectangle(color.Transparent)
+	optionsContainer := container.NewStack(sd.optionsBG, container.NewVBox(optionsLabel, optionsLabel2, sd.directoriesFirstCB))
 
 	// Keyboard shortcuts help
 	shortcutsHelp := widget.NewLabel("Shortcuts: Enter=Apply, Esc=Cancel, Tab=Navigate")
@@ -261,6 +302,7 @@ func (sd *SortDialog) close() {
 	if sd.dialog != nil {
 		sd.dialog.Hide()
 	}
+	unfocusIfDialogOwned(sd.parent, sd.sink)
 }
 
 // SetOnApply sets the callback for when settings are applied
@@ -309,23 +351,99 @@ func (sd *SortDialog) GetCurrentSelection() config.SortConfig {
 }
 
 // Keyboard handler interface methods
+//
+// The dialog keeps real Fyne focus on its KeySink at all times (focusless
+// design, matching FilterDialog/TreeDialog): Tab/Shift-Tab move a virtual
+// "current field" cursor between the three field groups, highlighted with a
+// background color, instead of moving native widget focus. Native focus
+// traversal is never used here: RadioGroup doesn't implement fyne.Focusable
+// at the group level (only its unexported per-option radioItem does, and
+// radioItem.TypedKey is a no-op), so real Tab-driven traversal would land
+// keyboard focus on a widget that silently swallows every further key press.
 
-// MoveToPreviousField moves focus to the previous field (Tab navigation)
+// setCurrentField sets the highlighted field and refreshes the highlight.
+// Also called from mouse-driven OnChanged callbacks so the keyboard cursor
+// follows mouse interaction, and refocuses the sink so KeyManager keeps
+// receiving keys after the click.
+func (sd *SortDialog) setCurrentField(field int) {
+	sd.fieldIndex = field
+	sd.updateFieldHighlight()
+	sd.refocusSink()
+}
+
+// refocusSink returns real Fyne focus to the KeySink after a mouse click on
+// an inner widget, mirroring the pattern used by FilterDialog/TreeDialog.
+func (sd *SortDialog) refocusSink() {
+	if sd.parent != nil && sd.sink != nil {
+		sd.parent.Canvas().Focus(sd.sink)
+	}
+}
+
+// applyFieldHighlight sets a field's background color to reflect whether it
+// is the current field. Safe to call before the backgrounds are created.
+func (sd *SortDialog) applyFieldHighlight(rect *canvas.Rectangle, active bool) {
+	if rect == nil {
+		return
+	}
+	if active {
+		rect.FillColor = currentAppThemeColor(theme.ColorNameFocus)
+	} else {
+		rect.FillColor = color.Transparent
+	}
+	rect.Refresh()
+}
+
+// updateFieldHighlight refreshes all field backgrounds from sd.fieldIndex.
+func (sd *SortDialog) updateFieldHighlight() {
+	sd.applyFieldHighlight(sd.sortByBG, sd.fieldIndex == sortFieldSortBy)
+	sd.applyFieldHighlight(sd.sortOrderBG, sd.fieldIndex == sortFieldSortOrder)
+	sd.applyFieldHighlight(sd.optionsBG, sd.fieldIndex == sortFieldOptions)
+}
+
+// MoveToPreviousField moves the field cursor to the previous field (Shift-Tab)
 func (sd *SortDialog) MoveToPreviousField() {
-	sd.debugPrint("SortDialog: Move to previous field")
-	// Implementation handled by Fyne's built-in Tab navigation
+	sd.fieldIndex = (sd.fieldIndex - 1 + sortDialogFieldCount) % sortDialogFieldCount
+	sd.debugPrint("SortDialog: Move to previous field (index=%d)", sd.fieldIndex)
+	sd.updateFieldHighlight()
 }
 
-// MoveToNextField moves focus to the next field (Tab navigation)
+// MoveToNextField moves the field cursor to the next field (Tab)
 func (sd *SortDialog) MoveToNextField() {
-	sd.debugPrint("SortDialog: Move to next field")
-	// Implementation handled by Fyne's built-in Tab navigation
+	sd.fieldIndex = (sd.fieldIndex + 1) % sortDialogFieldCount
+	sd.debugPrint("SortDialog: Move to next field (index=%d)", sd.fieldIndex)
+	sd.updateFieldHighlight()
 }
 
-// ToggleCurrentField toggles the currently focused field (Space key)
+// ToggleCurrentField toggles/cycles the currently highlighted field (Space key)
 func (sd *SortDialog) ToggleCurrentField() {
-	sd.debugPrint("SortDialog: Toggle current field")
-	// For radio buttons and checkboxes, this is handled by their native behavior
+	sd.debugPrint("SortDialog: Toggle current field (index=%d)", sd.fieldIndex)
+	switch sd.fieldIndex {
+	case sortFieldSortBy:
+		sd.cycleSortBy()
+	case sortFieldSortOrder:
+		sd.ToggleSortOrder()
+	case sortFieldOptions:
+		sd.ToggleDirectoriesFirst()
+	}
+}
+
+// cycleSortBy advances the sort-by radio group to its next option, used by
+// Space when the sort-by field is highlighted.
+func (sd *SortDialog) cycleSortBy() {
+	options := sd.sortByRadio.Options
+	if len(options) == 0 {
+		return
+	}
+	idx := 0
+	for i, opt := range options {
+		if opt == sd.sortByRadio.Selected {
+			idx = i
+			break
+		}
+	}
+	next := options[(idx+1)%len(options)]
+	sd.debugPrint("SortDialog: Cycle sort by to %s", next)
+	sd.sortByRadio.SetSelected(next)
 }
 
 // AcceptSettings applies the current settings (Enter key)
