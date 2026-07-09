@@ -62,7 +62,7 @@ nmf.command("user.parent", parent)
 	}
 
 	cfg := testConfig()
-	rt, err := Load(path, cfg, func(string, ...interface{}) {})
+	rt, err := Load(path, cfg, Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -174,9 +174,9 @@ else:
 		DisplayScale: 2,
 		UserScale:    1.5,
 	}
-	rt, err := LoadWithDisplay(path, cfg, displayInfo, func(string, ...interface{}) {})
+	rt, err := Load(path, cfg, Options{Display: displayInfo})
 	if err != nil {
-		t.Fatalf("LoadWithDisplay returned error: %v", err)
+		t.Fatalf("Load returned error: %v", err)
 	}
 
 	if !rt.Loaded() {
@@ -204,9 +204,9 @@ if not d.available:
 	}
 
 	cfg := testConfig()
-	rt, err := LoadWithDisplay(path, cfg, display.Info{}, func(string, ...interface{}) {})
+	rt, err := Load(path, cfg, Options{})
 	if err != nil {
-		t.Fatalf("LoadWithDisplay returned error: %v", err)
+		t.Fatalf("Load returned error: %v", err)
 	}
 
 	if !rt.Loaded() {
@@ -227,7 +227,7 @@ func TestViewerRejectsNegativeMaxSize(t *testing.T) {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 
-	_, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	_, err := Load(path, testConfig(), Options{})
 	if err == nil || !strings.Contains(err.Error(), "viewer max_width and max_height must be zero or positive") {
 		t.Fatalf("Load error = %v, want negative viewer max size error", err)
 	}
@@ -240,7 +240,7 @@ func TestViewerRejectsInvalidDefaultPane(t *testing.T) {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 
-	_, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	_, err := Load(path, testConfig(), Options{})
 	if err == nil || !strings.Contains(err.Error(), "viewer default_pane must be one of auto, text, markdown, or hex") {
 		t.Fatalf("Load error = %v, want invalid viewer default pane error", err)
 	}
@@ -258,9 +258,9 @@ nmf.debug("font_size=" + str(18))
 	}
 
 	var logs []string
-	if _, err := Load(path, testConfig(), func(format string, args ...interface{}) {
+	if _, err := Load(path, testConfig(), Options{DebugPrint: func(format string, args ...interface{}) {
 		logs = append(logs, fmt.Sprintf(format, args...))
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
 
@@ -288,14 +288,17 @@ nmf.debug("after enable")
 	var hookCalls []config.DebugConfig
 	var logs []string
 	cfg := testConfig()
-	rt, err := LoadWithDisplayAndDebugHook(path, cfg, display.Info{}, func(format string, args ...interface{}) {
-		logs = append(logs, fmt.Sprintf(format, args...))
-	}, func(debugCfg config.DebugConfig) error {
-		hookCalls = append(hookCalls, debugCfg)
-		return nil
+	rt, err := Load(path, cfg, Options{
+		DebugPrint: func(format string, args ...interface{}) {
+			logs = append(logs, fmt.Sprintf(format, args...))
+		},
+		DebugHook: func(debugCfg config.DebugConfig) error {
+			hookCalls = append(hookCalls, debugCfg)
+			return nil
+		},
 	})
 	if err != nil {
-		t.Fatalf("LoadWithDisplayAndDebugHook returned error: %v", err)
+		t.Fatalf("Load returned error: %v", err)
 	}
 	if !rt.Loaded() {
 		t.Fatal("runtime should report loaded init.star")
@@ -315,7 +318,7 @@ func TestDebugLoggingRejectsInvalidMaxFiles(t *testing.T) {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 
-	if _, err := Load(path, testConfig(), func(string, ...interface{}) {}); err == nil || !strings.Contains(err.Error(), "max_files must be positive") {
+	if _, err := Load(path, testConfig(), Options{}); err == nil || !strings.Contains(err.Error(), "max_files must be positive") {
 		t.Fatalf("Load error = %v, want max_files validation", err)
 	}
 }
@@ -328,7 +331,7 @@ func TestArchiveRejectsInvalidZipNameEncoding(t *testing.T) {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 
-	if _, err := Load(path, testConfig(), func(string, ...interface{}) {}); err == nil || !strings.Contains(err.Error(), "unsupported ZIP name encoding") {
+	if _, err := Load(path, testConfig(), Options{}); err == nil || !strings.Contains(err.Error(), "unsupported ZIP name encoding") {
 		t.Fatalf("Load error = %v, want unsupported ZIP name encoding", err)
 	}
 }
@@ -345,7 +348,7 @@ nmf.unkey("C-S", event = "down")
 	}
 
 	cfg := testConfig()
-	if _, err := Load(path, cfg, func(string, ...interface{}) {}); err != nil {
+	if _, err := Load(path, cfg, Options{}); err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
 
@@ -371,7 +374,7 @@ nmf.unkey("C-A", target = "lineEdit")
 	}
 
 	cfg := testConfig()
-	if _, err := Load(path, cfg, func(string, ...interface{}) {}); err != nil {
+	if _, err := Load(path, cfg, Options{}); err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
 
@@ -397,7 +400,7 @@ nmf.clear_keys(target = "main")
 	}
 
 	cfg := testConfig()
-	if _, err := Load(path, cfg, func(string, ...interface{}) {}); err != nil {
+	if _, err := Load(path, cfg, Options{}); err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
 
@@ -421,7 +424,7 @@ nmf.key("J", fn = edit, target = "fileViewer")
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 
-	if _, err := Load(path, testConfig(), func(string, ...interface{}) {}); err == nil || !strings.Contains(err.Error(), "fn key bindings are only supported for target main") {
+	if _, err := Load(path, testConfig(), Options{}); err == nil || !strings.Contains(err.Error(), "fn key bindings are only supported for target main") {
 		t.Fatalf("Load error = %v, want target fn error", err)
 	}
 }
@@ -440,7 +443,7 @@ nmf.key("C-E", fn = edit, event = "down")
 	}
 
 	cfg := testConfig()
-	rt, err := Load(path, cfg, func(string, ...interface{}) {})
+	rt, err := Load(path, cfg, Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -505,7 +508,7 @@ nmf.key("E", "directory.refresh", fn = f)
 			if err := os.WriteFile(path, []byte(tt.src), 0644); err != nil {
 				t.Fatalf("WriteFile failed: %v", err)
 			}
-			if _, err := Load(path, testConfig(), func(string, ...interface{}) {}); err == nil {
+			if _, err := Load(path, testConfig(), Options{}); err == nil {
 				t.Fatal("Load should reject invalid key binding")
 			}
 		})
@@ -523,7 +526,7 @@ nmf.command("user.parent", parent)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -540,6 +543,103 @@ nmf.command("user.parent", parent)
 	}
 }
 
+func TestRunAcceptsCmdKeyword(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def parent(ctx):
+    nmf.run(cmd = "directory.parent")
+nmf.command("user.parent", parent)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), Options{})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	var ran string
+	rt.Commands["user.parent"](keymanager.CommandContext{
+		RunCommand: func(command string) bool {
+			ran = command
+			return true
+		},
+	})
+	if ran != "directory.parent" {
+		t.Fatalf("ran command = %q, want directory.parent", ran)
+	}
+}
+
+func TestRunAcceptsDeprecatedCommandKeywordAndWarns(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def parent(ctx):
+    nmf.run(command = "directory.parent")
+nmf.command("user.parent", parent)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), Options{})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	var logs []string
+	rt.debugPrint = func(format string, args ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}
+
+	var ran string
+	rt.Commands["user.parent"](keymanager.CommandContext{
+		RunCommand: func(command string) bool {
+			ran = command
+			return true
+		},
+	})
+	if ran != "directory.parent" {
+		t.Fatalf("ran command = %q, want directory.parent", ran)
+	}
+
+	found := false
+	for _, line := range logs {
+		if strings.Contains(line, "WARNING") && strings.Contains(line, "nmf.run keyword command= is deprecated") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("logs = %#v, want a command= deprecation warning", logs)
+	}
+}
+
+func TestRunRejectsBothCmdAndCommandKeywords(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def bad(ctx):
+    nmf.run(cmd = "directory.parent", command = "directory.refresh")
+nmf.command("user.bad", bad)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), Options{})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	var logs []string
+	rt.debugPrint = func(format string, args ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}
+	rt.Commands["user.bad"](keymanager.CommandContext{})
+	if len(logs) == 0 || !strings.Contains(logs[0], "got both cmd and command") {
+		t.Fatalf("logs = %#v, want got-both-cmd-and-command error", logs)
+	}
+}
+
 func TestCustomCommandCanApplyTemporarySort(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, FileName)
@@ -552,7 +652,7 @@ nmf.command("user.sort_size", sort_size)
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 	cfg := testConfig()
-	rt, err := Load(path, cfg, func(string, ...interface{}) {})
+	rt, err := Load(path, cfg, Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -566,6 +666,37 @@ nmf.command("user.sort_size", sort_size)
 	}
 	if cfg.UI.Sort.SortBy != "name" || cfg.UI.Sort.SortOrder != "asc" || !cfg.UI.Sort.DirectoriesFirst {
 		t.Fatalf("persistent sort changed to %+v, want default", cfg.UI.Sort)
+	}
+}
+
+func TestSortWithoutTemporaryFailsInsideCustomCommand(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def sort_size(ctx):
+    nmf.sort(by = "size", order = "desc", directories_first = False)
+nmf.command("user.sort_size", sort_size)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), Options{})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	var logs []string
+	rt.debugPrint = func(format string, args ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}
+	fm := &configScriptFakeFileManager{}
+	rt.Commands["user.sort_size"](keymanager.CommandContext{FileManager: fm})
+
+	if fm.temporarySortApplied {
+		t.Fatal("sort without temporary=True should not apply a temporary sort")
+	}
+	if len(logs) == 0 || !strings.Contains(logs[0], "use temporary=True") {
+		t.Fatalf("logs = %#v, want use-temporary=True error", logs)
 	}
 }
 
@@ -585,7 +716,7 @@ nmf.command("user.toggle_sort", toggle_sort)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -608,8 +739,34 @@ func TestCurrentSortRequiresCommandContext(t *testing.T) {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 
-	if _, err := Load(path, testConfig(), func(string, ...interface{}) {}); err == nil {
+	if _, err := Load(path, testConfig(), Options{}); err == nil {
 		t.Fatal("Load should reject nmf.current_sort outside a command")
+	}
+}
+
+func TestCurrentPathRequiresFileManager(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def check(ctx):
+    nmf.current_path()
+nmf.command("user.check", check)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), Options{})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	var logs []string
+	rt.debugPrint = func(format string, args ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}
+	rt.Commands["user.check"](keymanager.CommandContext{})
+	if len(logs) == 0 || !strings.Contains(logs[0], "nmf.current_path requires a file manager") {
+		t.Fatalf("logs = %#v, want requires-a-file-manager error", logs)
 	}
 }
 
@@ -628,7 +785,7 @@ nmf.menu_item("tools", "Edit", fn = edit, key = "E")
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -662,7 +819,7 @@ nmf.command("user.show_tools", show_tools)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -731,7 +888,7 @@ nmf.menu_item("tools", "Two", cmd = "directory.refresh", key = "e")
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -755,7 +912,7 @@ nmf.command("user.show_tools", show_tools)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -796,7 +953,7 @@ nmf.command("user.show_missing", show_missing)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -837,7 +994,7 @@ nmf.menu_item("tools", "Bad", cmd = "directory.refresh", fn = f)
 			if err := os.WriteFile(path, []byte(tt.src), 0644); err != nil {
 				t.Fatalf("WriteFile failed: %v", err)
 			}
-			if _, err := Load(path, testConfig(), func(string, ...interface{}) {}); err == nil {
+			if _, err := Load(path, testConfig(), Options{}); err == nil {
 				t.Fatal("Load should reject invalid menu registration")
 			}
 		})
@@ -855,7 +1012,7 @@ nmf.command("user.bad", bad)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -867,6 +1024,53 @@ nmf.command("user.bad", bad)
 	rt.Commands["user.bad"](keymanager.CommandContext{})
 	if len(logs) == 0 {
 		t.Fatal("command should log menu registration failure")
+	}
+}
+
+func TestConfigBuiltinsRejectedInsideCustomCommand(t *testing.T) {
+	tests := []struct {
+		name string
+		call string
+	}{
+		{name: "window", call: `nmf.window(width = 100, height = 100)`},
+		{name: "theme", call: `nmf.theme(dark = True)`},
+		{name: "key", call: `nmf.key("Q", "directory.refresh")`},
+		{name: "external_command", call: `nmf.external_command("Bad", cmd = "true")`},
+		{name: "command", call: `nmf.command("user.late", noop)`},
+		{name: "directory_jump", call: `nmf.directory_jump("z", "/tmp")`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, FileName)
+			src := fmt.Sprintf(`
+def noop(ctx):
+    pass
+def bad(ctx):
+    %s
+nmf.command("user.bad", bad)
+`, tt.call)
+			if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+				t.Fatalf("WriteFile failed: %v", err)
+			}
+			rt, err := Load(path, testConfig(), Options{})
+			if err != nil {
+				t.Fatalf("Load returned error: %v", err)
+			}
+
+			var logs []string
+			rt.debugPrint = func(format string, args ...interface{}) {
+				logs = append(logs, fmt.Sprintf(format, args...))
+			}
+			rt.Commands["user.bad"](keymanager.CommandContext{})
+			if len(logs) == 0 {
+				t.Fatalf("%s should be rejected inside a custom command", tt.name)
+			}
+			if !strings.Contains(logs[0], "cannot be used while a custom command is running") {
+				t.Fatalf("log = %q, want cannot-be-used error", logs[0])
+			}
+		})
 	}
 }
 
@@ -882,7 +1086,7 @@ nmf.command("user.edit", edit)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -940,7 +1144,7 @@ nmf.command("user.edit", edit)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -975,7 +1179,7 @@ nmf.command("user.edit", edit)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -1010,7 +1214,7 @@ nmf.command("user.edit", edit)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -1055,6 +1259,45 @@ nmf.command("user.edit", edit)
 	}
 }
 
+func TestCustomCommandDeferredEditableExecReturnsTrue(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def edit(ctx):
+    if nmf.exec("vim", args = [ctx.current_file], edit = True):
+        nmf.run("marker.true")
+    else:
+        nmf.run("marker.false")
+nmf.command("user.edit", edit)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), Options{})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	var ran string
+	rt.Commands["user.edit"](keymanager.CommandContext{
+		RunExternalCommand: func(command string, args []string, edit bool, cwd string) bool {
+			return true
+		},
+		RunCommand: func(command string) bool {
+			ran = command
+			return true
+		},
+		DeferTransition: func(string, func()) {},
+		FileManager: &configScriptFakeFileManager{
+			currentPath: "/tmp",
+			files:       []fileinfo.FileInfo{{Name: "main.go", Path: "/tmp/main.go"}},
+		},
+	})
+	if ran != "marker.true" {
+		t.Fatalf("deferred nmf.exec(edit=True) return = %q, want marker.true (True)", ran)
+	}
+}
+
 func TestCustomCommandDefersEditableExecWithCwd(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, FileName)
@@ -1066,7 +1309,7 @@ nmf.command("user.edit", edit)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -1108,7 +1351,7 @@ nmf.command("user.edit", edit)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -1142,7 +1385,7 @@ nmf.external_command(
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 	cfg := testConfig()
-	if _, err := Load(path, cfg, func(string, ...interface{}) {}); err != nil {
+	if _, err := Load(path, cfg, Options{}); err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
 	if len(cfg.UI.ExternalCommands) != 1 || cfg.UI.ExternalCommands[0].Command != "" || cfg.UI.ExternalCommands[0].Cwd != "{dir}" || !cfg.UI.ExternalCommands[0].Edit {
@@ -1161,7 +1404,7 @@ nmf.command("user.edit", edit)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -1189,7 +1432,7 @@ nmf.command("user.inspect", inspect)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -1276,7 +1519,7 @@ nmf.command("user.warn", warn)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -1311,7 +1554,7 @@ nmf.command("user.warn", warn)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -1348,7 +1591,7 @@ func TestMessageRequiresCommandContext(t *testing.T) {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 
-	_, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	_, err := Load(path, testConfig(), Options{})
 	if err == nil || !strings.Contains(err.Error(), "nmf.message can only be used while a custom command is running") {
 		t.Fatalf("Load error = %v, want command-context error", err)
 	}
@@ -1366,7 +1609,7 @@ nmf.command("user.edit", edit)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -1395,7 +1638,7 @@ nmf.command("user.create", create)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -1423,13 +1666,13 @@ func TestCustomCommandCanSetClipboard(t *testing.T) {
 	path := filepath.Join(dir, FileName)
 	src := `
 def copy_current(ctx):
-    nmf.clipboard(ctx.current_path + "\n" + ctx.current_name)
+    nmf.set_clipboard(ctx.current_path + "\n" + ctx.current_name)
 nmf.command("user.copy_current", copy_current)
 `
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -1454,6 +1697,54 @@ nmf.command("user.copy_current", copy_current)
 	}
 }
 
+func TestDeprecatedClipboardAliasStillWorksAndWarnsOnce(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def copy_current(ctx):
+    nmf.clipboard(ctx.current_path)
+    nmf.clipboard(ctx.current_path)
+nmf.command("user.copy_current", copy_current)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), Options{})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	var logs []string
+	rt.debugPrint = func(format string, args ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}
+
+	var calls int
+	var got string
+	rt.Commands["user.copy_current"](keymanager.CommandContext{
+		FileManager: &configScriptFakeFileManager{currentPath: "/tmp/work"},
+		SetClipboard: func(text string) bool {
+			calls++
+			got = text
+			return true
+		},
+	})
+
+	if calls != 2 || got != "/tmp/work" {
+		t.Fatalf("clipboard calls = %d text %q, want two calls with /tmp/work", calls, got)
+	}
+
+	var warnings int
+	for _, line := range logs {
+		if strings.Contains(line, "WARNING") && strings.Contains(line, "nmf.clipboard is deprecated") {
+			warnings++
+		}
+	}
+	if warnings != 1 {
+		t.Fatalf("deprecation warnings = %d, want exactly 1 despite two calls; logs = %#v", warnings, logs)
+	}
+}
+
 func TestClipboardReturnsFalseWithoutWriter(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, FileName)
@@ -1466,7 +1757,7 @@ nmf.command("user.copy_text", copy_text)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -1490,7 +1781,7 @@ func TestClipboardRequiresCommandContext(t *testing.T) {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 
-	if _, err := Load(path, testConfig(), func(string, ...interface{}) {}); err == nil {
+	if _, err := Load(path, testConfig(), Options{}); err == nil {
 		t.Fatal("Load should reject nmf.clipboard outside a command")
 	}
 }
@@ -1506,7 +1797,7 @@ nmf.command("user.copy_text", copy_text)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -1535,7 +1826,7 @@ nmf.command("user.save", save)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -1570,7 +1861,7 @@ nmf.command("user.save", save)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -1594,7 +1885,7 @@ func TestSaveClipboardRequiresCommandContext(t *testing.T) {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 
-	if _, err := Load(path, testConfig(), func(string, ...interface{}) {}); err == nil {
+	if _, err := Load(path, testConfig(), Options{}); err == nil {
 		t.Fatal("Load should reject nmf.save_clipboard outside a command")
 	}
 }
@@ -1610,7 +1901,7 @@ nmf.command("user.save", save)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -1636,7 +1927,7 @@ nmf.command("user.create", create)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -1666,6 +1957,41 @@ nmf.command("user.create", create)
 	}
 }
 
+func TestCustomCommandDeferredEditableMkdirReturnsTrue(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def create(ctx):
+    if nmf.mkdir(edit = True):
+        nmf.run("marker.true")
+    else:
+        nmf.run("marker.false")
+nmf.command("user.create", create)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), Options{})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	fm := &configScriptFakeFileManager{}
+	var ran string
+	rt.Commands["user.create"](keymanager.CommandContext{
+		FileManager:               fm,
+		DeferTransition:           func(string, func()) {},
+		ShowCreateDirectoryDialog: fm.ShowCreateDirectoryDialog,
+		RunCommand: func(command string) bool {
+			ran = command
+			return true
+		},
+	})
+	if ran != "marker.true" {
+		t.Fatalf("deferred nmf.mkdir(edit=True) return = %q, want marker.true (True)", ran)
+	}
+}
+
 func TestCustomCommandDefersEditableSaveClipboard(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, FileName)
@@ -1677,7 +2003,7 @@ nmf.command("user.save", save)
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	rt, err := Load(path, testConfig(), func(string, ...interface{}) {})
+	rt, err := Load(path, testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -1707,6 +2033,41 @@ nmf.command("user.save", save)
 	}
 }
 
+func TestCustomCommandDeferredEditableSaveClipboardReturnsTrue(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def save(ctx):
+    if nmf.save_clipboard(edit = True):
+        nmf.run("marker.true")
+    else:
+        nmf.run("marker.false")
+nmf.command("user.save", save)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), Options{})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	fm := &configScriptFakeFileManager{}
+	var ran string
+	rt.Commands["user.save"](keymanager.CommandContext{
+		FileManager:                 fm,
+		DeferTransition:             func(string, func()) {},
+		ShowClipboardTextFileDialog: fm.ShowClipboardTextFileDialog,
+		RunCommand: func(command string) bool {
+			ran = command
+			return true
+		},
+	})
+	if ran != "marker.true" {
+		t.Fatalf("deferred nmf.save_clipboard(edit=True) return = %q, want marker.true (True)", ran)
+	}
+}
+
 func TestExecRejectsInvalidArguments(t *testing.T) {
 	tests := []struct {
 		name string
@@ -1733,10 +2094,115 @@ func TestExecRejectsInvalidArguments(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tt.src), 0644); err != nil {
 				t.Fatalf("WriteFile failed: %v", err)
 			}
-			if _, err := Load(path, testConfig(), func(string, ...interface{}) {}); err == nil {
+			if _, err := Load(path, testConfig(), Options{}); err == nil {
 				t.Fatal("Load should reject invalid nmf.exec arguments")
 			}
 		})
+	}
+}
+
+func TestExecAcceptsCmdKeyword(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def edit(ctx):
+    nmf.exec(cmd = "vim", args = [ctx.current_file])
+nmf.command("user.edit", edit)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), Options{})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	var gotCommand string
+	rt.Commands["user.edit"](keymanager.CommandContext{
+		RunExternalCommand: func(command string, args []string, edit bool, cwd string) bool {
+			gotCommand = command
+			return true
+		},
+		FileManager: &configScriptFakeFileManager{
+			currentPath: "/tmp",
+			files:       []fileinfo.FileInfo{{Name: "main.go", Path: "/tmp/main.go"}},
+		},
+	})
+	if gotCommand != "vim" {
+		t.Fatalf("exec command = %q, want vim", gotCommand)
+	}
+}
+
+func TestExecAcceptsDeprecatedCommandKeywordAndWarns(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def edit(ctx):
+    nmf.exec(command = "vim", args = [ctx.current_file])
+nmf.command("user.edit", edit)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), Options{})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	var logs []string
+	rt.debugPrint = func(format string, args ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}
+
+	var gotCommand string
+	rt.Commands["user.edit"](keymanager.CommandContext{
+		RunExternalCommand: func(command string, args []string, edit bool, cwd string) bool {
+			gotCommand = command
+			return true
+		},
+		FileManager: &configScriptFakeFileManager{
+			currentPath: "/tmp",
+			files:       []fileinfo.FileInfo{{Name: "main.go", Path: "/tmp/main.go"}},
+		},
+	})
+	if gotCommand != "vim" {
+		t.Fatalf("exec command = %q, want vim", gotCommand)
+	}
+
+	found := false
+	for _, line := range logs {
+		if strings.Contains(line, "WARNING") && strings.Contains(line, "nmf.exec keyword command= is deprecated") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("logs = %#v, want a command= deprecation warning", logs)
+	}
+}
+
+func TestExecRejectsBothCmdAndCommandKeywords(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	src := `
+def bad(ctx):
+    nmf.exec(cmd = "vim", command = "nvim")
+nmf.command("user.bad", bad)
+`
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	rt, err := Load(path, testConfig(), Options{})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	var logs []string
+	rt.debugPrint = func(format string, args ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}
+	rt.Commands["user.bad"](keymanager.CommandContext{})
+	if len(logs) == 0 || !strings.Contains(logs[0], "got both cmd and command") {
+		t.Fatalf("logs = %#v, want got-both-cmd-and-command error", logs)
 	}
 }
 
@@ -1770,7 +2236,7 @@ if missing == None:
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 	cfg := testConfig()
-	if _, err := Load(path, cfg, func(string, ...interface{}) {}); err != nil {
+	if _, err := Load(path, cfg, Options{}); err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
 
@@ -1801,7 +2267,7 @@ nmf.theme(font_name = nmf.os(), font_path = nmf.hostname())
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 	cfg := testConfig()
-	if _, err := Load(path, cfg, func(string, ...interface{}) {}); err != nil {
+	if _, err := Load(path, cfg, Options{}); err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
 
@@ -1821,7 +2287,7 @@ func TestLoadRejectsModuleOutsideConfigDir(t *testing.T) {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 
-	if _, err := Load(path, testConfig(), func(string, ...interface{}) {}); err == nil {
+	if _, err := Load(path, testConfig(), Options{}); err == nil {
 		t.Fatal("Load should reject modules outside config dir")
 	}
 }

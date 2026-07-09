@@ -48,6 +48,7 @@ type Runtime struct {
 	loading       map[string]bool
 	loadDepth     int
 	keyCommandSeq int
+	deprecated    map[string]bool
 }
 
 // Menu holds Starlark-defined menu metadata and entries.
@@ -71,21 +72,17 @@ func ScriptPath(configPath string) string {
 	return filepath.Join(filepath.Dir(configPath), FileName)
 }
 
+// Options configures Load.
+type Options struct {
+	Display    display.Info
+	DebugPrint func(format string, args ...interface{})
+	DebugHook  func(config.DebugConfig) error
+}
+
 // Load reads and executes init.star if it exists.
-func Load(path string, cfg *config.Config, debugPrint func(format string, args ...interface{})) (*Runtime, error) {
-	return LoadWithDisplay(path, cfg, display.Info{}, debugPrint)
-}
-
-// LoadWithDisplay reads and executes init.star with startup display information.
-func LoadWithDisplay(path string, cfg *config.Config, displayInfo display.Info, debugPrint func(format string, args ...interface{})) (*Runtime, error) {
-	return LoadWithDisplayAndDebugHook(path, cfg, displayInfo, debugPrint, nil)
-}
-
-// LoadWithDisplayAndDebugHook reads and executes init.star with startup display
-// information and an optional hook for debug logging changes.
-func LoadWithDisplayAndDebugHook(path string, cfg *config.Config, displayInfo display.Info, debugPrint func(format string, args ...interface{}), debugHook func(config.DebugConfig) error) (*Runtime, error) {
-	rt := newRuntime(path, cfg, displayInfo, debugPrint)
-	rt.debugHook = debugHook
+func Load(path string, cfg *config.Config, opts Options) (*Runtime, error) {
+	rt := newRuntime(path, cfg, opts.Display, opts.DebugPrint)
+	rt.debugHook = opts.DebugHook
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -121,7 +118,21 @@ func newRuntime(path string, cfg *config.Config, displayInfo display.Info, debug
 		debugPrint:  debugPrint,
 		moduleCache: make(map[string]starlark.StringDict),
 		loading:     make(map[string]bool),
+		deprecated:  make(map[string]bool),
 	}
+}
+
+// warnDeprecated logs a deprecation warning via debugPrint the first time each
+// feature key is seen for this Runtime.
+func (rt *Runtime) warnDeprecated(feature string, format string, args ...interface{}) {
+	if rt.deprecated == nil {
+		rt.deprecated = make(map[string]bool)
+	}
+	if rt.deprecated[feature] {
+		return
+	}
+	rt.deprecated[feature] = true
+	rt.debugPrint("ConfigScript: WARNING "+format, args...)
 }
 
 // Loaded reports whether an init.star file was found and executed.
@@ -264,6 +275,7 @@ func (rt *Runtime) predeclared() starlark.StringDict {
 			"exec":           starlark.NewBuiltin("nmf.exec", rt.builtinExec),
 			"mkdir":          starlark.NewBuiltin("nmf.mkdir", rt.builtinMkdir),
 			"clipboard":      starlark.NewBuiltin("nmf.clipboard", rt.builtinClipboard),
+			"set_clipboard":  starlark.NewBuiltin("nmf.set_clipboard", rt.builtinSetClipboard),
 			"save_clipboard": starlark.NewBuiltin("nmf.save_clipboard", rt.builtinSaveClipboard),
 			"load_directory": starlark.NewBuiltin("nmf.load_directory", rt.builtinLoadDirectory),
 			"current_path":   starlark.NewBuiltin("nmf.current_path", rt.builtinCurrentPath),
@@ -277,7 +289,10 @@ func (rt *Runtime) predeclared() starlark.StringDict {
 	}
 }
 
-func (rt *Runtime) builtinWindow(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinWindow(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
 	var widthValue starlark.Value
 	var heightValue starlark.Value
 	var xValue starlark.Value
@@ -324,7 +339,10 @@ func (rt *Runtime) builtinWindow(_ *starlark.Thread, fn *starlark.Builtin, args 
 	return starlark.None, nil
 }
 
-func (rt *Runtime) builtinStartup(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinStartup(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
 	directory := rt.cfg.Startup.Directory
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "directory?", &directory); err != nil {
 		return nil, err
@@ -344,7 +362,10 @@ func optionalStarlarkInt(name string, value starlark.Value, fallback int) (int, 
 	return int(i), nil
 }
 
-func (rt *Runtime) builtinTheme(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinTheme(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
 	dark := rt.cfg.Theme.Dark
 	fontSize := rt.cfg.Theme.FontSize
 	fontName := rt.cfg.Theme.FontName
@@ -376,37 +397,40 @@ func (rt *Runtime) builtinTheme(_ *starlark.Thread, fn *starlark.Builtin, args s
 	return starlark.None, nil
 }
 
-func (rt *Runtime) builtinColor(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if len(args) < 1 || len(args) > 2 {
-		return nil, fmt.Errorf("%s expects color name and optional value", fn.Name())
+func (rt *Runtime) builtinColor(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
 	}
-	name, ok := starlark.AsString(args.Index(0))
-	if !ok || strings.TrimSpace(name) == "" {
-		return nil, fmt.Errorf("color name must be a non-empty string")
+	var name string
+	var value, dark, light starlark.Value
+	if err := starlark.UnpackArgs(
+		fn.Name(),
+		args,
+		kwargs,
+		"name", &name,
+		"value?", &value,
+		"dark?", &dark,
+		"light?", &light,
+	); err != nil {
+		return nil, err
 	}
 	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, fmt.Errorf("color name must be a non-empty string")
+	}
 	if !customtheme.IsAppColorName(name) {
 		return nil, fmt.Errorf("unknown app color name: %s", name)
 	}
 
 	updates := map[string]starlark.Value{}
-	if len(args) == 2 {
-		updates["value"] = args.Index(1)
+	if value != nil {
+		updates["value"] = value
 	}
-	for _, kw := range kwargs {
-		key, ok := starlark.AsString(kw.Index(0))
-		if !ok {
-			return nil, fmt.Errorf("%s keyword name must be a string", fn.Name())
-		}
-		switch key {
-		case "value", "dark", "light":
-			if _, exists := updates[key]; exists {
-				return nil, fmt.Errorf("%s got duplicate argument %s", fn.Name(), key)
-			}
-			updates[key] = kw.Index(1)
-		default:
-			return nil, fmt.Errorf("%s got unexpected keyword argument %s", fn.Name(), key)
-		}
+	if dark != nil {
+		updates["dark"] = dark
+	}
+	if light != nil {
+		updates["light"] = light
 	}
 
 	if len(updates) == 0 {
@@ -416,8 +440,8 @@ func (rt *Runtime) builtinColor(_ *starlark.Thread, fn *starlark.Builtin, args s
 		rt.cfg.Theme.Colors = make(map[string]config.ThemeColorConfig)
 	}
 	colorConfig := rt.cfg.Theme.Colors[name]
-	for key, value := range updates {
-		parsed, err := starlarkColorValue(value)
+	for key, update := range updates {
+		parsed, err := starlarkColorValue(update)
 		if err != nil {
 			return nil, fmt.Errorf("%s %s: %w", fn.Name(), key, err)
 		}
@@ -443,7 +467,10 @@ func (rt *Runtime) builtinDarkTheme(_ *starlark.Thread, fn *starlark.Builtin, ar
 	return starlark.Bool(rt.cfg.Theme.Dark), nil
 }
 
-func (rt *Runtime) builtinDebugLogging(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinDebugLogging(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
 	enabled := rt.cfg.Debug.Enabled
 	logDirectory := rt.cfg.Debug.LogDirectory
 	maxFiles := rt.cfg.Debug.MaxLogFiles
@@ -471,7 +498,10 @@ func (rt *Runtime) builtinDebugLogging(_ *starlark.Thread, fn *starlark.Builtin,
 	return starlark.None, nil
 }
 
-func (rt *Runtime) builtinUI(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinUI(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
 	showHiddenFiles := rt.cfg.UI.ShowHiddenFiles
 	itemSpacing := rt.cfg.UI.ItemSpacing
 	if err := starlark.UnpackArgs(
@@ -491,7 +521,10 @@ func (rt *Runtime) builtinUI(_ *starlark.Thread, fn *starlark.Builtin, args star
 	return starlark.None, nil
 }
 
-func (rt *Runtime) builtinCopy(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinCopy(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
 	preserveTimestamps := rt.cfg.UI.Copy.PreserveTimestamps
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "preserve_timestamps?", &preserveTimestamps); err != nil {
 		return nil, err
@@ -500,7 +533,10 @@ func (rt *Runtime) builtinCopy(_ *starlark.Thread, fn *starlark.Builtin, args st
 	return starlark.None, nil
 }
 
-func (rt *Runtime) builtinViewer(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinViewer(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
 	maxWidth := rt.cfg.UI.Viewer.MaxWidth
 	maxHeight := rt.cfg.UI.Viewer.MaxHeight
 	defaultPane := rt.cfg.UI.Viewer.DefaultPane
@@ -528,7 +564,10 @@ func normalizeViewerDefaultPane(pane string) string {
 	}
 }
 
-func (rt *Runtime) builtinArchive(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinArchive(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
 	zipNameEncoding := rt.cfg.UI.Archive.ZipNameEncoding
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "zip_name_encoding?", &zipNameEncoding); err != nil {
 		return nil, err
@@ -571,11 +610,17 @@ func (rt *Runtime) builtinSort(thread *starlark.Thread, fn *starlark.Builtin, ar
 		ctx.FileManager.ApplyTemporarySort(sortConfig)
 		return starlark.None, nil
 	}
+	if thread != nil && thread.Local(commandContextKey) != nil {
+		return nil, fmt.Errorf("%s without temporary=True cannot be used while a custom command is running; use temporary=True", fn.Name())
+	}
 	rt.cfg.UI.Sort = sortConfig
 	return starlark.None, nil
 }
 
-func (rt *Runtime) builtinCursorStyle(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinCursorStyle(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
 	styleType := rt.cfg.UI.CursorStyle.Type
 	thickness := rt.cfg.UI.CursorStyle.Thickness
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "type?", &styleType, "thickness?", &thickness); err != nil {
@@ -592,7 +637,10 @@ func (rt *Runtime) builtinCursorStyle(_ *starlark.Thread, fn *starlark.Builtin, 
 	return starlark.None, nil
 }
 
-func (rt *Runtime) builtinCursorMemory(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinCursorMemory(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
 	maxEntries := rt.cfg.UI.CursorMemory.MaxEntries
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "max_entries?", &maxEntries); err != nil {
 		return nil, err
@@ -604,7 +652,10 @@ func (rt *Runtime) builtinCursorMemory(_ *starlark.Thread, fn *starlark.Builtin,
 	return starlark.None, nil
 }
 
-func (rt *Runtime) builtinNavigationHistory(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinNavigationHistory(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
 	maxEntries := rt.cfg.UI.NavigationHistory.MaxEntries
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "max_entries?", &maxEntries); err != nil {
 		return nil, err
@@ -616,7 +667,10 @@ func (rt *Runtime) builtinNavigationHistory(_ *starlark.Thread, fn *starlark.Bui
 	return starlark.None, nil
 }
 
-func (rt *Runtime) builtinFileFilter(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinFileFilter(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
 	maxEntries := rt.cfg.UI.FileFilter.MaxEntries
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "max_entries?", &maxEntries); err != nil {
 		return nil, err
@@ -628,7 +682,10 @@ func (rt *Runtime) builtinFileFilter(_ *starlark.Thread, fn *starlark.Builtin, a
 	return starlark.None, nil
 }
 
-func (rt *Runtime) builtinDirectoryJump(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinDirectoryJump(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
 	var shortcut string
 	var directory string
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "shortcut", &shortcut, "directory", &directory); err != nil {
@@ -644,7 +701,10 @@ func (rt *Runtime) builtinDirectoryJump(_ *starlark.Thread, fn *starlark.Builtin
 	return starlark.None, nil
 }
 
-func (rt *Runtime) builtinClearDirectoryJumps(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinClearDirectoryJumps(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, "nmf.clear_directory_jumps"); err != nil {
+		return nil, err
+	}
 	if err := starlark.UnpackArgs("nmf.clear_directory_jumps", args, kwargs); err != nil {
 		return nil, err
 	}
@@ -652,11 +712,17 @@ func (rt *Runtime) builtinClearDirectoryJumps(_ *starlark.Thread, _ *starlark.Bu
 	return starlark.None, nil
 }
 
-func (rt *Runtime) builtinKey(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinKey(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
 	return rt.appendKeyBinding(fn.Name(), args, kwargs)
 }
 
-func (rt *Runtime) builtinUnkey(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinUnkey(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
 	return rt.appendKeyBinding(fn.Name(), args, kwargs, keymanager.CommandNoop)
 }
 
@@ -709,7 +775,7 @@ func (rt *Runtime) appendKeyBinding(fnName string, args starlark.Tuple, kwargs [
 		return nil, fmt.Errorf("command must not be empty")
 	}
 	if event != "" {
-		rt.debugPrint("ConfigScript: WARNING key binding event=%q is deprecated and ignored key=%s command=%s", event, key, command)
+		rt.warnDeprecated("key.event", "key binding event=%q is deprecated and ignored key=%s command=%s", event, key, command)
 	}
 	rt.cfg.UI.KeyBindings = append(rt.cfg.UI.KeyBindings, config.KeyBindingEntry{
 		Target:  keyBindingTargetForConfig(normalizedTarget),
@@ -730,7 +796,10 @@ func (rt *Runtime) registerGeneratedKeyCommand(callable starlark.Callable) strin
 	return id
 }
 
-func (rt *Runtime) builtinClearKeys(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinClearKeys(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, "nmf.clear_keys"); err != nil {
+		return nil, err
+	}
 	var target string
 	if err := starlark.UnpackArgs("nmf.clear_keys", args, kwargs, "target?", &target); err != nil {
 		return nil, err
@@ -771,7 +840,10 @@ func removeKeyBindingsForTarget(entries []config.KeyBindingEntry, target string)
 	return kept
 }
 
-func (rt *Runtime) builtinExternalCommand(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinExternalCommand(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
 	var name string
 	var key string
 	var command string
@@ -823,7 +895,10 @@ func (rt *Runtime) builtinExternalCommand(_ *starlark.Thread, fn *starlark.Built
 	return starlark.None, nil
 }
 
-func (rt *Runtime) builtinClearExternalCommands(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinClearExternalCommands(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, "nmf.clear_external_commands"); err != nil {
+		return nil, err
+	}
 	if err := starlark.UnpackArgs("nmf.clear_external_commands", args, kwargs); err != nil {
 		return nil, err
 	}
@@ -831,7 +906,10 @@ func (rt *Runtime) builtinClearExternalCommands(_ *starlark.Thread, _ *starlark.
 	return starlark.None, nil
 }
 
-func (rt *Runtime) builtinCommand(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (rt *Runtime) builtinCommand(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := rejectCommandContext(thread, fn.Name()); err != nil {
+		return nil, err
+	}
 	var id string
 	var value starlark.Value
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "id", &id, "fn", &value); err != nil {
@@ -1050,9 +1128,42 @@ func normalizeCommandMenuKey(key string) (string, error) {
 	return string(runes[0]), nil
 }
 
+// renameDeprecatedCommandKwarg rewrites a deprecated command= kwarg to cmd=,
+// warning once per function. It errors if both command= and cmd= are given.
+func (rt *Runtime) renameDeprecatedCommandKwarg(fn *starlark.Builtin, kwargs []starlark.Tuple) ([]starlark.Tuple, error) {
+	idx := -1
+	hasCmd := false
+	for i, kw := range kwargs {
+		key, ok := starlark.AsString(kw.Index(0))
+		if !ok {
+			continue
+		}
+		switch key {
+		case "command":
+			idx = i
+		case "cmd":
+			hasCmd = true
+		}
+	}
+	if idx < 0 {
+		return kwargs, nil
+	}
+	if hasCmd {
+		return nil, fmt.Errorf("%s got both cmd and command; use cmd", fn.Name())
+	}
+	rt.warnDeprecated(fn.Name()+".command", "%s keyword command= is deprecated; use cmd=", fn.Name())
+	rewritten := append([]starlark.Tuple(nil), kwargs...)
+	rewritten[idx] = starlark.Tuple{starlark.String("cmd"), kwargs[idx].Index(1)}
+	return rewritten, nil
+}
+
 func (rt *Runtime) builtinRun(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	kwargs, err := rt.renameDeprecatedCommandKwarg(fn, kwargs)
+	if err != nil {
+		return nil, err
+	}
 	var command string
-	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "command", &command); err != nil {
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "cmd", &command); err != nil {
 		return nil, err
 	}
 	ctx, err := commandContext(thread, fn.Name())
@@ -1088,11 +1199,15 @@ func (rt *Runtime) builtinMessage(thread *starlark.Thread, fn *starlark.Builtin,
 }
 
 func (rt *Runtime) builtinExec(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	kwargs, err := rt.renameDeprecatedCommandKwarg(fn, kwargs)
+	if err != nil {
+		return nil, err
+	}
 	var command string
 	var cwd string
 	argsValue := starlark.Value(starlark.None)
 	edit := false
-	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "command", &command, "args?", &argsValue, "edit?", &edit, "cwd?", &cwd); err != nil {
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "cmd", &command, "args?", &argsValue, "edit?", &edit, "cwd?", &cwd); err != nil {
 		return nil, err
 	}
 	commandArgs, err := stringList(argsValue, "args")
@@ -1113,7 +1228,7 @@ func (rt *Runtime) builtinExec(thread *starlark.Thread, fn *starlark.Builtin, ar
 		ctx.DeferTransition("starlark.exec.edit", func() {
 			ctx.RunExternalCommand(command, commandArgs, edit, cwd)
 		})
-		return starlark.False, nil
+		return starlark.True, nil
 	}
 	return starlark.Bool(ctx.RunExternalCommand(command, commandArgs, edit, cwd)), nil
 }
@@ -1141,12 +1256,17 @@ func (rt *Runtime) builtinMkdir(thread *starlark.Thread, fn *starlark.Builtin, a
 			}
 		}
 		deferCommandTransition(ctx, "starlark.mkdir.edit", show)
-		return starlark.False, nil
+		return starlark.True, nil
 	}
 	return starlark.Bool(ctx.FileManager.CreateDirectory(name)), nil
 }
 
 func (rt *Runtime) builtinClipboard(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	rt.warnDeprecated("clipboard", "nmf.clipboard is deprecated; use nmf.set_clipboard")
+	return rt.builtinSetClipboard(thread, fn, args, kwargs)
+}
+
+func (rt *Runtime) builtinSetClipboard(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var text string
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "text", &text); err != nil {
 		return nil, err
@@ -1184,7 +1304,7 @@ func (rt *Runtime) builtinSaveClipboard(thread *starlark.Thread, fn *starlark.Bu
 			}
 		}
 		deferCommandTransition(ctx, "starlark.save_clipboard.edit", show)
-		return starlark.False, nil
+		return starlark.True, nil
 	}
 	return starlark.Bool(ctx.FileManager.CreateClipboardTextFile(name)), nil
 }
@@ -1222,7 +1342,7 @@ func (rt *Runtime) builtinCurrentPath(thread *starlark.Thread, fn *starlark.Buil
 		return nil, err
 	}
 	if ctx.FileManager == nil {
-		return starlark.String(""), nil
+		return nil, fmt.Errorf("%s requires a file manager", fn.Name())
 	}
 	return starlark.String(ctx.FileManager.GetCurrentPath()), nil
 }

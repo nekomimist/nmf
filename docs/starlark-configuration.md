@@ -100,7 +100,7 @@ def create_directory(ctx):
 nmf.key("K", fn = create_directory)
 
 def copy_selected(ctx):
-    nmf.clipboard("\n".join(ctx.selected_files))
+    nmf.set_clipboard("\n".join(ctx.selected_files))
 
 nmf.key("C-Y", fn = copy_selected)
 
@@ -154,6 +154,13 @@ nmf.key("T", "user.show_tools")
 ```
 
 ## Configuration API
+
+Configuration functions in this section can only be called while `init.star`
+(or a `load()`ed module) is loading, either at top level or inside a function
+called from top level during that load. Calling one of them from a custom
+command is an error, because they are meant to set up the run, not to react
+to input. `nmf.sort` is the documented exception: pass `temporary = True` to
+call it from a custom command instead.
 
 Scalar sections:
 
@@ -320,23 +327,28 @@ The command function receives one `ctx` struct:
 
 Command-only helpers:
 
-- `nmf.run(command_id)` runs a built-in or `user.*` command and returns a bool.
+- `nmf.run(cmd)` runs a built-in or `user.*` command and returns a bool.
+  The deprecated `command =` keyword still works but logs a warning; use
+  `cmd =` instead.
 - `nmf.message(message, title = "Message")` displays an OK dialog and returns
   a bool. It can only be used while a custom command is running. When launched
   from a key binding, the dialog is opened after the triggering keys are
   released.
-- `nmf.clipboard(text)` writes a string to the system clipboard and returns a
-  bool. Use `ctx.current_path`, `ctx.current_file`, `ctx.current_name`, and
+- `nmf.set_clipboard(text)` writes a string to the system clipboard and returns
+  a bool. Use `ctx.current_path`, `ctx.current_file`, `ctx.current_name`, and
   `ctx.selected_files` to build values for key bindings or menu items.
+  `nmf.clipboard` is a deprecated alias for the same function.
 - `nmf.save_clipboard(name = "", edit = False)` creates a text file in the
   current directory from the system clipboard text and returns a bool. With
   `edit = False`, `name` is required and existing files are rejected. With
   `edit = True`, nmf opens the same one-line file name dialog as the built-in
-  key binding and returns `False`.
-- `nmf.exec(command, args = [], edit = False, cwd = "")` starts an external command and returns a bool.
-  `args` is passed as raw strings; use `ctx.current_file`,
-  `ctx.selected_files`, `ctx.current_path`, and `ctx.current_name` instead of
-  `{file}` placeholders.
+  key binding and returns `True`, meaning the dialog was scheduled; the file
+  is created later when the dialog is accepted.
+- `nmf.exec(cmd, args = [], edit = False, cwd = "")` starts an external command
+  and returns a bool. The deprecated `command =` keyword still works but logs
+  a warning; use `cmd =` instead. `args` is passed as raw strings; use
+  `ctx.current_file`, `ctx.selected_files`, `ctx.current_path`, and
+  `ctx.current_name` instead of `{file}` placeholders.
   `cwd` is an optional working directory. If it is empty, nmf preserves the
   existing process working directory behavior. If it points to a virtual path
   such as an archive or direct SMB provider, it is ignored.
@@ -344,16 +356,16 @@ Command-only helpers:
   When launched from a key binding, that dialog is opened on the next
   main-loop iteration so the triggering key's events do not leak into the
   editor.
-  In that mode, `command` may be empty so the dialog can be used as a command
+  In that mode, `cmd` may be empty so the dialog can be used as a command
   prompt.
-  The call returns false immediately because the edited command runs later when
-  the dialog is accepted.
+  The call returns `True` immediately, meaning the dialog was scheduled; the
+  edited command actually runs later when the dialog is accepted.
 - `nmf.mkdir(name = "", edit = False)` creates a directory in the active
   directory and returns a bool. The name must be a single path segment. When
-  `edit` is true, nmf opens a one-line edit dialog and returns false
-  immediately because creation happens later when the dialog is accepted. When
-  launched from a key binding, the dialog is opened after the triggering keys
-  are released.
+  `edit` is true, nmf opens a one-line edit dialog and returns `True`, meaning
+  the dialog was scheduled; the directory is created later when the dialog is
+  accepted. When launched from a key binding, the dialog is opened after the
+  triggering keys are released.
 - `nmf.load_directory(path)` loads a directory path.
 - `nmf.current_path()` returns the active directory path.
 - `nmf.current_sort()` returns the active file-list sort as a struct with
@@ -403,3 +415,15 @@ only applies while `state.json` has no `sort` override. Once a sort has been
 applied through the Sort dialog, the persisted `state.json` value takes
 precedence over the `init.star` sort on every subsequent run, until the
 `sort` key is removed from `state.json`.
+
+## Deprecated
+
+These names still work today but log a `WARNING` line through debug logging
+the first time each is used, and may be removed in a future release:
+
+- `nmf.clipboard` — use `nmf.set_clipboard` instead. Same signature, same
+  behavior.
+- The `command =` keyword on `nmf.run` and `nmf.exec` — use `cmd =` instead.
+  Passing both `cmd =` and `command =` to the same call is an error.
+- The `event =` keyword on `nmf.key` and `nmf.unkey` — it is accepted but
+  ignored. Bindings fire on key activation regardless of `event`.

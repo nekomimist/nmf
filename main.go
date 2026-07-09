@@ -163,7 +163,11 @@ func main() {
 		return
 	}
 	displayInfo := display.Primary(debugPrint)
-	configScript, err := configscript.LoadWithDisplayAndDebugHook(configscript.ScriptPath(configManager.ConfigPath()), cfg, displayInfo, debugPrint, applyConfigDebug)
+	configScript, err := configscript.Load(configscript.ScriptPath(configManager.ConfigPath()), cfg, configscript.Options{
+		Display:    displayInfo,
+		DebugPrint: debugPrint,
+		DebugHook:  applyConfigDebug,
+	})
 	if err != nil {
 		log.Printf("Error loading Starlark configuration: %v", err)
 		showStartupConfigScriptErrorAndExit(cfg, err)

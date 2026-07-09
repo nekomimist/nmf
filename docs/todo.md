@@ -40,6 +40,19 @@
 - 詳細な設計は `docs/architecture/vfs-smb.md` を参照する。
 
 # DONE 以下は終わったもの
+## Starlark設定I/Fの整理
+- `nmf.clipboard`を`nmf.set_clipboard`へ改名し、旧名は初回呼び出し時のみ警告する
+  非推奨エイリアスとして残した。
+- `nmf.run`/`nmf.exec`のキーワード引数を`cmd`に統一した。旧`command=`は
+  警告付きで動作を維持し、`cmd`と`command`を同時に渡すとエラーにした。
+- window/theme/key/external_command/commandなど設定系builtinをinit.star読み込み時
+  専用にし、カスタムコマンド実行中に呼ぶとエラーにした。`nmf.sort`のみ
+  `temporary = True`でカスタムコマンドからの利用を維持する。
+- `nmf.mkdir`/`nmf.save_clipboard`/`nmf.exec`の`edit = True`時の即時戻り値を、
+  `nmf.message`と同じくダイアログ予約成功を示す`True`へ統一した。
+- `Load`/`LoadWithDisplay`/`LoadWithDisplayAndDebugHook`の3つのGoローダーAPIを、
+  `Options`構造体を取る単一の`Load`へ統合した。
+
 ## ダイアログ系KeyHandlerの共通化
 - keymanagerに宣言的binding表ベースの共通ベースhandler(`dialog_handler.go`)を追加し、
   16個のdialog handlerのうち13個(sort/history/filter/tree/compare/conflict/copymove/
