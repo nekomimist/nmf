@@ -2,8 +2,6 @@ package keymanager
 
 import (
 	"unicode"
-
-	"fyne.io/fyne/v2"
 )
 
 // HistoryDialogInterface defines the interface needed by HistoryDialogKeyHandler
@@ -39,120 +37,42 @@ type HistoryDialogInterface interface {
 
 // HistoryDialogKeyHandler handles keyboard events for the navigation history dialog
 type HistoryDialogKeyHandler struct {
-	historyDialog HistoryDialogInterface
-	debugPrint    func(format string, args ...interface{})
+	*dialogKeyHandler
 }
 
 // NewHistoryDialogKeyHandler creates a new history dialog key handler
 func NewHistoryDialogKeyHandler(hd HistoryDialogInterface, debugPrint func(format string, args ...interface{})) *HistoryDialogKeyHandler {
-	return &HistoryDialogKeyHandler{
-		historyDialog: hd,
-		debugPrint:    debugPrint,
-	}
-}
+	base := newDialogKeyHandler("HistoryDialog", debugPrint, []dialogBinding{
+		// Ctrl+F: search functionality is handled by the focusless design;
+		// swallow it here so it doesn't fall through to MainScreen.
+		{"C-F", func() {}},
+		{"C-H", hd.BackspaceSearch},
+		{"C-D", hd.UnpinSelectedPath},
 
-// GetName returns the name of this handler
-func (hh *HistoryDialogKeyHandler) GetName() string {
-	return "HistoryDialog"
-}
+		{"Up", hd.MoveUp},
+		{"S-Up", hd.MoveToTop},
+		{"Down", hd.MoveDown},
+		{"S-Down", hd.MoveToBottom},
 
-// OnKeyActivated handles key activations in focusless mode
-func (hh *HistoryDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	hh.debugPrint("HistoryDialog: OnKeyActivated %s", ev.Name)
+		{"Right", hd.ScrollSelectedRight},
+		{"Left", hd.ResetHorizontalScroll},
+		{"Space", hd.SelectCurrentItem},
 
-	switch ev.Name {
-	case fyne.KeyF:
-		// Ctrl+F - Search functionality handled by focusless design
-		if modifiers.CtrlPressed {
+		{"Return", hd.AcceptSelection},
+		{"C-Return", hd.AcceptDirectPathNavigation},
+
+		{"Escape", hd.CancelDialog},
+		{"Backspace", hd.BackspaceSearch},
+		// Plain Delete only: Shift+Delete arrives as a folded Cut shortcut and
+		// has no binding here, so it falls through unmatched.
+		{"Delete", hd.ClearSearch},
+		{"Tab", hd.CopySelectedPathToSearch},
+	}).withRune(func(r rune, modifiers ModifierState) bool {
+		if unicode.IsPrint(r) && !unicode.IsControl(r) {
+			hd.AppendToSearch(string(r))
 			return true
 		}
-	case fyne.KeyH:
-		if modifiers.CtrlPressed {
-			hh.historyDialog.BackspaceSearch()
-			return true
-		}
-	case fyne.KeyD:
-		if modifiers.CtrlPressed {
-			hh.historyDialog.UnpinSelectedPath()
-			return true
-		}
-
-	case fyne.KeyUp:
-		if modifiers.ShiftPressed {
-			hh.historyDialog.MoveToTop()
-		} else {
-			hh.historyDialog.MoveUp()
-		}
-		return true
-
-	case fyne.KeyDown:
-		if modifiers.ShiftPressed {
-			hh.historyDialog.MoveToBottom()
-		} else {
-			hh.historyDialog.MoveDown()
-		}
-		return true
-
-	case fyne.KeyRight:
-		hh.historyDialog.ScrollSelectedRight()
-		return true
-
-	case fyne.KeyLeft:
-		hh.historyDialog.ResetHorizontalScroll()
-		return true
-
-	case fyne.KeySpace:
-		// Select current item
-		hh.historyDialog.SelectCurrentItem()
-		return true
-
-	case fyne.KeyReturn:
-		if modifiers.CtrlPressed {
-			// Ctrl+Enter - Accept direct path navigation
-			hh.historyDialog.AcceptDirectPathNavigation()
-			return true
-		}
-		// Enter - Accept current selection and close dialog
-		hh.historyDialog.AcceptSelection()
-		return true
-
-	case fyne.KeyEscape:
-		// Cancel dialog
-		hh.historyDialog.CancelDialog()
-		return true
-
-	case fyne.KeyBackspace:
-		// Remove last character from search
-		hh.historyDialog.BackspaceSearch()
-		return true
-
-	case fyne.KeyDelete:
-		// Plain Delete only: Shift+Delete arrives here as a folded Cut shortcut.
-		if !modifiers.None() {
-			return false
-		}
-		// Clear entire search
-		hh.historyDialog.ClearSearch()
-		return true
-
-	case fyne.KeyTab:
-		// Copy selected path to search entry
-		hh.historyDialog.CopySelectedPathToSearch()
-		return true
-
-	default:
-		// Non-handled key
-	}
-
-	return false
-}
-
-// OnTypedRune handles text input to update the search field
-func (hh *HistoryDialogKeyHandler) OnTypedRune(r rune, modifiers ModifierState) bool {
-	// Accept printable, non-control runes
-	if unicode.IsPrint(r) && !unicode.IsControl(r) {
-		hh.historyDialog.AppendToSearch(string(r))
-		return true
-	}
-	return false
+		return false
+	})
+	return &HistoryDialogKeyHandler{dialogKeyHandler: base}
 }

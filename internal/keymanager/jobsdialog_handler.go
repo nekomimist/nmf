@@ -1,9 +1,5 @@
 package keymanager
 
-import (
-	"fyne.io/fyne/v2"
-)
-
 // JobsDialogInterface defines navigation and actions for the Jobs dialog
 type JobsDialogInterface interface {
 	MoveUp()
@@ -16,47 +12,22 @@ type JobsDialogInterface interface {
 
 // JobsDialogKeyHandler handles keys while Jobs dialog is open
 type JobsDialogKeyHandler struct {
-	dlg        JobsDialogInterface
-	debugPrint func(format string, args ...interface{})
+	*dialogKeyHandler
 }
 
 func NewJobsDialogKeyHandler(d JobsDialogInterface, debugPrint func(format string, args ...interface{})) *JobsDialogKeyHandler {
-	return &JobsDialogKeyHandler{dlg: d, debugPrint: debugPrint}
+	base := newDialogKeyHandler("JobsDialog", debugPrint, []dialogBinding{
+		{"Up", d.MoveUp},
+		{"S-Up", d.MoveToTop},
+		{"Down", d.MoveDown},
+		{"S-Down", d.MoveToBottom},
+
+		// Plain Delete only: Shift+Delete arrives as a folded Cut shortcut and
+		// has no binding here, so it falls through unmatched.
+		{"Delete", d.CancelSelected},
+
+		{"Return", d.CloseDialog},
+		{"Escape", d.CloseDialog},
+	})
+	return &JobsDialogKeyHandler{dialogKeyHandler: base}
 }
-
-func (h *JobsDialogKeyHandler) GetName() string { return "JobsDialog" }
-
-func (h *JobsDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	switch ev.Name {
-	case fyne.KeyUp:
-		if modifiers.ShiftPressed {
-			h.dlg.MoveToTop()
-		} else {
-			h.dlg.MoveUp()
-		}
-		return true
-	case fyne.KeyDown:
-		if modifiers.ShiftPressed {
-			h.dlg.MoveToBottom()
-		} else {
-			h.dlg.MoveDown()
-		}
-		return true
-	case fyne.KeyDelete:
-		// Plain Delete only: Shift+Delete arrives here as a folded Cut shortcut.
-		if !modifiers.None() {
-			return false
-		}
-		h.dlg.CancelSelected()
-		return true
-	case fyne.KeyReturn, fyne.KeyEnter:
-		h.dlg.CloseDialog()
-		return true
-	case fyne.KeyEscape:
-		h.dlg.CloseDialog()
-		return true
-	}
-	return false
-}
-
-func (h *JobsDialogKeyHandler) OnTypedRune(r rune, modifiers ModifierState) bool { return false }

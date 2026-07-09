@@ -163,6 +163,32 @@ Text entries that must not steal Tab:
 
 ## Dialog Handler Lifecycle Pattern
 
+Dialog key dispatch:
+
+- Per-dialog handlers (compare/conflict/copy-move/delete-confirm/directory-jump/
+  filter/history/jobs/maintenance/quit/sort/tree, plus incremental search) build
+  on a shared base, `dialogKeyHandler` (`internal/keymanager/dialog_handler.go`),
+  instead of hand-writing a switch over `ev.Name`/modifiers. Each constructor
+  builds a static `[]dialogBinding{ {spec, action}, ... }` table from its
+  dialog interface's methods; `spec` uses the same syntax `parseKeySpec`
+  accepts for configured key bindings (`Esc`, `Return`, `C-Return`, `S-Up`,
+  `1`, ...). Unlike configured bindings, these specs are static string
+  literals written by a programmer, so a typo is a construction-time panic
+  rather than a warned-and-skipped config entry.
+- Matching is exact-modifier, sharing `keySpec.matches` with the configurable
+  main-screen/file-viewer/line-edit bindings: a binding fires only when every
+  modifier bit matches precisely, same semantics and same "one activation path
+  per binding" guardrail. A handler can still attach a rune handler (search/
+  filter text entry, sort's `o`/`d` shortcuts) or a fallback invoked when no
+  binding matches (the quit dialog uses this to consume every unmatched key so
+  nothing leaks to MainScreen).
+- File Viewer and Line Edit dialogs keep their own pre-existing declarative
+  bindings (`buildTargetKeyBindings`, see "Configurable bindings" above)
+  instead of moving onto `dialogKeyHandler`: they are user-configurable via
+  `config.json`, which the static per-dialog table intentionally is not.
+  `BusyKeyHandler` (swallow-everything guard) also stays a plain struct; its
+  entire logic is smaller than a binding table would be.
+
 Required sequence for keyboard-driven dialogs:
 
 1. Create dialog-specific key handler.

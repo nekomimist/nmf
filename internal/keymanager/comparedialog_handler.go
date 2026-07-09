@@ -2,8 +2,6 @@ package keymanager
 
 import (
 	"unicode"
-
-	"fyne.io/fyne/v2"
 )
 
 // CompareDialogInterface defines the interface needed by Compare dialog key handler.
@@ -36,112 +34,51 @@ type CompareDialogInterface interface {
 
 // CompareDialogKeyHandler handles keyboard events for the compare dialog.
 type CompareDialogKeyHandler struct {
-	dialog     CompareDialogInterface
-	debugPrint func(format string, args ...interface{})
+	*dialogKeyHandler
 }
 
 // NewCompareDialogKeyHandler creates a new compare dialog key handler.
 func NewCompareDialogKeyHandler(d CompareDialogInterface, debugPrint func(format string, args ...interface{})) *CompareDialogKeyHandler {
-	return &CompareDialogKeyHandler{dialog: d, debugPrint: debugPrint}
-}
+	base := newDialogKeyHandler("CompareDialog", debugPrint, []dialogBinding{
+		{"A-U", d.SelectMissingOrNewer},
+		{"A-M", d.SelectMissing},
+		{"A-N", d.SelectNewer},
+		{"A-S", d.SelectSizeEqual},
+		{"A-T", d.SelectSizeTimeEqual},
+		{"A-C", d.SelectSizeContentEqual},
 
-func (h *CompareDialogKeyHandler) GetName() string { return "CompareDialog" }
+		{"C-H", d.BackspaceSearch},
 
-func (h *CompareDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	h.debugPrint("CompareDialog: OnKeyActivated %s", ev.Name)
+		{"Up", d.MoveUp},
+		{"S-Up", d.MoveToTop},
+		{"Down", d.MoveDown},
+		{"S-Down", d.MoveToBottom},
 
-	if modifiers.AltPressed {
-		switch ev.Name {
-		case fyne.KeyU:
-			h.dialog.SelectMissingOrNewer()
-			return true
-		case fyne.KeyM:
-			h.dialog.SelectMissing()
-			return true
-		case fyne.KeyN:
-			h.dialog.SelectNewer()
-			return true
-		case fyne.KeyS:
-			h.dialog.SelectSizeEqual()
-			return true
-		case fyne.KeyT:
-			h.dialog.SelectSizeTimeEqual()
-			return true
-		case fyne.KeyC:
-			h.dialog.SelectSizeContentEqual()
-			return true
-		}
-	}
+		{"Right", d.ScrollSelectedRight},
+		{"Left", d.ResetHorizontalScroll},
+		{"Space", d.SelectCurrentItem},
 
-	switch ev.Name {
-	case fyne.KeyH:
-		if modifiers.CtrlPressed {
-			h.dialog.BackspaceSearch()
-			return true
-		}
-	case fyne.KeyUp:
-		if modifiers.ShiftPressed {
-			h.dialog.MoveToTop()
-		} else {
-			h.dialog.MoveUp()
-		}
-		return true
-	case fyne.KeyDown:
-		if modifiers.ShiftPressed {
-			h.dialog.MoveToBottom()
-		} else {
-			h.dialog.MoveDown()
-		}
-		return true
-	case fyne.KeyRight:
-		h.dialog.ScrollSelectedRight()
-		return true
-	case fyne.KeyLeft:
-		h.dialog.ResetHorizontalScroll()
-		return true
-	case fyne.KeySpace:
-		h.dialog.SelectCurrentItem()
-		return true
-	case fyne.KeyReturn:
-		if modifiers.CtrlPressed {
-			h.dialog.AcceptDirectPath()
-			return true
-		}
-		h.dialog.AcceptSelection()
-		return true
-	case fyne.KeyEscape:
-		h.dialog.CancelDialog()
-		return true
-	case fyne.KeyBackspace:
-		h.dialog.BackspaceSearch()
-		return true
-	case fyne.KeyDelete:
-		// Plain Delete only: Shift+Delete arrives here as a folded Cut shortcut.
-		if !modifiers.None() {
-			return false
-		}
-		h.dialog.ClearSearch()
-		return true
-	case fyne.KeyTab:
-		h.dialog.CopySelectedPathToSearch()
-		return true
-	case fyne.KeyPageDown:
-		h.dialog.NextMethod()
-		return true
-	case fyne.KeyPageUp:
-		h.dialog.PreviousMethod()
-		return true
-	}
-	return false
-}
+		{"Return", d.AcceptSelection},
+		{"C-Return", d.AcceptDirectPath},
 
-func (h *CompareDialogKeyHandler) OnTypedRune(r rune, modifiers ModifierState) bool {
-	if modifiers.AltPressed {
-		return true
-	}
-	if unicode.IsPrint(r) && !unicode.IsControl(r) {
-		h.dialog.AppendToSearch(string(r))
-		return true
-	}
-	return false
+		{"Escape", d.CancelDialog},
+		{"Backspace", d.BackspaceSearch},
+		// Plain Delete only: Shift+Delete arrives as a folded Cut shortcut and
+		// has no binding here, so it falls through unmatched.
+		{"Delete", d.ClearSearch},
+		{"Tab", d.CopySelectedPathToSearch},
+
+		{"PageDown", d.NextMethod},
+		{"PageUp", d.PreviousMethod},
+	}).withRune(func(r rune, modifiers ModifierState) bool {
+		if modifiers.AltPressed {
+			return true
+		}
+		if unicode.IsPrint(r) && !unicode.IsControl(r) {
+			d.AppendToSearch(string(r))
+			return true
+		}
+		return false
+	})
+	return &CompareDialogKeyHandler{dialogKeyHandler: base}
 }

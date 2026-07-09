@@ -3,8 +3,6 @@ package keymanager
 import (
 	"unicode"
 
-	"fyne.io/fyne/v2"
-
 	"nmf/internal/fileinfo"
 )
 
@@ -29,8 +27,8 @@ type IncrementalSearchInterface interface {
 
 // IncrementalSearchKeyHandler handles keyboard events during incremental search mode
 type IncrementalSearchKeyHandler struct {
+	*dialogKeyHandler
 	searchInterface IncrementalSearchInterface
-	debugPrint      func(format string, args ...interface{})
 	deferTransition func(label string, action func())
 }
 
@@ -39,15 +37,42 @@ func NewIncrementalSearchKeyHandler(
 	si IncrementalSearchInterface,
 	debugPrint func(format string, args ...interface{}),
 ) *IncrementalSearchKeyHandler {
-	return &IncrementalSearchKeyHandler{
-		searchInterface: si,
-		debugPrint:      debugPrint,
-	}
-}
+	ish := &IncrementalSearchKeyHandler{searchInterface: si}
 
-// GetName returns the name of this handler
-func (ish *IncrementalSearchKeyHandler) GetName() string {
-	return "IncrementalSearch"
+	ish.dialogKeyHandler = newDialogKeyHandler("IncrementalSearch", debugPrint, []dialogBinding{
+		{"C-H", si.RemoveLastSearchCharacter},
+
+		// Exit search mode.
+		{"Escape", ish.cancelSearch},
+		// Select current match and exit search mode.
+		{"Return", ish.acceptCurrentMatch},
+
+		// Remove last character from search term.
+		{"Backspace", si.RemoveLastSearchCharacter},
+
+		// Move to previous/next match; Shift jumps several at once.
+		{"Up", si.PreviousSearchMatch},
+		{"S-Up", func() {
+			for i := 0; i < 5; i++ {
+				si.PreviousSearchMatch()
+			}
+		}},
+		{"Down", si.NextSearchMatch},
+		{"S-Down", func() {
+			for i := 0; i < 5; i++ {
+				si.NextSearchMatch()
+			}
+		}},
+	}).withRune(func(r rune, modifiers ModifierState) bool {
+		// Handle printable characters (letters, numbers, some symbols).
+		if unicode.IsPrint(r) && !unicode.IsControl(r) {
+			si.AddSearchCharacter(r)
+			return true
+		}
+		// Don't handle non-printable characters.
+		return false
+	})
+	return ish
 }
 
 // SetTransitionGate configures delayed execution for exiting search mode.
@@ -77,75 +102,4 @@ func (ish *IncrementalSearchKeyHandler) acceptCurrentMatch() {
 		}
 		ish.searchInterface.AcceptIncrementalSearchOverlay()
 	})
-}
-
-// OnKeyActivated handles key activations during incremental search
-func (ish *IncrementalSearchKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	ish.debugPrint("IncrementalSearchKeyHandler: OnKeyActivated %v", ev.Name)
-
-	switch ev.Name {
-	case fyne.KeyH:
-		if modifiers.CtrlPressed {
-			ish.searchInterface.RemoveLastSearchCharacter()
-			return true
-		}
-
-	case fyne.KeyEscape:
-		// Exit search mode
-		ish.cancelSearch()
-		return true
-
-	case fyne.KeyReturn, fyne.KeyEnter:
-		// Select current match and exit search mode
-		ish.acceptCurrentMatch()
-		return true
-
-	case fyne.KeyBackspace:
-		// Remove last character from search term
-		ish.searchInterface.RemoveLastSearchCharacter()
-		return true
-
-	case fyne.KeyUp:
-		// Move to previous match
-		if modifiers.ShiftPressed {
-			// Shift+Up: Jump to first match
-			// For now, just go to previous match multiple times
-			for i := 0; i < 5; i++ {
-				ish.searchInterface.PreviousSearchMatch()
-			}
-		} else {
-			ish.searchInterface.PreviousSearchMatch()
-		}
-		return true
-
-	case fyne.KeyDown:
-		// Move to next match
-		if modifiers.ShiftPressed {
-			// Shift+Down: Jump to last match or skip several
-			for i := 0; i < 5; i++ {
-				ish.searchInterface.NextSearchMatch()
-			}
-		} else {
-			ish.searchInterface.NextSearchMatch()
-		}
-		return true
-	}
-
-	// Let OnTypedRune handle character input
-	return false
-}
-
-// OnTypedRune handles character input during incremental search
-func (ish *IncrementalSearchKeyHandler) OnTypedRune(r rune, modifiers ModifierState) bool {
-	ish.debugPrint("IncrementalSearchKeyHandler: OnTypedRune '%c'", r)
-
-	// Handle printable characters (letters, numbers, some symbols)
-	if unicode.IsPrint(r) && !unicode.IsControl(r) {
-		// Add character to search term
-		ish.searchInterface.AddSearchCharacter(r)
-		return true
-	}
-
-	// Don't handle non-printable characters
-	return false
 }

@@ -1,7 +1,5 @@
 package keymanager
 
-import "fyne.io/fyne/v2"
-
 type MaintenanceDialogInterface interface {
 	Scan()
 	Apply()
@@ -9,36 +7,14 @@ type MaintenanceDialogInterface interface {
 }
 
 type MaintenanceDialogKeyHandler struct {
-	dialog MaintenanceDialogInterface
+	*dialogKeyHandler
 }
 
 func NewMaintenanceDialogKeyHandler(dialog MaintenanceDialogInterface) *MaintenanceDialogKeyHandler {
-	return &MaintenanceDialogKeyHandler{dialog: dialog}
-}
-
-func (h *MaintenanceDialogKeyHandler) GetName() string {
-	return "MaintenanceDialog"
-}
-
-func (h *MaintenanceDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	if ev == nil {
-		return false
-	}
-	switch ev.Name {
-	case fyne.KeyEscape:
-		h.dialog.Cancel()
-		return true
-	case fyne.KeyReturn, fyne.KeyEnter:
-		h.dialog.Apply()
-		return true
-	case fyne.KeyF5:
-		h.dialog.Scan()
-		return true
-	default:
-		return false
-	}
-}
-
-func (h *MaintenanceDialogKeyHandler) OnTypedRune(r rune, modifiers ModifierState) bool {
-	return false
+	base := newDialogKeyHandler("MaintenanceDialog", nil, []dialogBinding{
+		{"Escape", dialog.Cancel},
+		{"Return", dialog.Apply},
+		{"F5", dialog.Scan},
+	})
+	return &MaintenanceDialogKeyHandler{dialogKeyHandler: base}
 }

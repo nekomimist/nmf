@@ -2,8 +2,6 @@ package keymanager
 
 import (
 	"unicode"
-
-	"fyne.io/fyne/v2"
 )
 
 // FilterDialogInterface defines the interface needed by FilterDialogKeyHandler
@@ -36,101 +34,37 @@ type FilterDialogInterface interface {
 
 // FilterDialogKeyHandler handles keyboard events for the file filter dialog
 type FilterDialogKeyHandler struct {
-	filterDialog FilterDialogInterface
-	debugPrint   func(format string, args ...interface{})
+	*dialogKeyHandler
 }
 
 // NewFilterDialogKeyHandler creates a new filter dialog key handler
 func NewFilterDialogKeyHandler(fd FilterDialogInterface, debugPrint func(format string, args ...interface{})) *FilterDialogKeyHandler {
-	return &FilterDialogKeyHandler{
-		filterDialog: fd,
-		debugPrint:   debugPrint,
-	}
-}
+	base := newDialogKeyHandler("FilterDialog", debugPrint, []dialogBinding{
+		// Ctrl+F: search functionality is handled by the focusless design;
+		// swallow it here so it doesn't fall through to MainScreen.
+		{"C-F", func() {}},
+		{"C-H", fd.BackspaceSearch},
+		{"C-D", fd.DeleteSelectedEntry},
 
-// GetName returns the name of this handler
-func (fh *FilterDialogKeyHandler) GetName() string {
-	return "FilterDialog"
-}
+		{"Up", fd.MoveUp},
+		{"S-Up", fd.MoveToTop},
+		{"Down", fd.MoveDown},
+		{"S-Down", fd.MoveToBottom},
 
-// OnKeyActivated handles key activations in focusless mode
-func (fh *FilterDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
-	fh.debugPrint("FilterDialog: OnKeyActivated %s", ev.Name)
+		{"Return", fd.AcceptSelection},
+		{"C-Return", fd.AcceptDirectInput},
 
-	switch ev.Name {
-	case fyne.KeyF:
-		// Ctrl+F - Search functionality handled by focusless design
-		if modifiers.CtrlPressed {
+		{"Escape", fd.CancelDialog},
+		{"Backspace", fd.BackspaceSearch},
+		// Plain Delete only: Shift+Delete arrives as a folded Cut shortcut and
+		// has no binding here, so it falls through unmatched.
+		{"Delete", fd.ClearSearch},
+	}).withRune(func(r rune, modifiers ModifierState) bool {
+		if unicode.IsPrint(r) && !unicode.IsControl(r) {
+			fd.AppendToSearch(string(r))
 			return true
 		}
-	case fyne.KeyH:
-		if modifiers.CtrlPressed {
-			fh.filterDialog.BackspaceSearch()
-			return true
-		}
-	case fyne.KeyD:
-		if modifiers.CtrlPressed {
-			fh.filterDialog.DeleteSelectedEntry()
-			return true
-		}
-
-	case fyne.KeyUp:
-		if modifiers.ShiftPressed {
-			fh.filterDialog.MoveToTop()
-		} else {
-			fh.filterDialog.MoveUp()
-		}
-		return true
-
-	case fyne.KeyDown:
-		if modifiers.ShiftPressed {
-			fh.filterDialog.MoveToBottom()
-		} else {
-			fh.filterDialog.MoveDown()
-		}
-		return true
-
-	case fyne.KeyReturn:
-		if modifiers.CtrlPressed {
-			fh.filterDialog.AcceptDirectInput()
-			return true
-		}
-		// Accept current selection and close dialog
-		fh.filterDialog.AcceptSelection()
-		return true
-
-	case fyne.KeyEscape:
-		// Cancel dialog
-		fh.filterDialog.CancelDialog()
-		return true
-
-	case fyne.KeyBackspace:
-		// Remove last character from search
-		fh.filterDialog.BackspaceSearch()
-		return true
-
-	case fyne.KeyDelete:
-		// Plain Delete only: Shift+Delete arrives here as a folded Cut shortcut.
-		if !modifiers.None() {
-			return false
-		}
-		// Clear entire search
-		fh.filterDialog.ClearSearch()
-		return true
-
-	default:
-		// Non-handled key
-	}
-
-	return false
-}
-
-// OnTypedRune handles text input to update the search field
-func (fh *FilterDialogKeyHandler) OnTypedRune(r rune, modifiers ModifierState) bool {
-	// Accept printable, non-control runes
-	if unicode.IsPrint(r) && !unicode.IsControl(r) {
-		fh.filterDialog.AppendToSearch(string(r))
-		return true
-	}
-	return false
+		return false
+	})
+	return &FilterDialogKeyHandler{dialogKeyHandler: base}
 }
