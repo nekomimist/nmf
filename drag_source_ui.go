@@ -107,10 +107,11 @@ func dragSourceNativePath(fi fileinfo.FileInfo) (string, error) {
 		return "", fmt.Errorf("archive item cannot be dragged: %s", fi.Path)
 	}
 
-	_, parsed, err := fileinfo.ResolveRead(fi.Path)
+	vfs, parsed, err := fileinfo.ResolveRead(fi.Path)
 	if err != nil {
 		return "", fmt.Errorf("cannot resolve drag source %s: %w", fi.Path, err)
 	}
+	defer fileinfo.CloseVFS(vfs)
 	if parsed.Provider != "local" {
 		return "", fmt.Errorf("direct SMB item cannot be dragged: %s", fi.Path)
 	}

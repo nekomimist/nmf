@@ -31,6 +31,7 @@ func LstatPortable(p string) (os.FileInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer CloseVFS(vfs)
 	native := parsed.Native
 	if native == "" {
 		native = p
@@ -50,6 +51,7 @@ func ReadlinkPortable(p string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer CloseVFS(vfs)
 	native := parsed.Native
 	if native == "" {
 		native = p

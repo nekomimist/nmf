@@ -33,6 +33,64 @@ func TestParseSMBURLWithCreds(t *testing.T) {
 	}
 }
 
+func TestParseSMBURLAcceptsCaseInsensitiveScheme(t *testing.T) {
+	host, share, segments, user, pass, _ := parseSMBURL("SMB://alice:secret@SERVER/share/dir")
+	if host != "server" || share != "share" || len(segments) != 1 || segments[0] != "dir" {
+		t.Fatalf("parsed path = host=%q share=%q segments=%#v", host, share, segments)
+	}
+	if user != "alice" || pass != "secret" {
+		t.Fatalf("parsed credentials = user=%q pass=%q", user, pass)
+	}
+}
+
+func TestSMBResolversRejectParentSegments(t *testing.T) {
+	inputs := []string{
+		"smb://server/share/../etc",
+		"smb://server/share/dir/../../etc",
+		"smb://server/share\\..\\etc",
+		"//server/share/../etc",
+		"SMB://server/share/../etc",
+	}
+	for _, input := range inputs {
+		t.Run(input, func(t *testing.T) {
+			if _, _, err := ResolveRead(input); err == nil {
+				t.Fatalf("ResolveRead(%q) should reject parent segments", input)
+			}
+			if _, _, err := CanonicalDisplayPath(input); err == nil {
+				t.Fatalf("CanonicalDisplayPath(%q) should reject parent segments", input)
+			}
+		})
+	}
+	if _, _, err := CanonicalDisplayPath(`\\server\share\..\etc`); err == nil {
+		t.Fatal("CanonicalDisplayPath should reject parent segments in UNC input")
+	}
+}
+
+func TestNormalizeSMBPathComponents(t *testing.T) {
+	segments, err := normalizeSMBPathComponents("server", "share", []string{"", "dir", "", "file"})
+	if err != nil {
+		t.Fatalf("normalizeSMBPathComponents returned error: %v", err)
+	}
+	if len(segments) != 2 || segments[0] != "dir" || segments[1] != "file" {
+		t.Fatalf("normalized segments = %#v, want [dir file]", segments)
+	}
+
+	for _, tc := range []struct {
+		host     string
+		share    string
+		segments []string
+	}{
+		{host: "..", share: "share"},
+		{host: "server", share: ".."},
+		{host: "server", share: "share", segments: []string{"."}},
+		{host: "server", share: "share", segments: []string{".."}},
+	} {
+		if _, err := normalizeSMBPathComponents(tc.host, tc.share, tc.segments); err == nil {
+			t.Fatalf("normalizeSMBPathComponents(%q, %q, %#v) should fail", tc.host, tc.share, tc.segments)
+		}
+	}
+}
+
 func TestUNCConversionRoundTripDisplay(t *testing.T) {
 	// to UNC and back to display via parseUNC
 	unc := smbURLToUNC("smb://srv/share/dir/file")

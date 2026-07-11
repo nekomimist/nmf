@@ -54,9 +54,7 @@ func ReadPreviewFileWithDebug(p string, debugPrint func(format string, args ...i
 	if err != nil {
 		return nil, err
 	}
-	if closer, ok := vfs.(interface{ Close() error }); ok {
-		defer closer.Close()
-	}
+	defer CloseVFS(vfs)
 	native := parsed.Native
 	if native == "" {
 		native = p

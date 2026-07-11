@@ -1,6 +1,7 @@
 package fileinfo
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -23,6 +24,53 @@ type VFS interface {
 	Base(p string) string
 	// Optional: Open for previews; providers may return an error if unsupported
 	Open(path string) (io.ReadCloser, error)
+}
+
+// CloseVFS releases resources owned by a resolved provider. Most providers are
+// stateless, but a remote ArchiveVFS owns a downloaded temporary source.
+func CloseVFS(vfs VFS) error {
+	if closer, ok := vfs.(interface{ Close() error }); ok {
+		return closer.Close()
+	}
+	return nil
+}
+
+type resolvedReadCloser struct {
+	io.ReadCloser
+	vfs VFS
+}
+
+func (r *resolvedReadCloser) Close() error {
+	if r == nil {
+		return nil
+	}
+	var readErr error
+	if r.ReadCloser != nil {
+		readErr = r.ReadCloser.Close()
+		r.ReadCloser = nil
+	}
+	vfsErr := CloseVFS(r.vfs)
+	r.vfs = nil
+	return errors.Join(readErr, vfsErr)
+}
+
+// OpenPortable resolves and opens p. Closing the returned reader also closes
+// the resolved VFS, including any remote archive source temporary file.
+func OpenPortable(p string) (io.ReadCloser, error) {
+	vfs, parsed, err := ResolveRead(p)
+	if err != nil {
+		return nil, err
+	}
+	native := parsed.Native
+	if native == "" {
+		native = p
+	}
+	reader, err := vfs.Open(native)
+	if err != nil {
+		_ = CloseVFS(vfs)
+		return nil, err
+	}
+	return &resolvedReadCloser{ReadCloser: reader, vfs: vfs}, nil
 }
 
 // LocalFS implements VFS using the host OS.

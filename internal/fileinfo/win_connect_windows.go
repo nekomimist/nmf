@@ -100,8 +100,8 @@ func ensureWindowsConnection(p Parsed, native string) error {
 	}
 	ret, err := addConnection(host, share, user, creds.Password)
 	if ret == NO_ERROR && err == nil {
-		if creds.Persist && secretStore != nil {
-			_ = secretStore.Set(host, share, creds.Domain, creds.Username, creds.Password)
+		if store := currentSecretStore(); creds.Persist && store != nil {
+			_ = store.Set(host, share, creds.Domain, creds.Username, creds.Password)
 		}
 		return nil
 	}

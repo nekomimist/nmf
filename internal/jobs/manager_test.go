@@ -190,6 +190,7 @@ func (fakeSMBOps) Open(path string) (io.ReadCloser, error) {
 func (fakeSMBOps) OpenFile(path string, flag int, perm os.FileMode) (io.ReadWriteCloser, error) {
 	return nopReadWriteCloser{}, nil
 }
+func (fakeSMBOps) Mkdir(path string, perm os.FileMode) error    { return nil }
 func (fakeSMBOps) MkdirAll(path string, perm os.FileMode) error { return nil }
 func (fakeSMBOps) Chtimes(path string, atime, mtime time.Time) error {
 	return nil

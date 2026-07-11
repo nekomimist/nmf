@@ -94,6 +94,32 @@ func TestRenamePortableRejectsExistingTarget(t *testing.T) {
 	}
 }
 
+func TestRenameNativeSameDirNeverReplacesExistingTarget(t *testing.T) {
+	dir := t.TempDir()
+	oldPath := filepath.Join(dir, "old.txt")
+	targetPath := filepath.Join(dir, "target.txt")
+	if err := os.WriteFile(oldPath, []byte("source"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(targetPath, []byte("target"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := renameNativeSameDir(oldPath, targetPath, false); err == nil {
+		t.Fatal("renameNativeSameDir should reject an existing target")
+	}
+	data, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "target" {
+		t.Fatalf("target content = %q, want unchanged target", data)
+	}
+	if _, err := os.Stat(oldPath); err != nil {
+		t.Fatalf("source should remain after rejected rename: %v", err)
+	}
+}
+
 func TestRenamePortableSameNameNoop(t *testing.T) {
 	dir := t.TempDir()
 	oldPath := filepath.Join(dir, "same.txt")

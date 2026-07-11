@@ -3,9 +3,9 @@
 
 package fileinfo
 
-func newSMBProvider(host, share string, c *Credentials) VFS {
+func newSMBProvider(host, share string, c *Credentials) (VFS, error) {
 	if c != nil {
-		return NewSMBFSWithCred(host, share, *c)
+		return NewSMBFSWithCred(host, share, *c), nil
 	}
-	return NewSMBFS(host, share)
+	return NewSMBFS(host, share), nil
 }

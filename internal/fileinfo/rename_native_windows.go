@@ -7,14 +7,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"golang.org/x/sys/windows"
 )
 
 func renameNativeSameDir(oldNative, newNative string, caseOnlyRename bool) error {
 	if !caseOnlyRename {
-		return os.Rename(oldNative, newNative)
+		return moveFileNoReplace(oldNative, newNative)
 	}
 
-	err := os.Rename(oldNative, newNative)
+	err := moveFileNoReplace(oldNative, newNative)
 	if err == nil && nativeBaseMatches(newNative) {
 		return nil
 	}
@@ -24,14 +26,29 @@ func renameNativeSameDir(oldNative, newNative string, caseOnlyRename bool) error
 	if err != nil {
 		return err
 	}
-	if err := os.Rename(sourceNative, tempNative); err != nil {
+	if err := moveFileNoReplace(sourceNative, tempNative); err != nil {
 		return err
 	}
-	if err := os.Rename(tempNative, newNative); err != nil {
-		if rollbackErr := os.Rename(tempNative, sourceNative); rollbackErr != nil {
+	if err := moveFileNoReplace(tempNative, newNative); err != nil {
+		if rollbackErr := moveFileNoReplace(tempNative, sourceNative); rollbackErr != nil {
 			return fmt.Errorf("%w; rollback failed: %v", err, rollbackErr)
 		}
 		return err
+	}
+	return nil
+}
+
+func moveFileNoReplace(oldNative, newNative string) error {
+	oldPtr, err := windows.UTF16PtrFromString(oldNative)
+	if err != nil {
+		return err
+	}
+	newPtr, err := windows.UTF16PtrFromString(newNative)
+	if err != nil {
+		return err
+	}
+	if err := windows.MoveFile(oldPtr, newPtr); err != nil {
+		return &os.LinkError{Op: "rename", Old: oldNative, New: newNative, Err: err}
 	}
 	return nil
 }

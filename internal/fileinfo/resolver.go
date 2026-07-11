@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -81,6 +83,9 @@ func ResolveReadContext(ctx context.Context, input string) (VFS, Parsed, error) 
 			p := parseUNC(raw)
 			p.Raw = input
 			p.Provider = "local"
+			if err := normalizeParsedSMBPath(&p); err != nil {
+				return nil, p, err
+			}
 			return LocalFS{}, p, nil
 		}
 		if strings.HasPrefix(raw, "//") {
@@ -88,6 +93,9 @@ func ResolveReadContext(ctx context.Context, input string) (VFS, Parsed, error) 
 			p := parseUNC(unc)
 			p.Raw = input
 			p.Provider = "local"
+			if err := normalizeParsedSMBPath(&p); err != nil {
+				return nil, p, err
+			}
 			return LocalFS{}, p, nil
 		}
 		if isSMBURL(raw) {
@@ -95,6 +103,9 @@ func ResolveReadContext(ctx context.Context, input string) (VFS, Parsed, error) 
 			p := parseUNC(unc)
 			p.Raw = input
 			p.Provider = "local"
+			if err := normalizeParsedSMBPath(&p); err != nil {
+				return nil, p, err
+			}
 			return LocalFS{}, p, nil
 		}
 		// Fallback: treat as local path
@@ -106,15 +117,17 @@ func ResolveReadContext(ctx context.Context, input string) (VFS, Parsed, error) 
 	if isSMBURL(raw) || strings.HasPrefix(raw, "//") {
 		host, share, segs, user, pass, domain := parseSMBURL(raw)
 		if host != "" && share != "" {
+			var err error
+			segs, err = normalizeSMBPathComponents(host, share, segs)
+			if err != nil {
+				return nil, Parsed{Raw: input, Scheme: SchemeSMB, Host: host, Share: share, Provider: "smb"}, err
+			}
 			if mp, ok := findSMBMount(host, share); ok {
-				native := mp
-				if len(segs) > 0 {
-					native = "/" + path.Join(strings.TrimPrefix(mp, "/"), path.Join(segs...))
+				native, err := mountedSMBNativePath(mp, segs)
+				if err != nil {
+					return nil, Parsed{Raw: input, Scheme: SchemeSMB, Host: host, Share: share, Segments: segs, Provider: "local"}, err
 				}
-				disp := canonicalizeSMB("smb://" + path.Join(host, share))
-				if len(segs) > 0 {
-					disp += "/" + path.Join(segs...)
-				}
+				disp := smbDisplayPath(host, share, segs)
 				return LocalFS{}, Parsed{
 					Scheme:   SchemeSMB,
 					Host:     host,
@@ -134,17 +147,12 @@ func ResolveReadContext(ctx context.Context, input string) (VFS, Parsed, error) 
 			if len(segs) > 0 {
 				native = "/" + path.Join(segs...)
 			}
-			disp := canonicalizeSMB("smb://" + path.Join(host, share))
-			if len(segs) > 0 {
-				disp += "/" + path.Join(segs...)
-			}
-			var vfs VFS
+			disp := smbDisplayPath(host, share, segs)
+			var credentials *Credentials
 			if user != "" || pass != "" || domain != "" {
-				vfs = newSMBProvider(host, share, &Credentials{Domain: domain, Username: user, Password: pass})
-			} else {
-				vfs = newSMBProvider(host, share, nil)
+				credentials = &Credentials{Domain: domain, Username: user, Password: pass}
 			}
-			return vfs, Parsed{
+			parsed := Parsed{
 				Scheme:   SchemeSMB,
 				Host:     host,
 				Share:    share,
@@ -156,9 +164,14 @@ func ResolveReadContext(ctx context.Context, input string) (VFS, Parsed, error) 
 				User:     user,
 				Password: pass,
 				Domain:   domain,
-			}, nil
+			}
+			vfs, err := newSMBProvider(host, share, credentials)
+			if err != nil {
+				return nil, parsed, err
+			}
+			return vfs, parsed, nil
 		}
-		return nil, Parsed{Raw: input, Scheme: SchemeSMB, Display: canonicalizeSMB(raw), Provider: "smb"}, errUnsupportedSMB()
+		return nil, Parsed{Raw: input, Scheme: SchemeSMB, Provider: "smb"}, errors.New("invalid smb path")
 	}
 	return LocalFS{}, Parsed{Raw: input, Scheme: SchemeFile, Display: input, Native: input, Provider: "local"}, nil
 }
@@ -177,10 +190,11 @@ func NormalizeInputPath(input string) string {
 
 // CommandArgumentPath converts a display path to the path form passed to external commands.
 func CommandArgumentPath(displayPath string) string {
-	_, parsed, err := ResolveRead(displayPath)
+	vfs, parsed, err := ResolveRead(displayPath)
 	if err != nil {
 		return NormalizeInputPath(displayPath)
 	}
+	defer CloseVFS(vfs)
 	if parsed.Provider == "local" && parsed.Native != "" {
 		return parsed.Native
 	}
@@ -309,7 +323,7 @@ func parseSMBURL(u string) (host, share string, segments []string, user, pass, d
 	if !isSMBURL(s) {
 		return "", "", nil, "", "", ""
 	}
-	t := strings.TrimPrefix(s, "smb://")
+	t := s[len("smb://"):]
 	// Extract and strip creds
 	if at := strings.Index(t, "@"); at >= 0 {
 		cred := t[:at]
@@ -330,6 +344,7 @@ func parseSMBURL(u string) (host, share string, segments []string, user, pass, d
 			user = cred
 		}
 	}
+	t = strings.ReplaceAll(t, "\\", "/")
 	parts := strings.Split(t, "/")
 	if len(parts) < 2 {
 		return "", "", nil, "", "", ""
@@ -340,6 +355,66 @@ func parseSMBURL(u string) (host, share string, segments []string, user, pass, d
 		segments = parts[2:]
 	}
 	return
+}
+
+func normalizeParsedSMBPath(parsed *Parsed) error {
+	segments, err := normalizeSMBPathComponents(parsed.Host, parsed.Share, parsed.Segments)
+	if err != nil {
+		return err
+	}
+	parsed.Segments = segments
+	parsed.Display = smbDisplayPath(parsed.Host, parsed.Share, segments)
+	return nil
+}
+
+func normalizeSMBPathComponents(host, share string, segments []string) ([]string, error) {
+	if host == "" || share == "" {
+		return nil, errors.New("invalid smb path: host and share are required")
+	}
+	if err := validateSMBPathComponent("host", host); err != nil {
+		return nil, err
+	}
+	if err := validateSMBPathComponent("share", share); err != nil {
+		return nil, err
+	}
+
+	normalized := make([]string, 0, len(segments))
+	for _, segment := range segments {
+		if segment == "" {
+			continue
+		}
+		if err := validateSMBPathComponent("segment", segment); err != nil {
+			return nil, err
+		}
+		normalized = append(normalized, segment)
+	}
+	return normalized, nil
+}
+
+func validateSMBPathComponent(kind, value string) error {
+	if value == "." || value == ".." {
+		return fmt.Errorf("invalid smb path: %s %q is not allowed", kind, value)
+	}
+	if strings.ContainsRune(value, 0) {
+		return fmt.Errorf("invalid smb path: %s contains NUL", kind)
+	}
+	return nil
+}
+
+func mountedSMBNativePath(mountPoint string, segments []string) (string, error) {
+	root := filepath.Clean(mountPoint)
+	if !filepath.IsAbs(root) {
+		return "", fmt.Errorf("invalid smb mount point: %q", mountPoint)
+	}
+	candidate := root
+	for _, segment := range segments {
+		candidate = filepath.Join(candidate, filepath.FromSlash(segment))
+	}
+	rel, err := filepath.Rel(root, candidate)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", errors.New("invalid smb path: path escapes mounted share")
+	}
+	return candidate, nil
 }
 
 // findSMBMount attempts to find a mounted CIFS/SMB mount matching host/share.

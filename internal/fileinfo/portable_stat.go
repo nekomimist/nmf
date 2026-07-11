@@ -11,6 +11,7 @@ func StatPortable(p string) (os.FileInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer CloseVFS(vfs)
 	native := parsed.Native
 	if native == "" {
 		native = p

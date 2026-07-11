@@ -74,6 +74,28 @@ func TestReadDirPortableContextCanceled(t *testing.T) {
 	}
 }
 
+func TestArchiveVFSCloseRemovesTemporarySourceIdempotently(t *testing.T) {
+	temp, err := os.CreateTemp(t.TempDir(), "archive-source-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := temp.Name()
+	if err := temp.Close(); err != nil {
+		t.Fatal(err)
+	}
+	vfs := &ArchiveVFS{tempPath: path}
+
+	if err := vfs.Close(); err != nil {
+		t.Fatalf("first Close: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("temporary source still exists or stat failed: %v", err)
+	}
+	if err := vfs.Close(); err != nil {
+		t.Fatalf("second Close should be idempotent: %v", err)
+	}
+}
+
 func TestArchiveVFSShiftJISZipNames(t *testing.T) {
 	archivePath := writeShiftJISZip(t)
 	setArchiveOptionsForTest(t, ArchiveOptions{ZipNameEncoding: "shift_jis"})

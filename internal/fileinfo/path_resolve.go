@@ -22,13 +22,20 @@ func CanonicalDisplayPath(input string) (string, Parsed, error) {
 	if isUNC(trimmed) {
 		parsed := parseUNC(trimmed)
 		parsed.Raw = input
+		if err := normalizeParsedSMBPath(&parsed); err != nil {
+			return "", parsed, err
+		}
 		return parsed.Display, parsed, nil
 	}
 
 	if isSMBURL(trimmed) || strings.HasPrefix(trimmed, "//") {
 		host, share, segments, user, pass, domain := parseSMBURL(trimmed)
 		if host == "" || share == "" {
-			return "", Parsed{Raw: input, Scheme: SchemeSMB, Display: canonicalizeSMB(trimmed), Provider: "smb"}, fmt.Errorf("invalid smb path: %s", input)
+			return "", Parsed{Raw: input, Scheme: SchemeSMB, Provider: "smb"}, fmt.Errorf("invalid smb path")
+		}
+		segments, err := normalizeSMBPathComponents(host, share, segments)
+		if err != nil {
+			return "", Parsed{Raw: input, Scheme: SchemeSMB, Host: host, Share: share, Provider: "smb"}, err
 		}
 		display := smbDisplayPath(host, share, segments)
 		native := "/"
@@ -66,10 +73,11 @@ func ResolvePathDisplay(input string) (string, Parsed, error) {
 	}
 
 	normalized := NormalizeInputPath(trimmed)
-	_, parsed, err := ResolveRead(normalized)
+	vfs, parsed, err := ResolveRead(normalized)
 	if err != nil {
 		return "", parsed, err
 	}
+	defer CloseVFS(vfs)
 
 	if parsed.Scheme == SchemeSMB {
 		if parsed.Display != "" {

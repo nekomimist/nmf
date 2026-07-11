@@ -146,6 +146,14 @@ func (m *smbMountedShare) OpenFile(relPath string, flag int, perm os.FileMode) (
 	return &smbFileCloser{file: f}, nil
 }
 
+func (m *smbMountedShare) Mkdir(relPath string, perm os.FileMode) error {
+	p := normalizeSMBPath(relPath)
+	if p == "" {
+		return fmt.Errorf("invalid SMB directory path")
+	}
+	return m.share.Mkdir(p, perm)
+}
+
 func (m *smbMountedShare) MkdirAll(relPath string, perm os.FileMode) error {
 	p := normalizeSMBPath(relPath)
 	if p == "" {
@@ -267,8 +275,8 @@ func (s SMBFS) dialAndMountContext(ctx context.Context, relPath string) (*smb2.S
 	}
 
 	// Persist credentials after a successful mount if requested.
-	if creds.Persist && secretStore != nil {
-		_ = secretStore.Set(s.host, s.share, creds.Domain, creds.Username, creds.Password)
+	if store := currentSecretStore(); creds.Persist && store != nil {
+		_ = store.Set(s.host, s.share, creds.Domain, creds.Username, creds.Password)
 	}
 
 	return share, sess, conn, creds, nil
@@ -522,6 +530,28 @@ func (s SMBFS) MkdirAll(relPath string, perm os.FileMode) error {
 	}()
 
 	err = share.MkdirAll(p, perm)
+	if err != nil && isAuthError(err) {
+		ClearCachedCredentials(s.host, s.share)
+	}
+	return err
+}
+
+// Mkdir creates exactly one directory and fails when the target exists.
+func (s SMBFS) Mkdir(relPath string, perm os.FileMode) error {
+	p := normalizeSMBPath(relPath)
+	if p == "" {
+		return fmt.Errorf("invalid SMB directory path")
+	}
+
+	share, sess, conn, _, err := s.dialAndMount(relPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = closeSMBSession(nil, share, sess, conn)
+	}()
+
+	err = share.Mkdir(p, perm)
 	if err != nil && isAuthError(err) {
 		ClearCachedCredentials(s.host, s.share)
 	}

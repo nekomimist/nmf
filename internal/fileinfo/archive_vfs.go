@@ -535,10 +535,20 @@ func (a *ArchiveVFS) retryWithArchivePassword(ctx context.Context, retry bool) e
 }
 
 func (a *ArchiveVFS) Close() error {
-	if a == nil || a.tempPath == "" {
+	if a == nil {
 		return nil
 	}
-	return os.Remove(a.tempPath)
+	a.mu.Lock()
+	tempPath := a.tempPath
+	a.tempPath = ""
+	a.mu.Unlock()
+	if tempPath == "" {
+		return nil
+	}
+	if err := os.Remove(tempPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 func archiveLocalPath(displayPath string) (localPath, tempPath string, err error) {
@@ -546,6 +556,7 @@ func archiveLocalPath(displayPath string) (localPath, tempPath string, err error
 	if err != nil {
 		return "", "", err
 	}
+	defer CloseVFS(vfs)
 	if parsed.Scheme == SchemeArchive {
 		return "", "", fmt.Errorf("nested archive paths are not supported: %s", displayPath)
 	}

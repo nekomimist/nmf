@@ -18,14 +18,37 @@ type CredentialsProvider interface {
 	Get(host, share, relPath string) (Credentials, error)
 }
 
-var credProvider CredentialsProvider
-var secretStore secret.Store
+var (
+	credentialsMu sync.RWMutex
+	credProvider  CredentialsProvider
+	secretStore   secret.Store
+)
 
 // SetCredentialsProvider sets the global credentials provider used by SMBFS.
-func SetCredentialsProvider(p CredentialsProvider) { credProvider = p }
+func SetCredentialsProvider(p CredentialsProvider) {
+	credentialsMu.Lock()
+	credProvider = p
+	credentialsMu.Unlock()
+}
 
 // SetSecretStore sets the global secret store (OS keyring). If nil, only memory cache will be used.
-func SetSecretStore(s secret.Store) { secretStore = s }
+func SetSecretStore(s secret.Store) {
+	credentialsMu.Lock()
+	secretStore = s
+	credentialsMu.Unlock()
+}
+
+func currentCredentialsProvider() CredentialsProvider {
+	credentialsMu.RLock()
+	defer credentialsMu.RUnlock()
+	return credProvider
+}
+
+func currentSecretStore() secret.Store {
+	credentialsMu.RLock()
+	defer credentialsMu.RUnlock()
+	return secretStore
+}
 
 func getCredentials(host, share, rel string) Credentials {
 	// 1) Prefer in-memory cached credentials (e.g., seeded from URL)
@@ -33,8 +56,8 @@ func getCredentials(host, share, rel string) Credentials {
 		return c
 	}
 	// 2) Then try keyring (if available)
-	if secretStore != nil {
-		if d, u, p, found, _ := secretStore.Get(host, share); found {
+	if store := currentSecretStore(); store != nil {
+		if d, u, p, found, _ := store.Get(host, share); found {
 			c := Credentials{Domain: d, Username: u, Password: p}
 			// Seed memory cache for this session
 			PutCachedCredentials(host, share, c)
@@ -42,10 +65,11 @@ func getCredentials(host, share, rel string) Credentials {
 		}
 	}
 	// 3) Finally, ask provider (may prompt UI). The provider itself caches.
-	if credProvider == nil {
+	provider := currentCredentialsProvider()
+	if provider == nil {
 		return Credentials{}
 	}
-	c, err := credProvider.Get(host, share, rel)
+	c, err := provider.Get(host, share, rel)
 	if err != nil {
 		return Credentials{}
 	}
@@ -100,7 +124,7 @@ func (p *CachedCredentialsProvider) Put(host, share string, c Credentials) {
 
 // PutCachedCredentials seeds cached credentials if the global provider supports it.
 func PutCachedCredentials(host, share string, c Credentials) {
-	if cp, ok := credProvider.(*CachedCredentialsProvider); ok {
+	if cp, ok := currentCredentialsProvider().(*CachedCredentialsProvider); ok {
 		cp.Put(host, share, c)
 	}
 }
@@ -108,7 +132,7 @@ func PutCachedCredentials(host, share string, c Credentials) {
 // GetCachedCredentials returns cached credentials if present in memory.
 // It does not consult keyring or UI providers.
 func GetCachedCredentials(host, share string) (Credentials, bool) {
-	if cp, ok := credProvider.(*CachedCredentialsProvider); ok {
+	if cp, ok := currentCredentialsProvider().(*CachedCredentialsProvider); ok {
 		cp.mu.RLock()
 		defer cp.mu.RUnlock()
 		if c, ok := cp.cache[host+"\x00"+share]; ok && (c.Username != "" || c.Password != "" || c.Domain != "") {
@@ -120,7 +144,7 @@ func GetCachedCredentials(host, share string) (Credentials, bool) {
 
 // ClearCachedCredentials removes cached credentials for host/share.
 func ClearCachedCredentials(host, share string) {
-	if cp, ok := credProvider.(*CachedCredentialsProvider); ok {
+	if cp, ok := currentCredentialsProvider().(*CachedCredentialsProvider); ok {
 		cp.mu.Lock()
 		delete(cp.cache, host+"\x00"+share)
 		cp.mu.Unlock()

@@ -28,6 +28,7 @@ func ReadDirPortableContext(ctx context.Context, p string) ([]os.DirEntry, error
 	if err != nil {
 		return nil, err
 	}
+	defer CloseVFS(vfs)
 	native := parsed.Native
 	if native == "" {
 		native = p

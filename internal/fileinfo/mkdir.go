@@ -33,6 +33,7 @@ func CreateDirectoryPortable(parentPath, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer CloseVFS(vfs)
 	newNative := newParsed.Native
 	if newNative == "" {
 		newNative = newDisplay
@@ -43,7 +44,7 @@ func CreateDirectoryPortable(parentPath, name string) (string, error) {
 		if !ok {
 			return "", fmt.Errorf("direct SMB provider is unavailable: %s", newDisplay)
 		}
-		if err := ops.MkdirAll(newNative, 0755); err != nil {
+		if err := ops.Mkdir(newNative, 0755); err != nil {
 			return "", err
 		}
 		return newDisplay, nil

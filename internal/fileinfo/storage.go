@@ -23,6 +23,7 @@ func StatStoragePortable(p string) (StorageInfo, error) {
 	if err != nil {
 		return StorageInfo{}, err
 	}
+	defer CloseVFS(vfs)
 	if parsed.Scheme == SchemeArchive {
 		return StorageInfo{}, ErrStorageUnsupported
 	}

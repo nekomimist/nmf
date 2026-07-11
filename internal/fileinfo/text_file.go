@@ -35,10 +35,11 @@ func CreateTextFilePortable(parentPath, name, content string) (string, error) {
 		return "", err
 	}
 
-	_, newParsed, err := ResolveRead(newDisplay)
+	vfs, newParsed, err := ResolveRead(newDisplay)
 	if err != nil {
 		return "", err
 	}
+	defer CloseVFS(vfs)
 	if newParsed.Scheme == SchemeArchive {
 		return "", fmt.Errorf("archive paths are read-only: %s", newDisplay)
 	}
@@ -50,9 +51,24 @@ func CreateTextFilePortable(parentPath, name, content string) (string, error) {
 	if newNative == "" {
 		newNative = newDisplay
 	}
-	if err := os.WriteFile(newNative, []byte(content), 0644); err != nil {
+	out, err := os.OpenFile(newNative, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if err != nil {
 		return "", err
 	}
+	completed := false
+	defer func() {
+		if !completed {
+			_ = out.Close()
+			_ = os.Remove(newNative)
+		}
+	}()
+	if _, err := out.WriteString(content); err != nil {
+		return "", err
+	}
+	if err := out.Close(); err != nil {
+		return "", err
+	}
+	completed = true
 	if newParsed.Scheme == SchemeFile && !filepath.IsAbs(newDisplay) {
 		if abs, err := filepath.Abs(newDisplay); err == nil {
 			return abs, nil

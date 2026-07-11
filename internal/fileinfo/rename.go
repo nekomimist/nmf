@@ -44,15 +44,17 @@ func RenamePortable(oldPath, newName string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer CloseVFS(oldVFS)
 	if BaseName(oldDisplay) == name {
 		return oldDisplay, nil
 	}
 
 	newDisplay := JoinPath(ParentPath(oldDisplay), name)
-	_, newParsed, err := ResolveRead(newDisplay)
+	newVFS, newParsed, err := ResolveRead(newDisplay)
 	if err != nil {
 		return "", err
 	}
+	defer CloseVFS(newVFS)
 
 	oldNative := oldParsed.Native
 	if oldNative == "" {

@@ -1319,6 +1319,7 @@ func resolveExecutionPath(p string) (executionPath, error) {
 	}
 
 	if parsed.Scheme == fileinfo.SchemeArchive {
+		_ = fileinfo.CloseVFS(vfs)
 		if native == "" {
 			native = "."
 		}
@@ -1333,6 +1334,7 @@ func resolveExecutionPath(p string) (executionPath, error) {
 	if parsed.Scheme == fileinfo.SchemeSMB && parsed.Provider != "local" {
 		smb, ok := vfs.(fileinfo.SMBPathOps)
 		if !ok {
+			_ = fileinfo.CloseVFS(vfs)
 			return executionPath{}, fmt.Errorf("direct SMB provider is unavailable on this platform: %s", p)
 		}
 		opener, _ := vfs.(fileinfo.SMBSessionOpener)
@@ -1353,6 +1355,7 @@ func resolveExecutionPath(p string) (executionPath, error) {
 		}, nil
 	}
 
+	_ = fileinfo.CloseVFS(vfs)
 	return executionPath{
 		raw:     p,
 		path:    native,

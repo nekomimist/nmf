@@ -10,10 +10,11 @@ import (
 )
 
 func trashPath(ctx context.Context, displayPath string) error {
-	_, parsed, err := ResolveRead(displayPath)
+	vfs, parsed, err := ResolveRead(displayPath)
 	if err != nil {
 		return err
 	}
+	defer CloseVFS(vfs)
 	if parsed.Scheme == SchemeSMB && parsed.Provider != "local" {
 		return fmt.Errorf("%w: direct SMB paths cannot be trashed", ErrTrashUnsupported)
 	}

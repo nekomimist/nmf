@@ -138,13 +138,5 @@ func contentEqual(leftPath, rightPath string) (bool, error) {
 }
 
 func openRead(p string) (io.ReadCloser, error) {
-	vfs, parsed, err := fileinfo.ResolveRead(p)
-	if err != nil {
-		return nil, err
-	}
-	native := parsed.Native
-	if native == "" {
-		native = p
-	}
-	return vfs.Open(native)
+	return fileinfo.OpenPortable(p)
 }
