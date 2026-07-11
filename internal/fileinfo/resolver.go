@@ -190,6 +190,9 @@ func NormalizeInputPath(input string) string {
 
 // CommandArgumentPath converts a display path to the path form passed to external commands.
 func CommandArgumentPath(displayPath string) string {
+	if IsArchivePath(displayPath) {
+		return NormalizeInputPath(displayPath)
+	}
 	vfs, parsed, err := ResolveRead(displayPath)
 	if err != nil {
 		return NormalizeInputPath(displayPath)

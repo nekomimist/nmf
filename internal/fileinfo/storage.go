@@ -19,6 +19,9 @@ type storageProvider interface {
 // StatStoragePortable resolves the display path and returns storage capacity for
 // the backing file system when the provider can report it.
 func StatStoragePortable(p string) (StorageInfo, error) {
+	if IsArchivePath(p) {
+		return StorageInfo{}, ErrStorageUnsupported
+	}
 	vfs, parsed, err := ResolveRead(p)
 	if err != nil {
 		return StorageInfo{}, err

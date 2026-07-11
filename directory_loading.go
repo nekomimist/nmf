@@ -514,6 +514,9 @@ func (fm *FileManager) pollIntervalForPath(p string) time.Duration {
 }
 
 func (fm *FileManager) shouldWatchPath(p string) bool {
+	if fileinfo.IsArchivePath(p) {
+		return false
+	}
 	vfs, _, err := fileinfo.ResolveRead(p)
 	if err != nil {
 		return false

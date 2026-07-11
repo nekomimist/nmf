@@ -1,6 +1,10 @@
 package fileinfo
 
-import "testing"
+import (
+	"errors"
+	"path/filepath"
+	"testing"
+)
 
 func TestStorageInfoFromBlocks(t *testing.T) {
 	got := storageInfoFromBlocks(10, 4, 1024)
@@ -12,6 +16,13 @@ func TestStorageInfoFromBlocks(t *testing.T) {
 	}
 	if got.Used != 6144 {
 		t.Fatalf("Used got %d, want 6144", got.Used)
+	}
+}
+
+func TestStatStoragePortableArchivePathDoesNotOpenSource(t *testing.T) {
+	p := ArchiveRootPath(filepath.Join(t.TempDir(), "missing.zip"))
+	if _, err := StatStoragePortable(p); !errors.Is(err, ErrStorageUnsupported) {
+		t.Fatalf("StatStoragePortable(%q) error = %v, want ErrStorageUnsupported", p, err)
 	}
 }
 

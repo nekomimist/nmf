@@ -136,6 +136,11 @@ Watcher:
 - Read failures during snapshot refresh or polling are skipped for that cycle.
 - Failing fswatcher sources fall back to polling for that path source.
 - Full change channel drops update for that cycle (best-effort behavior).
+- Watch source path resolution and backend startup run outside the hub-wide
+  mutex. Initialization is coordinated per display path, so one slow path does
+  not block subscriptions or unsubscriptions for unrelated windows.
+- Snapshot delivery clones once per subscriber; ownership transfers to that
+  subscriber's watcher when received, avoiding a second baseline map clone.
 
 ## Regression Checklist
 

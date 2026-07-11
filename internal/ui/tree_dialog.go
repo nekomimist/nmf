@@ -17,24 +17,27 @@ import (
 
 // DirectoryTreeDialog represents a directory tree navigation dialog
 type DirectoryTreeDialog struct {
-	tree         *widget.Tree
-	currentRoot  string                                   // Current root path: "/" or parent directory
-	selectedPath string                                   // Currently selected directory path
-	parentPath   string                                   // Parent directory of current FileManager path
-	rootMode     bool                                     // true = filesystem root "/", false = parent directory
-	debugPrint   func(format string, args ...interface{}) // Debug function
-	keyManager   *keymanager.KeyManager                   // Keyboard input manager
-	kmToken      keymanager.HandlerToken                  // Token of the pushed key handler
-	dialog       dialog.Dialog                            // Reference to the actual dialog
-	callback     func(string)                             // Callback function for selection
-	parent       fyne.Window                              // Parent window for focus management
-	closed       bool                                     // Prevent double-close/pop
-	sink         *KeySink                                 // Key capturing wrapper
-	radioGroup   *widget.RadioGroup                       // Root mode selection radio group
-	children     map[string][]string
-	loading      map[string]bool
-	loadChildren func(string) ([]string, error)
-	loadApplyMu  sync.Mutex
+	tree           *widget.Tree
+	currentRoot    string                                   // Current root path: "/" or parent directory
+	selectedPath   string                                   // Currently selected directory path
+	parentPath     string                                   // Parent directory of current FileManager path
+	rootMode       bool                                     // true = filesystem root "/", false = parent directory
+	debugPrint     func(format string, args ...interface{}) // Debug function
+	keyManager     *keymanager.KeyManager                   // Keyboard input manager
+	kmToken        keymanager.HandlerToken                  // Token of the pushed key handler
+	dialog         dialog.Dialog                            // Reference to the actual dialog
+	callback       func(string)                             // Callback function for selection
+	parent         fyne.Window                              // Parent window for focus management
+	closed         bool                                     // Prevent double-close/pop
+	sink           *KeySink                                 // Key capturing wrapper
+	radioGroup     *widget.RadioGroup                       // Root mode selection radio group
+	children       map[string][]string
+	branches       map[string]bool
+	loading        map[string]bool
+	loadChildren   func(string) ([]string, error)
+	classifyBranch func(string) (bool, bool)
+	loadApplyMu    sync.Mutex
+	loadUIApplyMu  sync.Mutex
 }
 
 // NewDirectoryTreeDialog creates a new directory tree dialog
@@ -42,14 +45,16 @@ func NewDirectoryTreeDialog(currentPath string, keyManager *keymanager.KeyManage
 	parentPath := GetPlatformParent(currentPath)
 
 	dialog := &DirectoryTreeDialog{
-		selectedPath: currentPath,
-		parentPath:   parentPath,
-		rootMode:     true, // Start with filesystem root
-		currentRoot:  GetSystemRoot(),
-		debugPrint:   debugPrint,
-		keyManager:   keyManager,
-		children:     make(map[string][]string),
-		loading:      make(map[string]bool),
+		selectedPath:   currentPath,
+		parentPath:     parentPath,
+		rootMode:       true, // Start with filesystem root
+		currentRoot:    GetSystemRoot(),
+		debugPrint:     debugPrint,
+		keyManager:     keyManager,
+		children:       make(map[string][]string),
+		branches:       make(map[string]bool),
+		loading:        make(map[string]bool),
+		classifyBranch: IsPlatformDirectory,
 	}
 	dialog.loadChildren = dialog.readDirectoryChildren
 
@@ -112,21 +117,38 @@ func (dtd *DirectoryTreeDialog) createTree() {
 
 // getDirectoryChildren returns child directories for lazy loading
 func (dtd *DirectoryTreeDialog) getDirectoryChildren(path string) []string {
+	dtd.loadApplyMu.Lock()
 	if children, ok := dtd.children[path]; ok {
+		dtd.loadApplyMu.Unlock()
 		return append([]string(nil), children...)
 	}
 	if dtd.loading[path] || dtd.closed {
+		dtd.loadApplyMu.Unlock()
 		return nil
 	}
 	dtd.loading[path] = true
 	loader := dtd.loadChildren
+	classifier := dtd.classifyBranch
+	dtd.loadApplyMu.Unlock()
 	go func() {
 		children, err := loader(path)
-		dtd.loadApplyMu.Lock()
-		defer dtd.loadApplyMu.Unlock()
-		fyne.DoAndWait(func() {
+		branches := make(map[string]bool, len(children))
+		if err == nil {
+			for _, child := range children {
+				isBranch := true
+				if classified, handled := classifier(child); handled {
+					isBranch = classified
+				}
+				branches[child] = isBranch
+			}
+		}
+		fyne.Do(func() {
+			dtd.loadUIApplyMu.Lock()
+			defer dtd.loadUIApplyMu.Unlock()
+			dtd.loadApplyMu.Lock()
 			delete(dtd.loading, path)
 			if dtd.closed {
+				dtd.loadApplyMu.Unlock()
 				return
 			}
 			if err != nil {
@@ -134,9 +156,14 @@ func (dtd *DirectoryTreeDialog) getDirectoryChildren(path string) []string {
 				dtd.children[path] = nil
 			} else {
 				dtd.children[path] = children
+				for child, isBranch := range branches {
+					dtd.branches[child] = isBranch
+				}
 			}
-			if dtd.tree != nil {
-				dtd.tree.Refresh()
+			tree := dtd.tree
+			dtd.loadApplyMu.Unlock()
+			if tree != nil {
+				tree.Refresh()
 			}
 		})
 	}()
@@ -172,7 +199,18 @@ func (dtd *DirectoryTreeDialog) readDirectoryChildren(path string) ([]string, er
 
 // isDirectory checks if a path is a directory
 func (dtd *DirectoryTreeDialog) isDirectory(path string) bool {
-	return path != ""
+	if path == "" {
+		return false
+	}
+	if IsVirtualRoot(path) {
+		return true
+	}
+	dtd.loadApplyMu.Lock()
+	defer dtd.loadApplyMu.Unlock()
+	if isBranch, known := dtd.branches[path]; known {
+		return isBranch
+	}
+	return true
 }
 
 // getDisplayName returns the display name for a directory path
@@ -439,10 +477,13 @@ func (dtd *DirectoryTreeDialog) SelectCurrentNode() {
 
 // AcceptSelection accepts the current selection and closes the dialog
 func (dtd *DirectoryTreeDialog) AcceptSelection() {
+	dtd.loadApplyMu.Lock()
 	if dtd.closed {
+		dtd.loadApplyMu.Unlock()
 		return
 	}
 	dtd.closed = true
+	dtd.loadApplyMu.Unlock()
 
 	selectedPath := dtd.selectedPath
 	deferDialogClose(dtd.keyManager, "tree.accept", func() {
@@ -459,10 +500,13 @@ func (dtd *DirectoryTreeDialog) AcceptSelection() {
 
 // CancelDialog cancels the dialog without selection
 func (dtd *DirectoryTreeDialog) CancelDialog() {
+	dtd.loadApplyMu.Lock()
 	if dtd.closed {
+		dtd.loadApplyMu.Unlock()
 		return
 	}
 	dtd.closed = true
+	dtd.loadApplyMu.Unlock()
 
 	deferDialogClose(dtd.keyManager, "tree.cancel", func() {
 		dtd.keyManager.RemoveHandler(dtd.kmToken)

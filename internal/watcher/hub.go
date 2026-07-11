@@ -63,12 +63,17 @@ type watchPathFunc func(path string) (string, bool)
 type WatchHub struct {
 	mu             sync.Mutex
 	sources        map[string]*watchSource
+	initializing   map[string]*watchSourceInit
 	nextSubscriber uint64
 	newBackend     backendFactoryFunc
 	listSnapshot   listSnapshotFunc
 	watchPath      watchPathFunc
 	debounce       time.Duration
 	debugPrint     func(format string, args ...interface{})
+}
+
+type watchSourceInit struct {
+	ready chan struct{}
 }
 
 // NewWatchHub creates an application-wide shared watcher hub.
@@ -85,6 +90,7 @@ func newWatchHub(debugPrint func(format string, args ...interface{}), newBackend
 	}
 	return &WatchHub{
 		sources:      make(map[string]*watchSource),
+		initializing: make(map[string]*watchSourceInit),
 		newBackend:   newBackend,
 		listSnapshot: listSnapshot,
 		watchPath:    watchPath,
@@ -100,20 +106,43 @@ func (h *WatchHub) Subscribe(path string, interval time.Duration) *Subscription 
 		interval = 2 * time.Second
 	}
 
-	h.mu.Lock()
-	src := h.sources[path]
-	if src == nil {
+	for {
+		h.mu.Lock()
+		if src := h.sources[path]; src != nil {
+			subscription := h.subscribeLocked(path, src)
+			h.mu.Unlock()
+			return subscription
+		}
+		if pending := h.initializing[path]; pending != nil {
+			ready := pending.ready
+			h.mu.Unlock()
+			<-ready
+			continue
+		}
+		pending := &watchSourceInit{ready: make(chan struct{})}
+		h.initializing[path] = pending
+		h.mu.Unlock()
+
 		watchPath, useFSWatcher := h.watchPath(path)
-		src = newWatchSource(path, watchPath, interval, useFSWatcher, h)
-		h.sources[path] = src
+		src := newWatchSource(path, watchPath, interval, useFSWatcher, h)
 		src.start()
+
+		h.mu.Lock()
+		delete(h.initializing, path)
+		h.sources[path] = src
+		close(pending.ready)
+		subscription := h.subscribeLocked(path, src)
+		h.mu.Unlock()
 		h.debugPrint("WatchHub: source start path=%s fallback_interval=%s", path, interval)
+		return subscription
 	}
+}
+
+func (h *WatchHub) subscribeLocked(path string, src *watchSource) *Subscription {
 	h.nextSubscriber++
 	id := h.nextSubscriber
 	subscriber := newWatchSubscriber(10)
 	src.addSubscriber(id, subscriber)
-	h.mu.Unlock()
 
 	var once sync.Once
 	return &Subscription{

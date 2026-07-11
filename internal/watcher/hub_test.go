@@ -114,6 +114,47 @@ func TestWatchHubSharesSourceForSamePath(t *testing.T) {
 	waitFor(t, time.Second, backends[0].isClosed)
 }
 
+func TestWatchHubSlowPathInitializationDoesNotBlockOtherPaths(t *testing.T) {
+	slowStarted := make(chan struct{})
+	releaseSlow := make(chan struct{})
+	hub := newWatchHub(dummyDebug, nil, func(string) (Snapshot, error) {
+		return Snapshot{}, nil
+	}, func(path string) (string, bool) {
+		if path == "/slow" {
+			close(slowStarted)
+			<-releaseSlow
+		}
+		return "", false
+	}, time.Millisecond)
+
+	slowDone := make(chan *Subscription, 1)
+	go func() {
+		slowDone <- hub.Subscribe("/slow", time.Second)
+	}()
+	select {
+	case <-slowStarted:
+	case <-time.After(time.Second):
+		t.Fatal("slow path initialization did not start")
+	}
+
+	fastDone := make(chan *Subscription, 1)
+	go func() {
+		fastDone <- hub.Subscribe("/fast", time.Second)
+	}()
+	var fast *Subscription
+	select {
+	case fast = <-fastDone:
+	case <-time.After(100 * time.Millisecond):
+		close(releaseSlow)
+		t.Fatal("unrelated subscription blocked behind slow path initialization")
+	}
+	fast.Unsubscribe()
+
+	close(releaseSlow)
+	slow := <-slowDone
+	slow.Unsubscribe()
+}
+
 func TestWatchSubscriberRejectsStaleBroadcastAfterUnsubscribe(t *testing.T) {
 	hub := newWatchHub(dummyDebug, nil, nil, nil, time.Millisecond)
 	source := newWatchSource("/tmp/stale", "", time.Second, false, hub)

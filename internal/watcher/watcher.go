@@ -220,7 +220,10 @@ func (dw *DirectoryWatcher) advanceSnapshot(runID uint64, files Snapshot) {
 	if !dw.running || dw.runID != runID {
 		return
 	}
-	dw.previousFiles = cloneSnapshot(files)
+	// Each subscriber receives its own cloned snapshot from WatchHub. After the
+	// watcher goroutine receives it, ownership transfers here and no second copy
+	// is needed.
+	dw.previousFiles = files
 }
 
 // detectChanges compares current and previous states to find differences
