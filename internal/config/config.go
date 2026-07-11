@@ -689,7 +689,7 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) error {
 		defaultConfig.UI.Viewer.MaxHeight = *fileConfig.UI.Viewer.MaxHeight
 	}
 	if fileConfig.UI.Viewer.DefaultPane != nil {
-		if pane := normalizeViewerDefaultPane(*fileConfig.UI.Viewer.DefaultPane); pane != "" {
+		if pane := NormalizeViewerDefaultPane(*fileConfig.UI.Viewer.DefaultPane); pane != "" {
 			defaultConfig.UI.Viewer.DefaultPane = pane
 		}
 	}
@@ -752,10 +752,10 @@ func validateRawConfig(cfg *rawConfig) error {
 	if cfg.Debug.MaxLogFiles != nil && *cfg.Debug.MaxLogFiles <= 0 {
 		return fmt.Errorf("debug.maxLogFiles must be positive")
 	}
-	if cfg.UI.Sort.SortBy != nil && !configValueAllowed(*cfg.UI.Sort.SortBy, "name", "size", "modified", "extension") {
+	if cfg.UI.Sort.SortBy != nil && !IsValidSortBy(*cfg.UI.Sort.SortBy) {
 		return fmt.Errorf("ui.sort.sortBy must be name, size, modified, or extension")
 	}
-	if cfg.UI.Sort.SortOrder != nil && !configValueAllowed(*cfg.UI.Sort.SortOrder, "asc", "desc") {
+	if cfg.UI.Sort.SortOrder != nil && !IsValidSortOrder(*cfg.UI.Sort.SortOrder) {
 		return fmt.Errorf("ui.sort.sortOrder must be asc or desc")
 	}
 	if cfg.UI.ItemSpacing != nil && *cfg.UI.ItemSpacing < 0 {
@@ -767,13 +767,13 @@ func validateRawConfig(cfg *rawConfig) error {
 	if cfg.UI.Viewer.MaxHeight != nil && *cfg.UI.Viewer.MaxHeight < 0 {
 		return fmt.Errorf("ui.viewer.maxHeight must be zero or positive")
 	}
-	if cfg.UI.Viewer.DefaultPane != nil && normalizeViewerDefaultPane(*cfg.UI.Viewer.DefaultPane) == "" {
+	if cfg.UI.Viewer.DefaultPane != nil && NormalizeViewerDefaultPane(*cfg.UI.Viewer.DefaultPane) == "" {
 		return fmt.Errorf("ui.viewer.defaultPane must be auto, text, markdown, or hex")
 	}
 	if cfg.UI.Archive.ZipNameEncoding != nil && strings.TrimSpace(*cfg.UI.Archive.ZipNameEncoding) == "" {
 		return fmt.Errorf("ui.archive.zipNameEncoding must not be empty")
 	}
-	if cfg.UI.CursorStyle.Type != nil && !configValueAllowed(*cfg.UI.CursorStyle.Type, "underline", "border", "background", "icon", "font") {
+	if cfg.UI.CursorStyle.Type != nil && !IsValidCursorStyleType(*cfg.UI.CursorStyle.Type) {
 		return fmt.Errorf("ui.cursorStyle.type must be underline, border, background, icon, or font")
 	}
 	if cfg.UI.CursorStyle.Thickness != nil && *cfg.UI.CursorStyle.Thickness < 0 {
@@ -791,16 +791,34 @@ func validateRawConfig(cfg *rawConfig) error {
 	return nil
 }
 
-func configValueAllowed(value string, allowed ...string) bool {
-	for _, candidate := range allowed {
-		if value == candidate {
-			return true
-		}
+// IsValidSortBy reports whether value is a supported sort field.
+func IsValidSortBy(value string) bool {
+	switch value {
+	case "name", "size", "modified", "extension":
+		return true
+	default:
+		return false
 	}
-	return false
 }
 
-func normalizeViewerDefaultPane(pane string) string {
+// IsValidSortOrder reports whether value is a supported sort direction.
+func IsValidSortOrder(value string) bool {
+	return value == "asc" || value == "desc"
+}
+
+// IsValidCursorStyleType reports whether value is a supported cursor style.
+func IsValidCursorStyleType(value string) bool {
+	switch value {
+	case "underline", "border", "background", "icon", "font":
+		return true
+	default:
+		return false
+	}
+}
+
+// NormalizeViewerDefaultPane returns the normalized pane name, or an empty
+// string when pane is unsupported.
+func NormalizeViewerDefaultPane(pane string) string {
 	switch strings.ToLower(strings.TrimSpace(pane)) {
 	case "auto", "text", "markdown", "hex":
 		return strings.ToLower(strings.TrimSpace(pane))

@@ -22,6 +22,17 @@
    input-owner遷移を統一する。最後に設定の実装契約とroot/Windowsを含むtest gate、
    CIを整備する。
 
+## Fable 5 safety review follow-up
+- [x] application promptをwindow-owned contextでcancelし、Fyne shutdown時にも
+  semaphoreを保持したままUI callbackを待たないようにする。
+- [x] direct SMB not-found、既存destination directory、archive password実データ検証を
+  file operationの共通契約として修正する。
+- [x] shell/drop/navigation-history callbackをwindow lifecycleへ統合する。
+- [x] remote archive分類の短絡、WatchHubのpath別初期化、snapshot clone削減、
+  Treeのbackground branch判定を実装する。
+- [x] config/Starlark enum validatorを関数APIで共有し、BSD renameはno-clobberを
+  保証できないplatformでは明示的unsupportedとする。
+
 ## macOS対応の判定
 - 現時点の正式な対象はWindowsとLinux。Darwin向けcore cross-compileは通るが、
   macOSのGUI・入力・デスクトップ統合を確認した実績はない。

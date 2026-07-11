@@ -577,6 +577,21 @@ func TestManagerLoadRejectsInvalidValues(t *testing.T) {
 	}
 }
 
+func TestSharedConfigValueValidators(t *testing.T) {
+	if !IsValidSortBy("modified") || IsValidSortBy("random") {
+		t.Fatal("sort field validator returned an unexpected result")
+	}
+	if !IsValidSortOrder("desc") || IsValidSortOrder("sideways") {
+		t.Fatal("sort order validator returned an unexpected result")
+	}
+	if !IsValidCursorStyleType("border") || IsValidCursorStyleType("blink") {
+		t.Fatal("cursor style validator returned an unexpected result")
+	}
+	if got := NormalizeViewerDefaultPane(" Markdown "); got != "markdown" {
+		t.Fatalf("NormalizeViewerDefaultPane() = %q, want markdown", got)
+	}
+}
+
 func TestManagerLoadAcceptsLegacyRuntimeStateFields(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	data := `{

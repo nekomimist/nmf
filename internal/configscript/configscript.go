@@ -546,22 +546,13 @@ func (rt *Runtime) builtinViewer(thread *starlark.Thread, fn *starlark.Builtin, 
 	if maxWidth < 0 || maxHeight < 0 {
 		return nil, fmt.Errorf("viewer max_width and max_height must be zero or positive")
 	}
-	if defaultPane = normalizeViewerDefaultPane(defaultPane); defaultPane == "" {
+	if defaultPane = config.NormalizeViewerDefaultPane(defaultPane); defaultPane == "" {
 		return nil, fmt.Errorf("viewer default_pane must be one of auto, text, markdown, or hex")
 	}
 	rt.cfg.UI.Viewer.MaxWidth = maxWidth
 	rt.cfg.UI.Viewer.MaxHeight = maxHeight
 	rt.cfg.UI.Viewer.DefaultPane = defaultPane
 	return starlark.None, nil
-}
-
-func normalizeViewerDefaultPane(pane string) string {
-	switch strings.ToLower(strings.TrimSpace(pane)) {
-	case "auto", "text", "markdown", "hex":
-		return strings.ToLower(strings.TrimSpace(pane))
-	default:
-		return ""
-	}
 }
 
 func (rt *Runtime) builtinArchive(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -626,7 +617,7 @@ func (rt *Runtime) builtinCursorStyle(thread *starlark.Thread, fn *starlark.Buil
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "type?", &styleType, "thickness?", &thickness); err != nil {
 		return nil, err
 	}
-	if !isOneOf(styleType, "underline", "border", "background", "icon", "font") {
+	if !config.IsValidCursorStyleType(styleType) {
 		return nil, fmt.Errorf("cursor style type must be underline, border, background, icon, or font")
 	}
 	if thickness < 0 {
@@ -1664,10 +1655,10 @@ func formatStarlarkError(err error) string {
 }
 
 func validateSortConfig(sortBy string, sortOrder string, directoriesFirst bool) (config.SortConfig, error) {
-	if !isOneOf(sortBy, "name", "size", "modified", "extension") {
+	if !config.IsValidSortBy(sortBy) {
 		return config.SortConfig{}, fmt.Errorf("sort by must be one of name, size, modified, or extension")
 	}
-	if !isOneOf(sortOrder, "asc", "desc") {
+	if !config.IsValidSortOrder(sortOrder) {
 		return config.SortConfig{}, fmt.Errorf("sort order must be asc or desc")
 	}
 	return config.SortConfig{
@@ -1675,13 +1666,4 @@ func validateSortConfig(sortBy string, sortOrder string, directoriesFirst bool) 
 		SortOrder:        sortOrder,
 		DirectoriesFirst: directoriesFirst,
 	}, nil
-}
-
-func isOneOf(value string, allowed ...string) bool {
-	for _, candidate := range allowed {
-		if value == candidate {
-			return true
-		}
-	}
-	return false
 }
