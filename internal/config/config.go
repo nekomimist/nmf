@@ -1,8 +1,10 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -102,15 +104,24 @@ type rawArchiveConfig struct {
 }
 
 type rawCursorMemoryConfig struct {
-	MaxEntries *int `json:"maxEntries"`
+	MaxEntries *int                 `json:"maxEntries"`
+	Entries    map[string]string    `json:"entries"`
+	LastUsed   map[string]time.Time `json:"lastUsed"`
 }
 
 type rawNavigationHistoryConfig struct {
-	MaxEntries *int `json:"maxEntries"`
+	MaxEntries *int                 `json:"maxEntries"`
+	Entries    []string             `json:"entries"`
+	LastUsed   map[string]time.Time `json:"lastUsed"`
+	UseCount   map[string]int       `json:"useCount"`
+	Pinned     []string             `json:"pinned"`
 }
 
 type rawFileFilterConfig struct {
-	MaxEntries *int `json:"maxEntries"`
+	MaxEntries *int          `json:"maxEntries"`
+	Entries    []FilterEntry `json:"entries"`
+	Current    *FilterEntry  `json:"current"`
+	Enabled    *bool         `json:"enabled"`
 }
 
 type rawDirectoryJumpsConfig struct {
@@ -185,6 +196,13 @@ func (c *ThemeColorConfig) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("theme color must be a name, RGBA array, or object: %w", err)
 	}
 	var parsed ThemeColorConfig
+	for key := range raw {
+		switch key {
+		case "value", "dark", "light":
+		default:
+			return fmt.Errorf("unknown theme color field %q", key)
+		}
+	}
 	if data, ok := raw["value"]; ok && string(data) != "null" {
 		var value ThemeColorValue
 		if err := json.Unmarshal(data, &value); err != nil {
@@ -392,6 +410,9 @@ type Manager struct {
 
 // NewManager creates a new configuration manager
 func NewManager(debugPrint func(format string, args ...interface{})) *Manager {
+	if debugPrint == nil {
+		debugPrint = func(string, ...interface{}) {}
+	}
 	return &Manager{
 		configPath: getConfigPath(),
 		debugPrint: debugPrint,
@@ -410,19 +431,40 @@ func (m *Manager) Load() (*Config, error) {
 
 	data, err := os.ReadFile(m.configPath)
 	if err != nil {
-		m.debugPrint("Config: Config file not found, using defaults: %v", err)
-		return config, nil
+		if os.IsNotExist(err) {
+			m.debugPrint("Config: Config file not found, using defaults: %v", err)
+			return config, nil
+		}
+		return nil, fmt.Errorf("reading config file: %w", err)
 	}
 
 	// Parse config file into a temporary config
 	var fileConfig rawConfig
-	if err := json.Unmarshal(data, &fileConfig); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&fileConfig); err != nil {
+		return nil, fmt.Errorf("error parsing config file: %w", err)
+	}
+	if err := ensureJSONEOF(decoder); err != nil {
 		return nil, fmt.Errorf("error parsing config file: %w", err)
 	}
 
 	// Merge file config with defaults
-	mergeConfigs(config, &fileConfig)
+	if err := mergeConfigs(config, &fileConfig); err != nil {
+		return nil, fmt.Errorf("invalid config file: %w", err)
+	}
 	return config, nil
+}
+
+func ensureJSONEOF(decoder *json.Decoder) error {
+	var extra interface{}
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("multiple JSON values are not allowed")
+		}
+		return err
+	}
+	return nil
 }
 
 func cloneThemeColorConfig(src ThemeColorConfig) ThemeColorConfig {
@@ -559,7 +601,10 @@ func getConfigPath() string {
 }
 
 // mergeConfigs merges file config values into default config
-func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) {
+func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) error {
+	if err := validateRawConfig(fileConfig); err != nil {
+		return err
+	}
 	// Merge Window config
 	if fileConfig.Window.Width != nil {
 		defaultConfig.Window.Width = *fileConfig.Window.Width
@@ -688,6 +733,71 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) {
 	if fileConfig.UI.ExternalCommands != nil {
 		defaultConfig.UI.ExternalCommands = fileConfig.UI.ExternalCommands
 	}
+	return nil
+}
+
+func validateRawConfig(cfg *rawConfig) error {
+	if cfg == nil {
+		return nil
+	}
+	if cfg.Window.Width != nil && *cfg.Window.Width <= 0 {
+		return fmt.Errorf("window.width must be positive")
+	}
+	if cfg.Window.Height != nil && *cfg.Window.Height <= 0 {
+		return fmt.Errorf("window.height must be positive")
+	}
+	if cfg.Theme.FontSize != nil && *cfg.Theme.FontSize < 0 {
+		return fmt.Errorf("theme.fontSize must be zero or positive")
+	}
+	if cfg.Debug.MaxLogFiles != nil && *cfg.Debug.MaxLogFiles <= 0 {
+		return fmt.Errorf("debug.maxLogFiles must be positive")
+	}
+	if cfg.UI.Sort.SortBy != nil && !configValueAllowed(*cfg.UI.Sort.SortBy, "name", "size", "modified", "extension") {
+		return fmt.Errorf("ui.sort.sortBy must be name, size, modified, or extension")
+	}
+	if cfg.UI.Sort.SortOrder != nil && !configValueAllowed(*cfg.UI.Sort.SortOrder, "asc", "desc") {
+		return fmt.Errorf("ui.sort.sortOrder must be asc or desc")
+	}
+	if cfg.UI.ItemSpacing != nil && *cfg.UI.ItemSpacing < 0 {
+		return fmt.Errorf("ui.itemSpacing must be zero or positive")
+	}
+	if cfg.UI.Viewer.MaxWidth != nil && *cfg.UI.Viewer.MaxWidth < 0 {
+		return fmt.Errorf("ui.viewer.maxWidth must be zero or positive")
+	}
+	if cfg.UI.Viewer.MaxHeight != nil && *cfg.UI.Viewer.MaxHeight < 0 {
+		return fmt.Errorf("ui.viewer.maxHeight must be zero or positive")
+	}
+	if cfg.UI.Viewer.DefaultPane != nil && normalizeViewerDefaultPane(*cfg.UI.Viewer.DefaultPane) == "" {
+		return fmt.Errorf("ui.viewer.defaultPane must be auto, text, markdown, or hex")
+	}
+	if cfg.UI.Archive.ZipNameEncoding != nil && strings.TrimSpace(*cfg.UI.Archive.ZipNameEncoding) == "" {
+		return fmt.Errorf("ui.archive.zipNameEncoding must not be empty")
+	}
+	if cfg.UI.CursorStyle.Type != nil && !configValueAllowed(*cfg.UI.CursorStyle.Type, "underline", "border", "background", "icon", "font") {
+		return fmt.Errorf("ui.cursorStyle.type must be underline, border, background, icon, or font")
+	}
+	if cfg.UI.CursorStyle.Thickness != nil && *cfg.UI.CursorStyle.Thickness < 0 {
+		return fmt.Errorf("ui.cursorStyle.thickness must be zero or positive")
+	}
+	if cfg.UI.CursorMemory.MaxEntries != nil && *cfg.UI.CursorMemory.MaxEntries <= 0 {
+		return fmt.Errorf("ui.cursorMemory.maxEntries must be positive")
+	}
+	if cfg.UI.NavigationHistory.MaxEntries != nil && *cfg.UI.NavigationHistory.MaxEntries <= 0 {
+		return fmt.Errorf("ui.navigationHistory.maxEntries must be positive")
+	}
+	if cfg.UI.FileFilter.MaxEntries != nil && *cfg.UI.FileFilter.MaxEntries <= 0 {
+		return fmt.Errorf("ui.fileFilter.maxEntries must be positive")
+	}
+	return nil
+}
+
+func configValueAllowed(value string, allowed ...string) bool {
+	for _, candidate := range allowed {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeViewerDefaultPane(pane string) string {

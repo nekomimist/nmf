@@ -13,6 +13,14 @@ writes to it. Frequently-changing runtime state (remembered cursor positions,
 navigation history, file filter history, and the last-applied sort) instead
 lives in a separate `state.json`; see [Runtime State](#runtime-state) below.
 
+Unknown object fields and invalid bounded/enum values are startup errors rather
+than silently ignored settings. This includes non-positive window sizes and
+entry limits, negative spacing/viewer sizes/cursor thickness, and unsupported
+sort, viewer-pane, or cursor-style values. Known legacy runtime-state fields
+remain accepted until their one-time migration to `state.json` completes.
+Only a missing `config.json` selects defaults; permission and other read errors
+are reported.
+
 After `config.json` is loaded, NMF also loads an optional `init.star` from the
 same directory. Starlark settings overlay JSON for the current run and can define
 custom commands for key bindings. See `docs/starlark-configuration.md`.

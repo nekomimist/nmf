@@ -174,14 +174,14 @@ func TestMergeConfigsMergesMaxEntriesForTrimmedSections(t *testing.T) {
 	}
 }
 
-func TestMergeConfigsIgnoresNegativeViewerMaxSize(t *testing.T) {
+func TestMergeConfigsRejectsNegativeViewerMaxSize(t *testing.T) {
 	cfg := getDefaultConfig()
 	cfg.UI.Viewer.MaxWidth = 1000
 	cfg.UI.Viewer.MaxHeight = 800
 	maxWidth := -1
 	maxHeight := -2
 
-	mergeConfigs(cfg, &rawConfig{
+	err := mergeConfigs(cfg, &rawConfig{
 		UI: rawUIConfig{
 			Viewer: rawViewerConfig{
 				MaxWidth:  &maxWidth,
@@ -189,6 +189,9 @@ func TestMergeConfigsIgnoresNegativeViewerMaxSize(t *testing.T) {
 			},
 		},
 	})
+	if err == nil {
+		t.Fatal("mergeConfigs should reject negative viewer size")
+	}
 
 	if cfg.UI.Viewer.MaxWidth != 1000 || cfg.UI.Viewer.MaxHeight != 800 {
 		t.Fatalf("viewer max size = %dx%d, want unchanged 1000x800", cfg.UI.Viewer.MaxWidth, cfg.UI.Viewer.MaxHeight)
@@ -220,16 +223,19 @@ func TestMergeConfigsDebugLogging(t *testing.T) {
 	}
 }
 
-func TestMergeConfigsIgnoresInvalidDebugMaxLogFiles(t *testing.T) {
+func TestMergeConfigsRejectsInvalidDebugMaxLogFiles(t *testing.T) {
 	cfg := getDefaultConfig()
 	cfg.Debug.MaxLogFiles = 7
 	maxLogFiles := 0
 
-	mergeConfigs(cfg, &rawConfig{
+	err := mergeConfigs(cfg, &rawConfig{
 		Debug: rawDebugConfig{
 			MaxLogFiles: &maxLogFiles,
 		},
 	})
+	if err == nil {
+		t.Fatal("mergeConfigs should reject non-positive maxLogFiles")
+	}
 
 	if cfg.Debug.MaxLogFiles != 7 {
 		t.Fatalf("debug max log files = %d, want unchanged 7", cfg.Debug.MaxLogFiles)
@@ -527,6 +533,76 @@ func TestManagerLoadNonExistentFile(t *testing.T) {
 	// Should be default values
 	if config.Window.Width != 800 {
 		t.Errorf("Should return default config with width 800, got %d", config.Window.Width)
+	}
+}
+
+func TestManagerLoadRejectsUnknownFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"ui":{"viewer":{"maxWidht":900}}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(nil)
+	manager.configPath = path
+
+	if _, err := manager.Load(); err == nil || !strings.Contains(err.Error(), "maxWidht") {
+		t.Fatalf("Load error = %v, want unknown field error", err)
+	}
+}
+
+func TestManagerLoadRejectsInvalidValues(t *testing.T) {
+	tests := []struct {
+		name string
+		json string
+		want string
+	}{
+		{name: "window width", json: `{"window":{"width":0}}`, want: "window.width"},
+		{name: "sort", json: `{"ui":{"sort":{"sortBy":"random"}}}`, want: "ui.sort.sortBy"},
+		{name: "cursor entries", json: `{"ui":{"cursorMemory":{"maxEntries":-1}}}`, want: "ui.cursorMemory.maxEntries"},
+		{name: "viewer size", json: `{"ui":{"viewer":{"maxWidth":-1}}}`, want: "ui.viewer.maxWidth"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.json")
+			if err := os.WriteFile(path, []byte(tt.json), 0644); err != nil {
+				t.Fatal(err)
+			}
+			manager := NewManager(nil)
+			manager.configPath = path
+			if _, err := manager.Load(); err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Load error = %v, want %q validation error", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestManagerLoadAcceptsLegacyRuntimeStateFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	data := `{
+		"ui": {
+			"cursorMemory": {"maxEntries": 10, "entries": {"/tmp": "a"}, "lastUsed": {}},
+			"navigationHistory": {"maxEntries": 20, "entries": ["/tmp"], "lastUsed": {}, "useCount": {}, "pinned": []},
+			"fileFilter": {"maxEntries": 5, "entries": [], "current": null, "enabled": false}
+		}
+	}`
+	if err := os.WriteFile(path, []byte(data), 0644); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(nil)
+	manager.configPath = path
+
+	if _, err := manager.Load(); err != nil {
+		t.Fatalf("Load rejected known legacy migration fields: %v", err)
+	}
+}
+
+func TestManagerLoadReturnsNonNotExistReadErrors(t *testing.T) {
+	manager := NewManager(nil)
+	manager.configPath = t.TempDir()
+
+	if _, err := manager.Load(); err == nil || !strings.Contains(err.Error(), "reading config file") {
+		t.Fatalf("Load error = %v, want config read error", err)
 	}
 }
 
