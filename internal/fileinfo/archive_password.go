@@ -23,12 +23,23 @@ type ArchivePasswordProvider interface {
 	GetArchivePassword(context.Context, ArchivePasswordRequest) (string, error)
 }
 
-var archivePasswordProvider ArchivePasswordProvider
+var (
+	archivePasswordProviderMu sync.RWMutex
+	archivePasswordProvider   ArchivePasswordProvider
+)
 
 // SetArchivePasswordProvider sets the global provider used for encrypted 7z/RAR
 // archive reads.
 func SetArchivePasswordProvider(p ArchivePasswordProvider) {
+	archivePasswordProviderMu.Lock()
 	archivePasswordProvider = p
+	archivePasswordProviderMu.Unlock()
+}
+
+func currentArchivePasswordProvider() ArchivePasswordProvider {
+	archivePasswordProviderMu.RLock()
+	defer archivePasswordProviderMu.RUnlock()
+	return archivePasswordProvider
 }
 
 // CachedArchivePasswordProvider caches archive passwords in memory per archive
@@ -91,19 +102,19 @@ func (p *CachedArchivePasswordProvider) Clear(archivePath string) {
 }
 
 func putCachedArchivePassword(archivePath, password string) {
-	if cp, ok := archivePasswordProvider.(*CachedArchivePasswordProvider); ok {
+	if cp, ok := currentArchivePasswordProvider().(*CachedArchivePasswordProvider); ok {
 		cp.Put(archivePath, password)
 	}
 }
 
 func clearCachedArchivePassword(archivePath string) {
-	if cp, ok := archivePasswordProvider.(*CachedArchivePasswordProvider); ok {
+	if cp, ok := currentArchivePasswordProvider().(*CachedArchivePasswordProvider); ok {
 		cp.Clear(archivePath)
 	}
 }
 
 func cachedArchivePassword(archivePath string) (string, bool) {
-	if cp, ok := archivePasswordProvider.(*CachedArchivePasswordProvider); ok {
+	if cp, ok := currentArchivePasswordProvider().(*CachedArchivePasswordProvider); ok {
 		cp.mu.RLock()
 		defer cp.mu.RUnlock()
 		pass, ok := cp.cache[archivePath]
@@ -113,8 +124,9 @@ func cachedArchivePassword(archivePath string) (string, bool) {
 }
 
 func getArchivePassword(ctx context.Context, req ArchivePasswordRequest) (string, error) {
-	if archivePasswordProvider == nil {
+	provider := currentArchivePasswordProvider()
+	if provider == nil {
 		return "", ErrArchivePasswordRequired
 	}
-	return archivePasswordProvider.GetArchivePassword(ctx, req)
+	return provider.GetArchivePassword(ctx, req)
 }

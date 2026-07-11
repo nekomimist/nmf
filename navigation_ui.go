@@ -5,8 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	"fyne.io/fyne/v2"
-
 	"nmf/internal/fileinfo"
 	"nmf/internal/maintenance"
 	"nmf/internal/ui"
@@ -26,7 +24,7 @@ func (fm *FileManager) ReopenClosedWindow() {
 }
 
 func (fm *FileManager) openWindowAtPath(path string) {
-	newFM := NewFileManager(fyne.CurrentApp(), path, fm.config, fm.configManager, fm.state, fm.stateManager, fm.customTheme, fm.configScript, fm.watchHub, fm.jobsWindowController)
+	newFM := NewFileManager(fm.runtime, path, fm.config, fm.configManager, fm.state, fm.stateManager, fm.customTheme, fm.configScript)
 	newFM.window.Show()
 	positionWindowNextTo(fm.window, newFM.window)
 }
@@ -271,7 +269,7 @@ func (fm *FileManager) jumpToConfiguredDirectory(inputPath string) {
 		path = strings.Replace(path, "~", home, 1)
 	}
 
-	resolvedPath, parsed, err := resolveDirectoryPath(path)
+	resolvedPath, parsed, err := fileinfo.CanonicalDisplayPath(path)
 	if err != nil {
 		debugPrint("FileManager: Invalid directory jump path '%s': %v", inputPath, err)
 		fm.ShowMessageDialog("フォルダを開けませんでした", err.Error())

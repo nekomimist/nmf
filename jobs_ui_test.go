@@ -1,6 +1,12 @@
 package main
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
+)
 
 func TestJobsButtonText(t *testing.T) {
 	tests := []struct {
@@ -20,5 +26,24 @@ func TestJobsButtonText(t *testing.T) {
 				t.Fatalf("jobsButtonText(%d) = %q, want %q", tt.remainingJobs, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestJobsBlinkDropsTicksAfterWindowClose(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	fm := &FileManager{
+		window:     app.NewWindow("closed"),
+		jobsButton: widget.NewButton("Jobs", nil),
+		closed:     true,
+	}
+	fm.jobsButton.Importance = widget.MediumImportance
+
+	fm.startJobsBlink()
+	time.Sleep(650 * time.Millisecond)
+	fm.stopJobsBlink()
+
+	if fm.jobsButton.Importance != widget.MediumImportance {
+		t.Fatalf("closed window jobs importance = %v, want unchanged", fm.jobsButton.Importance)
 	}
 }

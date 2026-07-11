@@ -81,10 +81,11 @@ func dropDestination(currentPath string) (string, error) {
 		return "", errors.New("Dropping files into archive views is not supported yet.")
 	}
 
-	_, parsed, err := fileinfo.ResolveRead(currentPath)
+	vfs, parsed, err := fileinfo.ResolveRead(currentPath)
 	if err != nil {
 		return "", fmt.Errorf("Cannot use this directory as a drop destination: %w", err)
 	}
+	defer fileinfo.CloseVFS(vfs)
 	debugPrint("FileManager: Drop destination resolved scheme=%s provider=%s native=%s display=%s", parsed.Scheme, parsed.Provider, parsed.Native, parsed.Display)
 	if parsed.Scheme == fileinfo.SchemeArchive {
 		return "", errors.New("Dropping files into archive views is not supported yet.")
@@ -171,7 +172,7 @@ func (fm *FileManager) showDropActionDialog(paths []string, dest string) {
 				return
 			}
 		}
-		enqueueDroppedTransfer(jobs.GetManager(), op, paths, dest, fm.conflictResolver(), jobs.TransferOptions{PreserveTimestamps: fm.config.UI.Copy.PreserveTimestamps})
+		enqueueDroppedTransfer(fm.jobManager(), op, paths, dest, fm.conflictResolver(), jobs.TransferOptions{PreserveTimestamps: fm.config.UI.Copy.PreserveTimestamps})
 		debugPrint("FileManager: Drop queued action=%s sources=%d dest=%s", string(op), len(paths), dest)
 	}
 

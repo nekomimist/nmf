@@ -52,3 +52,20 @@ func TestFinishDirectoryLoadRejectsStaleLoad(t *testing.T) {
 		t.Fatal("active load should be cleared after finish")
 	}
 }
+
+func TestInvalidateActiveDirectoryLoadCancelsWithoutRestart(t *testing.T) {
+	fm := &FileManager{}
+	ctx, loadID := fm.beginDirectoryLoad()
+
+	fm.invalidateActiveDirectoryLoad()
+
+	if !errors.Is(ctx.Err(), context.Canceled) {
+		t.Fatalf("load context error = %v, want context.Canceled", ctx.Err())
+	}
+	if fm.directoryLoadActive(loadID) {
+		t.Fatal("invalidated load should no longer be active")
+	}
+	if fm.finishDirectoryLoad(loadID) {
+		t.Fatal("invalidated load should not apply a queued UI callback")
+	}
+}

@@ -12,6 +12,7 @@ import (
 	"nmf/internal/config"
 	"nmf/internal/configscript"
 	"nmf/internal/fileinfo"
+	"nmf/internal/jobs"
 	"nmf/internal/keymanager"
 	"nmf/internal/search"
 	customtheme "nmf/internal/theme"
@@ -56,8 +57,12 @@ type FileManager struct {
 	searchToken          keymanager.HandlerToken                 // Token of the pushed search handler
 	searchMatchers       *search.Provider                        // Shared search matcher provider
 	iconSvc              *fileinfo.IconService                   // Async icon service
-	watchHub             *watcher.WatchHub                       // Shared directory watch hub
-	jobsWindowController *JobsWindowController                   // Shared Jobs window controller
+	runtime              *ApplicationRuntime                     // Application-scoped services
+	promptTargetID       uint64
+	promptUnregister     func()
+	lifecycleMu          sync.Mutex
+	closed               bool
+	quitConfirmationOpen bool
 	// Busy state while loading directories
 	busyOverlay  *ui.BusyOverlay
 	busyActive   bool
@@ -70,13 +75,50 @@ type FileManager struct {
 	nextLoadID   uint64
 	activeLoadID uint64
 	loadCancel   context.CancelFunc
+	viewerMu     sync.Mutex
+	nextViewerID uint64
+	activeViewer uint64
 
 	// Jobs indicator
 	jobsButton    *widget.Button
 	jobsBlinking  bool
-	jobsBlinkOn   bool
 	jobsBlinkStop chan struct{}
 	jobsUnsub     func()
+}
+
+func (fm *FileManager) beginViewerLoad() uint64 {
+	fm.viewerMu.Lock()
+	defer fm.viewerMu.Unlock()
+	fm.nextViewerID++
+	fm.activeViewer = fm.nextViewerID
+	return fm.activeViewer
+}
+
+func (fm *FileManager) finishViewerLoad(id uint64) bool {
+	fm.viewerMu.Lock()
+	defer fm.viewerMu.Unlock()
+	if fm.activeViewer != id {
+		return false
+	}
+	fm.activeViewer = 0
+	return true
+}
+
+func (fm *FileManager) invalidateViewerLoad(id uint64) bool {
+	fm.viewerMu.Lock()
+	defer fm.viewerMu.Unlock()
+	if id != 0 && fm.activeViewer != id {
+		return false
+	}
+	fm.activeViewer = 0
+	return true
+}
+
+func (fm *FileManager) jobManager() *jobs.Manager {
+	if fm != nil && fm.runtime != nil && fm.runtime.jobManager != nil {
+		return fm.runtime.jobManager
+	}
+	return jobs.GetManager()
 }
 
 type cursorRowAnchor struct {
@@ -148,7 +190,7 @@ func (fm *FileManager) RemoveFromSelections(path string) {
 
 // ApplyChanges merges watcher-detected added/deleted/modified files into the
 // current listing. Must only run on the Fyne main goroutine: the watcher
-// marshals into this call via fyne.Do (internal/watcher/watcher.go
+// marshals into this call via fyne.DoAndWait (internal/watcher/watcher.go
 // applyDataChanges), since fm.files/fm.selectedFiles are otherwise mutated
 // without synchronization from UI-thread code such as SetFileSelected.
 func (fm *FileManager) ApplyChanges(added, deleted, modified []fileinfo.FileInfo) {

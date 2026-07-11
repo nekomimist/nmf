@@ -37,6 +37,7 @@ func (p *ArchivePasswordProvider) GetArchivePassword(ctx context.Context, req fi
 	var retErr error
 	var finishOnce sync.Once
 	done := make(chan struct{})
+	dialogReady := make(chan *archivePasswordDialog, 1)
 
 	fyne.Do(func() {
 		d := newArchivePasswordDialog(req, p.parent, p.km, p.bindings, func(ok bool, pass string) {
@@ -51,11 +52,15 @@ func (p *ArchivePasswordProvider) GetArchivePassword(ctx context.Context, req fi
 				password = pass
 			})
 		})
+		dialogReady <- d
 		d.show()
 	})
 
 	select {
 	case <-ctx.Done():
+		d := <-dialogReady
+		fyne.Do(d.CancelDialog)
+		<-done
 		return "", ctx.Err()
 	case <-done:
 	}

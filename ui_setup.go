@@ -15,7 +15,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/fileinfo"
-	"nmf/internal/jobs"
 	customtheme "nmf/internal/theme"
 	"nmf/internal/ui"
 )
@@ -267,7 +266,7 @@ func (fm *FileManager) setupUI() {
 	// Top row: toolbar on left, Jobs button on right
 	toolbarRow := container.NewBorder(nil, nil, nil, fm.jobsButton, toolbar)
 	// Subscribe to job updates to update indicator
-	fm.jobsUnsub = jobs.GetManager().Subscribe(func() { fyne.Do(fm.onJobsUpdated) })
+	fm.jobsUnsub = fm.jobManager().Subscribe(func() { fyne.Do(fm.onJobsUpdated) })
 	mainContent := container.NewBorder(
 		container.NewVBox(toolbarRow, fm.pathDisplay, fm.statusLabel),
 		nil, nil, nil,

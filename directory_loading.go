@@ -108,7 +108,7 @@ func (fm *FileManager) navigateToPath(inputPath string) bool {
 		path = strings.Replace(path, "~", home, 1)
 	}
 
-	resolvedPath, parsed, err := resolveDirectoryPath(path)
+	resolvedPath, parsed, err := fileinfo.CanonicalDisplayPath(path)
 	if err != nil {
 		debugPrint("FileManager: Invalid path '%s': %v", inputPath, err)
 		fm.setPathDisplay(fm.currentPath)
@@ -124,7 +124,7 @@ func (fm *FileManager) navigateToPath(inputPath string) bool {
 		})
 	}
 
-	// Path is valid, navigate to it.
+	// Accessibility is checked by the asynchronous directory load.
 	fm.LoadDirectory(resolvedPath)
 
 	// Return focus to file list after successful navigation
@@ -418,6 +418,21 @@ func (fm *FileManager) cancelActiveDirectoryLoad() {
 	}
 }
 
+// invalidateActiveDirectoryLoad cancels the current load without restarting
+// window-owned UI or watcher state. It is used while the window is closing.
+func (fm *FileManager) invalidateActiveDirectoryLoad() {
+	var cancel context.CancelFunc
+	fm.loadMu.Lock()
+	cancel = fm.loadCancel
+	fm.activeLoadID = 0
+	fm.loadCancel = nil
+	fm.loadMu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+}
+
 // beginBusy shows the busy overlay and pushes a swallowing key handler.
 func (fm *FileManager) beginBusy(text string, onCancel ...func()) {
 	fm.busyMu.Lock()
@@ -477,8 +492,12 @@ func (fm *FileManager) endBusy() {
 	fm.busyMu.Unlock()
 
 	// Hide overlay (if visible) and remove guard
-	fm.busyOverlay.Hide()
-	fm.keyManager.RemoveHandler(busyToken)
+	if fm.busyOverlay != nil {
+		fm.busyOverlay.Hide()
+	}
+	if fm.keyManager != nil && busyToken != 0 {
+		fm.keyManager.RemoveHandler(busyToken)
+	}
 	debugPrint("FileManager: busy end focused=%s active=%t path=%s", focusedObjectLabel(fm.window), fm.windowActive, fm.currentPath)
 }
 
@@ -499,5 +518,6 @@ func (fm *FileManager) shouldWatchPath(p string) bool {
 	if err != nil {
 		return false
 	}
+	defer fileinfo.CloseVFS(vfs)
 	return vfs.Capabilities().Watch
 }

@@ -12,39 +12,34 @@ import (
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 	"nmf/internal/search"
-	"nmf/internal/secret"
 	customtheme "nmf/internal/theme"
 	"nmf/internal/ui"
 	"nmf/internal/watcher"
 )
 
-func NewFileManager(app fyne.App, path string, config *config.Config, configManager *config.Manager, state *config.State, stateManager *config.StateManager, customTheme *customtheme.CustomTheme, configScript *configscript.Runtime, watchHub *watcher.WatchHub, jobsWindowController *JobsWindowController) *FileManager {
-	if watchHub == nil {
-		watchHub = watcher.NewWatchHub(debugPrint)
-	}
-	if jobsWindowController == nil {
-		jobsWindowController = NewJobsWindowController(app, debugPrint)
+func NewFileManager(runtime *ApplicationRuntime, path string, config *config.Config, configManager *config.Manager, state *config.State, stateManager *config.StateManager, customTheme *customtheme.CustomTheme, configScript *configscript.Runtime) *FileManager {
+	if runtime == nil || runtime.app == nil {
+		panic("NewFileManager requires an application runtime")
 	}
 	fm := &FileManager{
-		window:               app.NewWindow("File Manager"),
-		currentPath:          path,
-		cursorPath:           "",
-		cursorIndex:          -1,
-		selectedFiles:        make(map[string]bool),
-		config:               config,
-		configManager:        configManager,
-		state:                state,
-		stateManager:         stateManager,
-		configScript:         configScript,
-		initialWindowSize:    fyne.NewSize(float32(config.Window.Width), float32(config.Window.Height)),
-		windowActive:         true,
-		activeSort:           state.EffectiveSort(config.UI.Sort),
-		customTheme:          customTheme,
-		cursorRenderer:       ui.NewCursorRenderer(config.UI.CursorStyle),
-		keyManager:           keymanager.NewKeyManager(debugPrint),
-		searchMatchers:       search.NewProvider(debugPrint),
-		watchHub:             watchHub,
-		jobsWindowController: jobsWindowController,
+		window:            runtime.app.NewWindow("File Manager"),
+		currentPath:       path,
+		cursorPath:        "",
+		cursorIndex:       -1,
+		selectedFiles:     make(map[string]bool),
+		config:            config,
+		configManager:     configManager,
+		state:             state,
+		stateManager:      stateManager,
+		configScript:      configScript,
+		initialWindowSize: fyne.NewSize(float32(config.Window.Width), float32(config.Window.Height)),
+		windowActive:      true,
+		activeSort:        state.EffectiveSort(config.UI.Sort),
+		customTheme:       customTheme,
+		cursorRenderer:    ui.NewCursorRenderer(config.UI.CursorStyle),
+		keyManager:        keymanager.NewKeyManager(debugPrint),
+		searchMatchers:    search.NewProvider(debugPrint),
+		runtime:           runtime,
 	}
 
 	// Busy overlay (hidden by default)
@@ -56,25 +51,18 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 	// Refresh the list when icons arrive. Icon notifications are emitted from
 	// background workers, so widget refreshes must run on the Fyne call thread.
 	fm.iconSvc.OnUpdated(func() {
+		if fm.isWindowClosed() {
+			return
+		}
 		fyne.Do(func() {
-			if fm.fileList != nil {
+			if !fm.isWindowClosed() && fm.fileList != nil {
 				canvas.Refresh(fm.fileList)
 			}
 		})
 	})
 
 	// Create directory watcher
-	fm.dirWatcher = watcher.NewDirectoryWatcher(fm, watchHub, debugPrint)
-
-	// Install SMB credentials provider (cached + interactive prompt fallback)
-	cached := fileinfo.NewCachedCredentialsProvider(ui.NewSMBCredentialsProvider(fm.window, fm.keyManager, config.UI.KeyBindings))
-	fileinfo.SetCredentialsProvider(cached)
-	fileinfo.SetArchivePasswordProvider(fileinfo.NewCachedArchivePasswordProvider(ui.NewArchivePasswordProvider(fm.window, fm.keyManager, config.UI.KeyBindings)))
-
-	// Initialize OS keyring (99designs). If unavailable, continue without persistent store.
-	if store, err := secret.NewKeyringStore(); err == nil {
-		fileinfo.SetSecretStore(store)
-	}
+	fm.dirWatcher = watcher.NewDirectoryWatcher(fm, runtime.watchHub, debugPrint)
 
 	// Create incremental search overlay
 	fm.searchOverlay = ui.NewIncrementalSearchOverlay([]fileinfo.FileInfo{}, fm.keyManager, customTheme, debugPrint, fm.searchMatchers)
@@ -117,6 +105,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 	fm.keyManager.PushHandler(mainHandler)
 
 	fm.setupUI()
+	runtime.registerWindowPrompts(fm)
 	fm.LoadDirectory(path)
 
 	// Register window in global registry
@@ -125,7 +114,7 @@ func NewFileManager(app fyne.App, path string, config *config.Config, configMana
 
 	// Set window close handler
 	fm.window.SetCloseIntercept(func() {
-		fm.closeWindow()
+		fm.QuitApplication()
 	})
 
 	return fm

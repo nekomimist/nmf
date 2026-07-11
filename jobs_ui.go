@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -18,7 +17,10 @@ import (
 
 // onJobsUpdated updates the Jobs indicator based on queue state
 func (fm *FileManager) onJobsUpdated() {
-	mgr := jobs.GetManager()
+	if fm.isWindowClosed() {
+		return
+	}
+	mgr := fm.jobManager()
 	snaps := mgr.List()
 	var hasError, hasPending, hasRunning bool
 	remainingJobs := 0
@@ -75,19 +77,28 @@ func (fm *FileManager) startJobsBlink() {
 		return
 	}
 	fm.jobsBlinking = true
-	fm.jobsBlinkOn = true
 	fm.jobsBlinkStop = make(chan struct{})
 	go func(stop <-chan struct{}) {
 		ticker := time.NewTicker(600 * time.Millisecond)
 		defer ticker.Stop()
+		blinkOn := true
 		for {
 			select {
 			case <-ticker.C:
-				fm.jobsBlinkOn = !fm.jobsBlinkOn
+				blinkOn = !blinkOn
+				importanceOn := blinkOn
 				// Toggle importance to create a blink effect
 				fyne.Do(func() {
+					select {
+					case <-stop:
+						return
+					default:
+					}
+					if fm.isWindowClosed() {
+						return
+					}
 					if fm.jobsButton != nil {
-						if fm.jobsBlinkOn {
+						if importanceOn {
 							fm.jobsButton.Importance = widget.HighImportance
 						} else {
 							fm.jobsButton.Importance = widget.MediumImportance
@@ -108,7 +119,6 @@ func (fm *FileManager) stopJobsBlink() {
 	}
 	close(fm.jobsBlinkStop)
 	fm.jobsBlinking = false
-	fm.jobsBlinkOn = false
 }
 
 // ShowCopyDialog shows the copy UI (simulation only)
@@ -126,7 +136,7 @@ func (fm *FileManager) ShowExtractArchiveDialog() {
 		return
 	}
 	fm.showTransferDestinationDialog(ui.OpExtract, targets, func(result ui.CopyMoveResult) {
-		jobs.GetManager().EnqueueExtractWithOptions(srcPaths, result.Destination, fm.conflictResolver(), jobs.TransferOptions{PreserveTimestamps: result.PreserveTimestamps})
+		fm.jobManager().EnqueueExtractWithOptions(srcPaths, result.Destination, fm.conflictResolver(), jobs.TransferOptions{PreserveTimestamps: result.PreserveTimestamps})
 		fm.FocusFileList()
 	})
 }
@@ -150,7 +160,7 @@ func (fm *FileManager) showCopyMoveDialog(op ui.Operation) {
 			return
 		}
 
-		mgr := jobs.GetManager()
+		mgr := fm.jobManager()
 		resolver := fm.conflictResolver()
 		if op == ui.OpCopy {
 			mgr.EnqueueCopyWithOptions(srcPaths, selectedDest, resolver, jobs.TransferOptions{PreserveTimestamps: result.PreserveTimestamps})
@@ -197,26 +207,10 @@ func (fm *FileManager) showTransferDestinationDialog(op ui.Operation, targets []
 }
 
 func (fm *FileManager) conflictResolver() jobs.ConflictResolver {
-	return func(ctx context.Context, req jobs.ConflictRequest) jobs.ConflictResolution {
-		done := make(chan jobs.ConflictResolution, 1)
-		fyne.Do(func() {
-			if fm.window == nil {
-				done <- jobs.ConflictResolution{Action: jobs.ConflictCancelJob}
-				return
-			}
-			dlg := ui.NewConflictDialog(req, fm.keyManager, fm.config.UI.KeyBindings)
-			dlg.ShowDialog(fm.window, func(res jobs.ConflictResolution) {
-				done <- res
-			})
-		})
-
-		select {
-		case <-ctx.Done():
-			return jobs.ConflictResolution{Action: jobs.ConflictCancelJob}
-		case res := <-done:
-			return res
-		}
+	if fm.runtime == nil || fm.runtime.promptBroker == nil {
+		return nil
 	}
+	return fm.runtime.promptBroker.ResolveConflict
 }
 
 func sameDirectoryPath(a, b string) bool {
@@ -324,7 +318,9 @@ func archiveTargetNamesAndPaths(files []fileinfo.FileInfo) ([]string, []string) 
 
 // ShowJobsDialog opens the job queue view
 func (fm *FileManager) ShowJobsDialog() {
-	fm.jobsWindowController.Show()
+	if fm.runtime != nil && fm.runtime.jobsWindowController != nil {
+		fm.runtime.jobsWindowController.Show()
+	}
 }
 
 // buildDestinationCandidates composes other windows' dirs then history without dups.

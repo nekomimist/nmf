@@ -11,6 +11,15 @@ import (
 
 // closeWindow handles window closing logic.
 func (fm *FileManager) closeWindow() {
+	if !fm.beginWindowClose() {
+		return
+	}
+
+	// Invalidate background work before releasing window-owned UI resources.
+	fm.invalidateActiveDirectoryLoad()
+	fm.invalidateViewerLoad(0)
+	fm.endBusy()
+
 	recordReopenPath(fm.currentPath)
 	clearFileManagerWindowHighlights()
 
@@ -24,6 +33,9 @@ func (fm *FileManager) closeWindow() {
 	if fm.dirWatcher != nil {
 		fm.dirWatcher.Stop()
 	}
+	if fm.iconSvc != nil {
+		fm.iconSvc.Close()
+	}
 
 	// Stop blinking indicator if active
 	fm.stopJobsBlink()
@@ -33,16 +45,66 @@ func (fm *FileManager) closeWindow() {
 		fm.jobsUnsub()
 		fm.jobsUnsub = nil
 	}
+	if fm.promptUnregister != nil {
+		fm.promptUnregister()
+		fm.promptUnregister = nil
+	}
 
 	// Close the window
-	fm.window.Close()
+	if fm.window != nil {
+		fm.window.Close()
+	}
 
 	// If this was the last window, quit the application
 	if remaining == 0 {
 		debugPrint("WindowLifecycle: Last window closed, quitting application")
-		fm.jobsWindowController.Close()
-		fyne.CurrentApp().Quit()
+		if fm.runtime != nil {
+			fm.runtime.Close()
+		}
+		if app := fyne.CurrentApp(); app != nil {
+			app.Quit()
+		}
 	}
+}
+
+func (fm *FileManager) beginWindowClose() bool {
+	fm.lifecycleMu.Lock()
+	defer fm.lifecycleMu.Unlock()
+	if fm.closed {
+		return false
+	}
+	fm.closed = true
+	fm.quitConfirmationOpen = false
+	return true
+}
+
+func (fm *FileManager) isWindowClosed() bool {
+	if fm == nil {
+		return true
+	}
+	fm.lifecycleMu.Lock()
+	defer fm.lifecycleMu.Unlock()
+	return fm.closed
+}
+
+func (fm *FileManager) beginQuitConfirmation() bool {
+	fm.lifecycleMu.Lock()
+	defer fm.lifecycleMu.Unlock()
+	if fm.closed || fm.quitConfirmationOpen {
+		return false
+	}
+	fm.quitConfirmationOpen = true
+	return true
+}
+
+func (fm *FileManager) endQuitConfirmation() {
+	fm.lifecycleMu.Lock()
+	fm.quitConfirmationOpen = false
+	fm.lifecycleMu.Unlock()
+}
+
+func windowCloseNeedsConfirmation(openWindows int32) bool {
+	return openWindows <= 1
 }
 
 // QuitApplication handles application quit logic with confirmation dialog.
@@ -50,7 +112,7 @@ func (fm *FileManager) QuitApplication() {
 	currentCount := atomic.LoadInt32(&windowCount)
 	debugPrint("WindowLifecycle: QuitApplication called, current window count: %d", currentCount)
 
-	if currentCount > 1 {
+	if !windowCloseNeedsConfirmation(currentCount) {
 		// Multiple windows open, just close current window
 		fm.closeWindow()
 	} else {
@@ -61,15 +123,21 @@ func (fm *FileManager) QuitApplication() {
 
 // showQuitConfirmationDialog shows a confirmation dialog before quitting.
 func (fm *FileManager) showQuitConfirmationDialog() {
-	activeJobs := activeJobCount(jobs.GetManager().List())
+	if !fm.beginQuitConfirmation() {
+		return
+	}
+
+	activeJobs := activeJobCount(fm.jobManager().List())
 	dialog := ui.NewQuitConfirmDialog(fm.keyManager, debugPrint, activeJobs)
 	dialog.ShowDialog(fm.window, func(confirmed bool) {
+		fm.endQuitConfirmation()
 		if confirmed {
 			debugPrint("WindowLifecycle: User confirmed quit")
 			fm.closeWindow()
-		} else {
-			debugPrint("WindowLifecycle: User cancelled quit")
+			return
 		}
+
+		debugPrint("WindowLifecycle: User cancelled quit")
 		// Return focus to file list after dialog closes
 		fm.FocusFileList()
 	})
