@@ -1,6 +1,35 @@
 # 実用になるために必要なToDo
 
 # 優先度高いの
+## 安全性・ライフサイクル修正ロードマップ
+- 以下は依存関係を考慮した実施順。各項目は、再現テストを先に追加してから
+  修正し、前段の完了後に次へ進む。
+  2026-07-10に全項目を完了し、`go test -race ./...`、`go vet ./...`、
+  Windows全package cross-compile、Darwin core cross-compileを確認済み。
+1. [x] WatchHubのbroadcast/unsubscribe競合を解消し、closed channel送信による
+   process panicを防ぐ。
+2. [x] SMB path segmentを検証してmount root外への脱出を禁止し、direct SMB
+   非対応platformではLocalFSへfallbackせず明示的なunsupported errorを返す。
+3. [x] title bar Closeをactive jobs確認へ統合し、window close時にactive directory
+   loadをcancel/invalidateして、閉じたwindowのwatcherやdialogを復活させない。
+4. [x] application scopeとwindow scopeを分離する。jobs manager、WatchHub、credential /
+   archive password cacheとprompt brokerはapplication側、focus・dialog・load contextは
+   window側で所有する。job conflict promptは生成元windowを捕捉しない。
+5. [x] watcherのrun generationをUI callback実行時にも検証し、snapshot適用を直列化する。
+   あわせてremote archive temp、IconService、external command processのclose/reapと、
+   rename/createのno-clobber契約を整備する。
+6. [x] Tree/Viewer/direct-path validationのVFS I/OをFyne main threadから外し、dialogの
+   input-owner遷移を統一する。最後に設定の実装契約とroot/Windowsを含むtest gate、
+   CIを整備する。
+
+## macOS対応の判定
+- 現時点の正式な対象はWindowsとLinux。Darwin向けcore cross-compileは通るが、
+  macOSのGUI・入力・デスクトップ統合を確認した実績はない。
+- [ ] `macos-15`のnative smoke CIを安定してgreenにし、blocking jobへ昇格する。
+- [ ] Apple Silicon実機で起動、ファイル操作、ダイアログ、複数window、終了処理を確認する。
+- [ ] Cmd shortcut、native menu、drop、window focus、file open、keychain、font/iconをauditし、
+  サポート対象に含めるかunsupportedのままにするかを決める。
+
 ## File ManagerのタイトルをNekomimist Filerとし、バージョンを1.0.0にする
 - 以降はユーザーから見える変更はdocs/CHANGELOG.mdに記載する。
 

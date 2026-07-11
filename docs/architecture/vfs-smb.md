@@ -40,6 +40,10 @@ Resolver entrypoints:
 - `ResolveAccessibleDirectoryPath`: normalize + require accessible/stat'able directory.
 - `ResolveRead`: select provider and return parsed/native path.
 
+SMB host, share, and path components reject `.` and `..`. When a Linux SMB
+share is already mounted, the resolved native path is also checked with a
+relative-path containment test so it cannot escape the matched mount root.
+
 Path input and history use canonical display paths. SMB URL credentials can be
 parsed from path-entry navigation and used to seed the in-memory credential
 cache before provider access.
@@ -61,7 +65,7 @@ the current archive backend.
 - Provider is `local` (`LocalFS`), not direct SMB provider.
 - On access errors for UNC, portable read path may trigger a temporary SMB connection retry.
 
-### Non-Windows
+### Linux
 
 For `smb://...` or `//host/share/...`:
 
@@ -71,9 +75,18 @@ For `smb://...` or `//host/share/...`:
 Current implementation detail:
 
 - Direct SMB provider is implemented on Linux (`smbfs_linux.go`).
-- On `!linux`, `newSMBProvider` currently returns `LocalFS` stub.
+- Windows uses the native UNC branch described above.
+- Other platforms return an explicit unsupported error for direct SMB. They do
+  not fall back to `LocalFS`, because an SMB-relative path such as `/etc` must
+  never be interpreted as a local absolute path.
 
 ## Credentials Flow
+
+Credential and archive-password caches are application-scoped. They are
+installed once by `ApplicationRuntime`; creating a second FileManager window
+only registers that window as an interactive prompt target. The prompt broker
+selects an active open window at request time and serializes prompts, so a new
+window cannot redirect the global provider permanently to itself.
 
 Credential lookup order for SMB:
 
@@ -87,6 +100,15 @@ Wiring is installed in `NewFileManager`:
 - `SetSecretStore(...)` when keyring backend is available
 
 ## VFS Usage Rules
+
+- A `VFS` returned by `ResolveRead`/`ResolveReadContext` may own resources.
+  Callers that do not return the VFS must `defer fileinfo.CloseVFS(vfs)` after
+  a successful resolve. `OpenPortable` transfers that responsibility to its
+  returned reader and closes both the file and VFS from `Close`.
+- In particular, resolving an entry inside a remote archive downloads a
+  temporary local archive source. `ArchiveVFS.Close` removes it idempotently;
+  parse-only, stat, list, preview, compare, watcher, and job path resolution
+  paths must not abandon that VFS.
 
 Implemented VFS providers expose:
 
@@ -166,6 +188,13 @@ Constraints:
 - Platform parity for direct SMB backend remains a low-priority follow-up item (see `docs/todo.md`).
 - Archive paths can be copy sources. Archive destinations, move, rename, and
   delete are rejected because archive mutation is out of scope.
+- Interactive rename and create operations use provider/OS no-replace
+  primitives at the mutation point. The earlier `Stat` is only for a readable
+  error; it is not the safety boundary. Linux uses
+  `renameat2(RENAME_NOREPLACE)`, macOS uses `renamex_np(RENAME_EXCL)`, Windows
+  uses `MoveFileW` without replace, SMB rename sends `ReplaceIfExists=0`, text
+  creation uses `O_EXCL`, and directory creation uses single-level `Mkdir`
+  rather than `MkdirAll`.
 
 Delete behavior:
 

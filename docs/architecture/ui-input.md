@@ -137,6 +137,18 @@ Configurable bindings:
 
 ## Focus Ownership Rules
 
+Long-running UI actions:
+
+- Tree widget datasource callbacks return only cached children. Cache misses
+  start a background portable directory read and refresh the tree on the Fyne
+  goroutine; `ChildUIDs` and `IsBranch` never perform VFS I/O.
+- File preview reads run behind the main busy/input guard on a worker goroutine.
+  A per-window viewer generation drops late results after cancellation or
+  window close before they can push a viewer handler.
+- Direct paths typed into path/history/copy-move/compare dialogs are only
+  canonicalized synchronously. Accessibility is checked by the downstream
+  asynchronous directory load, job, or comparison, which owns error reporting.
+
 Main file list:
 
 - Wrap list with `ui.KeySink`.

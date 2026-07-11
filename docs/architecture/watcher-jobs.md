@@ -18,6 +18,10 @@ Concurrency model:
 - Lifecycle state is guarded by watcher mutex.
 - Shared path monitoring is owned by `WatchHub`.
 - Change application remains per-window and is decoupled via buffered `changeChan`.
+- A successfully queued snapshot advances the watcher's expected baseline
+  immediately, so a burst cannot derive duplicate changes while an earlier UI
+  merge is pending. A full queue does not advance the baseline; the next
+  snapshot therefore includes the skipped cumulative difference.
 - FileManager access happens through watcher-facing interface methods:
   - `GetCurrentPath`
   - `GetFiles`
@@ -25,10 +29,12 @@ Concurrency model:
   - `RemoveFromSelections`
   - `ApplyChanges`
 - Detected changes are merged via `ApplyChanges` only, and the watcher invokes
-  it inside `fyne.Do`: `fm.files`/`fm.selectedFiles` are otherwise accessed
+  it inside `fyne.DoAndWait`: `fm.files`/`fm.selectedFiles` are otherwise accessed
   without locks by UI-thread code, so the merge must stay confined to the Fyne
   main goroutine. Do not call `GetFiles`/`RemoveFromSelections` from watcher
   background goroutines.
+- The watcher run generation is checked again inside the UI callback. A
+  callback queued by a stopped/restarted run cannot modify the new run's list.
 - `ApplyChanges` skips the re-sort for modify-only change sets under
   name/extension sort (a modify event cannot change those keys); adds and
   deletes always re-sort.
@@ -40,6 +46,10 @@ Watch behavior:
 - One `WatchHub` source is shared by all open windows for the same path.
 - Event bursts are debounced before a complete portable directory snapshot is
   read and broadcast to subscribers.
+- Each subscriber serializes snapshot delivery with channel close. A broadcast
+  may retain a subscriber reference after `Unsubscribe` removes it from the
+  source, but that stale delivery observes the closed subscriber and is dropped
+  instead of sending to a closed channel.
 - If watcher creation, path registration, or runtime watcher delivery fails,
   that source falls back to polling.
 - Default fallback interval is 2 seconds. `SetPollInterval` affects the next
@@ -77,8 +87,15 @@ Subscription rules:
 - The Jobs view is an app-global singleton window.
   - FileManager Jobs buttons show or focus the same Jobs window.
   - Jobs window cleanup: `internal/ui/jobs_window.go`
-  - Last FileManager window cleanup also closes the Jobs window before app quit.
+- Last FileManager window cleanup also closes the Jobs window before app quit.
 - Directory watcher must be stopped during window shutdown before process exit.
+- Last-window close requests from both the keyboard command and native title
+  bar use the same confirmation dialog. Active jobs change the affirmative
+  action to explicit `Quit Anyway`; dismissing the dialog keeps the window and
+  its jobs subscription alive.
+- Confirmed window destruction first cancels and invalidates its active
+  directory-load generation. Queued load completions must fail the generation
+  check and must not restart the watcher or restore focus after close.
 
 ## Failure and Cancellation Semantics
 
@@ -124,8 +141,16 @@ Watcher:
 
 Before merging lifecycle changes:
 
-- `go test ./internal/watcher ./internal/jobs`
-- `go test -race ./internal/watcher ./internal/jobs`
+- `go vet ./...`
+- `go test -race ./...`
+- `make test-windows-compile`
+- `make test-darwin-compile`
+- CI additionally runs the full test suite natively on pinned `macos-15` as a
+  non-blocking smoke job. macOS is not a supported release target yet, so this
+  job remains diagnostic until it is consistently green and the GUI has been
+  checked manually. Fyne's Darwin tests cannot be cross-compiled correctly from
+  Linux without the macOS SDK; the local Make target only compile-checks the
+  production core packages for both `amd64` and `arm64` with CGO disabled.
 - Verify `Start -> Stop -> Start -> Stop` watcher cycle behavior
 - Verify shared source subscribe/unsubscribe behavior for multiple windows on
   the same path

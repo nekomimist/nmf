@@ -15,11 +15,12 @@ This document describes runtime composition, package boundaries, and core state 
    - Create Fyne app and apply custom theme.
    - Install jobs debug hook (`internal/jobs.SetDebug`).
 2. `bootstrap.go` (`NewFileManager`)
-   - Construct `FileManager` state.
-   - Initialize icon service, directory watcher, SMB credential providers, and key manager.
+   - Construct `FileManager` state from the shared `ApplicationRuntime`.
+   - Initialize the window-owned icon service, directory watcher, and key manager.
    - Build UI (`setupUI`) and load the initial directory (`LoadDirectory`).
      The watcher starts after a directory load successfully applies.
-   - Register window close intercept (`closeWindow`).
+   - Register the title-bar close intercept through `QuitApplication`, the
+     same confirmation path used by the keyboard command.
 3. Runtime method groups are split across focused files:
    - `directory_loading.go`: loading, busy state, watcher poll policy.
    - `list_controls.go`: sorting/filter/search/list cursor operations.
@@ -42,8 +43,34 @@ This document describes runtime composition, package boundaries, and core state 
 Cross-window/global state:
 
 - window registry and count in `main.go`
-- shared `internal/watcher.WatchHub` path sources
-- singleton jobs manager in `internal/jobs`
+- `ApplicationRuntime` owns the shared `internal/watcher.WatchHub`, jobs
+  manager/controller, credential and archive-password caches, and the
+  interactive prompt broker.
+- The VFS provider hooks in `internal/fileinfo` are installed once when the
+  runtime is created. Opening another window registers a prompt target but
+  does not replace the global cache/provider.
+- Interactive SMB, archive-password, and job-conflict prompts are serialized.
+  The broker selects an active open window when a request actually needs UI;
+  queued jobs retain the application broker rather than their source
+  `FileManager`.
+
+Window shutdown:
+
+- Closing the last FileManager window always opens the quit confirmation;
+  when jobs are pending or running, the dialog requires an explicit
+  `Quit Anyway` action.
+- Programmatic destruction is idempotent. Before window-owned subscriptions
+  and widgets are released, the active directory load is canceled and its
+  generation is invalidated so an already queued completion cannot revive the
+  watcher or refocus the closed window.
+- Closing a window unregisters its prompt target. Later job conflicts are
+  routed to another open window, or cancel conservatively when none remains.
+- Each window closes its `IconService` before destroying widgets. Close stops
+  its workers and batch notifier, drops callbacks, and makes late icon results
+  inert; the callback also checks the window generation before refreshing.
+- External commands and OS opener processes are started asynchronously, but a
+  lightweight waiter goroutine always calls `Wait` so completed children do
+  not remain unreaped.
 
 Window placement:
 

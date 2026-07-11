@@ -2,22 +2,24 @@
 
 ## Scope
 
-NMF is cross-platform at the UI and file-operation layer, but some desktop
-integrations depend on platform-native APIs. This page records the intended
+NMF targets Windows and Linux at the UI and file-operation layer, but some
+desktop integrations depend on platform-native APIs. Shared Unix code is
+compile-checked for Darwin, but macOS has not been manually validated and is
+not currently a supported release target. This page records the intended
 behavior and the supported platform surface for those integrations.
 
 ## Summary
 
-| Feature | Windows | Linux/Unix |
-| --- | --- | --- |
-| Directory listing, metadata, copy, move, rename, delete | Supported through portable file APIs | Supported through portable file APIs |
-| UNC/SMB navigation | `\\server\share` and `smb://...` resolve to native UNC/local-provider access | `smb://...` and `//server/share` prefer mounted shares, then Linux direct SMB |
-| External files dropped onto NMF | Supported through Fyne `Window.SetOnDropped` | Supported through Fyne `Window.SetOnDropped` when the desktop backend provides file URIs |
-| Dragging files from NMF to another app | Supported through Windows Shell `IDataObject` and `DoDragDrop` | Not implemented |
-| Explorer/shell context menu | Supported through Windows Shell context menu APIs | Not implemented |
-| New File Manager placement beside source window | Supported through Win32 `HWND` positioning | Uses the window manager's default placement |
-| File Manager focus switching with Left/Right | Uses Win32 `HWND` window positions | Uses creation order on X11; unsupported on Wayland because the compositor controls focus activation |
-| Native file icons | Uses Windows shell icons through the icon service | Uses theme/generic icons |
+| Feature | Windows | Linux | macOS |
+| --- | --- | --- | --- |
+| Directory listing, metadata, copy, move, rename, delete | Supported through portable file APIs | Supported through portable file APIs | Core compiles; GUI behavior is unverified |
+| UNC/SMB navigation | `\\server\share` and `smb://...` resolve to native UNC/local-provider access | `smb://...` and `//server/share` prefer mounted shares, then Linux direct SMB | Direct SMB is unsupported |
+| External files dropped onto NMF | Supported through Fyne `Window.SetOnDropped` | Supported when the desktop backend provides file URIs | Unverified Fyne behavior |
+| Dragging files from NMF to another app | Supported through Windows Shell `IDataObject` and `DoDragDrop` | Not implemented | Not implemented |
+| Explorer/shell context menu | Supported through Windows Shell context menu APIs | Not implemented | Not implemented |
+| New File Manager placement beside source window | Supported through Win32 `HWND` positioning | Uses the window manager's default placement | Uses the window manager's default placement; unverified |
+| File Manager focus switching with Left/Right | Uses Win32 `HWND` window positions | Uses creation order on X11; unsupported on Wayland because the compositor controls focus activation | Unverified |
+| Native file icons | Uses Windows shell icons through the icon service | Uses theme/generic icons | Uses theme/generic icons; unverified |
 
 ## SMB and UNC Paths
 
@@ -34,8 +36,9 @@ Current platform policy:
 - Windows resolves UNC and `smb://` through `LocalFS` over native UNC paths.
 - Linux resolves mounted SMB/CIFS shares to local mount paths when possible.
 - Linux falls back to the direct SMB provider when no matching mount exists.
-- Non-Linux direct SMB provider parity remains unresolved outside Windows'
-  native UNC path.
+- Direct SMB is unsupported outside Linux and Windows' native UNC path. Those
+  platforms return an explicit error rather than mapping the SMB-relative path
+  onto `LocalFS`.
 
 ## Desktop Drop Target
 

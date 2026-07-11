@@ -5,7 +5,7 @@ DIST := dist
 WINDOWS_CC := x86_64-w64-mingw32-gcc
 WINDOWS_OBJCOPY := x86_64-w64-mingw32-objcopy
 
-.PHONY: build build-linux build-windows test test-windows-compile debug-env clean
+.PHONY: build build-linux build-windows test test-all test-race test-windows-compile test-darwin-compile debug-env clean
 
 build: build-linux
 
@@ -24,10 +24,22 @@ build-windows:
 test:
 	go test ./internal/...
 
+test-all:
+	go test ./...
+
+test-race:
+	go test -race ./...
+
 test-windows-compile:
 	CC="$(WINDOWS_CC)" \
 	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
-	go test -exec=true ./internal/...
+	go test -exec=true ./...
+
+test-darwin-compile:
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 \
+	go build ./internal/fileinfo ./internal/jobs ./internal/watcher
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 \
+	go build ./internal/fileinfo ./internal/jobs ./internal/watcher
 
 # Prints the effective environment passed through Codex/project config.
 debug-env:
