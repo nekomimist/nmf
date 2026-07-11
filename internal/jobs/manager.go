@@ -353,6 +353,19 @@ func (m *Manager) runJob(j *Job) error {
 	if j.Type == TypeExtract {
 		return m.runExtractJob(j)
 	}
+	destPath, err := resolveExecutionPath(j.DestDir)
+	if err != nil {
+		return wrapPath(j.DestDir, err)
+	}
+	execCtx := newExecutionContext()
+	defer func() {
+		if err := execCtx.close(); err != nil {
+			dbg("job %d: execution context close error: %v", j.ID, err)
+		}
+	}()
+	if err := validateDestinationDirectory(execCtx, destPath); err != nil {
+		return err
+	}
 	for i, src := range j.Sources {
 		if canceled(j) {
 			return errCanceled
@@ -364,7 +377,13 @@ func (m *Manager) runJob(j *Job) error {
 		j.mu.Unlock()
 		dbg("job %d: process %s", j.ID, src)
 		m.notify()
-		if err := copyOrMovePath(j, src, j.DestDir); err != nil {
+		srcPath, err := resolveExecutionPath(src)
+		if err != nil {
+			err = wrapPath(src, err)
+		} else {
+			err = copyOrMovePathResolved(j, execCtx, srcPath, destPath)
+		}
+		if err != nil {
 			if errors.Is(err, errSkipped) {
 				dbg("job %d: skipped %s", j.ID, src)
 				j.mu.Lock()
@@ -445,6 +464,9 @@ func (m *Manager) runExtractJob(j *Job) error {
 			dbg("job %d: SMB session close error: %v", j.ID, err)
 		}
 	}()
+	if err := validateDestinationDirectory(execCtx, destPath); err != nil {
+		return err
+	}
 
 	for i, src := range j.Sources {
 		if canceled(j) {
@@ -749,8 +771,25 @@ func copyOrMovePath(j *Job, src string, destDir string) error {
 			dbg("job %d: SMB session close error: %v", j.ID, err)
 		}
 	}()
+	if err := validateDestinationDirectory(execCtx, destPath); err != nil {
+		return err
+	}
 
 	return copyOrMovePathResolved(j, execCtx, srcPath, destPath)
+}
+
+func validateDestinationDirectory(execCtx *executionContext, dest executionPath) error {
+	if dest.backend == backendArchive {
+		return wrapPath(dest.displayPath(), errors.New("archive destinations are read-only"))
+	}
+	info, err := statPath(execCtx, dest)
+	if err != nil {
+		return wrapPath(dest.displayPath(), err)
+	}
+	if !info.IsDir() {
+		return wrapPath(dest.displayPath(), errors.New("destination is not a directory"))
+	}
+	return nil
 }
 
 func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath, destDir executionPath) error {
@@ -814,7 +853,7 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 		}
 		dbg("job %d: symlink %s -> %s", j.ID, dst.displayPath(), target)
 		if overwrite {
-			if err := removePath(execCtx, dst); err != nil && !os.IsNotExist(err) {
+			if err := removePath(execCtx, dst); err != nil && !fileinfo.IsNotExist(err) {
 				return wrapPath(dst.displayPath(), err)
 			}
 		}
@@ -1058,7 +1097,7 @@ func resolveDestinationConflict(j *Job, execCtx *executionContext, src, dst exec
 
 	dstInfo, err := lstatPath(execCtx, dst)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if fileinfo.IsNotExist(err) {
 			return dst, false, false, nil
 		}
 		return dst, false, false, wrapPath(dst.displayPath(), err)
@@ -1252,7 +1291,7 @@ func isDescendantSlashPath(child, parent string) bool {
 func pathExists(execCtx *executionContext, p executionPath) (bool, error) {
 	if _, err := lstatPath(execCtx, p); err == nil {
 		return true, nil
-	} else if os.IsNotExist(err) {
+	} else if fileinfo.IsNotExist(err) {
 		return false, nil
 	} else {
 		return false, err
@@ -1435,6 +1474,24 @@ func lstatPath(execCtx *executionContext, p executionPath) (os.FileInfo, error) 
 		return ops.Lstat(p.path)
 	}
 	return os.Lstat(p.path)
+}
+
+func statPath(execCtx *executionContext, p executionPath) (os.FileInfo, error) {
+	if p.backend == backendArchive {
+		vfs, err := execCtx.archiveVFSFor(p)
+		if err != nil {
+			return nil, err
+		}
+		return vfs.Stat(p.path)
+	}
+	if p.backend == backendSMB {
+		ops, err := execCtx.smbOpsFor(p)
+		if err != nil {
+			return nil, err
+		}
+		return ops.Stat(p.path)
+	}
+	return os.Stat(p.path)
 }
 
 func readDir(execCtx *executionContext, p executionPath) ([]os.DirEntry, error) {

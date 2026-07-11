@@ -11,5 +11,5 @@ func localStorageInfo(p string) (StorageInfo, error) {
 		return StorageInfo{}, err
 	}
 	blockSize := uint64(st.Bsize)
-	return storageInfoFromBlocks(st.Blocks, st.Bavail, blockSize), nil
+	return storageInfoFromBlocks(uint64(st.Blocks), uint64(st.Bavail), blockSize), nil
 }

@@ -25,7 +25,7 @@ func CreateDirectoryPortable(parentPath, name string) (string, error) {
 	newDisplay := JoinPath(parentDisplay, dirName)
 	if _, err := StatPortable(newDisplay); err == nil {
 		return "", fmt.Errorf("target already exists: %s", newDisplay)
-	} else if !os.IsNotExist(err) {
+	} else if !IsNotExist(err) {
 		return "", err
 	}
 

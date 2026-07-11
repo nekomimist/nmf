@@ -74,12 +74,8 @@ func (p *CachedArchivePasswordProvider) GetArchivePassword(ctx context.Context, 
 	if err != nil {
 		return "", err
 	}
-	p.mu.Lock()
-	if p.cache == nil {
-		p.cache = make(map[string]string)
-	}
-	p.cache[req.ArchivePath] = pass
-	p.mu.Unlock()
+	// The archive reader calls Put only after decrypting real entry data.
+	// Prompt answers must not enter the shared cache before that validation.
 	return pass, nil
 }
 

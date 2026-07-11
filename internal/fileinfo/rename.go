@@ -70,7 +70,7 @@ func RenamePortable(oldPath, newName string) (string, error) {
 		if !caseOnlyRename || !sameNativeFile(oldNative, newNative) {
 			return "", fmt.Errorf("target already exists: %s", newDisplay)
 		}
-	} else if !os.IsNotExist(err) {
+	} else if !IsNotExist(err) {
 		return "", err
 	}
 

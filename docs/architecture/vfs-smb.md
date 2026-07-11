@@ -54,8 +54,9 @@ ZIP entry names without the UTF-8 flag use the configured fallback charset
 (`ui.archive.zipNameEncoding`, default `shift_jis`); valid UTF-8 names are kept
 as UTF-8 even when the flag is absent.
 Password-protected 7z/RAR archives prompt for a password and cache it in memory
-for the current session. Password-protected ZIP archives are not supported by
-the current archive backend.
+for the current session only after an entry's data can actually be decrypted;
+header-only validation is not sufficient. Password-protected ZIP archives are
+not supported by the current archive backend.
 
 ## Provider Selection Rules
 
@@ -199,6 +200,9 @@ Constraints:
 Delete behavior:
 
 - Permanent delete uses the same execution backend model as copy/move.
+- Provider-native SMB not-found statuses are normalized by
+  `fileinfo.IsNotExist`; create, rename, and conflict checks therefore treat a
+  missing direct-SMB target like `fs.ErrNotExist` instead of aborting early.
 - Trash delete uses OS trash/recycle APIs for local-provider paths.
 - Direct SMB trash is unsupported; users must use explicit permanent delete for
   direct SMB paths.

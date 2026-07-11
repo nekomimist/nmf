@@ -505,33 +505,45 @@ func (a *ArchiveVFS) retryWithArchivePassword(ctx context.Context, retry bool) e
 	if err != nil {
 		return err
 	}
-	if retry {
+	clearCachedArchivePassword(a.archivePath)
+	var lastErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		password, err := getArchivePassword(ctx, ArchivePasswordRequest{
+			ArchivePath: a.archivePath,
+			Format:      archivePasswordFormatName(format),
+			Retry:       retry || attempt > 0,
+		})
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrArchivePasswordRequired, err)
+		}
+		configured := applyArchiveFormatOptions(format, currentArchiveOptions(), password)
+		extractor, ok := configured.(archives.Extractor)
+		if !ok {
+			return fmt.Errorf("format is not extractable: %s", a.localPath)
+		}
+		if err := validateArchiveFileSystem(ctx, a.localPath, extractor, false); err != nil {
+			lastErr = err
+		} else if err := probeArchiveReadable(ctx, a.localPath, extractor); err != nil {
+			lastErr = err
+		} else {
+			a.fsys = &archives.ArchiveFS{
+				Path:    a.localPath,
+				Format:  extractor,
+				Context: ctx,
+			}
+			putCachedArchivePassword(a.archivePath, password)
+			return nil
+		}
+		if !isArchivePasswordError(lastErr) {
+			return lastErr
+		}
 		clearCachedArchivePassword(a.archivePath)
+		retry = true
 	}
-	password, err := getArchivePassword(ctx, ArchivePasswordRequest{
-		ArchivePath: a.archivePath,
-		Format:      archivePasswordFormatName(format),
-		Retry:       retry,
-	})
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrArchivePasswordRequired, err)
+	if lastErr == nil {
+		lastErr = ErrArchivePasswordRequired
 	}
-	format = applyArchiveFormatOptions(format, currentArchiveOptions(), password)
-	extractor, ok := format.(archives.Extractor)
-	if !ok {
-		return fmt.Errorf("format is not extractable: %s", a.localPath)
-	}
-	if err := validateArchiveFileSystem(ctx, a.localPath, extractor, false); err != nil {
-		return err
-	}
-	fsys := &archives.ArchiveFS{
-		Path:    a.localPath,
-		Format:  extractor,
-		Context: ctx,
-	}
-	a.fsys = fsys
-	putCachedArchivePassword(a.archivePath, password)
-	return nil
+	return lastErr
 }
 
 func (a *ArchiveVFS) Close() error {

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/mholt/archives"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/encoding/japanese"
@@ -330,6 +331,62 @@ func TestArchivePasswordProviderRetriesWrongPassword(t *testing.T) {
 	}
 	if !provider.sawRetry(archivePath) {
 		t.Fatalf("encrypted 7z provider did not receive retry request")
+	}
+}
+
+func TestArchivePasswordPromptAnswerIsNotCachedBeforeValidation(t *testing.T) {
+	setArchivePasswordProviderForTest(t, "unverified")
+	archivePath := "unverified.7z"
+	password, err := getArchivePassword(t.Context(), ArchivePasswordRequest{ArchivePath: archivePath})
+	if err != nil || password != "unverified" {
+		t.Fatalf("getArchivePassword() = %q, %v", password, err)
+	}
+	if cached, ok := cachedArchivePassword(archivePath); ok {
+		t.Fatalf("unverified password was cached: %q", cached)
+	}
+}
+
+func TestArchiveVFSRetryValidatesContentBeforeCachingPassword(t *testing.T) {
+	provider := setArchivePasswordProviderForTest(t, "wrong", "secret")
+	archivePath := filepath.Join("testdata", "encrypted-names-visible.7z")
+	format, err := identifyArchiveFormat(t.Context(), archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	extractor, ok := format.(archives.Extractor)
+	if !ok {
+		t.Fatal("test archive format is not extractable")
+	}
+	vfs := &ArchiveVFS{
+		archivePath: archivePath,
+		localPath:   archivePath,
+		fsys: &archives.ArchiveFS{
+			Path:    archivePath,
+			Format:  extractor,
+			Context: t.Context(),
+		},
+	}
+
+	if err := vfs.retryWithArchivePassword(t.Context(), false); err != nil {
+		t.Fatalf("retryWithArchivePassword() error = %v", err)
+	}
+	if provider.callsFor(archivePath) != 2 {
+		t.Fatalf("password prompt count = %d, want 2", provider.callsFor(archivePath))
+	}
+	if password, ok := cachedArchivePassword(archivePath); !ok || password != "secret" {
+		t.Fatalf("cached password = %q, %t; want verified password", password, ok)
+	}
+	rc, err := vfs.Open("secret.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rc.Close()
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "secret archive data\n" {
+		t.Fatalf("archive content = %q", data)
 	}
 }
 

@@ -39,6 +39,10 @@ Current platform policy:
 - Direct SMB is unsupported outside Linux and Windows' native UNC path. Those
   platforms return an explicit error rather than mapping the SMB-relative path
   onto `LocalFS`.
+- Same-directory rename is no-clobber on Windows, Linux, and Darwin. Other
+  Unix/BSD builds currently return an explicit unsupported error because their
+  portable `rename` operation may replace a destination; NMF does not fall back
+  to the previous racy check-then-overwrite behavior.
 
 ## Desktop Drop Target
 

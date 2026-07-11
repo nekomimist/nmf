@@ -404,6 +404,43 @@ func TestCopyToSameDirectoryUsesAutoSuffix(t *testing.T) {
 	}
 }
 
+func TestCopyRejectsMissingOrNonDirectoryDestination(t *testing.T) {
+	srcDir := t.TempDir()
+	src := filepath.Join(srcDir, "source.txt")
+	if err := os.WriteFile(src, []byte("source"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	notDirectory := filepath.Join(t.TempDir(), "file.txt")
+	if err := os.WriteFile(notDirectory, []byte("destination"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		dest string
+	}{
+		{name: "missing", dest: filepath.Join(t.TempDir(), "typo", "nested")},
+		{name: "regular file", dest: notDirectory},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			job := &Job{Type: TypeCopy, ctx: context.Background()}
+			if err := copyOrMovePath(job, src, tt.dest); err == nil {
+				t.Fatal("copy should reject a destination that is not an existing directory")
+			}
+			if tt.name == "missing" {
+				if _, err := os.Stat(tt.dest); !os.IsNotExist(err) {
+					t.Fatalf("copy unexpectedly created destination tree: %v", err)
+				}
+				return
+			}
+			if data, err := os.ReadFile(tt.dest); err != nil || string(data) != "destination" {
+				t.Fatalf("destination file changed: data=%q err=%v", data, err)
+			}
+		})
+	}
+}
+
 func TestCopyFileRecordsCurrentFileProgress(t *testing.T) {
 	srcDir := t.TempDir()
 	dstDir := t.TempDir()
