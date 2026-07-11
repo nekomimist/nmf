@@ -96,6 +96,9 @@ func (fm *FileManager) refreshDirectoryAfterShellMenu() {
 	path := fm.currentPath
 	time.AfterFunc(10*time.Millisecond, func() {
 		fyne.Do(func() {
+			if fm.isWindowClosed() {
+				return
+			}
 			if fm.currentPath != path {
 				return
 			}

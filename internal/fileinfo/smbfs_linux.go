@@ -216,11 +216,11 @@ func (m *smbMountedShare) Base(p string) string {
 	return p[idx+1:]
 }
 
-func (s SMBFS) credentialsFor(relPath string) Credentials {
+func (s SMBFS) credentialsFor(ctx context.Context, relPath string) (Credentials, error) {
 	if s.cred != nil {
-		return *s.cred
+		return *s.cred, nil
 	}
-	return getCredentials(s.host, s.share, relPath)
+	return getCredentials(ctx, s.host, s.share, relPath)
 }
 
 // OpenSession opens a reusable mounted SMB share session.
@@ -240,7 +240,10 @@ func (s SMBFS) dialAndMountContext(ctx context.Context, relPath string) (*smb2.S
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	creds := s.credentialsFor(relPath)
+	creds, err := s.credentialsFor(ctx, relPath)
+	if err != nil {
+		return nil, nil, nil, Credentials{}, err
+	}
 	d := &smb2.Dialer{
 		Initiator: &smb2.NTLMInitiator{
 			User:     creds.Username,

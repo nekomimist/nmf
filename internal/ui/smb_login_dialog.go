@@ -1,8 +1,8 @@
 package ui
 
 import (
+	"context"
 	"errors"
-	"sync"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -29,33 +29,47 @@ func NewSMBCredentialsProvider(parent fyne.Window, km *keymanager.KeyManager, bi
 	return p
 }
 
-func (p *SMBCredentialsProvider) Get(host, share, _ string) (fileinfo.Credentials, error) {
-	var mu sync.Mutex
-	var creds fileinfo.Credentials
-	var retErr error
-	var finishOnce sync.Once
-	done := make(chan struct{})
+func (p *SMBCredentialsProvider) Get(ctx context.Context, host, share, _ string) (fileinfo.Credentials, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	type result struct {
+		credentials fileinfo.Credentials
+		err         error
+	}
+	done := make(chan result, 1)
+	dialogReady := make(chan *smbLoginDialog, 1)
 
 	fyne.Do(func() {
+		if ctx.Err() != nil {
+			return
+		}
 		d := newSMBLoginDialog(host, share, p.parent, p.km, p.bindings, func(ok bool, c fileinfo.Credentials) {
-			finishOnce.Do(func() {
-				defer close(done)
-				mu.Lock()
-				defer mu.Unlock()
-				if !ok {
-					retErr = errors.New("login cancelled")
-					return
-				}
-				creds = c
-			})
+			if !ok {
+				done <- result{err: errors.New("login cancelled")}
+				return
+			}
+			done <- result{credentials: c}
 		})
+		dialogReady <- d
+		if ctx.Err() != nil {
+			d.CancelDialog()
+			return
+		}
 		d.show()
 	})
 
-	<-done
-	mu.Lock()
-	defer mu.Unlock()
-	return creds, retErr
+	select {
+	case res := <-done:
+		return res.credentials, res.err
+	case <-ctx.Done():
+		select {
+		case d := <-dialogReady:
+			fyne.Do(d.CancelDialog)
+		default:
+		}
+		return fileinfo.Credentials{}, ctx.Err()
+	}
 }
 
 type smbLoginDialog struct {

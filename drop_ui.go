@@ -41,6 +41,9 @@ func (fm *FileManager) setupDropHandler() {
 			debugPrint("FileManager: Drop uri[%d] scheme=%s authority=%s path=%s raw=%s", i, uri.Scheme(), uri.Authority(), uri.Path(), uri.String())
 		}
 		fyne.Do(func() {
+			if fm.isWindowClosed() {
+				return
+			}
 			debugPrint("FileManager: Drop UI dispatch start uri_count=%d", len(uris))
 			fm.handleDroppedURIs(uris)
 		})

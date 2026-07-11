@@ -60,6 +60,8 @@ type FileManager struct {
 	runtime              *ApplicationRuntime                     // Application-scoped services
 	promptTargetID       uint64
 	promptUnregister     func()
+	transferDestSubID    uint64
+	transferDestUnsub    func()
 	lifecycleMu          sync.Mutex
 	closed               bool
 	quitConfirmationOpen bool

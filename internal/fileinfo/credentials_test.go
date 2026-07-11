@@ -1,6 +1,7 @@
 package fileinfo
 
 import (
+	"context"
 	"testing"
 )
 
@@ -22,7 +23,7 @@ type countingProv struct {
 	ret   Credentials
 }
 
-func (c *countingProv) Get(host, share, rel string) (Credentials, error) {
+func (c *countingProv) Get(context.Context, string, string, string) (Credentials, error) {
 	c.calls++
 	return c.ret, nil
 }
@@ -37,7 +38,10 @@ func TestCredentialsPrecedence_MemoryFirst(t *testing.T) {
 	// seed memory (e.g., from URL)
 	PutCachedCredentials("host", "share", Credentials{Domain: "md", Username: "mu", Password: "mp"})
 
-	got := getCredentials("host", "share", "")
+	got, err := getCredentials(context.Background(), "host", "share", "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got.Username != "mu" || got.Password != "mp" || got.Domain != "md" {
 		t.Fatalf("memory creds not preferred: %+v", got)
 	}
@@ -53,7 +57,10 @@ func TestCredentialsPrecedence_KeyringSecond(t *testing.T) {
 	SetSecretStore(stubSecret{d: "kd", u: "ku", p: "kp", found: true})
 
 	// no memory seed
-	got := getCredentials("h", "s", "")
+	got, err := getCredentials(context.Background(), "h", "s", "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got.Username != "ku" || got.Password != "kp" || got.Domain != "kd" {
 		t.Fatalf("keyring creds not preferred: %+v", got)
 	}
@@ -70,7 +77,10 @@ func TestCredentialsPrecedence_ProviderLast(t *testing.T) {
 	base := &countingProv{ret: Credentials{Domain: "pd", Username: "pu", Password: "pp"}}
 	SetCredentialsProvider(NewCachedCredentialsProvider(base))
 	SetSecretStore(stubSecret{found: false})
-	got := getCredentials("h2", "s2", "rel")
+	got, err := getCredentials(context.Background(), "h2", "s2", "rel")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got.Username != "pu" || got.Password != "pp" || got.Domain != "pd" {
 		t.Fatalf("provider creds not returned: %+v", got)
 	}

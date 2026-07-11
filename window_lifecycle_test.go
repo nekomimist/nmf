@@ -79,11 +79,17 @@ func TestCloseWindowIsIdempotentAndInvalidatesLoad(t *testing.T) {
 	})
 
 	unsubscribed := 0
+	transferUnsubscribed := 0
 	fm := &FileManager{
 		window: app.NewWindow("closing"),
 		jobsUnsub: func() {
 			unsubscribed++
 		},
+	}
+	if _, installed := fm.installTransferDestinationSubscription(func() {
+		transferUnsubscribed++
+	}); !installed {
+		t.Fatal("transfer subscription should install before close")
 	}
 	ctx, loadID := fm.beginDirectoryLoad()
 
@@ -96,10 +102,29 @@ func TestCloseWindowIsIdempotentAndInvalidatesLoad(t *testing.T) {
 	if unsubscribed != 1 {
 		t.Fatalf("jobs unsubscribe calls = %d, want 1", unsubscribed)
 	}
+	if transferUnsubscribed != 1 {
+		t.Fatalf("transfer unsubscribe calls = %d, want 1", transferUnsubscribed)
+	}
 	if !errors.Is(ctx.Err(), context.Canceled) {
 		t.Fatalf("load context error = %v, want context.Canceled", ctx.Err())
 	}
 	if fm.directoryLoadActive(loadID) {
 		t.Fatal("closing the window should invalidate its directory load")
+	}
+}
+
+func TestClosedWindowRejectsTransferDestinationSubscription(t *testing.T) {
+	fm := &FileManager{}
+	if !fm.beginWindowClose() {
+		t.Fatal("window close should begin")
+	}
+	unsubscribed := 0
+	if _, installed := fm.installTransferDestinationSubscription(func() {
+		unsubscribed++
+	}); installed {
+		t.Fatal("closed window should reject a new transfer subscription")
+	}
+	if unsubscribed != 1 {
+		t.Fatalf("rejected subscription cleanup calls = %d, want 1", unsubscribed)
 	}
 }

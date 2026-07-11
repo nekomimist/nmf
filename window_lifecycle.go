@@ -49,6 +49,7 @@ func (fm *FileManager) closeWindow() {
 		fm.promptUnregister()
 		fm.promptUnregister = nil
 	}
+	fm.releaseTransferDestinationSubscription(0)
 
 	// Close the window
 	if fm.window != nil {
@@ -64,6 +65,46 @@ func (fm *FileManager) closeWindow() {
 		if app := fyne.CurrentApp(); app != nil {
 			app.Quit()
 		}
+	}
+}
+
+func (fm *FileManager) installTransferDestinationSubscription(unsubscribe func()) (uint64, bool) {
+	if fm == nil || unsubscribe == nil {
+		return 0, false
+	}
+	fm.lifecycleMu.Lock()
+	if fm.closed {
+		fm.lifecycleMu.Unlock()
+		unsubscribe()
+		return 0, false
+	}
+	previous := fm.transferDestUnsub
+	fm.transferDestSubID++
+	id := fm.transferDestSubID
+	fm.transferDestUnsub = unsubscribe
+	fm.lifecycleMu.Unlock()
+	if previous != nil {
+		previous()
+	}
+	return id, true
+}
+
+// releaseTransferDestinationSubscription releases the matching dialog
+// subscription. An id of zero releases whichever subscription the window owns.
+func (fm *FileManager) releaseTransferDestinationSubscription(id uint64) {
+	if fm == nil {
+		return
+	}
+	fm.lifecycleMu.Lock()
+	if id != 0 && id != fm.transferDestSubID {
+		fm.lifecycleMu.Unlock()
+		return
+	}
+	unsubscribe := fm.transferDestUnsub
+	fm.transferDestUnsub = nil
+	fm.lifecycleMu.Unlock()
+	if unsubscribe != nil {
+		unsubscribe()
 	}
 }
 

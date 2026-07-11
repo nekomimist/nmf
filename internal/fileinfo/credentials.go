@@ -1,8 +1,10 @@
 package fileinfo
 
 import (
-	"nmf/internal/secret"
+	"context"
 	"sync"
+
+	"nmf/internal/secret"
 )
 
 // Credentials represents SMB authentication parameters.
@@ -15,7 +17,7 @@ type Credentials struct {
 
 // CredentialsProvider can interactively or programmatically provide credentials.
 type CredentialsProvider interface {
-	Get(host, share, relPath string) (Credentials, error)
+	Get(context.Context, string, string, string) (Credentials, error)
 }
 
 var (
@@ -50,10 +52,13 @@ func currentSecretStore() secret.Store {
 	return secretStore
 }
 
-func getCredentials(host, share, rel string) Credentials {
+func getCredentials(ctx context.Context, host, share, rel string) (Credentials, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	// 1) Prefer in-memory cached credentials (e.g., seeded from URL)
 	if c, ok := GetCachedCredentials(host, share); ok {
-		return c
+		return c, nil
 	}
 	// 2) Then try keyring (if available)
 	if store := currentSecretStore(); store != nil {
@@ -61,19 +66,19 @@ func getCredentials(host, share, rel string) Credentials {
 			c := Credentials{Domain: d, Username: u, Password: p}
 			// Seed memory cache for this session
 			PutCachedCredentials(host, share, c)
-			return c
+			return c, nil
 		}
 	}
 	// 3) Finally, ask provider (may prompt UI). The provider itself caches.
 	provider := currentCredentialsProvider()
 	if provider == nil {
-		return Credentials{}
+		return Credentials{}, nil
 	}
-	c, err := provider.Get(host, share, rel)
+	c, err := provider.Get(ctx, host, share, rel)
 	if err != nil {
-		return Credentials{}
+		return Credentials{}, err
 	}
-	return c
+	return c, nil
 }
 
 // CachedCredentialsProvider caches credentials per host/share in memory.
@@ -88,7 +93,7 @@ func NewCachedCredentialsProvider(fallback CredentialsProvider) *CachedCredentia
 	return &CachedCredentialsProvider{fallback: fallback, cache: make(map[string]Credentials)}
 }
 
-func (p *CachedCredentialsProvider) Get(host, share, relPath string) (Credentials, error) {
+func (p *CachedCredentialsProvider) Get(ctx context.Context, host, share, relPath string) (Credentials, error) {
 	key := host + "\x00" + share
 	p.mu.RLock()
 	if c, ok := p.cache[key]; ok && (c.Username != "" || c.Password != "" || c.Domain != "") {
@@ -99,7 +104,7 @@ func (p *CachedCredentialsProvider) Get(host, share, relPath string) (Credential
 	if p.fallback == nil {
 		return Credentials{}, nil
 	}
-	c, err := p.fallback.Get(host, share, relPath)
+	c, err := p.fallback.Get(ctx, host, share, relPath)
 	if err != nil {
 		return c, err
 	}

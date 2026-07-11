@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
-	"sync"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -32,41 +31,46 @@ func NewArchivePasswordProvider(parent fyne.Window, km *keymanager.KeyManager, b
 }
 
 func (p *ArchivePasswordProvider) GetArchivePassword(ctx context.Context, req fileinfo.ArchivePasswordRequest) (string, error) {
-	var mu sync.Mutex
-	var password string
-	var retErr error
-	var finishOnce sync.Once
-	done := make(chan struct{})
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	type result struct {
+		password string
+		err      error
+	}
+	done := make(chan result, 1)
 	dialogReady := make(chan *archivePasswordDialog, 1)
 
 	fyne.Do(func() {
+		if ctx.Err() != nil {
+			return
+		}
 		d := newArchivePasswordDialog(req, p.parent, p.km, p.bindings, func(ok bool, pass string) {
-			finishOnce.Do(func() {
-				defer close(done)
-				mu.Lock()
-				defer mu.Unlock()
-				if !ok {
-					retErr = errors.New("archive password cancelled")
-					return
-				}
-				password = pass
-			})
+			if !ok {
+				done <- result{err: errors.New("archive password cancelled")}
+				return
+			}
+			done <- result{password: pass}
 		})
 		dialogReady <- d
+		if ctx.Err() != nil {
+			d.CancelDialog()
+			return
+		}
 		d.show()
 	})
 
 	select {
 	case <-ctx.Done():
-		d := <-dialogReady
-		fyne.Do(d.CancelDialog)
-		<-done
+		select {
+		case d := <-dialogReady:
+			fyne.Do(d.CancelDialog)
+		default:
+		}
 		return "", ctx.Err()
-	case <-done:
+	case res := <-done:
+		return res.password, res.err
 	}
-	mu.Lock()
-	defer mu.Unlock()
-	return password, retErr
 }
 
 // archivePasswordDialog is a single-field password prompt that follows the

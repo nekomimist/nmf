@@ -78,9 +78,15 @@ func (r *ApplicationRuntime) registerWindowPrompts(fm *FileManager) {
 
 func newWindowConflictResolver(window fyne.Window, km *keymanager.KeyManager, bindings []config.KeyBindingEntry) jobs.ConflictResolver {
 	return func(ctx context.Context, req jobs.ConflictRequest) jobs.ConflictResolution {
+		if ctx == nil {
+			ctx = context.Background()
+		}
 		done := make(chan jobs.ConflictResolution, 1)
 		dlg := ui.NewConflictDialog(req, km, bindings)
 		fyne.Do(func() {
+			if ctx.Err() != nil {
+				return
+			}
 			dlg.ShowDialog(window, func(res jobs.ConflictResolution) {
 				done <- res
 			})
@@ -89,7 +95,6 @@ func newWindowConflictResolver(window fyne.Window, km *keymanager.KeyManager, bi
 		select {
 		case <-ctx.Done():
 			fyne.Do(dlg.CancelJob)
-			<-done
 			return jobs.ConflictResolution{Action: jobs.ConflictCancelJob}
 		case res := <-done:
 			return res
@@ -103,11 +108,17 @@ type applicationPromptTarget struct {
 	conflict jobs.ConflictResolver
 }
 
+type registeredPromptTarget struct {
+	applicationPromptTarget
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
 // applicationPromptBroker serializes interactive prompts and selects their
 // window at request time. Jobs retain this broker, not a FileManager window.
 type applicationPromptBroker struct {
 	mu       sync.Mutex
-	targets  map[uint64]applicationPromptTarget
+	targets  map[uint64]registeredPromptTarget
 	order    []uint64
 	nextID   uint64
 	activeID uint64
@@ -116,16 +127,17 @@ type applicationPromptBroker struct {
 
 func newApplicationPromptBroker() *applicationPromptBroker {
 	return &applicationPromptBroker{
-		targets: make(map[uint64]applicationPromptTarget),
+		targets: make(map[uint64]registeredPromptTarget),
 		prompt:  make(chan struct{}, 1),
 	}
 }
 
 func (b *applicationPromptBroker) Register(target applicationPromptTarget) (uint64, func()) {
+	ctx, cancel := context.WithCancel(context.Background())
 	b.mu.Lock()
 	b.nextID++
 	id := b.nextID
-	b.targets[id] = target
+	b.targets[id] = registeredPromptTarget{applicationPromptTarget: target, ctx: ctx, cancel: cancel}
 	b.order = append(b.order, id)
 	b.mu.Unlock()
 
@@ -139,6 +151,7 @@ func (b *applicationPromptBroker) Register(target applicationPromptTarget) (uint
 
 func (b *applicationPromptBroker) unregister(id uint64) {
 	b.mu.Lock()
+	target, ok := b.targets[id]
 	delete(b.targets, id)
 	if b.activeID == id {
 		b.activeID = 0
@@ -150,6 +163,9 @@ func (b *applicationPromptBroker) unregister(id uint64) {
 		}
 	}
 	b.mu.Unlock()
+	if ok {
+		target.cancel()
+	}
 }
 
 func (b *applicationPromptBroker) SetActive(id uint64, active bool) {
@@ -166,7 +182,7 @@ func (b *applicationPromptBroker) SetActive(id uint64, active bool) {
 	}
 }
 
-func (b *applicationPromptBroker) target() (applicationPromptTarget, bool) {
+func (b *applicationPromptBroker) target() (registeredPromptTarget, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if target, ok := b.targets[b.activeID]; ok {
@@ -177,7 +193,7 @@ func (b *applicationPromptBroker) target() (applicationPromptTarget, bool) {
 			return target, true
 		}
 	}
-	return applicationPromptTarget{}, false
+	return registeredPromptTarget{}, false
 }
 
 func (b *applicationPromptBroker) acquire(ctx context.Context) bool {
@@ -193,17 +209,27 @@ func (b *applicationPromptBroker) release() {
 	<-b.prompt
 }
 
-func (b *applicationPromptBroker) Get(host, share, relPath string) (fileinfo.Credentials, error) {
-	b.prompt <- struct{}{}
+func (b *applicationPromptBroker) Get(ctx context.Context, host, share, relPath string) (fileinfo.Credentials, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if !b.acquire(ctx) {
+		return fileinfo.Credentials{}, ctx.Err()
+	}
 	defer b.release()
 	target, ok := b.target()
 	if !ok || target.smb == nil {
 		return fileinfo.Credentials{}, errNoInteractiveWindow
 	}
-	return target.smb.Get(host, share, relPath)
+	promptCtx, cancel := promptTargetContext(ctx, target.ctx)
+	defer cancel()
+	return target.smb.Get(promptCtx, host, share, relPath)
 }
 
 func (b *applicationPromptBroker) GetArchivePassword(ctx context.Context, req fileinfo.ArchivePasswordRequest) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if !b.acquire(ctx) {
 		return "", ctx.Err()
 	}
@@ -212,10 +238,15 @@ func (b *applicationPromptBroker) GetArchivePassword(ctx context.Context, req fi
 	if !ok || target.archive == nil {
 		return "", fmt.Errorf("%w: %w", fileinfo.ErrArchivePasswordRequired, errNoInteractiveWindow)
 	}
-	return target.archive.GetArchivePassword(ctx, req)
+	promptCtx, cancel := promptTargetContext(ctx, target.ctx)
+	defer cancel()
+	return target.archive.GetArchivePassword(promptCtx, req)
 }
 
 func (b *applicationPromptBroker) ResolveConflict(ctx context.Context, req jobs.ConflictRequest) jobs.ConflictResolution {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if !b.acquire(ctx) {
 		return jobs.ConflictResolution{Action: jobs.ConflictCancelJob}
 	}
@@ -224,5 +255,16 @@ func (b *applicationPromptBroker) ResolveConflict(ctx context.Context, req jobs.
 	if !ok || target.conflict == nil {
 		return jobs.ConflictResolution{Action: jobs.ConflictCancelJob}
 	}
-	return target.conflict(ctx, req)
+	promptCtx, cancel := promptTargetContext(ctx, target.ctx)
+	defer cancel()
+	return target.conflict(promptCtx, req)
+}
+
+func promptTargetContext(requestCtx, targetCtx context.Context) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(requestCtx)
+	stop := context.AfterFunc(targetCtx, cancel)
+	return ctx, func() {
+		stop()
+		cancel()
+	}
 }

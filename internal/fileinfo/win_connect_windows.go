@@ -4,6 +4,7 @@
 package fileinfo
 
 import (
+	"context"
 	"errors"
 	"os"
 	"syscall"
@@ -89,7 +90,10 @@ func ensureWindowsConnection(p Parsed, native string) error {
 		return errors.New("invalid UNC path")
 	}
 	// Get credentials: keyring first, then provider (UI)
-	creds := getCredentials(host, share, "")
+	creds, err := getCredentials(context.Background(), host, share, "")
+	if err != nil {
+		return err
+	}
 	if creds.Username == "" && creds.Password == "" && creds.Domain == "" {
 		// No creds available
 		return errors.New("no credentials provided")

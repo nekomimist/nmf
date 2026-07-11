@@ -65,6 +65,10 @@ Window shutdown:
   watcher or refocus the closed window.
 - Closing a window unregisters its prompt target. Later job conflicts are
   routed to another open window, or cancel conservatively when none remains.
+- Each registered prompt target owns a cancellation context. Unregistering a
+  window cancels an in-flight SMB, archive-password, or conflict prompt and
+  releases the application prompt slot without waiting for a queued Fyne close
+  callback; shutdown may discard queued UI functions.
 - Each window closes its `IconService` before destroying widgets. Close stops
   its workers and batch notifier, drops callbacks, and makes late icon results
   inert; the callback also checks the window generation before refreshing.

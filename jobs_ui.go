@@ -185,9 +185,16 @@ func (fm *FileManager) showTransferDestinationDialog(op ui.Operation, targets []
 	}
 	unsubscribe := subscribeNavigationHistoryChanged(func(path string) {
 		fyne.Do(func() {
+			if fm.isWindowClosed() {
+				return
+			}
 			refreshDestinations(path)
 		})
 	})
+	subscriptionID, installed := fm.installTransferDestinationSubscription(unsubscribe)
+	if !installed {
+		return
+	}
 	dlg.SetOnSelectedPathChanged(func(path string) {
 		if openDest[path] {
 			highlightFileManagerWindowForPath(path)
@@ -201,7 +208,7 @@ func (fm *FileManager) showTransferDestinationDialog(op ui.Operation, targets []
 	})
 	dlg.SetOnClosed(func() {
 		clearFileManagerWindowHighlights()
-		unsubscribe()
+		fm.releaseTransferDestinationSubscription(subscriptionID)
 	})
 	dlg.ShowDialog(fm.window, onAccept)
 }
