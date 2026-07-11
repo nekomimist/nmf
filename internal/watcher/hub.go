@@ -111,13 +111,13 @@ func (h *WatchHub) Subscribe(path string, interval time.Duration) *Subscription 
 	}
 	h.nextSubscriber++
 	id := h.nextSubscriber
-	updates := make(chan Snapshot, 10)
-	src.addSubscriber(id, updates)
+	subscriber := newWatchSubscriber(10)
+	src.addSubscriber(id, subscriber)
 	h.mu.Unlock()
 
 	var once sync.Once
 	return &Subscription{
-		Updates: updates,
+		Updates: subscriber.updates,
 		unsubscribe: func() {
 			once.Do(func() {
 				h.unsubscribe(path, id)
@@ -169,6 +169,7 @@ func resolveWatchPath(path string) (string, bool) {
 	if err != nil {
 		return path, true
 	}
+	defer fileinfo.CloseVFS(vfs)
 	if !vfs.Capabilities().Watch {
 		return "", false
 	}
@@ -188,10 +189,48 @@ type watchSource struct {
 	useFSWatcher bool
 	hub          *WatchHub
 	mu           sync.Mutex
-	subscribers  map[uint64]chan Snapshot
+	subscribers  map[uint64]*watchSubscriber
 	stopChan     chan struct{}
 	stopped      chan struct{}
 	pollFallback bool
+}
+
+// watchSubscriber serializes delivery with close so a broadcast that already
+// captured this subscriber cannot send to its channel after unsubscribe closes
+// it.
+type watchSubscriber struct {
+	mu      sync.Mutex
+	updates chan Snapshot
+	closed  bool
+}
+
+func newWatchSubscriber(buffer int) *watchSubscriber {
+	return &watchSubscriber{updates: make(chan Snapshot, buffer)}
+}
+
+func (s *watchSubscriber) send(snapshot Snapshot) (sent bool, open bool) {
+	update := cloneSnapshot(snapshot)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return false, false
+	}
+	select {
+	case s.updates <- update:
+		return true, true
+	default:
+		return false, true
+	}
+}
+
+func (s *watchSubscriber) close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return
+	}
+	s.closed = true
+	close(s.updates)
 }
 
 func newWatchSource(path string, watchPath string, interval time.Duration, useFSWatcher bool, hub *WatchHub) *watchSource {
@@ -201,7 +240,7 @@ func newWatchSource(path string, watchPath string, interval time.Duration, useFS
 		interval:     interval,
 		useFSWatcher: useFSWatcher,
 		hub:          hub,
-		subscribers:  make(map[uint64]chan Snapshot),
+		subscribers:  make(map[uint64]*watchSubscriber),
 		stopChan:     make(chan struct{}),
 		stopped:      make(chan struct{}),
 	}
@@ -240,18 +279,18 @@ func (s *watchSource) stop() {
 	<-s.stopped
 }
 
-func (s *watchSource) addSubscriber(id uint64, updates chan Snapshot) {
+func (s *watchSource) addSubscriber(id uint64, subscriber *watchSubscriber) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.subscribers[id] = updates
+	s.subscribers[id] = subscriber
 }
 
 func (s *watchSource) removeSubscriber(id uint64) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if ch, ok := s.subscribers[id]; ok {
+	if subscriber, ok := s.subscribers[id]; ok {
 		delete(s.subscribers, id)
-		close(ch)
+		subscriber.close()
 	}
 	return len(s.subscribers) == 0
 }
@@ -345,16 +384,14 @@ func (s *watchSource) readAndBroadcast() {
 
 func (s *watchSource) broadcast(snapshot Snapshot) {
 	s.mu.Lock()
-	subscribers := make([]chan Snapshot, 0, len(s.subscribers))
-	for _, ch := range s.subscribers {
-		subscribers = append(subscribers, ch)
+	subscribers := make([]*watchSubscriber, 0, len(s.subscribers))
+	for _, subscriber := range s.subscribers {
+		subscribers = append(subscribers, subscriber)
 	}
 	s.mu.Unlock()
 
-	for _, ch := range subscribers {
-		select {
-		case ch <- cloneSnapshot(snapshot):
-		default:
+	for _, subscriber := range subscribers {
+		if sent, open := subscriber.send(snapshot); open && !sent {
 			s.hub.debugPrint("WatchHub: subscriber channel full path=%s", s.path)
 		}
 	}

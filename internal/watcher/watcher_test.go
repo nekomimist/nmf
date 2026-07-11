@@ -212,8 +212,49 @@ func TestApplyPendingChanges_IgnoresStaleRun(t *testing.T) {
 	}
 }
 
+func TestApplyDataChangesOnUIRechecksRunGeneration(t *testing.T) {
+	m := &mockFM{path: "."}
+	dw := NewDirectoryWatcher(m, nil, dummyDebug)
+	dw.running = true
+	dw.runID = 2
+
+	dw.applyDataChangesOnUI(1, []fileinfo.FileInfo{
+		fi("./stale.txt", "stale.txt", 1, time.Now()),
+	}, nil, nil)
+
+	if len(m.files) != 0 {
+		t.Fatalf("stale UI callback changed files: %#v", m.files)
+	}
+}
+
+func TestQueueSnapshotChangesAdvancesExpectedBaseline(t *testing.T) {
+	m := &mockFM{path: "."}
+	dw := NewDirectoryWatcher(m, nil, dummyDebug)
+	dw.running = true
+	dw.runID = 1
+	queued := make(chan *PendingChanges, 2)
+	now := time.Now()
+
+	dw.queueSnapshotChanges(1, Snapshot{
+		"./a.txt": fi("./a.txt", "a.txt", 1, now),
+	}, queued)
+	dw.queueSnapshotChanges(1, Snapshot{
+		"./a.txt": fi("./a.txt", "a.txt", 1, now),
+		"./b.txt": fi("./b.txt", "b.txt", 1, now),
+	}, queued)
+
+	first := <-queued
+	second := <-queued
+	if len(first.Added) != 1 || first.Added[0].Name != "a.txt" {
+		t.Fatalf("first snapshot changes = %#v, want only a.txt added", first)
+	}
+	if len(second.Added) != 1 || second.Added[0].Name != "b.txt" {
+		t.Fatalf("second snapshot changes = %#v, want only b.txt added", second)
+	}
+}
+
 // TestApplyDataChanges_MergesAddedDeletedModified exercises applyDataChanges'
-// new path (fyne.Do -> fm.ApplyChanges -> updateSnapshot). It runs the call
+// new path (fyne.DoAndWait -> fm.ApplyChanges). It runs the call
 // from a spawned goroutine (not the test's own goroutine) so the fyne test
 // driver treats it as an off-main-thread call and executes it synchronously,
 // matching how applyLoop invokes it in production.
@@ -231,6 +272,8 @@ func TestApplyDataChanges_MergesAddedDeletedModified(t *testing.T) {
 		},
 	}
 	dw := NewDirectoryWatcher(m, nil, dummyDebug)
+	dw.running = true
+	dw.runID = 1
 
 	added := []fileinfo.FileInfo{fi("/tmp/c.txt", "c.txt", 1, now)}
 	deleted := []fileinfo.FileInfo{fi("/tmp/b.txt", "b.txt", 5, now)}
@@ -239,7 +282,7 @@ func TestApplyDataChanges_MergesAddedDeletedModified(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		dw.applyDataChanges(added, deleted, modified)
+		dw.applyDataChanges(1, added, deleted, modified)
 	}()
 	<-done
 
@@ -277,7 +320,7 @@ func TestApplyDataChanges_NoopWhenAllEmpty(t *testing.T) {
 
 	// All three slices empty: must return before reaching fyne.Do, so this is
 	// safe to call directly without a running app.
-	dw.applyDataChanges(nil, nil, nil)
+	dw.applyDataChanges(0, nil, nil, nil)
 
 	if len(m.files) != 1 {
 		t.Fatalf("files should be untouched, got %#v", m.files)

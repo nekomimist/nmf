@@ -114,6 +114,29 @@ func TestWatchHubSharesSourceForSamePath(t *testing.T) {
 	waitFor(t, time.Second, backends[0].isClosed)
 }
 
+func TestWatchSubscriberRejectsStaleBroadcastAfterUnsubscribe(t *testing.T) {
+	hub := newWatchHub(dummyDebug, nil, nil, nil, time.Millisecond)
+	source := newWatchSource("/tmp/stale", "", time.Second, false, hub)
+	subscriber := newWatchSubscriber(1)
+	source.addSubscriber(1, subscriber)
+
+	// Model broadcast after it has captured a subscriber reference but before
+	// it sends: unsubscribe removes and closes the subscriber first.
+	source.mu.Lock()
+	captured := source.subscribers[1]
+	source.mu.Unlock()
+	if empty := source.removeSubscriber(1); !empty {
+		t.Fatal("source should have no subscribers after removal")
+	}
+
+	if sent, open := captured.send(Snapshot{"/tmp/stale/file": {Path: "/tmp/stale/file"}}); sent || open {
+		t.Fatalf("stale send = (sent=%t, open=%t), want closed subscriber", sent, open)
+	}
+	if _, ok := <-subscriber.updates; ok {
+		t.Fatal("subscriber updates channel should be closed")
+	}
+}
+
 // TestWatchHubUnsubscribeDoesNotBlockOnHangingClose verifies that Unsubscribe
 // returns promptly even when the backend's Close() blocks indefinitely, and
 // that a fresh Subscribe for the same path works while the old source is

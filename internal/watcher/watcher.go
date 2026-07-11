@@ -16,7 +16,7 @@ type FileManager interface {
 	RemoveFromSelections(path string)
 	// ApplyChanges merges watcher-detected added/deleted/modified files into
 	// the current listing. Implementations must run this only on the Fyne
-	// main goroutine (see applyDataChanges, which marshals via fyne.Do).
+	// main goroutine (see applyDataChanges, which marshals via fyne.DoAndWait).
 	ApplyChanges(added, deleted, modified []fileinfo.FileInfo)
 }
 
@@ -203,12 +203,24 @@ func (dw *DirectoryWatcher) queueSnapshotChanges(runID uint64, currentFiles Snap
 			Deleted:  deleted,
 			Modified: modified,
 		}:
-			// Changes sent successfully
+			// Advance the expected baseline only after the change set is queued.
+			// This prevents a burst of snapshots from deriving duplicate adds or
+			// deletes while the first UI application is still pending.
+			dw.advanceSnapshot(runID, currentFiles)
 		default:
 			// Channel full, skip this update
 			dw.debugPrint("DirectoryWatcher: Change channel full, skipping update")
 		}
 	}
+}
+
+func (dw *DirectoryWatcher) advanceSnapshot(runID uint64, files Snapshot) {
+	dw.mu.Lock()
+	defer dw.mu.Unlock()
+	if !dw.running || dw.runID != runID {
+		return
+	}
+	dw.previousFiles = cloneSnapshot(files)
 }
 
 // detectChanges compares current and previous states to find differences
@@ -243,22 +255,27 @@ func (dw *DirectoryWatcher) detectChanges(currentFiles map[string]fileinfo.FileI
 }
 
 // applyDataChanges applies detected changes to the file manager data. The
-// merge itself (fm.ApplyChanges) and the snapshot refresh run inside a single
-// fyne.Do so they're confined to the Fyne main goroutine, alongside all other
+// merge itself (fm.ApplyChanges) runs inside fyne.DoAndWait so changes remain
+// ordered and confined to the Fyne main goroutine, alongside all other
 // fm.files/fm.selectedFiles access; the previous background-goroutine merge
 // (calling GetFiles/RemoveFromSelections here directly) raced with UI-thread
 // code such as SetFileSelected, which mutates fm.selectedFiles without a lock.
-func (dw *DirectoryWatcher) applyDataChanges(added, deleted, modified []fileinfo.FileInfo) {
+func (dw *DirectoryWatcher) applyDataChanges(runID uint64, added, deleted, modified []fileinfo.FileInfo) {
 	if len(added) == 0 && len(deleted) == 0 && len(modified) == 0 {
 		return
 	}
 	dw.debugPrint("DirectoryWatcher: Applying changes: %d added, %d deleted, %d modified", len(added), len(deleted), len(modified))
 
-	fyne.Do(func() {
-		dw.fm.ApplyChanges(added, deleted, modified)
-		// Update snapshot after UI update to ensure consistency
-		dw.updateSnapshot()
+	fyne.DoAndWait(func() {
+		dw.applyDataChangesOnUI(runID, added, deleted, modified)
 	})
+}
+
+func (dw *DirectoryWatcher) applyDataChangesOnUI(runID uint64, added, deleted, modified []fileinfo.FileInfo) {
+	if !dw.isCurrentRun(runID) {
+		return
+	}
+	dw.fm.ApplyChanges(added, deleted, modified)
 }
 
 // applyPendingChanges applies a queued change set only when it belongs to the active watcher run.
@@ -267,5 +284,5 @@ func (dw *DirectoryWatcher) applyPendingChanges(runID uint64, changes *PendingCh
 		return
 	}
 	// Apply data changes (binding auto-updates UI)
-	dw.applyDataChanges(changes.Added, changes.Deleted, changes.Modified)
+	dw.applyDataChanges(runID, changes.Added, changes.Deleted, changes.Modified)
 }
