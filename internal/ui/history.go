@@ -572,9 +572,9 @@ func (nhd *NavigationHistoryDialog) applyHorizontalScroll() {
 }
 
 func (nhd *NavigationHistoryDialog) resolveDirectoryPath(path string) (string, bool) {
-	resolved, _, err := fileinfo.ResolveAccessibleDirectoryPath(path)
+	resolved, _, err := fileinfo.CanonicalDisplayPath(path)
 	if err != nil {
-		nhd.debugPrint("HistoryDialog: Path is not accessible: '%s' (%v)", path, err)
+		nhd.debugPrint("HistoryDialog: Path is invalid: '%s' (%v)", path, err)
 		return "", false
 	}
 	return resolved, true

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"strings"
+	"sync"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -30,6 +31,10 @@ type DirectoryTreeDialog struct {
 	closed       bool                                     // Prevent double-close/pop
 	sink         *KeySink                                 // Key capturing wrapper
 	radioGroup   *widget.RadioGroup                       // Root mode selection radio group
+	children     map[string][]string
+	loading      map[string]bool
+	loadChildren func(string) ([]string, error)
+	loadApplyMu  sync.Mutex
 }
 
 // NewDirectoryTreeDialog creates a new directory tree dialog
@@ -43,7 +48,10 @@ func NewDirectoryTreeDialog(currentPath string, keyManager *keymanager.KeyManage
 		currentRoot:  GetSystemRoot(),
 		debugPrint:   debugPrint,
 		keyManager:   keyManager,
+		children:     make(map[string][]string),
+		loading:      make(map[string]bool),
 	}
+	dialog.loadChildren = dialog.readDirectoryChildren
 
 	dialog.createTree()
 	return dialog
@@ -104,15 +112,46 @@ func (dtd *DirectoryTreeDialog) createTree() {
 
 // getDirectoryChildren returns child directories for lazy loading
 func (dtd *DirectoryTreeDialog) getDirectoryChildren(path string) []string {
+	if children, ok := dtd.children[path]; ok {
+		return append([]string(nil), children...)
+	}
+	if dtd.loading[path] || dtd.closed {
+		return nil
+	}
+	dtd.loading[path] = true
+	loader := dtd.loadChildren
+	go func() {
+		children, err := loader(path)
+		dtd.loadApplyMu.Lock()
+		defer dtd.loadApplyMu.Unlock()
+		fyne.DoAndWait(func() {
+			delete(dtd.loading, path)
+			if dtd.closed {
+				return
+			}
+			if err != nil {
+				dtd.debugPrint("TreeDialog: Error reading directory %s: %v", path, err)
+				dtd.children[path] = nil
+			} else {
+				dtd.children[path] = children
+			}
+			if dtd.tree != nil {
+				dtd.tree.Refresh()
+			}
+		})
+	}()
+	return nil
+}
+
+func (dtd *DirectoryTreeDialog) readDirectoryChildren(path string) ([]string, error) {
 	// Check for platform-specific children first (e.g., Windows drives)
 	if platformChildren, handled := GetPlatformSpecificChildren(path); handled {
-		return platformChildren
+		return platformChildren, nil
 	}
 
 	entries, err := fileinfo.ReadDirPortable(path)
 	if err != nil {
-		dtd.debugPrint("TreeDialog: Error reading directory %s: %v", path, err)
-		return []string{}
+		return nil, err
 	}
 
 	var children []string
@@ -128,17 +167,12 @@ func (dtd *DirectoryTreeDialog) getDirectoryChildren(path string) []string {
 		}
 	}
 
-	return children
+	return children, nil
 }
 
 // isDirectory checks if a path is a directory
 func (dtd *DirectoryTreeDialog) isDirectory(path string) bool {
-	// Check platform-specific directory logic first
-	if isDir, handled := IsPlatformDirectory(path); handled {
-		return isDir
-	}
-
-	return fileinfo.IsNavigableDirectory(path)
+	return path != ""
 }
 
 // getDisplayName returns the display name for a directory path

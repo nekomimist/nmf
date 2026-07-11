@@ -502,9 +502,9 @@ func (d *CopyMoveDialog) notifyDialogClosed() {
 
 // Helpers
 func (d *CopyMoveDialog) resolveDirectoryPath(p string) (string, bool) {
-	resolved, _, err := fileinfo.ResolveAccessibleDirectoryPath(p)
+	resolved, _, err := fileinfo.CanonicalDisplayPath(p)
 	if err != nil {
-		d.debugPrint("CopyMoveDialog: Path is not accessible: '%s' (%v)", p, err)
+		d.debugPrint("CopyMoveDialog: Path is invalid: '%s' (%v)", p, err)
 		return "", false
 	}
 	return resolved, true

@@ -453,9 +453,9 @@ func (d *CompareDialog) notifyDialogClosed() {
 }
 
 func (d *CompareDialog) resolveDirectoryPath(p string) (string, bool) {
-	resolved, _, err := fileinfo.ResolveAccessibleDirectoryPath(p)
+	resolved, _, err := fileinfo.CanonicalDisplayPath(p)
 	if err != nil {
-		d.debugPrint("CompareDialog: Path is not accessible: '%s' (%v)", p, err)
+		d.debugPrint("CompareDialog: Path is invalid: '%s' (%v)", p, err)
 		return "", false
 	}
 	return resolved, true

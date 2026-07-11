@@ -12,7 +12,8 @@ import (
 func openNativeWithDefaultApp(p string) error {
 	// Prefer local mount path for smb:// if available so non-GVFS apps still work.
 	target := p
-	if _, parsed, err := ResolveRead(p); err == nil {
+	if vfs, parsed, err := ResolveRead(p); err == nil {
+		defer CloseVFS(vfs)
 		if parsed.Scheme == SchemeSMB && parsed.Provider == "local" && parsed.Native != "" {
 			target = parsed.Native
 		}
@@ -31,6 +32,7 @@ func openNativeWithDefaultApp(p string) error {
 		if path, lookErr := exec.LookPath(args[0]); lookErr == nil {
 			cmd := exec.Command(path, args[1:]...)
 			if err := cmd.Start(); err == nil {
+				go func() { _ = cmd.Wait() }()
 				return nil
 			} else {
 				lastErr = err

@@ -16,6 +16,8 @@ type IconService struct {
 	fileCache map[string]fyne.Resource // key: full path (or strategy-defined key)
 	pending   map[string]struct{}      // de-duplicate queued jobs (use scope+key)
 	jobs      chan iconJob
+	done      chan struct{}
+	closeOnce sync.Once
 
 	// Update batching
 	updMu       sync.Mutex
@@ -38,6 +40,7 @@ func NewIconService(debug func(format string, args ...interface{})) *IconService
 		fileCache:  make(map[string]fyne.Resource, 512),
 		pending:    make(map[string]struct{}, 512),
 		jobs:       make(chan iconJob, 256),
+		done:       make(chan struct{}),
 		debugPrint: debug,
 	}
 
@@ -53,8 +56,14 @@ func NewIconService(debug func(format string, args ...interface{})) *IconService
 
 // OnUpdated registers a callback called on batches of updates (no args, UI should refresh icons).
 func (s *IconService) OnUpdated(f func()) {
+	if f == nil || s.closed() {
+		return
+	}
 	s.updMu.Lock()
 	defer s.updMu.Unlock()
+	if s.closed() {
+		return
+	}
 	s.subscribers = append(s.subscribers, f)
 }
 
@@ -91,12 +100,37 @@ func (s *IconService) GetCachedOrRequest(path string, isDir bool, ext string, si
 	return nil, false
 }
 
-// Close would stop workers in a more elaborate implementation; kept for API symmetry.
+// Close stops workers/notifier and releases update callbacks. An in-flight
+// platform icon fetch is allowed to return, but its result is discarded.
 func (s *IconService) Close() {
-	// no-op for now
+	if s == nil {
+		return
+	}
+	s.closeOnce.Do(func() {
+		close(s.done)
+		s.updMu.Lock()
+		s.updatedAny = false
+		s.subscribers = nil
+		s.updMu.Unlock()
+	})
+}
+
+func (s *IconService) closed() bool {
+	if s == nil {
+		return true
+	}
+	select {
+	case <-s.done:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *IconService) enqueue(scope, key string, size int) {
+	if s.closed() {
+		return
+	}
 	k := scope + "|" + key
 	s.mu.Lock()
 	if _, exists := s.pending[k]; exists {
@@ -107,6 +141,10 @@ func (s *IconService) enqueue(scope, key string, size int) {
 	s.mu.Unlock()
 
 	select {
+	case <-s.done:
+		s.mu.Lock()
+		delete(s.pending, k)
+		s.mu.Unlock()
 	case s.jobs <- iconJob{scope: scope, key: key, size: size}:
 	default:
 		// queue full; drop silently to protect UI responsiveness
@@ -120,13 +158,22 @@ func (s *IconService) enqueue(scope, key string, size int) {
 }
 
 func (s *IconService) worker() {
-	for job := range s.jobs {
+	for {
+		var job iconJob
+		select {
+		case <-s.done:
+			return
+		case job = <-s.jobs:
+		}
+		if s.closed() {
+			return
+		}
 		var res fyne.Resource
 		var err error
 		switch job.scope {
 		case "ext":
 			res, err = platformFetchExtIcon(job.key, job.size)
-			if err == nil && res != nil {
+			if err == nil && res != nil && !s.closed() {
 				s.mu.Lock()
 				s.extCache[job.key] = res
 				s.mu.Unlock()
@@ -134,7 +181,7 @@ func (s *IconService) worker() {
 			}
 		case "file":
 			res, err = platformFetchFileIcon(job.key, job.size)
-			if err == nil && res != nil {
+			if err == nil && res != nil && !s.closed() {
 				s.mu.Lock()
 				s.fileCache[job.key] = res
 				s.mu.Unlock()
@@ -149,7 +196,14 @@ func (s *IconService) worker() {
 }
 
 func (s *IconService) flagUpdated() {
+	if s.closed() {
+		return
+	}
 	s.updMu.Lock()
+	if s.closed() {
+		s.updMu.Unlock()
+		return
+	}
 	s.updatedAny = true
 	s.updMu.Unlock()
 }
@@ -157,7 +211,12 @@ func (s *IconService) flagUpdated() {
 func (s *IconService) batchNotifier() {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
-	for range ticker.C {
+	for {
+		select {
+		case <-s.done:
+			return
+		case <-ticker.C:
+		}
 		s.updMu.Lock()
 		if !s.updatedAny {
 			s.updMu.Unlock()

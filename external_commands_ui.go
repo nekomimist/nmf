@@ -181,13 +181,28 @@ func (fm *FileManager) runExternalCommand(command string, args []string, cwd str
 	if dir := fm.resolveExternalCommandCwd(cwd); dir != "" {
 		cmd.Dir = dir
 	}
-	if err := cmd.Start(); err != nil {
+	if err := startAndReapCommand(cmd, func(err error) {
+		debugPrint("FileManager: external command exited command=%s pid=%d err=%v", command, cmd.Process.Pid, err)
+	}); err != nil {
 		debugPrint("FileManager: external command failed command=%s err=%v", command, err)
 		fm.ShowMessageDialog("Command failed", err.Error())
 		return false
 	}
 	debugPrint("FileManager: external command started command=%s pid=%d cwd=%s", command, cmd.Process.Pid, cmd.Dir)
 	return true
+}
+
+func startAndReapCommand(cmd *exec.Cmd, onExit func(error)) error {
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go func() {
+		err := cmd.Wait()
+		if onExit != nil {
+			onExit(err)
+		}
+	}()
+	return nil
 }
 
 func (fm *FileManager) resolveExternalCommandCwd(cwd string) string {
@@ -278,13 +293,14 @@ func externalCommandWorkingDirectory(cwd string) (string, bool) {
 	if fileinfo.IsArchivePath(trimmed) {
 		return "", true
 	}
-	_, parsed, err := fileinfo.ResolveRead(trimmed)
+	vfs, parsed, err := fileinfo.ResolveRead(trimmed)
 	if err != nil {
 		if fileinfo.IsSMBDisplay(trimmed) {
 			return "", true
 		}
 		return fileinfo.CommandArgumentPath(trimmed), false
 	}
+	defer fileinfo.CloseVFS(vfs)
 	if parsed.Scheme == fileinfo.SchemeArchive {
 		return "", true
 	}
