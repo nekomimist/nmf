@@ -38,6 +38,8 @@ func (fm *FileManager) GetCurrentCursorIndex() int {
 
 // SetCursorByIndex sets the cursor to the specified index.
 func (fm *FileManager) SetCursorByIndex(index int) {
+	beforeIndex := fm.GetCurrentCursorIndex()
+	beforePath := fm.cursorPath
 	if index >= 0 && index < len(fm.files) {
 		fm.cursorPath = fm.files[index].Path
 		fm.cursorIndex = index
@@ -45,22 +47,27 @@ func (fm *FileManager) SetCursorByIndex(index int) {
 		fm.cursorPath = ""
 		fm.cursorIndex = -1
 	}
+	debugPrint("FileManager: cursor set requested=%d before=%d after=%d changed=%t count=%d active=%t focused=%s path=%q cursor=%q",
+		index, beforeIndex, fm.cursorIndex, beforeIndex != fm.cursorIndex || beforePath != fm.cursorPath,
+		len(fm.files), fm.windowActive, focusedObjectLabel(fm.window), fm.currentPath, fm.cursorPath)
 }
 
 // RefreshCursor updates only the cursor display without affecting selection.
 // Only safe when fm.files content has NOT changed since the last refresh;
 // after a content change use refreshListAndCursor instead (see its comment).
 func (fm *FileManager) RefreshCursor() {
-	cursorIdx := fm.GetCurrentCursorIndex()
+	seq, cursorIdx := fm.beginCursorRefresh("cursor")
 	if cursorIdx < 0 {
 		// No cursor: refresh to clear any stale cursor decoration.
 		fm.fileList.Refresh()
+		fm.endCursorRefresh(seq, "cursor", cursorIdx)
 		return
 	}
 	// Fyne v2.7.3 List.ScrollTo unconditionally ends with a full Refresh()
 	// (widget/list.go:246-257), so an explicit Refresh here would double the
 	// per-keypress render cost. Re-verify on Fyne upgrades.
 	fm.fileList.ScrollTo(widget.ListItemID(cursorIdx))
+	fm.endCursorRefresh(seq, "cursor", cursorIdx)
 }
 
 // refreshListAndCursor refreshes the list after fm.files was replaced, then
@@ -75,10 +82,46 @@ func (fm *FileManager) RefreshCursor() {
 // first viewport). Costs one extra viewport render per structural change;
 // cursor-only moves must keep using RefreshCursor.
 func (fm *FileManager) refreshListAndCursor() {
+	seq, cursorIdx := fm.beginCursorRefresh("list")
 	fm.fileList.Refresh()
-	if cursorIdx := fm.GetCurrentCursorIndex(); cursorIdx >= 0 {
+	if cursorIdx >= 0 {
 		fm.fileList.ScrollTo(widget.ListItemID(cursorIdx))
 	}
+	fm.endCursorRefresh(seq, "list", cursorIdx)
+}
+
+// beginCursorRefresh starts a diagnostic sequence without changing refresh
+// behavior. cursorItemUpdateSeq is acknowledged from the List UpdateItem
+// callback, which distinguishes list-row updates from later canvas painting.
+func (fm *FileManager) beginCursorRefresh(route string) (uint64, int) {
+	fm.cursorRefreshSeq++
+	seq := fm.cursorRefreshSeq
+	cursorIdx := fm.GetCurrentCursorIndex()
+	listWidth, listHeight := float32(0), float32(0)
+	if fm.fileList != nil {
+		listWidth = fm.fileList.Size().Width
+		listHeight = fm.fileList.Size().Height
+	}
+	debugPrint("FileManager: cursor refresh start route=%s seq=%d index=%d count=%d itemUpdateSeq=%d active=%t focused=%s list=%.0fx%.0f path=%q",
+		route, seq, cursorIdx, len(fm.files), fm.cursorItemUpdateSeq, fm.windowActive,
+		focusedObjectLabel(fm.window), listWidth, listHeight, fm.currentPath)
+	return seq, cursorIdx
+}
+
+func (fm *FileManager) endCursorRefresh(seq uint64, route string, cursorIdx int) {
+	debugPrint("FileManager: cursor refresh done route=%s seq=%d index=%d itemUpdated=%t itemUpdateSeq=%d path=%q",
+		route, seq, cursorIdx, fm.cursorItemUpdateSeq >= seq, fm.cursorItemUpdateSeq, fm.currentPath)
+}
+
+// noteCursorItemUpdated records that UpdateItem rebuilt the cursor row for the
+// current refresh sequence. It does not imply that the GL frame was presented.
+func (fm *FileManager) noteCursorItemUpdated(index int) {
+	if index != fm.GetCurrentCursorIndex() || fm.cursorRefreshSeq == 0 || fm.cursorItemUpdateSeq >= fm.cursorRefreshSeq {
+		return
+	}
+	fm.cursorItemUpdateSeq = fm.cursorRefreshSeq
+	debugPrint("FileManager: cursor item updated seq=%d index=%d active=%t focused=%s path=%q cursor=%q",
+		fm.cursorItemUpdateSeq, index, fm.windowActive, focusedObjectLabel(fm.window), fm.currentPath, fm.cursorPath)
 }
 
 // FileCount returns the number of files in the current listing without copying it.

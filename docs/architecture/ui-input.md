@@ -79,6 +79,19 @@ Event delivery paths:
   Ctrl/Alt activations (`MainScreenKeyHandler.ActivationShortcuts`) are also
   registered on the canvas.
 
+Cursor refresh diagnostics:
+
+- Debug logs assign every `RefreshCursor`/`refreshListAndCursor` request a
+  `seq`. The cursor row's `UpdateItem` callback acknowledges it through
+  `itemUpdateSeq`; this acknowledgement means the row decoration was rebuilt,
+  not that the GL frame was presented.
+- A changed logical cursor with `itemUpdateSeq < refreshSeq` points to the
+  List update path. Equal sequences with stale pixels point after
+  `UpdateItem`, toward canvas painting or frame presentation.
+- The debug toolbar dump includes both sequences, cursor/list state, focus,
+  and canvas/list sizes so multi-window failures can be compared without
+  changing focus first.
+
 Input gating (owner transitions):
 
 - Commands and close paths that change the input owner run through

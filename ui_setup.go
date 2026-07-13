@@ -125,7 +125,8 @@ func (fm *FileManager) setupUI() {
 					textColor := fileinfo.GetTextColor(fileInfo.FileType, fm.customTheme)
 					nameLabel.SetFile(fileInfo.Name, textColor, fileInfo.Status == fileinfo.StatusDeleted)
 					nameLabel.SetOnTapped(func(modifier fyne.KeyModifier) {
-						debugPrint("FileManager: File name tapped path=%s modifier=%d", fileInfo.Path, modifier)
+						debugPrint("FileManager: File name tapped file=%q modifier=%d active=%t focused=%s path=%q",
+							fileInfo.Path, modifier, fm.windowActive, focusedObjectLabel(fm.window), fm.currentPath)
 						fm.handleFileNameClick(index, fileInfo, modifier)
 					})
 					nameLabel.SetOnDragged(func() {
@@ -188,6 +189,7 @@ func (fm *FileManager) setupUI() {
 				// Wrap cursor in a container that won't be affected by NewMax
 				cursorContainer := container.NewWithoutLayout(cursor)
 				outerContainer.Objects = append(outerContainer.Objects, cursorContainer)
+				fm.noteCursorItemUpdated(index)
 			}
 		},
 	)
@@ -207,7 +209,8 @@ func (fm *FileManager) setupUI() {
 
 	// Handle cursor movement (both mouse and keyboard)
 	fm.fileList.OnSelected = func(id widget.ListItemID) {
-		debugPrint("FileManager: List selected id=%d", id)
+		debugPrint("FileManager: List selected id=%d active=%t focused=%s path=%q",
+			id, fm.windowActive, focusedObjectLabel(fm.window), fm.currentPath)
 		fm.SetCursorByIndex(id)
 		// Clear list selection to avoid double cursor effect when switching back to keyboard
 		fm.fileList.UnselectAll()

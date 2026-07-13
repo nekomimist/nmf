@@ -35,6 +35,8 @@ type FileManager struct {
 	statusLabel          *widget.Label
 	cursorPath           string          // Current cursor file path
 	cursorIndex          int             // Cache of cursorPath's index in files; validated against cursorPath on every read in GetCurrentCursorIndex, so direct cursorPath assignments elsewhere self-heal
+	cursorRefreshSeq     uint64          // Diagnostic sequence for requested cursor refreshes
+	cursorItemUpdateSeq  uint64          // Latest cursor refresh sequence observed by the list UpdateItem callback
 	cursorAnchor         cursorRowAnchor // Last visible row object for shell menu positioning
 	selectedFiles        map[string]bool // Set of selected file paths
 	storageInfo          fileinfo.StorageInfo
