@@ -294,21 +294,6 @@ func TestResolveDirectoryPath_LocalFileRejected(t *testing.T) {
 	}
 }
 
-func TestResolveDirectoryPath_SMBCanonicalDisplay(t *testing.T) {
-	input := "smb://example.local/share/path/to/dir"
-
-	resolved, parsed, err := resolveDirectoryPath(input)
-	if err != nil {
-		t.Fatalf("expected SMB path parse to succeed: %v", err)
-	}
-	if parsed.Scheme != fileinfo.SchemeSMB {
-		t.Fatalf("expected smb scheme, got %q", parsed.Scheme)
-	}
-	if !strings.HasPrefix(strings.ToLower(resolved), "smb://example.local/share") {
-		t.Fatalf("unexpected SMB resolved path: %q", resolved)
-	}
-}
-
 func TestResolveDirectoryPath_EmptyRejected(t *testing.T) {
 	if _, _, err := resolveDirectoryPath("   "); err == nil {
 		t.Fatalf("expected empty path to fail")

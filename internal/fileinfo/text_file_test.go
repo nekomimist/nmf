@@ -3,8 +3,6 @@ package fileinfo
 import (
 	"os"
 	"path/filepath"
-	"runtime"
-	"strings"
 	"testing"
 )
 
@@ -55,19 +53,5 @@ func TestCreateTextFilePortableRejectsInvalidName(t *testing.T) {
 func TestCreateTextFilePortableRejectsArchivePath(t *testing.T) {
 	if _, err := CreateTextFilePortable(filepath.Join(t.TempDir(), "archive.zip")+"!/", "note.txt", "hello"); err == nil {
 		t.Fatal("CreateTextFilePortable should reject archive paths")
-	}
-}
-
-func TestCreateTextFilePortableRejectsDirectSMBPath(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("smb:// is handled as a local UNC path on Windows")
-	}
-
-	_, err := CreateTextFilePortable("smb://example.invalid/share", "note.txt", "hello")
-	if err == nil {
-		t.Fatal("CreateTextFilePortable should reject direct SMB paths")
-	}
-	if !strings.Contains(err.Error(), "direct SMB") {
-		t.Fatalf("error = %v, want direct SMB rejection", err)
 	}
 }

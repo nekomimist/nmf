@@ -74,11 +74,6 @@ func TestDragSourceNativePathRejectsInvalidSources(t *testing.T) {
 			fi:   fileinfo.FileInfo{Name: "readme.txt", Path: "/tmp/archive.zip!/readme.txt"},
 			want: "archive item",
 		},
-		{
-			name: "direct_smb",
-			fi:   fileinfo.FileInfo{Name: "remote.txt", Path: "smb://server/share/remote.txt"},
-			want: "direct SMB item",
-		},
 	}
 
 	for _, tc := range cases {

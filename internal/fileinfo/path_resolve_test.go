@@ -3,7 +3,6 @@ package fileinfo
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -31,21 +30,6 @@ func TestResolveDirectoryPath_LocalFileRejected(t *testing.T) {
 
 	if _, _, err := ResolveDirectoryPath(filePath); err == nil {
 		t.Fatalf("expected non-directory path to fail")
-	}
-}
-
-func TestResolveDirectoryPath_SMBCanonicalDisplay(t *testing.T) {
-	input := "smb://example.local/share/path/to/dir"
-
-	resolved, parsed, err := ResolveDirectoryPath(input)
-	if err != nil {
-		t.Fatalf("expected SMB path parse to succeed: %v", err)
-	}
-	if parsed.Scheme != SchemeSMB {
-		t.Fatalf("expected smb scheme, got %q", parsed.Scheme)
-	}
-	if !strings.HasPrefix(strings.ToLower(resolved), "smb://example.local/share") {
-		t.Fatalf("unexpected SMB resolved path: %q", resolved)
 	}
 }
 

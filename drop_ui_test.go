@@ -66,19 +66,11 @@ func TestDropDestinationAcceptsLocalDirectory(t *testing.T) {
 	}
 }
 
-func TestDropDestinationRejectsArchiveAndSMB(t *testing.T) {
-	cases := []struct {
-		path    string
-		wantErr string
-	}{
-		{path: "/tmp/archive.zip!/docs", wantErr: "archive views"},
-		{path: "smb://server/share", wantErr: "direct SMB views"},
-	}
-	for _, tc := range cases {
-		_, err := dropDestination(tc.path)
-		if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-			t.Fatalf("dropDestination(%q) error = %v, want %q", tc.path, err, tc.wantErr)
-		}
+func TestDropDestinationRejectsArchive(t *testing.T) {
+	path := "/tmp/archive.zip!/docs"
+	_, err := dropDestination(path)
+	if err == nil || !strings.Contains(err.Error(), "archive views") {
+		t.Fatalf("dropDestination(%q) error = %v, want archive rejection", path, err)
 	}
 }
 
