@@ -154,13 +154,12 @@ func (m *CommandMenu) resetInputState(label string) {
 // commandMenuOverlay is a full-canvas overlay root that hosts the command
 // menu box at a fixed position on the canvas.
 //
-// Fyne v2.7.3's widget.PopUp.Tapped hides itself directly on an outside tap
-// (see widget/popup.go), bypassing CommandMenu.Dismiss and therefore skipping
-// resetInputState and onDismiss. It's the same shape as widget.PopUpMenu's
-// fix for that problem: PopUpMenu wraps its Menu in an internal
-// widget.OverlayContainer, whose own Tapped routes through Dismiss instead of
-// Hide. That type lives in an internal package we cannot import, so this
-// replicates the same small amount of logic: a Tappable/SecondaryTappable
+// Fyne v2.8.0's widget.PopUp overlay dismisses an outside tap through PopUp.Hide
+// (see widget/popup.go and internal/widget/overlay_container.go), bypassing
+// CommandMenu.Dismiss and therefore skipping resetInputState and onDismiss.
+// PopUpMenu avoids that problem by routing its OverlayContainer dismissal
+// through Dismiss. That type lives in an internal package we cannot import, so
+// this replicates the same small amount of logic: a Tappable/SecondaryTappable
 // root sized to the canvas, hosting the menu box (background rectangle +
 // menuThemeOverride content) at a clamped position, that calls
 // CommandMenu.Dismiss() whenever the tap lands outside the box.
@@ -192,19 +191,8 @@ func newCommandMenuOverlay(menu *CommandMenu, c fyne.Canvas, pos fyne.Position) 
 		requested:  pos,
 	}
 	o.ExtendBaseWidget(o)
-	o.boxSize = content.MinSize().Add(o.padding())
+	o.boxSize = content.MinSize()
 	return o
-}
-
-// padding is the inset kept between the menu box's background rectangle and
-// its content, matching widget.PopUp's own inner padding so the menu keeps
-// its familiar look now that it is no longer hosted in a widget.PopUp.
-func (o *commandMenuOverlay) padding() fyne.Size {
-	return fyne.NewSquareSize(o.Theme().Size(theme.SizeNameInnerPadding))
-}
-
-func (o *commandMenuOverlay) contentOffset() fyne.Position {
-	return fyne.NewSquareOffsetPos(o.Theme().Size(theme.SizeNameInnerPadding) / 2)
 }
 
 // Show adds the overlay to the canvas's overlay stack, sized to the full
@@ -290,8 +278,8 @@ func (r *commandMenuOverlayRenderer) Layout(fyne.Size) {
 	boxPos := r.overlay.clampedBoxPosition()
 	r.overlay.background.Move(boxPos)
 	r.overlay.background.Resize(r.overlay.boxSize)
-	r.overlay.content.Move(boxPos.Add(r.overlay.contentOffset()))
-	r.overlay.content.Resize(r.overlay.boxSize.Subtract(r.overlay.padding()))
+	r.overlay.content.Move(boxPos)
+	r.overlay.content.Resize(r.overlay.boxSize)
 }
 
 func (r *commandMenuOverlayRenderer) MinSize() fyne.Size {

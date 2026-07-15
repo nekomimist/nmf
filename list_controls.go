@@ -63,9 +63,9 @@ func (fm *FileManager) RefreshCursor() {
 		fm.endCursorRefresh(seq, "cursor", cursorIdx)
 		return
 	}
-	// Fyne v2.7.3 List.ScrollTo unconditionally ends with a full Refresh()
-	// (widget/list.go:246-257), so an explicit Refresh here would double the
-	// per-keypress render cost. Re-verify on Fyne upgrades.
+	// Fyne v2.8.0 List.ScrollTo unconditionally ends with a full Refresh(), so
+	// an explicit Refresh here would double the per-keypress render cost.
+	// Re-verify on Fyne upgrades.
 	fm.fileList.ScrollTo(widget.ListItemID(cursorIdx))
 	fm.endCursorRefresh(seq, "cursor", cursorIdx)
 }
@@ -73,7 +73,7 @@ func (fm *FileManager) RefreshCursor() {
 // refreshListAndCursor refreshes the list after fm.files was replaced, then
 // scrolls to the cursor. The leading Refresh is load-bearing, not redundant:
 // ScrollTo clamps its offset against the scroller's *current* content size,
-// which only updates during a refresh/layout pass. In Fyne v2.7.3, scrolling
+// which only updates during a refresh/layout pass. In Fyne v2.8.0, scrolling
 // first leaves the stale content size at or below the viewport, so
 // internal/widget/scroller.go updateOffset silently resets the scroll offset
 // to zero while the list keeps laying rows out for the requested offset —

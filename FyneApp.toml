@@ -1,0 +1,8 @@
+[Details]
+Icon = "nmf-icon.png"
+Name = "NMF"
+ID = "io.github.nekomimist.nmf"
+Build = 2
+
+[Migrations]
+fyneDo = true

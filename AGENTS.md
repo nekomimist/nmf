@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 nmf is a cross-platform keyboard-driven GUI file manager built with Go + Fyne
-v2.7.3 (VFS with local/SMB/archive support, background jobs, multi-window).
+v2.8.0 (VFS with local/SMB/archive support, background jobs, multi-window).
 
 ## Project Structure & Module Organization
 - Root: `main.go` (startup/flag handling), `go.mod`, and split `*_ui.go` /
@@ -22,11 +22,11 @@ v2.7.3 (VFS with local/SMB/archive support, background jobs, multi-window).
 - Build outputs are written under `dist/` by the Makefile.
 
 ## Build, Test, and Development Commands
-- Run app: `go run .` (flags: `-d` for debug, `-path /some/dir`).
+- Run app: `go run -tags migrated_fynedo .` (flags: `-d` for debug, `-path /some/dir`).
 - Build Linux binary: `make build` or `make build-linux` (outputs `dist/nmf`).
 - Build Windows binary from Linux: `make build-windows` (uses Fyne packaging with `x86_64-w64-mingw32-gcc` and CGO; outputs `dist/nmf.exe`).
-- Unit tests: `make test` (runs `go test ./internal/...`). Full repo test pass: `go test ./...`.
-- Lint/vet (recommended): `go vet ./...`; format: `gofmt -s -w .`.
+- Unit tests: `make test` (runs `go test -tags migrated_fynedo ./internal/...`). Full repo test pass: `make test-all`.
+- Lint/vet (recommended): `go vet -tags migrated_fynedo ./...`; format: `gofmt -s -w .`.
 - Modules: `go mod tidy` after dependency changes.
 - Optional packaging: use `fyne package` directly when needed; the Makefile's Windows target already invokes it.
 
@@ -41,7 +41,7 @@ v2.7.3 (VFS with local/SMB/archive support, background jobs, multi-window).
 ## Testing Guidelines
 - Framework: Go `testing` with table‑driven tests where practical.
 - Location: `*_test.go` alongside sources (e.g., `internal/config/config_test.go`).
-- Run: `make test` for internal packages, or `go test ./...` before larger
+- Run: `make test` for internal packages, or `make test-all` before larger
   commits; include edge cases (platform specifics in `platform_*.go`,
   `*_windows.go`, and `*_unix.go`).
 - Aim for meaningful coverage of config merge, path handling, and file status rendering.
@@ -53,7 +53,7 @@ v2.7.3 (VFS with local/SMB/archive support, background jobs, multi-window).
 ## Configuration Tips
 - Config file: OS‑specific path ending in `config.json` (XDG/AppData conventions). Use `internal/config.Manager` to load it; it is read-only from the app (never saved back to).
 - Runtime state (cursor memory, navigation history, file filter history, last-applied sort) lives in a separate `state.json`, managed by `internal/config.StateManager`; see "Runtime State" in `docs/configuration.md`.
-- Debugging: run `go run . -d` or `./dist/nmf -d` after `make build` to enable verbose logs via `debugPrint`.
+- Debugging: run `go run -tags migrated_fynedo . -d` or `./dist/nmf -d` after `make build` to enable verbose logs via `debugPrint`.
 - Config schema source of truth: `internal/config/config.go`.
 - Default main-screen key bindings: `defaultMainScreenBindings()` in
   `internal/keymanager/mainscreen_handler.go`; binding syntax in

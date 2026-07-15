@@ -146,8 +146,8 @@ Watcher:
 
 Before merging lifecycle changes:
 
-- `go vet ./...`
-- `go test -race ./...`
+- `go vet -tags migrated_fynedo ./...`
+- `make test-race`
 - `make test-windows-compile`
 - `make test-darwin-compile`
 - CI additionally runs the full test suite natively on pinned `macos-15` as a

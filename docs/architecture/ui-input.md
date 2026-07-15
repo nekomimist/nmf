@@ -27,7 +27,7 @@ Core model:
   before executing file-manager behavior. Each command definition carries a
   `transition` attribute marking it as an input-owner change.
 
-Driver facts this design relies on (verified in Fyne v2.7.3; re-verify these
+Driver facts this design relies on (verified in Fyne v2.8.0; re-verify these
 on Fyne upgrades at the named locations in the Fyne source):
 
 1. Exclusive delivery: focused object or (only when nothing has focus) the
@@ -232,9 +232,10 @@ This pattern is used in history/filter/tree/directory-jump/copy-move/jobs/quit d
 
 Popup dismissal (command menu):
 
-- A non-modal `widget.PopUp` dismisses an outside tap by calling `Hide()`
-  directly, and removing an overlay discards its focus manager without
-  calling `FocusLost` (verified in Fyne v2.7.3 `widget/popup.go` and
+- A non-modal `widget.PopUp` dismisses an outside tap through its overlay's
+  callback, which calls `Hide()` directly, and removing an overlay discards
+  its focus manager without calling `FocusLost` (verified in Fyne v2.8.0
+  `widget/popup.go`, `internal/widget/overlay_container.go`, and
   `internal/overlay_stack.go`; re-verify on Fyne upgrades). A popup that
   relies on those built-in paths never gets a chance to reset input state or
   restore focus when the user clicks elsewhere.

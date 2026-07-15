@@ -225,7 +225,7 @@
   「KeyDown/KeyUp系キーバインドのrepeat適性を棚卸ししたい」はこれで決着。
 
 ## KeyDown/KeyUpの二重配送経路を整理したい
-- Fyne v2.7.3のGLFW driver(`internal/driver/glfw/window.go`)を確認した結果、
+- Fyne v2.8.0のGLFW driver(`internal/driver/glfw/window.go`)で再確認した結果、
   キーイベントの配送は排他だった: フォーカスがあれば focused object のみ、
   canvasレベルのcallbackは「何もフォーカスされていないとき」だけ呼ばれる(else if)。
   懸念していた「KeySink + canvas の二重配送」はこのバージョンでは起きない。

@@ -179,7 +179,7 @@ func TestCommandMenuResetsTransientStateOnFocusLost(t *testing.T) {
 }
 
 // TestCommandMenuOutsideTapDismissesViaOverlay is a regression test for a bug
-// where widget.PopUp's own Tapped hid the popup directly on an outside tap,
+// where widget.PopUp's overlay hid the popup directly on an outside tap,
 // bypassing CommandMenu.Dismiss and therefore skipping resetInputState
 // (KeyManager.ResetTransientState) and onDismiss (FocusFileList). The menu
 // now shows itself in a dedicated overlay whose outside tap always routes
@@ -219,5 +219,19 @@ func TestCommandMenuOutsideTapDismissesViaOverlay(t *testing.T) {
 	}
 	if got := len(c.Overlays().List()); got != 0 {
 		t.Fatalf("overlay count after outside tap = %d, want 0", got)
+	}
+}
+
+func TestCommandMenuOverlayDoesNotAddLegacyPopupPadding(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	c := test.NewCanvas()
+	menu := NewCommandMenu([]keymanager.CommandMenuItem{
+		{Label: "One", Action: func() {}},
+	}, nil)
+
+	overlay := newCommandMenuOverlay(menu, c, fyne.NewPos(10, 10))
+	if got, want := overlay.boxSize, overlay.content.MinSize(); got != want {
+		t.Fatalf("overlay box size = %v, want content size %v", got, want)
 	}
 }

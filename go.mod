@@ -3,12 +3,12 @@ module nmf
 go 1.25.0
 
 require (
-	fyne.io/fyne/v2 v2.7.3
+	fyne.io/fyne/v2 v2.8.0
 	github.com/99designs/keyring v1.2.2
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/bodgit/sevenzip v1.6.1
 	github.com/fswatcher/fswatcher v0.1.0
-	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20260406072232-3ac4aa2bb164
+	github.com/go-gl/glfw/v3.4/glfw v0.1.0-pre.1.0.20260707082822-2a407d02d01a
 	github.com/go-text/typesetting v0.3.4
 	github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f
 	github.com/hirochachacha/go-smb2 v1.1.0
@@ -22,10 +22,16 @@ require (
 	golang.org/x/text v0.37.0
 )
 
-require github.com/ebitengine/purego v0.10.0 // indirect
+require (
+	github.com/FyshOS/fancyfs v0.0.1 // indirect
+	github.com/anthonynsimon/bild v0.14.0 // indirect
+	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
+	github.com/ebitengine/purego v0.10.0 // indirect
+	github.com/mattn/go-runewidth v0.0.24 // indirect
+)
 
 require (
-	fyne.io/systray v1.12.0 // indirect
+	fyne.io/systray v1.12.2 // indirect
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/STARRY-S/zip v0.2.3 // indirect
@@ -38,8 +44,8 @@ require (
 	github.com/dvsekhvalnov/jose2go v1.8.0 // indirect
 	github.com/fredbi/uri v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/fyne-io/gl-js v0.2.0 // indirect
-	github.com/fyne-io/glfw-js v0.3.0 // indirect
+	github.com/fyne-io/gl-js v0.2.1-0.20260315212741-029c47fd27e8 // indirect
+	github.com/fyne-io/glfw-js v0.4.0 // indirect
 	github.com/fyne-io/image v0.1.1 // indirect
 	github.com/fyne-io/oksvg v0.2.0 // indirect
 	github.com/geoffgarside/ber v1.2.0 // indirect
@@ -57,7 +63,6 @@ require (
 	github.com/klauspost/pgzip v1.2.6 // indirect
 	github.com/koron-go/skkdict v1.0.1 // indirect
 	github.com/koron/gelatin v0.0.0-20160729020448-88d6a03ce765 // indirect
-	github.com/kr/text v0.2.0 // indirect
 	github.com/mikelolasagasti/xz v1.0.1 // indirect
 	github.com/minio/minlz v1.0.1 // indirect
 	github.com/mtibben/percent v0.2.1 // indirect

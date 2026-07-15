@@ -38,13 +38,13 @@ distribution.
 Run the application:
 
 ```sh
-go run .
+go run -tags migrated_fynedo .
 ```
 
 Run with debug logging:
 
 ```sh
-go run . -d
+go run -tags migrated_fynedo . -d
 ```
 
 Persistent per-startup debug logs can also be enabled from `config.json` or
@@ -53,7 +53,7 @@ Persistent per-startup debug logs can also be enabled from `config.json` or
 Start in a specific directory:
 
 ```sh
-go run . -path /some/dir
+go run -tags migrated_fynedo . -path /some/dir
 ```
 
 Build and test:
