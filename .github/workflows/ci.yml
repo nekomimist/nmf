@@ -17,7 +17,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Install Fyne build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev xorg-dev libxkbcommon-dev
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev xorg-dev libxkbcommon-dev libwayland-dev
       - run: go vet -tags migrated_fynedo ./...
       - run: go test -race -tags migrated_fynedo ./...
 
