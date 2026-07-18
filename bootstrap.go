@@ -36,7 +36,6 @@ func NewFileManager(runtime *ApplicationRuntime, path string, config *config.Con
 		windowActive:      true,
 		activeSort:        state.EffectiveSort(config.UI.Sort),
 		customTheme:       customTheme,
-		cursorRenderer:    ui.NewCursorRenderer(config.UI.CursorStyle),
 		keyManager:        keymanager.NewKeyManager(debugPrint),
 		searchMatchers:    search.NewProvider(debugPrint),
 		runtime:           runtime,

@@ -1,11 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"image/color"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -15,7 +12,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/fileinfo"
-	customtheme "nmf/internal/theme"
 	"nmf/internal/ui"
 )
 
@@ -30,168 +26,8 @@ func (fm *FileManager) setupUI() {
 	// Create file list
 	fm.fileList = widget.NewList(
 		func() int { return len(fm.files) },
-		func() fyne.CanvasObject {
-			// Create tappable icon (onTapped will be set in UpdateItem)
-			icon := ui.NewTappableIcon(theme.FolderIcon(), nil)
-			nameLabel := ui.NewFileNameLabel("filename", fm.customTheme.GetCustomColor(customtheme.ColorFileRegular))
-			info := widget.NewLabel("info")
-			info.TextStyle = fyne.TextStyle{Monospace: true}
-
-			// Size icon based on text height for consistency
-			textSize := fyne.CurrentApp().Settings().Theme().Size(theme.SizeNameText)
-			icon.Resize(fyne.NewSize(textSize, textSize))
-
-			// The name is the middle object, so it only receives the space left
-			// after the icon and right-aligned info fields have been placed.
-			borderContainer := container.NewBorder(
-				nil, nil, icon, info, nameLabel,
-			)
-
-			// Use normal container with max layout to hold content and decorations
-			return container.NewMax(borderContainer)
-		},
-		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			if id < 0 || int(id) >= len(fm.files) {
-				return
-			}
-			fileInfo := fm.files[id]
-			index := int(id)
-
-			// obj is a container with border and optional cursor/selection elements
-			outerContainer := obj.(*fyne.Container)
-
-			// Find the border container (should be first element)
-			var border *fyne.Container
-			if len(outerContainer.Objects) > 0 {
-				if container, ok := outerContainer.Objects[0].(*fyne.Container); ok {
-					border = container
-				}
-			}
-
-			if border != nil {
-				// Find widgets within border
-				var icon *ui.TappableIcon
-				var nameLabel *ui.FileNameLabel
-				var infoLabel *widget.Label
-
-				for _, obj := range border.Objects {
-					if obj == nil {
-						continue
-					}
-					if tappableIcon, ok := obj.(*ui.TappableIcon); ok {
-						icon = tappableIcon
-					} else if fileNameLabel, ok := obj.(*ui.FileNameLabel); ok {
-						nameLabel = fileNameLabel
-					} else if label, ok := obj.(*widget.Label); ok {
-						infoLabel = label
-					}
-				}
-
-				if icon != nil && nameLabel != nil && infoLabel != nil {
-					// Set icon resource with async service (Windows uses real icons if available)
-					// Default placeholders
-					folderRes := theme.FolderIcon()
-					fileRes := theme.FileIcon()
-					if fileInfo.IsDir {
-						icon.SetResource(folderRes)
-					} else {
-						// Desired icon size roughly equals text size
-						textSize := int(fyne.CurrentApp().Settings().Theme().Size(theme.SizeNameText))
-						ext := strings.ToLower(filepath.Ext(fileInfo.Name))
-						if fm.iconSvc != nil {
-							if res, ok := fm.iconSvc.GetCachedOrRequest(fileInfo.Path, fileInfo.IsDir, ext, textSize); ok && res != nil {
-								icon.SetResource(res)
-							} else {
-								icon.SetResource(fileRes)
-							}
-						} else {
-							icon.SetResource(fileRes)
-						}
-					}
-
-					// Set onTapped handler for icon
-					icon.SetOnTapped(func() {
-						debugPrint("FileManager: Icon tapped path=%s dir=%t", fileInfo.Path, fileInfo.IsDir)
-						if fileInfo.IsDir {
-							fm.LoadDirectory(fileInfo.Path)
-						}
-					})
-					icon.SetOnDragged(func() {
-						debugPrint("FileManager: Icon dragged path=%s", fileInfo.Path)
-						fm.StartFileDrag(fileInfo)
-					})
-
-					// Get text color based on file type
-					textColor := fileinfo.GetTextColor(fileInfo.FileType, fm.customTheme)
-					nameLabel.SetFile(fileInfo.Name, textColor, fileInfo.Status == fileinfo.StatusDeleted)
-					nameLabel.SetOnTapped(func(modifier fyne.KeyModifier) {
-						debugPrint("FileManager: File name tapped file=%q modifier=%d active=%t focused=%s path=%q",
-							fileInfo.Path, modifier, fm.windowActive, focusedObjectLabel(fm.window), fm.currentPath)
-						fm.handleFileNameClick(index, fileInfo, modifier)
-					})
-					nameLabel.SetOnDragged(func() {
-						debugPrint("FileManager: File name dragged path=%s", fileInfo.Path)
-						fm.StartFileDrag(fileInfo)
-					})
-
-					if fileInfo.IsDir {
-						infoLabel.SetText(fmt.Sprintf("<dir> %s %s",
-							fileInfo.Modified.Format("2006-01-02"),
-							fileInfo.Modified.Format("15:04:05")))
-					} else {
-						infoLabel.SetText(fmt.Sprintf("%s %s %s",
-							fileinfo.FormatFileSize(fileInfo.Size),
-							fileInfo.Modified.Format("2006-01-02"),
-							fileInfo.Modified.Format("15:04:05")))
-					}
-				}
-			}
-
-			// Handle 4 display states
-			currentCursorIdx := fm.GetCurrentCursorIndex()
-			isCursor := index == currentCursorIdx
-			isSelected := fm.selectedFiles[fileInfo.Path]
-			if isCursor {
-				fm.cursorAnchor = cursorRowAnchor{path: fileInfo.Path, object: obj}
-			} else if fm.cursorAnchor.object == obj {
-				fm.cursorAnchor = cursorRowAnchor{}
-			}
-
-			// Clear all decoration elements first
-			outerContainer.Objects = []fyne.CanvasObject{border}
-
-			// Add status background if file has a status (covers entire item like selection)
-			statusBGColor := fileinfo.GetStatusBackgroundColor(fileInfo.Status, fm.customTheme)
-			if statusBGColor != nil {
-				statusBG := canvas.NewRectangle(*statusBGColor)
-				statusBG.Resize(obj.Size())
-				statusBG.Move(fyne.NewPos(0, 0))
-				// Wrap status background in WithoutLayout container
-				statusContainer := container.NewWithoutLayout(statusBG)
-				outerContainer.Objects = append(outerContainer.Objects, statusContainer)
-			}
-
-			// Add selection background if selected (covers entire item)
-			if isSelected {
-				selectionColor := fm.customTheme.GetCustomColor(customtheme.ColorSelectionBackground)
-				selectionBG := canvas.NewRectangle(selectionColor)
-				selectionBG.Resize(obj.Size())
-				selectionBG.Move(fyne.NewPos(0, 0))
-				// Wrap selection background in WithoutLayout container
-				selectionContainer := container.NewWithoutLayout(selectionBG)
-				outerContainer.Objects = append(outerContainer.Objects, selectionContainer)
-			}
-
-			// Add cursor if at cursor position (covers entire item like status/selection)
-			if isCursor {
-				cursor := fm.cursorRenderer.RenderCursor(obj.Size(), fyne.NewPos(0, 0), fm.config.UI.CursorStyle, fm.cursorThemeProvider())
-
-				// Wrap cursor in a container that won't be affected by NewMax
-				cursorContainer := container.NewWithoutLayout(cursor)
-				outerContainer.Objects = append(outerContainer.Objects, cursorContainer)
-				fm.noteCursorItemUpdated(index)
-			}
-		},
+		fm.newFileListRow,
+		fm.updateFileListRow,
 	)
 
 	// Hide separators for compact spacing if itemSpacing is small
