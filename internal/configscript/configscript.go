@@ -540,7 +540,16 @@ func (rt *Runtime) builtinViewer(thread *starlark.Thread, fn *starlark.Builtin, 
 	maxWidth := rt.cfg.UI.Viewer.MaxWidth
 	maxHeight := rt.cfg.UI.Viewer.MaxHeight
 	defaultPane := rt.cfg.UI.Viewer.DefaultPane
-	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "max_width?", &maxWidth, "max_height?", &maxHeight, "default_pane?", &defaultPane); err != nil {
+	defaultWrap := rt.cfg.UI.Viewer.DefaultWrap
+	if err := starlark.UnpackArgs(
+		fn.Name(),
+		args,
+		kwargs,
+		"max_width?", &maxWidth,
+		"max_height?", &maxHeight,
+		"default_pane?", &defaultPane,
+		"default_wrap?", &defaultWrap,
+	); err != nil {
 		return nil, err
 	}
 	if maxWidth < 0 || maxHeight < 0 {
@@ -552,6 +561,7 @@ func (rt *Runtime) builtinViewer(thread *starlark.Thread, fn *starlark.Builtin, 
 	rt.cfg.UI.Viewer.MaxWidth = maxWidth
 	rt.cfg.UI.Viewer.MaxHeight = maxHeight
 	rt.cfg.UI.Viewer.DefaultPane = defaultPane
+	rt.cfg.UI.Viewer.DefaultWrap = defaultWrap
 	return starlark.None, nil
 }
 

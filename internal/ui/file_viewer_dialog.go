@@ -69,6 +69,7 @@ type FileViewerDialog struct {
 	maxWidth    int
 	maxHeight   int
 	defaultPane string
+	defaultWrap bool
 	bindings    []config.KeyBindingEntry
 	debugPrint  func(format string, args ...interface{})
 }
@@ -111,6 +112,17 @@ func (d *FileViewerDialog) SetDefaultPane(pane string) {
 	}
 }
 
+func (d *FileViewerDialog) SetDefaultWrap(wrapped bool) {
+	d.defaultWrap = wrapped
+}
+
+func (d *FileViewerDialog) newViewerTextGrid(text string) *fileViewerTextGrid {
+	grid := newFileViewerTextGrid(text, d.km, d.updateLineDisplay, d.debugPrint)
+	grid.SetWrap(d.defaultWrap)
+	grid.SetCopyHandler(d.copySelection)
+	return grid
+}
+
 func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	totalStart := time.Now()
 	stepStart := totalStart
@@ -121,8 +133,7 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	text := viewerText(d.preview)
 	d.debug("FileViewer: text-view elapsed=%s bytes=%d", time.Since(stepStart), len(text))
 	stepStart = time.Now()
-	d.textGrid = newFileViewerTextGrid(text, d.km, d.updateLineDisplay, d.debugPrint)
-	d.textGrid.SetCopyHandler(d.copySelection)
+	d.textGrid = d.newViewerTextGrid(text)
 	d.debug("FileViewer: text-grid elapsed=%s bytes=%d", time.Since(stepStart), len(text))
 	stepStart = time.Now()
 
@@ -243,13 +254,11 @@ func (d *FileViewerDialog) createMarkdownGrid() *fileViewerTextGrid {
 	start := time.Now()
 	if d.preview.Binary {
 		d.debug("FileViewer: markdown-view elapsed=%s mode=binary-placeholder", time.Since(start))
-		d.mdGrid = newFileViewerTextGrid("Binary file: markdown preview disabled. Use the Hex tab.", d.km, d.updateLineDisplay, d.debugPrint)
-		d.mdGrid.SetCopyHandler(d.copySelection)
+		d.mdGrid = d.newViewerTextGrid("Binary file: markdown preview disabled. Use the Hex tab.")
 		return d.mdGrid
 	}
 	mdText := markdownViewerText(d.preview)
-	d.mdGrid = newFileViewerTextGrid(mdText, d.km, d.updateLineDisplay, d.debugPrint)
-	d.mdGrid.SetCopyHandler(d.copySelection)
+	d.mdGrid = d.newViewerTextGrid(mdText)
 	d.debug("FileViewer: markdown-view elapsed=%s mode=text-grid bytes=%d lines=%d", time.Since(start), len(mdText), d.mdGrid.TotalLines())
 	return d.mdGrid
 }
@@ -286,8 +295,7 @@ func (d *FileViewerDialog) createHexGrid() *fileViewerTextGrid {
 	hex := viewerHex(d.preview)
 	d.debug("FileViewer: hex-view elapsed=%s bytes=%d", time.Since(stepStart), len(hex))
 	stepStart = time.Now()
-	grid := newFileViewerTextGrid(hex, d.km, d.updateLineDisplay, d.debugPrint)
-	grid.SetCopyHandler(d.copySelection)
+	grid := d.newViewerTextGrid(hex)
 	d.hexGrid = grid
 	d.debug("FileViewer: hex-grid elapsed=%s bytes=%d", time.Since(stepStart), len(hex))
 	return grid

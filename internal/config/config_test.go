@@ -79,6 +79,9 @@ func TestGetDefaultConfig(t *testing.T) {
 	if config.UI.Viewer.DefaultPane != "auto" {
 		t.Errorf("Expected default viewer pane auto, got %q", config.UI.Viewer.DefaultPane)
 	}
+	if config.UI.Viewer.DefaultWrap {
+		t.Error("Expected viewer wrapping to be disabled by default")
+	}
 	if config.UI.Archive.ZipNameEncoding != "shift_jis" {
 		t.Errorf("Expected default ZIP name encoding 'shift_jis', got '%s'", config.UI.Archive.ZipNameEncoding)
 	}
@@ -276,6 +279,7 @@ func TestMergeConfigs(t *testing.T) {
 	viewerMaxWidth := 1200
 	viewerMaxHeight := 900
 	viewerDefaultPane := "text"
+	viewerDefaultWrap := true
 	zipNameEncoding := "cp437"
 	imeEnabled := false
 	fontSize := 16
@@ -317,6 +321,7 @@ func TestMergeConfigs(t *testing.T) {
 				MaxWidth:    &viewerMaxWidth,
 				MaxHeight:   &viewerMaxHeight,
 				DefaultPane: &viewerDefaultPane,
+				DefaultWrap: &viewerDefaultWrap,
 			},
 			Archive: rawArchiveConfig{
 				ZipNameEncoding: &zipNameEncoding,
@@ -391,6 +396,9 @@ func TestMergeConfigs(t *testing.T) {
 	}
 	if defaultConfig.UI.Viewer.DefaultPane != "text" {
 		t.Errorf("Expected merged viewer default pane text, got %q", defaultConfig.UI.Viewer.DefaultPane)
+	}
+	if !defaultConfig.UI.Viewer.DefaultWrap {
+		t.Error("Expected merged viewer default wrap to be true")
 	}
 	if defaultConfig.UI.Archive.ZipNameEncoding != "cp437" {
 		t.Errorf("Expected merged ZIP name encoding 'cp437', got '%s'", defaultConfig.UI.Archive.ZipNameEncoding)
@@ -633,6 +641,7 @@ func TestManagerLoadReadsHandWrittenConfigFile(t *testing.T) {
 		"ui": {
 			"showHiddenFiles": true,
 			"sort": {"sortBy": "modified", "sortOrder": "desc", "directoriesFirst": true},
+			"viewer": {"defaultWrap": true},
 			"cursorStyle": {"type": "background", "thickness": 5},
 			"directoryJumps": {"entries": [
 				{"shortcut": "p", "directory": "/projects"},
@@ -663,6 +672,9 @@ func TestManagerLoadReadsHandWrittenConfigFile(t *testing.T) {
 	}
 	if loadedConfig.UI.ShowHiddenFiles != true {
 		t.Error("Expected loaded ShowHiddenFiles to be true")
+	}
+	if !loadedConfig.UI.Viewer.DefaultWrap {
+		t.Error("Expected loaded viewer default wrap to be true")
 	}
 	if len(loadedConfig.UI.DirectoryJumps.Entries) != 3 {
 		t.Fatalf("Expected loaded directory jumps length 3, got %d", len(loadedConfig.UI.DirectoryJumps.Entries))

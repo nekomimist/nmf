@@ -172,7 +172,8 @@ Scalar sections:
 - `nmf.debug_logging(enabled = bool, log_directory = str, max_files = int)`
 - `nmf.ui(show_hidden_files = bool, item_spacing = int)`
 - `nmf.copy(preserve_timestamps = bool)`
-- `nmf.viewer(max_width = int, max_height = int, default_pane = str)`
+- `nmf.viewer(max_width = int, max_height = int, default_pane = str,
+  default_wrap = bool)`
 - `nmf.archive(zip_name_encoding = str)`
 - `nmf.sort(by = "name|size|modified|extension", order = "asc|desc",
   directories_first = bool, temporary = bool)`
@@ -214,11 +215,13 @@ overlay and is not written back to `config.json` by routine saves.
 `nmf.copy(preserve_timestamps = True)` sets the default state for the Copy
 dialog checkbox. The checkbox choice applies only to the copy being queued and
 is not written back to `config.json`.
-`nmf.viewer(max_width = 1200, max_height = 900, default_pane = "text")` caps
-the built-in file viewer dialog size and sets the initial viewer pane. Use `0`
+`nmf.viewer(max_width = 1200, max_height = 900, default_pane = "text",
+default_wrap = True)` caps the built-in file viewer dialog size, sets the
+initial viewer pane, and enables wrapping when each pane is created. Use `0`
 for either size to leave that dimension uncapped. `default_pane` accepts
 `"auto"`, `"text"`, `"markdown"`, or `"hex"`; `auto` opens Markdown files on
-the Markdown pane and other text files on Text.
+the Markdown pane and other text files on Text. `default_wrap` defaults to
+`False`; the active pane can still be toggled independently with `w`.
 `nmf.archive(zip_name_encoding = "...")` sets the fallback charset for ZIP entry
 names that are not marked as UTF-8. Common values include `shift_jis` (default),
 `cp437`, and `utf-8`.

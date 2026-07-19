@@ -295,7 +295,8 @@ Built-in file viewer:
   faster initial display. It supports less-like vertical movement, line jumps,
   horizontal movement, a wrap toggle, mouse drag selection, keyboard select-all,
   copy, and literal current-match search. Keyboard range selection is
-  intentionally not wired.
+  intentionally not wired. Each pane starts from `viewer.defaultWrap` and then
+  keeps its own wrap state for the lifetime of the dialog.
 - Markdown files open on the Markdown pane by default unless
   `viewer.defaultPane` is set to `text`. The Markdown tab converts
   Markdown AST to simplified text, including fixed-width pipe tables and

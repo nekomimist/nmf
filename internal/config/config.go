@@ -88,6 +88,7 @@ type rawViewerConfig struct {
 	MaxWidth    *int    `json:"maxWidth"`
 	MaxHeight   *int    `json:"maxHeight"`
 	DefaultPane *string `json:"defaultPane"`
+	DefaultWrap *bool   `json:"defaultWrap"`
 }
 
 type rawCursorStyleConfig struct {
@@ -333,6 +334,7 @@ type ViewerConfig struct {
 	MaxWidth    int    `json:"maxWidth"`    // Optional maximum dialog width; 0 means uncapped
 	MaxHeight   int    `json:"maxHeight"`   // Optional maximum dialog height; 0 means uncapped
 	DefaultPane string `json:"defaultPane"` // "auto", "text", "markdown", or "hex"
+	DefaultWrap bool   `json:"defaultWrap"` // Whether text wrapping is enabled when a viewer pane opens
 }
 
 // CursorStyleConfig represents cursor appearance settings
@@ -530,6 +532,7 @@ func getDefaultConfig() *Config {
 				MaxWidth:    0,
 				MaxHeight:   0,
 				DefaultPane: "auto",
+				DefaultWrap: false,
 			},
 			Archive: ArchiveConfig{
 				ZipNameEncoding: "shift_jis",
@@ -692,6 +695,9 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) error {
 		if pane := NormalizeViewerDefaultPane(*fileConfig.UI.Viewer.DefaultPane); pane != "" {
 			defaultConfig.UI.Viewer.DefaultPane = pane
 		}
+	}
+	if fileConfig.UI.Viewer.DefaultWrap != nil {
+		defaultConfig.UI.Viewer.DefaultWrap = *fileConfig.UI.Viewer.DefaultWrap
 	}
 	if fileConfig.UI.Archive.ZipNameEncoding != nil && strings.TrimSpace(*fileConfig.UI.Archive.ZipNameEncoding) != "" {
 		defaultConfig.UI.Archive.ZipNameEncoding = strings.TrimSpace(*fileConfig.UI.Archive.ZipNameEncoding)

@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	locale "github.com/jeandeaual/go-locale"
+	"github.com/mattn/go-runewidth"
 	"golang.org/x/text/width"
 
 	"nmf/internal/keymanager"
@@ -26,19 +27,18 @@ const (
 type fileViewerTextGrid struct {
 	widget.BaseWidget
 
-	grid          *widget.TextGrid
-	lines         []string
-	visible       []viewerVisibleLine
-	topLine       int
-	leftCol       int
-	visibleRows   int
-	visibleCols   int
-	wrap          bool
-	wideAmbiguous bool
-	cellSize      fyne.Size
-	selection     viewerTextSelection
-	selecting     bool
-	search        viewerTextSearch
+	grid        *widget.TextGrid
+	lines       []string
+	visible     []viewerVisibleLine
+	topLine     int
+	leftCol     int
+	visibleRows int
+	visibleCols int
+	wrap        bool
+	cellSize    fyne.Size
+	selection   viewerTextSelection
+	selecting   bool
+	search      viewerTextSearch
 
 	km         *keymanager.KeyManager
 	onMoved    func()
@@ -82,14 +82,13 @@ type viewerVisibleLine struct {
 func newFileViewerTextGrid(text string, km *keymanager.KeyManager, onMoved func(), debugPrint func(format string, args ...interface{})) *fileViewerTextGrid {
 	start := time.Now()
 	v := &fileViewerTextGrid{
-		grid:          widget.NewTextGrid(),
-		lines:         splitViewerLines(text),
-		visibleRows:   fileViewerTextGridFallbackRows,
-		visibleCols:   fileViewerTextGridFallbackCols,
-		wideAmbiguous: viewerLocaleUsesWideAmbiguous(),
-		km:            km,
-		onMoved:       onMoved,
-		debugPrint:    debugPrint,
+		grid:        widget.NewTextGrid(),
+		lines:       splitViewerLines(text),
+		visibleRows: fileViewerTextGridFallbackRows,
+		visibleCols: fileViewerTextGridFallbackCols,
+		km:          km,
+		onMoved:     onMoved,
+		debugPrint:  debugPrint,
 	}
 	v.grid.Scroll = fyne.ScrollNone
 	v.ExtendBaseWidget(v)
@@ -151,30 +150,6 @@ func viewerLocaleLanguageUsesWideAmbiguous(locale string) bool {
 	default:
 		return false
 	}
-}
-
-func viewerDisplayLine(line string, wideAmbiguous bool) string {
-	var b strings.Builder
-	col := 0
-	for _, r := range line {
-		if r == '\t' {
-			next := nextTabStop(col, fileViewerTextGridTabWidth)
-			b.WriteString(strings.Repeat(" ", next-col))
-			col = next
-			continue
-		}
-		w := viewerRuneWidth(r, wideAmbiguous)
-		if w == 0 {
-			b.WriteRune(r)
-			continue
-		}
-		b.WriteRune(r)
-		col += w
-		if w > 1 {
-			b.WriteString(strings.Repeat(" ", w-1))
-		}
-	}
-	return b.String()
 }
 
 func viewerDisplayLineWidth(line string, wideAmbiguous bool) int {
@@ -340,10 +315,17 @@ func (v *fileViewerTextGrid) MoveColumns(delta int) {
 	v.setLeftCol(v.leftCol + delta)
 }
 
-func (v *fileViewerTextGrid) ToggleWrap() bool {
-	v.wrap = !v.wrap
+func (v *fileViewerTextGrid) SetWrap(wrapped bool) {
+	if v.wrap == wrapped {
+		return
+	}
+	v.wrap = wrapped
 	v.leftCol = 0
 	v.refreshGrid()
+}
+
+func (v *fileViewerTextGrid) ToggleWrap() bool {
+	v.SetWrap(!v.wrap)
 	if v.onMoved != nil {
 		v.onMoved()
 	}
@@ -563,7 +545,7 @@ func (v *fileViewerTextGrid) maxLeftCol() int {
 	}
 	maxWidth := 0
 	for _, line := range v.lines {
-		if w := viewerDisplayLineWidth(line, v.wideAmbiguous); w > maxWidth {
+		if w := viewerTextGridLineWidth(line); w > maxWidth {
 			maxWidth = w
 		}
 	}
@@ -606,7 +588,7 @@ func (v *fileViewerTextGrid) debug(format string, args ...interface{}) {
 func (v *fileViewerTextGrid) renderVisibleLines(rows, cols int) []viewerVisibleLine {
 	visible := make([]viewerVisibleLine, 0, rows)
 	for i := v.topLine; i < len(v.lines) && len(visible) < rows; i++ {
-		lineMap := newViewerDisplayLineMap(v.lines[i], v.wideAmbiguous)
+		lineMap := newViewerDisplayLineMap(v.lines[i])
 		if v.wrap {
 			visible = append(visible, lineMap.wrap(i, cols, rows-len(visible))...)
 			continue
@@ -697,8 +679,8 @@ func (v *fileViewerTextGrid) revealSearchMatch() {
 		changed = true
 	}
 	if !v.wrap {
-		col := viewerDisplayColumnForLogicalCol(v.lines[v.search.start.line], v.search.start.col, v.wideAmbiguous)
-		endCol := viewerDisplayColumnForLogicalCol(v.lines[v.search.end.line], v.search.end.col, v.wideAmbiguous)
+		col := viewerDisplayColumnForLogicalCol(v.lines[v.search.start.line], v.search.start.col)
+		endCol := viewerDisplayColumnForLogicalCol(v.lines[v.search.end.line], v.search.end.col)
 		cols := v.visibleCols
 		if cols < 1 {
 			cols = fileViewerTextGridFallbackCols
@@ -817,8 +799,9 @@ func (v *fileViewerTextGrid) clampTextPosition(pos viewerTextPosition) viewerTex
 }
 
 type viewerDisplayLineMap struct {
-	text      []rune
-	cellToCol []int
+	text         []rune
+	continuation []bool
+	cellToCol    []int
 }
 
 type viewerTextMatch struct {
@@ -826,25 +809,25 @@ type viewerTextMatch struct {
 	end   viewerTextPosition
 }
 
-func newViewerDisplayLineMap(line string, wideAmbiguous bool) viewerDisplayLineMap {
+func newViewerDisplayLineMap(line string) viewerDisplayLineMap {
 	var text []rune
+	var continuation []bool
 	cellToCol := []int{0}
 	displayCol := 0
 	logicalCol := 0
 	for _, r := range line {
-		widthCells := viewerRuneWidth(r, wideAmbiguous)
+		widthCells := viewerTextGridRuneWidth(r)
 		if r == '\t' {
 			widthCells = nextTabStop(displayCol, fileViewerTextGridTabWidth) - displayCol
 		}
-		if widthCells < 1 {
-			widthCells = 1
-		}
 		for cell := 0; cell < widthCells; cell++ {
-			if r == '\t' || cell > 0 {
+			isContinuation := r != '\t' && cell > 0
+			if r == '\t' || isContinuation {
 				text = append(text, ' ')
 			} else {
 				text = append(text, r)
 			}
+			continuation = append(continuation, isContinuation)
 			if cell < widthCells-1 {
 				cellToCol = append(cellToCol, logicalCol)
 			} else {
@@ -854,11 +837,37 @@ func newViewerDisplayLineMap(line string, wideAmbiguous bool) viewerDisplayLineM
 		displayCol += widthCells
 		logicalCol++
 	}
-	return viewerDisplayLineMap{text: text, cellToCol: cellToCol}
+	return viewerDisplayLineMap{
+		text:         text,
+		continuation: continuation,
+		cellToCol:    cellToCol,
+	}
 }
 
-func viewerDisplayColumnForLogicalCol(line string, logicalCol int, wideAmbiguous bool) int {
-	lineMap := newViewerDisplayLineMap(line, wideAmbiguous)
+func viewerTextGridRuneWidth(r rune) int {
+	// Match TextGrid.parseRows exactly so our viewport and its native
+	// continuation cells agree across locale-dependent ambiguous widths.
+	width := runewidth.StringWidth(string(r))
+	if width < 1 {
+		return 1
+	}
+	return width
+}
+
+func viewerTextGridLineWidth(line string) int {
+	col := 0
+	for _, r := range line {
+		if r == '\t' {
+			col = nextTabStop(col, fileViewerTextGridTabWidth)
+			continue
+		}
+		col += viewerTextGridRuneWidth(r)
+	}
+	return col
+}
+
+func viewerDisplayColumnForLogicalCol(line string, logicalCol int) int {
+	lineMap := newViewerDisplayLineMap(line)
 	return lineMap.displayColumnForLogicalCol(logicalCol)
 }
 
@@ -905,11 +914,38 @@ func (m viewerDisplayLineMap) slice(line, startCol, width int) viewerVisibleLine
 	}
 	return viewerVisibleLine{
 		line:       line,
-		text:       string(m.text[startCol:end]),
+		text:       m.textForRange(startCol, end),
 		cellToCol:  append([]int(nil), m.cellToCol[startCol:end+1]...),
 		startCol:   startCol,
 		displayLen: end - startCol,
 	}
+}
+
+// textForRange converts display cells back to input for Fyne's TextGrid.
+// TextGrid has handled wide-rune continuation cells since Fyne v2.7.4, so
+// only leading or clipped continuations remain explicit spaces here.
+func (m viewerDisplayLineMap) textForRange(start, end int) string {
+	var b strings.Builder
+	for cell := start; cell < end; {
+		if m.continuation[cell] {
+			b.WriteByte(' ')
+			cell++
+			continue
+		}
+
+		span := 1
+		for cell+span < len(m.text) && m.continuation[cell+span] {
+			span++
+		}
+		included := min(span, end-cell)
+		if included < span {
+			b.WriteString(strings.Repeat(" ", included))
+		} else {
+			b.WriteRune(m.text[cell])
+		}
+		cell += included
+	}
+	return b.String()
 }
 
 func (m viewerDisplayLineMap) wrap(line, width, limit int) []viewerVisibleLine {
@@ -927,8 +963,23 @@ func (m viewerDisplayLineMap) wrap(line, width, limit int) []viewerVisibleLine {
 		}}
 	}
 	rows := make([]viewerVisibleLine, 0, limit)
-	for start := 0; start < len(m.text) && len(rows) < limit; start += width {
-		rows = append(rows, m.slice(line, start, width))
+	for start := 0; start < len(m.text) && len(rows) < limit; {
+		end := min(start+width, len(m.text))
+		if end < len(m.text) && m.continuation[end] {
+			runeStart := end
+			for runeStart > start && m.continuation[runeStart] {
+				runeStart--
+			}
+			if runeStart > start {
+				end = runeStart
+			} else {
+				for end < len(m.text) && m.continuation[end] {
+					end++
+				}
+			}
+		}
+		rows = append(rows, m.slice(line, start, end-start))
+		start = end
 	}
 	return rows
 }

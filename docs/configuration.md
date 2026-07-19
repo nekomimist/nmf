@@ -72,7 +72,8 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
     "viewer": {
       "maxWidth": 0,
       "maxHeight": 0,
-      "defaultPane": "auto"
+      "defaultPane": "auto",
+      "defaultWrap": false
     },
     "archive": {
       "zipNameEncoding": "shift_jis"
@@ -160,6 +161,9 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
 - `viewer.defaultPane`: initial built-in viewer pane. `auto` opens binary files
   on Hex, Markdown files on Markdown, and other files on Text. Use `text` to
   prefer raw text for Markdown files. Other values are `markdown` and `hex`.
+- `viewer.defaultWrap`: initial wrapping state for each Text, Markdown, and Hex
+  pane. Defaults to `false`; the Wrap button or `w` changes the active pane
+  independently for the current viewer dialog.
 - `archive.zipNameEncoding`: fallback charset for ZIP entry names that are not
   marked as UTF-8. Default is `shift_jis`; common alternatives include `cp437`
   and `utf-8`.

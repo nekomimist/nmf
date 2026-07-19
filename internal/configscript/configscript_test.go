@@ -32,7 +32,7 @@ nmf.color("dialogListCursor", value = "selection")
 nmf.debug_logging(enabled = True, log_directory = "logs/debug", max_files = 4)
 nmf.ui(show_hidden_files = True, item_spacing = 2)
 nmf.copy(preserve_timestamps = True)
-nmf.viewer(max_width = 1200, max_height = 900, default_pane = "text")
+nmf.viewer(max_width = 1200, max_height = 900, default_pane = "text", default_wrap = True)
 nmf.archive(zip_name_encoding = "cp437")
 nmf.sort(by = "extension", order = "desc", directories_first = False)
 nmf.cursor_style(type = "border", thickness = 3)
@@ -109,8 +109,9 @@ nmf.command("user.parent", parent)
 	if !cfg.UI.Copy.PreserveTimestamps {
 		t.Fatalf("copy = %+v, want preserve_timestamps=true", cfg.UI.Copy)
 	}
-	if cfg.UI.Viewer.MaxWidth != 1200 || cfg.UI.Viewer.MaxHeight != 900 || cfg.UI.Viewer.DefaultPane != "text" {
-		t.Fatalf("viewer = %+v, want max 1200x900 pane=text", cfg.UI.Viewer)
+	if cfg.UI.Viewer.MaxWidth != 1200 || cfg.UI.Viewer.MaxHeight != 900 ||
+		cfg.UI.Viewer.DefaultPane != "text" || !cfg.UI.Viewer.DefaultWrap {
+		t.Fatalf("viewer = %+v, want max 1200x900 pane=text wrap=true", cfg.UI.Viewer)
 	}
 	if cfg.UI.Archive.ZipNameEncoding != "cp437" {
 		t.Fatalf("archive = %+v, want cp437", cfg.UI.Archive)

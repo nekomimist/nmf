@@ -14,6 +14,7 @@ require (
 	github.com/hirochachacha/go-smb2 v1.1.0
 	github.com/jeandeaual/go-locale v0.0.0-20250612000132-0ef82f21eade
 	github.com/koron/gomigemo v1.0.3
+	github.com/mattn/go-runewidth v0.0.24
 	github.com/mholt/archives v0.1.5
 	github.com/nwaples/rardecode/v2 v2.2.0
 	github.com/nziu/lnk v0.1.2
@@ -27,7 +28,6 @@ require (
 	github.com/anthonynsimon/bild v0.14.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
-	github.com/mattn/go-runewidth v0.0.24 // indirect
 )
 
 require (

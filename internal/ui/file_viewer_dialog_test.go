@@ -240,6 +240,46 @@ func TestFileViewerTextGridHorizontalScrollClampsAndSlices(t *testing.T) {
 	}
 }
 
+func TestFileViewerTextGridDoesNotDoublePadWideRunes(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	text := "aあ\u3000b"
+	grid := newFileViewerTextGrid(text, nil, nil, nil)
+
+	if got := grid.grid.Text(); got != text {
+		t.Fatalf("grid text = %q, want wide runes without synthetic spaces %q", got, text)
+	}
+
+	row := grid.grid.Row(0)
+	want := []rune{'a', 'あ', ' ', '\u3000', ' ', 'b'}
+	if len(row.Cells) != len(want) {
+		t.Fatalf("TextGrid cells = %d, want %d native display cells", len(row.Cells), len(want))
+	}
+	for col, r := range want {
+		if got := row.Cells[col].Rune; got != r {
+			t.Fatalf("TextGrid cell %d = %q, want %q", col, got, r)
+		}
+	}
+}
+
+func TestFileViewerTextGridHorizontalSliceKeepsNativeWideRuneCells(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	grid := newFileViewerTextGrid("a日本b", nil, nil, nil)
+	grid.visibleRows = 1
+	grid.visibleCols = 4
+	grid.MoveColumns(1)
+
+	if got := grid.grid.Text(); got != "日本" {
+		t.Fatalf("grid text after horizontal scroll = %q, want %q", got, "日本")
+	}
+	if got := len(grid.grid.Row(0).Cells); got != 4 {
+		t.Fatalf("TextGrid cells after horizontal scroll = %d, want 4", got)
+	}
+}
+
 func TestFileViewerTextGridToggleWrapResetsColumn(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
@@ -257,6 +297,24 @@ func TestFileViewerTextGridToggleWrapResetsColumn(t *testing.T) {
 	}
 	if got := grid.grid.Text(); got != "abc\ndef" {
 		t.Fatalf("grid text in wrap mode = %q, want wrapped rows", got)
+	}
+}
+
+func TestFileViewerTextGridWrapDoesNotSplitWideRune(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	grid := newFileViewerTextGrid("ab日x", nil, nil, nil)
+	grid.visibleRows = 2
+	grid.visibleCols = 3
+
+	grid.ToggleWrap()
+
+	if got := grid.grid.Text(); got != "ab\n日x" {
+		t.Fatalf("grid text in wrap mode = %q, want wide rune moved intact", got)
+	}
+	if got := len(grid.grid.Row(1).Cells); got != 3 {
+		t.Fatalf("second wrapped row cells = %d, want 3", got)
 	}
 }
 
@@ -538,6 +596,54 @@ func TestFileViewerDialogWrapButtonTracksWrapState(t *testing.T) {
 	d.ViewerToggleWrap()
 	if got := d.wrapButton.Importance; got != widget.MediumImportance {
 		t.Fatalf("wrapButton importance = %v, want MediumImportance after unwrap", got)
+	}
+}
+
+func TestFileViewerDialogDefaultWrapAppliesToEveryPane(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "note.md",
+		Data:     []byte("# title"),
+		Text:     "# title",
+		Markdown: true,
+	})
+	d.SetDefaultPane("text")
+	d.SetDefaultWrap(true)
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	if !d.textGrid.Wrap() {
+		t.Fatal("text pane wrap = false, want configured default true")
+	}
+	if got := d.wrapButton.Importance; got != widget.HighImportance {
+		t.Fatalf("wrapButton importance = %v, want HighImportance for default wrap", got)
+	}
+
+	d.ViewerShowMarkdown()
+	if d.mdGrid == nil || !d.mdGrid.Wrap() {
+		t.Fatalf("markdown pane wrap = %v, want configured default true", d.mdGrid != nil && d.mdGrid.Wrap())
+	}
+	d.ViewerToggleWrap()
+	if d.mdGrid.Wrap() {
+		t.Fatal("markdown pane wrap = true after toggle, want false")
+	}
+
+	d.ViewerShowHex()
+	if d.hexGrid == nil || !d.hexGrid.Wrap() {
+		t.Fatalf("hex pane wrap = %v, want configured default true", d.hexGrid != nil && d.hexGrid.Wrap())
+	}
+
+	d.ViewerShowMarkdown()
+	if d.mdGrid.Wrap() {
+		t.Fatal("markdown pane wrap did not preserve its toggled state")
+	}
+	d.ViewerShowText()
+	if !d.textGrid.Wrap() {
+		t.Fatal("text pane wrap did not preserve its configured state")
 	}
 }
 
@@ -1172,22 +1278,12 @@ func TestSplitViewerLinesKeepsTrailingEmptyLine(t *testing.T) {
 	}
 }
 
-func TestViewerDisplayLinePadsWideRunes(t *testing.T) {
-	got := viewerDisplayLine("aあ\u3000b", false)
-	if got != "aあ \u3000 b" {
-		t.Fatalf("viewerDisplayLine() = %q, want wide runes padded", got)
+func TestViewerRuneWidthUsesLocaleForAmbiguousRunes(t *testing.T) {
+	if got := viewerRuneWidth('·', false); got != 1 {
+		t.Fatalf("viewerRuneWidth(..., false) = %d, want narrow ambiguous rune", got)
 	}
-}
-
-func TestViewerDisplayLineUsesLocaleForAmbiguousRunes(t *testing.T) {
-	gotNarrow := viewerDisplayLine("·", false)
-	if gotNarrow != "·" {
-		t.Fatalf("viewerDisplayLine(..., false) = %q, want narrow ambiguous rune", gotNarrow)
-	}
-
-	gotWide := viewerDisplayLine("·", true)
-	if gotWide != "· " {
-		t.Fatalf("viewerDisplayLine(..., true) = %q, want padded ambiguous rune", gotWide)
+	if got := viewerRuneWidth('·', true); got != 2 {
+		t.Fatalf("viewerRuneWidth(..., true) = %d, want wide ambiguous rune", got)
 	}
 }
 
