@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"image"
 	"image/color"
+	"math"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -453,6 +455,116 @@ func TestFileViewerDialogBinaryStartsOnHexTextGrid(t *testing.T) {
 	}
 	if got := strings.Join(d.hexGrid.lines, "\n"); !strings.Contains(got, "00000000") {
 		t.Fatalf("hex grid text = %q, want hex dump offset", got)
+	}
+}
+
+func TestFileViewerDialogImageUsesImageAndHexOnly(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:        "photo.png",
+		Data:        []byte("png preview bytes"),
+		Binary:      true,
+		Image:       image.NewNRGBA(image.Rect(0, 0, 640, 480)),
+		ImageFormat: "PNG",
+		ImageWidth:  640,
+		ImageHeight: 480,
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	if d.activeName != "Image" {
+		t.Fatalf("activeName = %q, want Image", d.activeName)
+	}
+	if len(d.paneOrder) != 2 || d.paneOrder[0] != viewerPaneImage || d.paneOrder[1] != viewerPaneHex {
+		t.Fatalf("pane order = %v, want image/hex", d.paneOrder)
+	}
+	if d.tabBar.Label(viewerPaneImage) != "Image (i)" || d.tabBar.Label(viewerPaneHex) != "Hex (x)" {
+		t.Fatalf("image tab labels = %q, %q", d.tabBar.Label(viewerPaneImage), d.tabBar.Label(viewerPaneHex))
+	}
+	if d.tabBar.Label(viewerPaneText) != "" || d.tabBar.Label(viewerPaneMarkdown) != "" {
+		t.Fatal("image viewer should not create text or markdown tabs")
+	}
+	if d.search != nil || d.jump != nil {
+		t.Fatal("image viewer should not create search or line-jump entries")
+	}
+	if d.hexGrid != nil {
+		t.Fatal("hex grid should remain lazy while Image is active")
+	}
+	if d.zoomFitButton == nil || d.zoomInButton == nil || d.zoomOutButton == nil {
+		t.Fatal("image zoom controls were not created")
+	}
+	if !d.zoomInButton.Disabled() || !d.zoomOutButton.Disabled() {
+		t.Fatal("zoom buttons should be disabled in fit mode")
+	}
+
+	d.ViewerImageToggleFit()
+	if d.imageView.Fit() || d.zoomInButton.Disabled() || d.zoomOutButton.Disabled() {
+		t.Fatal("100% mode should enable zoom buttons")
+	}
+	d.ViewerImageZoomIn()
+	if got := d.imageView.Zoom(); math.Abs(got-1.25) > 0.001 {
+		t.Fatalf("image zoom = %f, want 1.25", got)
+	}
+	d.ViewerShowHex()
+	if d.activeName != "Hex" || d.hexGrid == nil {
+		t.Fatalf("active after hex = %q hexGrid=%v", d.activeName, d.hexGrid != nil)
+	}
+}
+
+func TestFileViewerDialogImageHonorsExplicitHexDefault(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:        "photo.png",
+		Data:        []byte("bytes"),
+		Binary:      true,
+		Image:       image.NewNRGBA(image.Rect(0, 0, 20, 10)),
+		ImageFormat: "PNG",
+		ImageWidth:  20,
+		ImageHeight: 10,
+	})
+	d.SetDefaultPane("hex")
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	if d.activeName != "Hex" || d.hexGrid == nil {
+		t.Fatalf("activeName = %q hexGrid=%v, want explicit Hex", d.activeName, d.hexGrid != nil)
+	}
+}
+
+func TestFileViewerDialogRejectedImageFallsBackToHexOnly(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:        "huge.webp",
+		Data:        []byte{0, 1, 2},
+		Binary:      true,
+		ImageFormat: "WebP",
+		ImageWidth:  40000,
+		ImageHeight: 100,
+		ImageError:  "image too large",
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	if d.activeName != "Hex" || len(d.paneOrder) != 1 || d.paneOrder[0] != viewerPaneHex {
+		t.Fatalf("rejected image active=%q panes=%v, want Hex only", d.activeName, d.paneOrder)
+	}
+	if d.search != nil || d.jump != nil || d.imageView != nil {
+		t.Fatal("rejected image should not create image or search controls")
+	}
+	if !strings.Contains(d.status.Text, "image=image too large") {
+		t.Fatalf("status = %q, want rejection reason", d.status.Text)
 	}
 }
 

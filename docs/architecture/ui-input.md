@@ -281,13 +281,14 @@ Built-in file viewer:
 - `viewer.show` opens the selected file with the internal viewer and pushes
   `FileViewerKeyHandler` while the dialog is open.
 - The handler owns less-like navigation keys (`j/k`, `f/b`, `g/G`, `n/N`,
-  `/`, `:`, `q`) and pane switching keys (`t`, `m`, `x`) so keys do not fall
+  `/`, `:`, `q`) and pane switching keys (`i`, `t`, `m`, `x`) so keys do not fall
   through to the main file list if focus moves to non-text parts of the dialog.
 - These keys are configurable through the `fileViewer` target.
 - Because of driver fact 6, viewer bindings are split at construction into a
   typed-key set and a rune set (`fileViewerRunePathSpec` in
   `internal/keymanager/fileviewer_handler.go`): bare and Shift-modified
-  letters, unmodified `/`, and Shift+`;` (`:`) fire only on the rune path;
+  letters, unmodified `/`, Shift+`;` (`:`), and image zoom symbols (`=`, `+`,
+  `-`) fire only on the rune path;
   everything else (arrows, Escape, Space, Ctrl/Alt combos, function keys)
   fires only on the typed-key path. Each binding activates exactly once per
   press.
@@ -306,6 +307,10 @@ Built-in file viewer:
   selection theme colors. Submitted searches return focus to the active viewer
   pane regardless of match result; Escape returns focus without submitting or
   closing the viewer.
+- Image files expose Image and Hex panes without search or line-jump inputs.
+  `=` toggles between shrink-to-fit and the saved free-zoom state, `+` and `-`
+  zoom the free state from 10% to 800%, and mouse dragging or cursor keys pan
+  while free zoom is active. Fit mode never enlarges an image above 100%.
 
 Filter-style text input:
 

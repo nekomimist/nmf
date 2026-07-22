@@ -158,9 +158,11 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
   are copied.
 - `viewer.maxWidth`, `viewer.maxHeight`: optional maximum size for the built-in
   file viewer dialog. `0` means uncapped.
-- `viewer.defaultPane`: initial built-in viewer pane. `auto` opens binary files
-  on Hex, Markdown files on Markdown, and other files on Text. Use `text` to
-  prefer raw text for Markdown files. Other values are `markdown` and `hex`.
+- `viewer.defaultPane`: initial built-in viewer pane. `auto` opens supported
+  images on Image, other binary files on Hex, Markdown files on Markdown, and
+  other files on Text. Use `text` to prefer raw text for Markdown files. Other
+  values are `markdown` and `hex`; explicitly selecting `hex` also starts image
+  files on Hex.
 - `viewer.defaultWrap`: initial wrapping state for each Text, Markdown, and Hex
   pane. Defaults to `false`; the Wrap button or `w` changes the active pane
   independently for the current viewer dialog.
@@ -487,7 +489,10 @@ Available file-viewer commands:
 - `fileViewer.home`, `fileViewer.end`
 - `fileViewer.column.left`, `fileViewer.column.right`
 - `fileViewer.wrap.toggle`
-- `fileViewer.pane.text`, `fileViewer.pane.markdown`, `fileViewer.pane.hex`
+- `fileViewer.pane.image`, `fileViewer.pane.text`, `fileViewer.pane.markdown`,
+  `fileViewer.pane.hex`
+- `fileViewer.image.zoom.toggle`, `fileViewer.image.zoom.in`,
+  `fileViewer.image.zoom.out`
 - `fileViewer.search.next`, `fileViewer.search.previous`, `fileViewer.search.focus`
 - `fileViewer.line.focus`
 - `fileViewer.selection.selectAll`, `fileViewer.selection.copy`

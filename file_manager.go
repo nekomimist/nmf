@@ -81,6 +81,7 @@ type FileManager struct {
 	viewerMu     sync.Mutex
 	nextViewerID uint64
 	activeViewer uint64
+	viewerCancel context.CancelFunc
 
 	// Jobs indicator
 	jobsButton    *widget.Button
@@ -89,12 +90,17 @@ type FileManager struct {
 	jobsUnsub     func()
 }
 
-func (fm *FileManager) beginViewerLoad() uint64 {
+func (fm *FileManager) beginViewerLoad() (uint64, context.Context) {
 	fm.viewerMu.Lock()
 	defer fm.viewerMu.Unlock()
+	if fm.viewerCancel != nil {
+		fm.viewerCancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
 	fm.nextViewerID++
 	fm.activeViewer = fm.nextViewerID
-	return fm.activeViewer
+	fm.viewerCancel = cancel
+	return fm.activeViewer, ctx
 }
 
 func (fm *FileManager) finishViewerLoad(id uint64) bool {
@@ -104,6 +110,10 @@ func (fm *FileManager) finishViewerLoad(id uint64) bool {
 		return false
 	}
 	fm.activeViewer = 0
+	if fm.viewerCancel != nil {
+		fm.viewerCancel()
+		fm.viewerCancel = nil
+	}
 	return true
 }
 
@@ -114,6 +124,10 @@ func (fm *FileManager) invalidateViewerLoad(id uint64) bool {
 		return false
 	}
 	fm.activeViewer = 0
+	if fm.viewerCancel != nil {
+		fm.viewerCancel()
+		fm.viewerCancel = nil
+	}
 	return true
 }
 

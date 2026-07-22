@@ -219,9 +219,11 @@ is not written back to `config.json`.
 default_wrap = True)` caps the built-in file viewer dialog size, sets the
 initial viewer pane, and enables wrapping when each pane is created. Use `0`
 for either size to leave that dimension uncapped. `default_pane` accepts
-`"auto"`, `"text"`, `"markdown"`, or `"hex"`; `auto` opens Markdown files on
-the Markdown pane and other text files on Text. `default_wrap` defaults to
-`False`; the active pane can still be toggled independently with `w`.
+`"auto"`, `"text"`, `"markdown"`, or `"hex"`; `auto` opens supported images on
+Image, Markdown files on Markdown, other binary files on Hex, and other files
+on Text. Explicit `hex` also starts image files on Hex. `default_wrap` defaults
+to `False`; the active text or hex pane can still be toggled independently
+with `w`.
 `nmf.archive(zip_name_encoding = "...")` sets the fallback charset for ZIP entry
 names that are not marked as UTF-8. Common values include `shift_jis` (default),
 `cp437`, and `utf-8`.

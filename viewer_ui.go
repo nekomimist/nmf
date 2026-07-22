@@ -24,7 +24,7 @@ func (fm *FileManager) ShowFileViewer() {
 	}
 
 	debugPrint("FileViewer: open-start path=%s", file.Path)
-	viewerID := fm.beginViewerLoad()
+	viewerID, viewerCtx := fm.beginViewerLoad()
 	fm.beginBusy("Opening preview...", func() {
 		if fm.invalidateViewerLoad(viewerID) {
 			fm.endBusy()
@@ -33,7 +33,7 @@ func (fm *FileManager) ShowFileViewer() {
 	})
 	go func() {
 		stepStart := time.Now()
-		preview, err := fileinfo.ReadPreviewFileWithDebug(file.Path, debugPrint)
+		preview, err := fileinfo.ReadPreviewFileWithDebugContext(viewerCtx, file.Path, debugPrint)
 		debugPrint("FileViewer: read-preview elapsed=%s path=%s err=%v", time.Since(stepStart), file.Path, err)
 		fyne.Do(func() {
 			if fm.isWindowClosed() || !fm.finishViewerLoad(viewerID) {

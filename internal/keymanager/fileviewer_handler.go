@@ -19,6 +19,7 @@ const (
 	CommandFileViewerColumnLeft     = "fileViewer.column.left"
 	CommandFileViewerColumnRight    = "fileViewer.column.right"
 	CommandFileViewerToggleWrap     = "fileViewer.wrap.toggle"
+	CommandFileViewerShowImage      = "fileViewer.pane.image"
 	CommandFileViewerShowText       = "fileViewer.pane.text"
 	CommandFileViewerShowMarkdown   = "fileViewer.pane.markdown"
 	CommandFileViewerShowHex        = "fileViewer.pane.hex"
@@ -28,6 +29,9 @@ const (
 	CommandFileViewerFocusLine      = "fileViewer.line.focus"
 	CommandFileViewerCopySelection  = "fileViewer.selection.copy"
 	CommandFileViewerSelectAll      = "fileViewer.selection.selectAll"
+	CommandFileViewerImageToggleFit = "fileViewer.image.zoom.toggle"
+	CommandFileViewerImageZoomIn    = "fileViewer.image.zoom.in"
+	CommandFileViewerImageZoomOut   = "fileViewer.image.zoom.out"
 )
 
 // FileViewerInterface defines keyboard actions for the built-in viewer.
@@ -42,6 +46,7 @@ type FileViewerInterface interface {
 	ViewerColumnLeft()
 	ViewerColumnRight()
 	ViewerToggleWrap()
+	ViewerShowImage()
 	ViewerShowText()
 	ViewerShowMarkdown()
 	ViewerShowHex()
@@ -51,6 +56,9 @@ type FileViewerInterface interface {
 	ViewerFocusLine()
 	ViewerCopySelection()
 	ViewerSelectAll()
+	ViewerImageToggleFit()
+	ViewerImageZoomIn()
+	ViewerImageZoomOut()
 }
 
 // FileViewerKeyHandler handles less-like keys for the built-in viewer.
@@ -135,9 +143,9 @@ func (h *FileViewerKeyHandler) executeBinding(bindings []keyBinding, ev *fyne.Ke
 // fileViewerRunePathSpec reports whether a key spec could be produced by
 // fileViewerRuneKey's reverse mapping, i.e. whether the binding belongs on
 // the OnTypedRune path rather than OnKeyActivated: key A-Z with modifiers
-// none or Shift-only, KeySlash with no modifiers, or KeySemicolon with
-// Shift-only. Everything else (arrows, Escape, Space, Ctrl/Alt combos,
-// F-keys, ...) never arrives as a TypedRune and stays on the key path.
+// none or Shift-only, KeySlash with no modifiers, KeySemicolon with
+// Shift-only, or the image viewer's =/+/- controls. Everything else (arrows,
+// Escape, Space, Ctrl/Alt combos, F-keys, ...) stays on the key path.
 func fileViewerRunePathSpec(spec keySpec) bool {
 	if spec.mod.CtrlPressed || spec.mod.AltPressed {
 		return false
@@ -149,6 +157,10 @@ func fileViewerRunePathSpec(spec keySpec) bool {
 		return !spec.mod.ShiftPressed
 	case spec.key == fyne.KeySemicolon:
 		return spec.mod.ShiftPressed
+	case spec.key == fyne.KeyEqual:
+		return true
+	case spec.key == fyne.KeyMinus:
+		return !spec.mod.ShiftPressed
 	default:
 		return false
 	}
@@ -166,6 +178,7 @@ func (h *FileViewerKeyHandler) defaultCommands() map[string]func() {
 		CommandFileViewerColumnLeft:     h.viewer.ViewerColumnLeft,
 		CommandFileViewerColumnRight:    h.viewer.ViewerColumnRight,
 		CommandFileViewerToggleWrap:     h.viewer.ViewerToggleWrap,
+		CommandFileViewerShowImage:      h.viewer.ViewerShowImage,
 		CommandFileViewerShowText:       h.viewer.ViewerShowText,
 		CommandFileViewerShowMarkdown:   h.viewer.ViewerShowMarkdown,
 		CommandFileViewerShowHex:        h.viewer.ViewerShowHex,
@@ -175,6 +188,9 @@ func (h *FileViewerKeyHandler) defaultCommands() map[string]func() {
 		CommandFileViewerFocusLine:      h.viewer.ViewerFocusLine,
 		CommandFileViewerCopySelection:  h.viewer.ViewerCopySelection,
 		CommandFileViewerSelectAll:      h.viewer.ViewerSelectAll,
+		CommandFileViewerImageToggleFit: h.viewer.ViewerImageToggleFit,
+		CommandFileViewerImageZoomIn:    h.viewer.ViewerImageZoomIn,
+		CommandFileViewerImageZoomOut:   h.viewer.ViewerImageZoomOut,
 		CommandNoop:                     func() {},
 	}
 }
@@ -204,12 +220,16 @@ func defaultFileViewerBindings() []config.KeyBindingEntry {
 		{Key: "G", Command: CommandFileViewerHome},
 		{Key: "S-G", Command: CommandFileViewerEnd},
 		{Key: "W", Command: CommandFileViewerToggleWrap},
+		{Key: "I", Command: CommandFileViewerShowImage},
 		{Key: "T", Command: CommandFileViewerShowText},
 		{Key: "M", Command: CommandFileViewerShowMarkdown},
 		{Key: "X", Command: CommandFileViewerShowHex},
 		{Key: "N", Command: CommandFileViewerSearchNext},
 		{Key: "S-N", Command: CommandFileViewerSearchPrevious},
 		{Key: "S-Semicolon", Command: CommandFileViewerFocusLine},
+		{Key: "=", Command: CommandFileViewerImageToggleFit},
+		{Key: "S-=", Command: CommandFileViewerImageZoomIn},
+		{Key: "-", Command: CommandFileViewerImageZoomOut},
 	}
 }
 
@@ -219,6 +239,12 @@ func fileViewerRuneKey(r rune) (*fyne.KeyEvent, ModifierState, bool) {
 		return &fyne.KeyEvent{Name: fyne.KeySlash}, ModifierState{}, true
 	case ':':
 		return &fyne.KeyEvent{Name: fyne.KeySemicolon}, ModifierState{ShiftPressed: true}, true
+	case '=':
+		return &fyne.KeyEvent{Name: fyne.KeyEqual}, ModifierState{}, true
+	case '+':
+		return &fyne.KeyEvent{Name: fyne.KeyEqual}, ModifierState{ShiftPressed: true}, true
+	case '-':
+		return &fyne.KeyEvent{Name: fyne.KeyMinus}, ModifierState{}, true
 	}
 	if r >= 'a' && r <= 'z' {
 		return &fyne.KeyEvent{Name: fyne.KeyName(string(unicode.ToUpper(r)))}, ModifierState{}, true

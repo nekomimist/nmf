@@ -34,6 +34,7 @@ const (
 
 const (
 	viewerPaneAuto     = "auto"
+	viewerPaneImage    = "image"
 	viewerPaneText     = "text"
 	viewerPaneMarkdown = "markdown"
 	viewerPaneHex      = "hex"
@@ -46,21 +47,29 @@ type FileViewerDialog struct {
 	parent  fyne.Window
 	dialog  dialog.Dialog
 
-	textGrid    *fileViewerTextGrid
-	hexGrid     *fileViewerTextGrid
-	mdGrid      *fileViewerTextGrid
-	search      *IMEEntry
-	jump        *IMEEntry
-	status      *widget.Label
-	lineLabel   *widget.Label
-	wrapButton  *widget.Button
-	prevButton  *widget.Button
-	nextButton  *widget.Button
-	closeButton *widget.Button
+	textGrid      *fileViewerTextGrid
+	hexGrid       *fileViewerTextGrid
+	mdGrid        *fileViewerTextGrid
+	imageView     *fileViewerImageView
+	search        *IMEEntry
+	jump          *IMEEntry
+	status        *widget.Label
+	lineLabel     *widget.Label
+	wrapButton    *widget.Button
+	prevButton    *widget.Button
+	nextButton    *widget.Button
+	closeButton   *widget.Button
+	zoomFitButton *widget.Button
+	zoomInButton  *widget.Button
+	zoomOutButton *widget.Button
+	imageToolbar  fyne.CanvasObject
+	hexToolbar    fyne.CanvasObject
+	toolbarStack  *fyne.Container
 
 	tabBar      *fileViewerTabBar
 	paneStack   *fyne.Container
 	paneObjects map[string]fyne.CanvasObject
+	paneOrder   []string
 	mdView      fyne.CanvasObject
 
 	activeName  string
@@ -127,66 +136,23 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	totalStart := time.Now()
 	stepStart := totalStart
 	d.parent = parent
-	d.debug("FileViewer: dialog-start bytes=%d text_bytes=%d binary=%t markdown=%t",
-		len(d.preview.Data), len(d.preview.Text), d.preview.Binary, d.preview.Markdown)
+	d.debug("FileViewer: dialog-start bytes=%d text_bytes=%d binary=%t markdown=%t image=%t image_error=%q",
+		len(d.preview.Data), len(d.preview.Text), d.preview.Binary, d.preview.Markdown, d.preview.Image != nil, d.preview.ImageError)
 
-	text := viewerText(d.preview)
-	d.debug("FileViewer: text-view elapsed=%s bytes=%d", time.Since(stepStart), len(text))
-	stepStart = time.Now()
-	d.textGrid = d.newViewerTextGrid(text)
-	d.debug("FileViewer: text-grid elapsed=%s bytes=%d", time.Since(stepStart), len(text))
-	stepStart = time.Now()
-
-	hexContent := fyne.CanvasObject(widget.NewLabel("Hex preview will load when selected."))
-	if d.preview.Binary {
-		hexContent = d.createHexGrid()
-	}
-	d.debug("FileViewer: hex-tab-content elapsed=%s loaded=%t", time.Since(stepStart), d.hexGrid != nil)
-	stepStart = time.Now()
-
-	d.search = NewIMEEntry(parent)
-	d.search.SetPlaceHolder("Search")
-	d.search.OnEscape = d.focusActiveViewer
-	d.search.OnSubmitted = func(_ string) { d.findNext() }
-	d.jump = NewIMEEntry(parent)
-	d.jump.SetPlaceHolder("Line")
-	d.jump.OnEscape = d.focusActiveViewer
-	d.jump.OnSubmitted = func(_ string) { d.jumpToLine() }
 	d.status = widget.NewLabel(d.statusText())
 	d.status.Truncation = fyne.TextTruncateClip
 	d.lineLabel = widget.NewLabel("")
 	d.lineLabel.TextStyle = fyne.TextStyle{Monospace: true}
-	d.debug("FileViewer: controls elapsed=%s", time.Since(stepStart))
+	d.closeButton = widget.NewButtonWithIcon("", theme.CancelIcon(), d.CancelDialog)
+	d.buildViewerPanes()
+	d.debug("FileViewer: panes elapsed=%s", time.Since(stepStart))
 	stepStart = time.Now()
 
-	mdPlaceholder := widget.NewLabel("Markdown preview will load when selected.")
-	d.paneObjects = map[string]fyne.CanvasObject{
-		viewerPaneText:     d.textGrid,
-		viewerPaneMarkdown: mdPlaceholder,
-		viewerPaneHex:      hexContent,
-	}
-	d.paneStack = container.NewStack(d.textGrid, mdPlaceholder, hexContent)
-	d.tabBar = newFileViewerTabBar(d.showViewerPane)
 	d.selectInitialTab()
 	d.debug("FileViewer: tabs elapsed=%s active=%s", time.Since(stepStart), d.activeName)
 	stepStart = time.Now()
 
-	d.wrapButton = widget.NewButton("Wrap", d.ViewerToggleWrap)
-	d.closeButton = widget.NewButtonWithIcon("", theme.CancelIcon(), d.CancelDialog)
-	d.prevButton = widget.NewButtonWithIcon("", theme.MoveUpIcon(), d.findPrevious)
-	d.nextButton = widget.NewButtonWithIcon("", theme.MoveDownIcon(), d.findNext)
-	copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), d.copySelection)
-	confirmBtn := widget.NewButtonWithIcon("", theme.ConfirmIcon(), d.jumpToLine)
-	toolbar := container.NewBorder(nil, nil, nil,
-		container.NewHBox(d.wrapButton, copyBtn),
-		container.NewHBox(
-			container.NewCenter(container.NewGridWrap(fyne.NewSize(fileViewerSearchWidth, d.search.MinSize().Height), lineEditThemeOverride(d.search))),
-			d.prevButton,
-			d.nextButton,
-			widget.NewSeparator(),
-			container.NewCenter(container.NewGridWrap(fyne.NewSize(fileViewerLineWidth, d.jump.MinSize().Height), lineEditThemeOverride(d.jump))),
-			confirmBtn,
-		))
+	toolbar := d.buildViewerToolbar(parent)
 
 	nameLabel := widget.NewLabel(filepath.Base(d.preview.Path))
 	nameRow := container.NewBorder(nil, nil, nil, d.closeButton,
@@ -226,6 +192,84 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	d.focusActiveViewer()
 	d.debug("FileViewer: dialog-focus elapsed=%s", time.Since(stepStart))
 	d.debug("FileViewer: dialog-ready elapsed=%s", time.Since(totalStart))
+}
+
+func (d *FileViewerDialog) buildViewerPanes() {
+	hexPlaceholder := fyne.CanvasObject(widget.NewLabel("Hex preview will load when selected."))
+	switch {
+	case d.preview.Image != nil:
+		d.imageView = newFileViewerImageView(d.preview.Image, d.km, d.updateLineDisplay, d.debugPrint)
+		d.paneOrder = append([]string(nil), fileViewerImageTabBarOrder...)
+		d.paneObjects = map[string]fyne.CanvasObject{
+			viewerPaneImage: d.imageView,
+			viewerPaneHex:   hexPlaceholder,
+		}
+	case d.preview.ImageFormat != "":
+		d.paneOrder = []string{viewerPaneHex}
+		d.paneObjects = map[string]fyne.CanvasObject{viewerPaneHex: d.createHexGrid()}
+	default:
+		text := viewerText(d.preview)
+		d.debug("FileViewer: text-view bytes=%d", len(text))
+		d.textGrid = d.newViewerTextGrid(text)
+		hexContent := hexPlaceholder
+		if d.preview.Binary {
+			hexContent = d.createHexGrid()
+		}
+		mdPlaceholder := widget.NewLabel("Markdown preview will load when selected.")
+		d.paneOrder = append([]string(nil), fileViewerTabBarOrder...)
+		d.paneObjects = map[string]fyne.CanvasObject{
+			viewerPaneText:     d.textGrid,
+			viewerPaneMarkdown: mdPlaceholder,
+			viewerPaneHex:      hexContent,
+		}
+	}
+	objects := make([]fyne.CanvasObject, 0, len(d.paneOrder))
+	for _, pane := range d.paneOrder {
+		objects = append(objects, d.paneObjects[pane])
+	}
+	d.paneStack = container.NewStack(objects...)
+	d.tabBar = newFileViewerTabBar(d.paneOrder, d.showViewerPane)
+}
+
+func (d *FileViewerDialog) buildViewerToolbar(parent fyne.Window) fyne.CanvasObject {
+	d.wrapButton = widget.NewButton("Wrap", d.ViewerToggleWrap)
+	copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), d.copySelection)
+	if d.preview.ImageFormat != "" {
+		d.hexToolbar = container.NewHBox(d.wrapButton, copyBtn)
+		if d.imageView != nil {
+			d.zoomFitButton = widget.NewButtonWithIcon("100% (=)", theme.ZoomFitIcon(), d.ViewerImageToggleFit)
+			d.zoomOutButton = widget.NewButtonWithIcon("", theme.ZoomOutIcon(), d.ViewerImageZoomOut)
+			d.zoomInButton = widget.NewButtonWithIcon("", theme.ZoomInIcon(), d.ViewerImageZoomIn)
+			d.imageToolbar = container.NewHBox(d.zoomFitButton, d.zoomOutButton, d.zoomInButton)
+		} else {
+			d.imageToolbar = container.NewHBox()
+		}
+		d.toolbarStack = container.NewStack(d.imageToolbar, d.hexToolbar)
+		d.updateToolbarVisibility()
+		return d.toolbarStack
+	}
+
+	d.search = NewIMEEntry(parent)
+	d.search.SetPlaceHolder("Search")
+	d.search.OnEscape = d.focusActiveViewer
+	d.search.OnSubmitted = func(_ string) { d.findNext() }
+	d.jump = NewIMEEntry(parent)
+	d.jump.SetPlaceHolder("Line")
+	d.jump.OnEscape = d.focusActiveViewer
+	d.jump.OnSubmitted = func(_ string) { d.jumpToLine() }
+	d.prevButton = widget.NewButtonWithIcon("", theme.MoveUpIcon(), d.findPrevious)
+	d.nextButton = widget.NewButtonWithIcon("", theme.MoveDownIcon(), d.findNext)
+	confirmBtn := widget.NewButtonWithIcon("", theme.ConfirmIcon(), d.jumpToLine)
+	return container.NewBorder(nil, nil, nil,
+		container.NewHBox(d.wrapButton, copyBtn),
+		container.NewHBox(
+			container.NewCenter(container.NewGridWrap(fyne.NewSize(fileViewerSearchWidth, d.search.MinSize().Height), lineEditThemeOverride(d.search))),
+			d.prevButton,
+			d.nextButton,
+			widget.NewSeparator(),
+			container.NewCenter(container.NewGridWrap(fyne.NewSize(fileViewerLineWidth, d.jump.MinSize().Height), lineEditThemeOverride(d.jump))),
+			confirmBtn,
+		))
 }
 
 func fileViewerDialogSize(parent fyne.Window, maxWidth, maxHeight int) fyne.Size {
@@ -277,16 +321,15 @@ func (d *FileViewerDialog) ensureMarkdownView() {
 	d.debug("FileViewer: markdown-lazy-load elapsed=%s", time.Since(stepStart))
 }
 
-// replacePaneObject swaps the pane's current canvas object (e.g. a lazy-load
-// placeholder) for obj and rebuilds paneStack from the fixed text/markdown/hex
-// ordering, then refreshes it.
+// replacePaneObject swaps a lazy placeholder and rebuilds paneStack in the
+// mode-specific pane order.
 func (d *FileViewerDialog) replacePaneObject(pane string, obj fyne.CanvasObject) {
 	d.paneObjects[pane] = obj
-	d.paneStack.Objects = []fyne.CanvasObject{
-		d.paneObjects[viewerPaneText],
-		d.paneObjects[viewerPaneMarkdown],
-		d.paneObjects[viewerPaneHex],
+	objects := make([]fyne.CanvasObject, 0, len(d.paneOrder))
+	for _, name := range d.paneOrder {
+		objects = append(objects, d.paneObjects[name])
 	}
+	d.paneStack.Objects = objects
 	d.paneStack.Refresh()
 }
 
@@ -311,6 +354,18 @@ func (d *FileViewerDialog) ensureHexGrid() {
 }
 
 func (d *FileViewerDialog) selectInitialTab() {
+	if d.preview.Image != nil {
+		if d.defaultPane == viewerPaneHex {
+			d.selectViewerTab(viewerPaneHex)
+			return
+		}
+		d.selectViewerTab(viewerPaneImage)
+		return
+	}
+	if d.preview.ImageFormat != "" {
+		d.selectViewerTab(viewerPaneHex)
+		return
+	}
 	if d.preview.Binary {
 		d.selectViewerTab(viewerPaneHex)
 		return
@@ -333,7 +388,7 @@ func (d *FileViewerDialog) selectInitialTab() {
 
 func normalizeViewerPane(pane string) string {
 	switch strings.ToLower(strings.TrimSpace(pane)) {
-	case viewerPaneAuto, viewerPaneText, viewerPaneMarkdown, viewerPaneHex:
+	case viewerPaneAuto, viewerPaneImage, viewerPaneText, viewerPaneMarkdown, viewerPaneHex:
 		return strings.ToLower(strings.TrimSpace(pane))
 	default:
 		return ""
@@ -342,6 +397,8 @@ func normalizeViewerPane(pane string) string {
 
 func viewerPaneDisplayName(pane string) string {
 	switch pane {
+	case viewerPaneImage:
+		return "Image"
 	case viewerPaneHex:
 		return "Hex"
 	case viewerPaneMarkdown:
@@ -357,8 +414,11 @@ func (d *FileViewerDialog) selectViewerTab(pane string) bool {
 	}
 	normalized := normalizeViewerPane(pane)
 	switch normalized {
-	case viewerPaneText, viewerPaneMarkdown, viewerPaneHex:
+	case viewerPaneImage, viewerPaneText, viewerPaneMarkdown, viewerPaneHex:
 	default:
+		return false
+	}
+	if _, ok := d.paneObjects[normalized]; !ok {
 		return false
 	}
 	// ensure* may replace a pane's placeholder object, so it must run before
@@ -379,6 +439,7 @@ func (d *FileViewerDialog) selectViewerTab(pane string) bool {
 	d.paneStack.Refresh()
 	d.tabBar.SetActive(normalized)
 	d.activeName = viewerPaneDisplayName(normalized)
+	d.updateToolbarVisibility()
 	return true
 }
 
@@ -915,6 +976,26 @@ func truncateUTF8Bytes(text string, limit int) (string, bool) {
 }
 
 func (d *FileViewerDialog) statusText() string {
+	if d.preview == nil {
+		return ""
+	}
+	if d.preview.ImageFormat != "" {
+		parts := []string{fmt.Sprintf("format=%s", d.preview.ImageFormat)}
+		if d.preview.ImageWidth > 0 && d.preview.ImageHeight > 0 {
+			parts = append(parts, fmt.Sprintf("dimensions=%dx%d", d.preview.ImageWidth, d.preview.ImageHeight))
+		}
+		parts = append(parts, fmt.Sprintf("read=%s", fileinfo.FormatFileSize(int64(len(d.preview.Data)))))
+		if d.preview.SizeKnown {
+			parts = append(parts, fmt.Sprintf("size=%s", fileinfo.FormatFileSize(d.preview.Size)))
+		}
+		if d.preview.Truncated {
+			parts = append(parts, "hex-truncated=1MiB")
+		}
+		if d.preview.ImageError != "" {
+			parts = append(parts, "image="+d.preview.ImageError)
+		}
+		return strings.Join(parts, "  ")
+	}
 	parts := []string{
 		fmt.Sprintf("encoding=%s", d.preview.Encoding),
 		fmt.Sprintf("read=%s", fileinfo.FormatFileSize(int64(len(d.preview.Data)))),
@@ -944,7 +1025,7 @@ func (d *FileViewerDialog) CancelDialog() {
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}
-		unfocusIfDialogOwned(d.parent, d.textGrid, d.hexGrid, d.mdGrid, d.search, d.jump)
+		unfocusIfDialogOwned(d.parent, d.imageView, d.textGrid, d.hexGrid, d.mdGrid, d.search, d.jump)
 	})
 }
 
@@ -967,6 +1048,10 @@ func (d *FileViewerDialog) activeGrid() *fileViewerTextGrid {
 
 func (d *FileViewerDialog) focusActiveViewer() {
 	if d.parent == nil {
+		return
+	}
+	if d.activeName == "Image" && d.imageView != nil {
+		d.parent.Canvas().Focus(d.imageView)
 		return
 	}
 	grid := d.activeGrid()
@@ -1014,6 +1099,10 @@ func (d *FileViewerDialog) findPrevious() {
 }
 
 func (d *FileViewerDialog) find(direction int) {
+	if d.search == nil {
+		d.focusActiveViewer()
+		return
+	}
 	query := d.search.Text
 	if query == "" {
 		if grid := d.activeGrid(); grid != nil {
@@ -1043,6 +1132,10 @@ func (d *FileViewerDialog) find(direction int) {
 }
 
 func (d *FileViewerDialog) jumpToLine() {
+	if d.jump == nil {
+		d.focusActiveViewer()
+		return
+	}
 	line, err := strconv.Atoi(strings.TrimSpace(d.jump.Text))
 	if err != nil || line <= 0 {
 		return
@@ -1060,14 +1153,32 @@ func (d *FileViewerDialog) jumpToLine() {
 }
 
 func (d *FileViewerDialog) ViewerLineDown() {
+	if d.activeName == "Image" && d.imageView != nil {
+		d.imageView.PanLine(0, 1)
+		d.updateLineDisplay()
+		d.focusActiveViewer()
+		return
+	}
 	d.moveCursorRows(1)
 }
 
 func (d *FileViewerDialog) ViewerLineUp() {
+	if d.activeName == "Image" && d.imageView != nil {
+		d.imageView.PanLine(0, -1)
+		d.updateLineDisplay()
+		d.focusActiveViewer()
+		return
+	}
 	d.moveCursorRows(-1)
 }
 
 func (d *FileViewerDialog) ViewerPageDown() {
+	if d.activeName == "Image" && d.imageView != nil {
+		d.imageView.PanPage(1)
+		d.updateLineDisplay()
+		d.focusActiveViewer()
+		return
+	}
 	if grid := d.activeGrid(); grid != nil {
 		grid.PageDown()
 		d.updateLineDisplay()
@@ -1077,6 +1188,12 @@ func (d *FileViewerDialog) ViewerPageDown() {
 }
 
 func (d *FileViewerDialog) ViewerPageUp() {
+	if d.activeName == "Image" && d.imageView != nil {
+		d.imageView.PanPage(-1)
+		d.updateLineDisplay()
+		d.focusActiveViewer()
+		return
+	}
 	if grid := d.activeGrid(); grid != nil {
 		grid.PageUp()
 		d.updateLineDisplay()
@@ -1086,6 +1203,12 @@ func (d *FileViewerDialog) ViewerPageUp() {
 }
 
 func (d *FileViewerDialog) ViewerColumnLeft() {
+	if d.activeName == "Image" && d.imageView != nil {
+		d.imageView.PanLine(-1, 0)
+		d.updateLineDisplay()
+		d.focusActiveViewer()
+		return
+	}
 	if grid := d.activeGrid(); grid != nil {
 		grid.MoveColumns(-1)
 		d.updateLineDisplay()
@@ -1094,6 +1217,12 @@ func (d *FileViewerDialog) ViewerColumnLeft() {
 }
 
 func (d *FileViewerDialog) ViewerColumnRight() {
+	if d.activeName == "Image" && d.imageView != nil {
+		d.imageView.PanLine(1, 0)
+		d.updateLineDisplay()
+		d.focusActiveViewer()
+		return
+	}
 	if grid := d.activeGrid(); grid != nil {
 		grid.MoveColumns(1)
 		d.updateLineDisplay()
@@ -1120,12 +1249,43 @@ func (d *FileViewerDialog) ViewerShowText() {
 	d.showViewerPane(viewerPaneText)
 }
 
+func (d *FileViewerDialog) ViewerShowImage() {
+	d.showViewerPane(viewerPaneImage)
+}
+
 func (d *FileViewerDialog) ViewerShowMarkdown() {
 	d.showViewerPane(viewerPaneMarkdown)
 }
 
 func (d *FileViewerDialog) ViewerShowHex() {
 	d.showViewerPane(viewerPaneHex)
+}
+
+func (d *FileViewerDialog) ViewerImageToggleFit() {
+	if d.activeName != "Image" || d.imageView == nil {
+		return
+	}
+	d.imageView.ToggleFit()
+	d.updateLineDisplay()
+	d.focusActiveViewer()
+}
+
+func (d *FileViewerDialog) ViewerImageZoomIn() {
+	if d.activeName != "Image" || d.imageView == nil {
+		return
+	}
+	d.imageView.ZoomIn()
+	d.updateLineDisplay()
+	d.focusActiveViewer()
+}
+
+func (d *FileViewerDialog) ViewerImageZoomOut() {
+	if d.activeName != "Image" || d.imageView == nil {
+		return
+	}
+	d.imageView.ZoomOut()
+	d.updateLineDisplay()
+	d.focusActiveViewer()
 }
 
 func (d *FileViewerDialog) showViewerPane(pane string) {
@@ -1218,6 +1378,32 @@ func (d *FileViewerDialog) updateLineDisplay() {
 	if d.lineLabel == nil {
 		return
 	}
+	d.updateToolbarVisibility()
+	if d.activeName == "Image" && d.imageView != nil {
+		d.lineLabel.SetText(d.imageView.ModeText())
+		d.setWrapButtonWrapped(false)
+		fit := d.imageView.Fit()
+		if d.zoomFitButton != nil {
+			target := "Fit (=)"
+			if fit {
+				target = fmt.Sprintf("%.0f%% (=)", d.imageView.Zoom()*100)
+			}
+			if d.zoomFitButton.Text != target {
+				d.zoomFitButton.SetText(target)
+			}
+			importance := widget.MediumImportance
+			if fit {
+				importance = widget.HighImportance
+			}
+			if d.zoomFitButton.Importance != importance {
+				d.zoomFitButton.Importance = importance
+				d.zoomFitButton.Refresh()
+			}
+		}
+		setButtonEnabled(d.zoomInButton, !fit)
+		setButtonEnabled(d.zoomOutButton, !fit)
+		return
+	}
 	if grid := d.activeGrid(); grid != nil {
 		mode := fmt.Sprintf("col=%d", grid.CurrentColumn())
 		if grid.Wrap() {
@@ -1229,6 +1415,31 @@ func (d *FileViewerDialog) updateLineDisplay() {
 	}
 	d.lineLabel.SetText("")
 	d.setWrapButtonWrapped(false)
+}
+
+func (d *FileViewerDialog) updateToolbarVisibility() {
+	if d.toolbarStack == nil {
+		return
+	}
+	if d.activeName == "Image" {
+		d.imageToolbar.Show()
+		d.hexToolbar.Hide()
+	} else {
+		d.imageToolbar.Hide()
+		d.hexToolbar.Show()
+	}
+	d.toolbarStack.Refresh()
+}
+
+func setButtonEnabled(button *widget.Button, enabled bool) {
+	if button == nil {
+		return
+	}
+	if enabled {
+		button.Enable()
+	} else {
+		button.Disable()
+	}
 }
 
 func (d *FileViewerDialog) setWrapButtonWrapped(wrapped bool) {

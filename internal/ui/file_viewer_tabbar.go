@@ -7,12 +7,14 @@ import (
 )
 
 var fileViewerTabBarLabels = map[string]string{
+	viewerPaneImage:    "Image (i)",
 	viewerPaneText:     "Text (t)",
 	viewerPaneMarkdown: "Markdown (m)",
 	viewerPaneHex:      "Hex (x)",
 }
 
 var fileViewerTabBarOrder = []string{viewerPaneText, viewerPaneMarkdown, viewerPaneHex}
+var fileViewerImageTabBarOrder = []string{viewerPaneImage, viewerPaneHex}
 
 // fileViewerTabBar is a segmented-control style pane switcher built entirely
 // from stock widget.Button instances; it does not extend widget.BaseWidget,
@@ -24,10 +26,14 @@ type fileViewerTabBar struct {
 	bar     *fyne.Container
 }
 
-func newFileViewerTabBar(onSelect func(pane string)) *fileViewerTabBar {
+func newFileViewerTabBar(order []string, onSelect func(pane string)) *fileViewerTabBar {
+	if len(order) == 0 {
+		order = fileViewerTabBarOrder
+	}
+	order = append([]string(nil), order...)
 	t := &fileViewerTabBar{
-		buttons: make(map[string]*widget.Button, len(fileViewerTabBarOrder)),
-		order:   fileViewerTabBarOrder,
+		buttons: make(map[string]*widget.Button, len(order)),
+		order:   order,
 	}
 	segments := make([]fyne.CanvasObject, 0, len(t.order))
 	for _, pane := range t.order {

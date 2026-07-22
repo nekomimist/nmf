@@ -11,25 +11,29 @@ import (
 )
 
 type fakeFileViewer struct {
-	closed int
-	down   int
-	up     int
-	pgDown int
-	pgUp   int
-	home   int
-	end    int
-	left   int
-	right  int
-	wrap   int
-	text   int
-	md     int
-	hex    int
-	next   int
-	prev   int
-	search int
-	line   int
-	copy   int
-	all    int
+	closed  int
+	down    int
+	up      int
+	pgDown  int
+	pgUp    int
+	home    int
+	end     int
+	left    int
+	right   int
+	wrap    int
+	image   int
+	text    int
+	md      int
+	hex     int
+	next    int
+	prev    int
+	search  int
+	line    int
+	copy    int
+	all     int
+	fit     int
+	zoomIn  int
+	zoomOut int
 }
 
 func (f *fakeFileViewer) CloseViewer()          { f.closed++ }
@@ -42,6 +46,7 @@ func (f *fakeFileViewer) ViewerEnd()            { f.end++ }
 func (f *fakeFileViewer) ViewerColumnLeft()     { f.left++ }
 func (f *fakeFileViewer) ViewerColumnRight()    { f.right++ }
 func (f *fakeFileViewer) ViewerToggleWrap()     { f.wrap++ }
+func (f *fakeFileViewer) ViewerShowImage()      { f.image++ }
 func (f *fakeFileViewer) ViewerShowText()       { f.text++ }
 func (f *fakeFileViewer) ViewerShowMarkdown()   { f.md++ }
 func (f *fakeFileViewer) ViewerShowHex()        { f.hex++ }
@@ -51,12 +56,15 @@ func (f *fakeFileViewer) ViewerFocusSearch()    { f.search++ }
 func (f *fakeFileViewer) ViewerFocusLine()      { f.line++ }
 func (f *fakeFileViewer) ViewerCopySelection()  { f.copy++ }
 func (f *fakeFileViewer) ViewerSelectAll()      { f.all++ }
+func (f *fakeFileViewer) ViewerImageToggleFit() { f.fit++ }
+func (f *fakeFileViewer) ViewerImageZoomIn()    { f.zoomIn++ }
+func (f *fakeFileViewer) ViewerImageZoomOut()   { f.zoomOut++ }
 
 func TestFileViewerHandlerLessKeys(t *testing.T) {
 	viewer := &fakeFileViewer{}
 	handler := NewFileViewerKeyHandler(viewer, nil)
 
-	for _, r := range []rune{'j', 'k', 'h', 'l', 'f', 'b', 'g', 'G', 'w', 't', 'm', 'x', 'n', 'N', '/', ':', 'q'} {
+	for _, r := range []rune{'j', 'k', 'h', 'l', 'f', 'b', 'g', 'G', 'w', 'i', 't', 'm', 'x', 'n', 'N', '/', ':', '=', '+', '-', 'q'} {
 		if !handler.OnTypedRune(r, ModifierState{}) {
 			t.Fatalf("rune %q should be handled", r)
 		}
@@ -64,10 +72,40 @@ func TestFileViewerHandlerLessKeys(t *testing.T) {
 
 	if viewer.down != 1 || viewer.up != 1 || viewer.pgDown != 1 || viewer.pgUp != 1 ||
 		viewer.home != 1 || viewer.end != 1 || viewer.left != 1 || viewer.right != 1 ||
-		viewer.wrap != 1 || viewer.text != 1 || viewer.md != 1 || viewer.hex != 1 ||
+		viewer.wrap != 1 || viewer.image != 1 || viewer.text != 1 || viewer.md != 1 || viewer.hex != 1 ||
 		viewer.next != 1 || viewer.prev != 1 || viewer.search != 1 ||
-		viewer.line != 1 || viewer.closed != 1 {
+		viewer.line != 1 || viewer.fit != 1 || viewer.zoomIn != 1 || viewer.zoomOut != 1 || viewer.closed != 1 {
 		t.Fatalf("viewer actions = %+v, want each less action once", viewer)
+	}
+}
+
+func TestFileViewerImagePunctuationUsesRunePathOnce(t *testing.T) {
+	viewer := &fakeFileViewer{}
+	handler := NewFileViewerKeyHandler(viewer, nil)
+
+	tests := []struct {
+		name string
+		key  fyne.KeyName
+		mods ModifierState
+		rune rune
+		got  *int
+	}{
+		{name: "toggle", key: fyne.KeyEqual, rune: '=', got: &viewer.fit},
+		{name: "zoom in", key: fyne.KeyEqual, mods: ModifierState{ShiftPressed: true}, rune: '+', got: &viewer.zoomIn},
+		{name: "zoom out", key: fyne.KeyMinus, rune: '-', got: &viewer.zoomOut},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if handler.OnKeyActivated(&fyne.KeyEvent{Name: tt.key}, tt.mods) {
+				t.Fatal("punctuation binding should not execute on TypedKey path")
+			}
+			if !handler.OnTypedRune(tt.rune, tt.mods) {
+				t.Fatal("punctuation binding should execute on TypedRune path")
+			}
+			if *tt.got != 1 {
+				t.Fatalf("command count = %d, want 1", *tt.got)
+			}
+		})
 	}
 }
 

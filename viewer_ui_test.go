@@ -4,8 +4,11 @@ import "testing"
 
 func TestViewerLoadGenerationRejectsCanceledAndStaleResults(t *testing.T) {
 	fm := &FileManager{}
-	first := fm.beginViewerLoad()
-	second := fm.beginViewerLoad()
+	first, firstCtx := fm.beginViewerLoad()
+	second, _ := fm.beginViewerLoad()
+	if firstCtx.Err() == nil {
+		t.Fatal("starting a replacement viewer load should cancel the previous context")
+	}
 
 	if fm.invalidateViewerLoad(first) {
 		t.Fatal("stale viewer cancellation should not cancel the active request")

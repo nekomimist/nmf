@@ -167,13 +167,21 @@ platform default application.
 - Reads go through `ResolveRead` and the selected provider's `VFS.Open`, so
   local, mounted/direct SMB, and archive entry previews share the same path
   model.
-- The viewer reads only the first 1 MiB and reports truncation in the dialog
-  status.
+- Text and hex previews retain only the first 1 MiB and report truncation in
+  the dialog status. Recognized images continue decoding from the same VFS
+  stream without retaining the compressed file in memory; closing or replacing
+  a viewer load cancels the read on a best-effort basis.
 - Text decoding uses `github.com/gogs/chardet` for non-empty preview data,
   converts the detected charset to valid UTF-8, and displays replacement text
   if detection or conversion fails.
 - Text and Markdown tabs operate on decoded text; the hex tab operates on the
   original bytes that were read.
+- PNG, JPEG, WebP, GIF, BMP, and TIFF are recognized from their contents rather
+  than their filename. A recognized image opens with Image and Hex panes only;
+  animated formats show their decoded static frame.
+- Image decoding is limited to 64 megapixels and 32,768 pixels per edge. A
+  corrupt or oversized recognized image falls back to a Hex-only viewer and
+  reports the reason in the status line.
 
 ## Jobs and SMB Execution Paths
 
