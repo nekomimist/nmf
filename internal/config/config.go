@@ -61,6 +61,7 @@ type rawUIConfig struct {
 	ShowHiddenFiles   *bool                      `json:"showHiddenFiles"`
 	Sort              rawSortConfig              `json:"sort"`
 	ItemSpacing       *int                       `json:"itemSpacing"`
+	ScrollMargin      *int                       `json:"scrollMargin"`
 	Copy              rawCopyConfig              `json:"copy"`
 	Viewer            rawViewerConfig            `json:"viewer"`
 	Archive           rawArchiveConfig           `json:"archive"`
@@ -294,6 +295,7 @@ type UIConfig struct {
 	ShowHiddenFiles   bool                    `json:"showHiddenFiles"`
 	Sort              SortConfig              `json:"sort"`
 	ItemSpacing       int                     `json:"itemSpacing"`
+	ScrollMargin      int                     `json:"scrollMargin"`
 	Copy              CopyConfig              `json:"copy"`
 	Viewer            ViewerConfig            `json:"viewer"`
 	Archive           ArchiveConfig           `json:"archive"`
@@ -524,7 +526,8 @@ func getDefaultConfig() *Config {
 				SortOrder:        "asc",
 				DirectoriesFirst: true,
 			},
-			ItemSpacing: 4,
+			ItemSpacing:  4,
+			ScrollMargin: 3,
 			Copy: CopyConfig{
 				PreserveTimestamps: false,
 			},
@@ -682,6 +685,9 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) error {
 	if fileConfig.UI.ItemSpacing != nil && *fileConfig.UI.ItemSpacing != 0 {
 		defaultConfig.UI.ItemSpacing = *fileConfig.UI.ItemSpacing
 	}
+	if fileConfig.UI.ScrollMargin != nil {
+		defaultConfig.UI.ScrollMargin = *fileConfig.UI.ScrollMargin
+	}
 	if fileConfig.UI.Copy.PreserveTimestamps != nil {
 		defaultConfig.UI.Copy.PreserveTimestamps = *fileConfig.UI.Copy.PreserveTimestamps
 	}
@@ -766,6 +772,9 @@ func validateRawConfig(cfg *rawConfig) error {
 	}
 	if cfg.UI.ItemSpacing != nil && *cfg.UI.ItemSpacing < 0 {
 		return fmt.Errorf("ui.itemSpacing must be zero or positive")
+	}
+	if cfg.UI.ScrollMargin != nil && *cfg.UI.ScrollMargin < 0 {
+		return fmt.Errorf("ui.scrollMargin must be zero or positive")
 	}
 	if cfg.UI.Viewer.MaxWidth != nil && *cfg.UI.Viewer.MaxWidth < 0 {
 		return fmt.Errorf("ui.viewer.maxWidth must be zero or positive")

@@ -29,6 +29,7 @@ type FileManager struct {
 	originalFiles        []fileinfo.FileInfo // Original files before filtering
 	fileList             *widget.List
 	fileListView         *ui.KeySink
+	fileListItemHeight   float32
 	windowHighlight      *canvas.Rectangle
 	windowActive         bool
 	pathDisplay          *widget.Label
@@ -37,6 +38,7 @@ type FileManager struct {
 	cursorIndex          int             // Cache of cursorPath's index in files; validated against cursorPath on every read in GetCurrentCursorIndex, so direct cursorPath assignments elsewhere self-heal
 	cursorRefreshSeq     uint64          // Diagnostic sequence for requested cursor refreshes
 	cursorItemUpdateSeq  uint64          // Latest cursor refresh sequence observed by the list UpdateItem callback
+	cursorMoveDirection  int             // Pending vertical cursor movement: -1 up, 0 none, +1 down
 	cursorAnchor         cursorRowAnchor // Last visible row object for shell menu positioning
 	selectedFiles        map[string]bool // Set of selected file paths
 	storageInfo          fileinfo.StorageInfo

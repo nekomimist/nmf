@@ -70,6 +70,9 @@ func TestGetDefaultConfig(t *testing.T) {
 	if config.UI.ItemSpacing != 4 {
 		t.Errorf("Expected default item spacing 4, got %d", config.UI.ItemSpacing)
 	}
+	if config.UI.ScrollMargin != 3 {
+		t.Errorf("Expected default scroll margin 3, got %d", config.UI.ScrollMargin)
+	}
 	if config.UI.Copy.PreserveTimestamps {
 		t.Error("Expected copy preserve timestamps to be disabled by default")
 	}
@@ -177,6 +180,20 @@ func TestMergeConfigsMergesMaxEntriesForTrimmedSections(t *testing.T) {
 	}
 }
 
+func TestMergeConfigsAllowsZeroScrollMargin(t *testing.T) {
+	cfg := getDefaultConfig()
+	scrollMargin := 0
+
+	if err := mergeConfigs(cfg, &rawConfig{
+		UI: rawUIConfig{ScrollMargin: &scrollMargin},
+	}); err != nil {
+		t.Fatalf("mergeConfigs returned error: %v", err)
+	}
+	if cfg.UI.ScrollMargin != 0 {
+		t.Fatalf("scroll margin = %d, want explicit zero", cfg.UI.ScrollMargin)
+	}
+}
+
 func TestMergeConfigsRejectsNegativeViewerMaxSize(t *testing.T) {
 	cfg := getDefaultConfig()
 	cfg.UI.Viewer.MaxWidth = 1000
@@ -275,6 +292,7 @@ func TestMergeConfigs(t *testing.T) {
 	monospacePath := "/path/to/mono.ttf"
 	monospaceFontName := "UDEV Gothic"
 	itemSpacing := 8
+	scrollMargin := 6
 	preserveTimestamps := true
 	viewerMaxWidth := 1200
 	viewerMaxHeight := 900
@@ -313,7 +331,8 @@ func TestMergeConfigs(t *testing.T) {
 				SortOrder:        &sortOrder,
 				DirectoriesFirst: &falseVal,
 			},
-			ItemSpacing: &itemSpacing,
+			ItemSpacing:  &itemSpacing,
+			ScrollMargin: &scrollMargin,
 			Copy: rawCopyConfig{
 				PreserveTimestamps: &preserveTimestamps,
 			},
@@ -387,6 +406,9 @@ func TestMergeConfigs(t *testing.T) {
 	}
 	if defaultConfig.UI.Sort.DirectoriesFirst != false {
 		t.Error("Expected merged DirectoriesFirst to be false")
+	}
+	if defaultConfig.UI.ScrollMargin != 6 {
+		t.Errorf("Expected merged scroll margin 6, got %d", defaultConfig.UI.ScrollMargin)
 	}
 	if !defaultConfig.UI.Copy.PreserveTimestamps {
 		t.Error("Expected merged copy preserve timestamps to be true")
@@ -566,6 +588,7 @@ func TestManagerLoadRejectsInvalidValues(t *testing.T) {
 	}{
 		{name: "window width", json: `{"window":{"width":0}}`, want: "window.width"},
 		{name: "sort", json: `{"ui":{"sort":{"sortBy":"random"}}}`, want: "ui.sort.sortBy"},
+		{name: "scroll margin", json: `{"ui":{"scrollMargin":-1}}`, want: "ui.scrollMargin"},
 		{name: "cursor entries", json: `{"ui":{"cursorMemory":{"maxEntries":-1}}}`, want: "ui.cursorMemory.maxEntries"},
 		{name: "viewer size", json: `{"ui":{"viewer":{"maxWidth":-1}}}`, want: "ui.viewer.maxWidth"},
 	}

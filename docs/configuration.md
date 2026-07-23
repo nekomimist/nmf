@@ -15,9 +15,10 @@ lives in a separate `state.json`; see [Runtime State](#runtime-state) below.
 
 Unknown object fields and invalid bounded/enum values are startup errors rather
 than silently ignored settings. This includes non-positive window sizes and
-entry limits, negative spacing/viewer sizes/cursor thickness, and unsupported
-sort, viewer-pane, or cursor-style values. Known legacy runtime-state fields
-remain accepted until their one-time migration to `state.json` completes.
+entry limits, negative spacing/scroll margins/viewer sizes/cursor thickness,
+and unsupported sort, viewer-pane, or cursor-style values. Known legacy
+runtime-state fields remain accepted until their one-time migration to
+`state.json` completes.
 Only a missing `config.json` selects defaults; permission and other read errors
 are reported.
 
@@ -66,6 +67,7 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
       "directoriesFirst": true
     },
     "itemSpacing": 4,
+    "scrollMargin": 3,
     "copy": {
       "preserveTimestamps": false
     },
@@ -152,6 +154,10 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
 - `sort.sortOrder`: `asc` or `desc`.
 - `sort.directoriesFirst`: keep directories before regular files.
 - `itemSpacing`: list item spacing. `0` keeps the default.
+- `scrollMargin`: number of rows kept between the cursor and the approaching
+  top or bottom edge before scrolling begins. Defaults to `3`; `0` restores
+  scrolling only when the cursor reaches the edge. The effective value is
+  reduced when the viewport is too short to keep the cursor visible.
 - `copy.preserveTimestamps`: default state for the Copy dialog's
   "Preserve timestamps" checkbox. When enabled for a copy, NMF preserves file
   and directory modification times; directory times are restored after children

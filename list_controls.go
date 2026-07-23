@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/config"
@@ -43,9 +44,15 @@ func (fm *FileManager) SetCursorByIndex(index int) {
 	if index >= 0 && index < len(fm.files) {
 		fm.cursorPath = fm.files[index].Path
 		fm.cursorIndex = index
+		if beforeIndex >= 0 {
+			fm.cursorMoveDirection = cmp.Compare(index, beforeIndex)
+		} else {
+			fm.cursorMoveDirection = 0
+		}
 	} else {
 		fm.cursorPath = ""
 		fm.cursorIndex = -1
+		fm.cursorMoveDirection = 0
 	}
 	debugPrint("FileManager: cursor set requested=%d before=%d after=%d changed=%t count=%d active=%t focused=%s path=%q cursor=%q",
 		index, beforeIndex, fm.cursorIndex, beforeIndex != fm.cursorIndex || beforePath != fm.cursorPath,
@@ -56,6 +63,8 @@ func (fm *FileManager) SetCursorByIndex(index int) {
 // Only safe when fm.files content has NOT changed since the last refresh;
 // after a content change use refreshListAndCursor instead (see its comment).
 func (fm *FileManager) RefreshCursor() {
+	moveDirection := fm.cursorMoveDirection
+	fm.cursorMoveDirection = 0
 	seq, cursorIdx := fm.beginCursorRefresh("cursor")
 	if cursorIdx < 0 {
 		// No cursor: refresh to clear any stale cursor decoration.
@@ -66,8 +75,59 @@ func (fm *FileManager) RefreshCursor() {
 	// Fyne v2.8.0 List.ScrollTo unconditionally ends with a full Refresh(), so
 	// an explicit Refresh here would double the per-keypress render cost.
 	// Re-verify on Fyne upgrades.
-	fm.fileList.ScrollTo(widget.ListItemID(cursorIdx))
+	scrollTarget := fm.cursorScrollTarget(cursorIdx, moveDirection)
+	fm.fileList.ScrollTo(widget.ListItemID(scrollTarget))
 	fm.endCursorRefresh(seq, "cursor", cursorIdx)
+}
+
+// cursorScrollTarget returns the look-ahead row that keeps the cursor away
+// from the approaching viewport edge. Scrolling to a row instead of a pixel
+// offset lets Fyne account for its own row spacing and keeps the existing
+// single-refresh cursor path.
+func (fm *FileManager) cursorScrollTarget(cursorIdx, moveDirection int) int {
+	if moveDirection == 0 || fm.config == nil || fm.fileList == nil || fm.config.UI.ScrollMargin <= 0 {
+		return cursorIdx
+	}
+
+	margin, itemHeight, rowStride := fm.effectiveScrollMargin()
+	if margin <= 0 {
+		return cursorIdx
+	}
+
+	cursorTop := float32(cursorIdx) * rowStride
+	cursorBottom := cursorTop + itemHeight
+	offset := fm.fileList.GetScrollOffset()
+	viewportBottom := offset + fm.fileList.Size().Height
+	if cursorTop < offset {
+		moveDirection = -1
+	} else if cursorBottom > viewportBottom {
+		moveDirection = 1
+	}
+
+	if moveDirection < 0 {
+		return max(0, cursorIdx-margin)
+	}
+	return min(len(fm.files)-1, cursorIdx+margin)
+}
+
+// effectiveScrollMargin limits the configured margin to the number of row
+// steps that fit beside the cursor. This guarantees that ScrollTo can keep
+// both the cursor and its look-ahead row visible even in a short viewport.
+func (fm *FileManager) effectiveScrollMargin() (margin int, itemHeight, rowStride float32) {
+	if fm.config == nil || fm.fileList == nil || fm.fileListItemHeight <= 0 {
+		return 0, 0, 0
+	}
+
+	itemHeight = fm.fileListItemHeight
+	padding := fm.fileList.Theme().Size(theme.SizeNamePadding)
+	rowStride = itemHeight + padding
+	viewportHeight := fm.fileList.Size().Height
+	if rowStride <= 0 || viewportHeight < itemHeight {
+		return 0, itemHeight, rowStride
+	}
+
+	maxMargin := int((viewportHeight - itemHeight) / rowStride)
+	return min(fm.config.UI.ScrollMargin, maxMargin), itemHeight, rowStride
 }
 
 // refreshListAndCursor refreshes the list after fm.files was replaced, then
@@ -82,6 +142,10 @@ func (fm *FileManager) RefreshCursor() {
 // first viewport). Costs one extra viewport render per structural change;
 // cursor-only moves must keep using RefreshCursor.
 func (fm *FileManager) refreshListAndCursor() {
+	// A structural refresh has no meaningful movement direction. Preserve the
+	// existing behavior of making the restored cursor visible without applying
+	// a margin, and do not leak the pending direction into a later refresh.
+	fm.cursorMoveDirection = 0
 	seq, cursorIdx := fm.beginCursorRefresh("list")
 	fm.fileList.Refresh()
 	if cursorIdx >= 0 {

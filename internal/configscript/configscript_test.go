@@ -30,7 +30,7 @@ nmf.color("lineEditCursor", value = "primary")
 nmf.color("lineEditSelection", value = [5, 6, 7, 8])
 nmf.color("dialogListCursor", value = "selection")
 nmf.debug_logging(enabled = True, log_directory = "logs/debug", max_files = 4)
-nmf.ui(show_hidden_files = True, item_spacing = 2)
+nmf.ui(show_hidden_files = True, item_spacing = 2, scroll_margin = 5)
 nmf.copy(preserve_timestamps = True)
 nmf.viewer(max_width = 1200, max_height = 900, default_pane = "text", default_wrap = True)
 nmf.archive(zip_name_encoding = "cp437")
@@ -103,8 +103,8 @@ nmf.command("user.parent", parent)
 	if !cfg.Debug.Enabled || cfg.Debug.LogDirectory != "logs/debug" || cfg.Debug.MaxLogFiles != 4 {
 		t.Fatalf("debug = %+v, want enabled logs/debug max 4", cfg.Debug)
 	}
-	if !cfg.UI.ShowHiddenFiles || cfg.UI.ItemSpacing != 2 {
-		t.Fatalf("ui = %+v, want hidden=true spacing=2", cfg.UI)
+	if !cfg.UI.ShowHiddenFiles || cfg.UI.ItemSpacing != 2 || cfg.UI.ScrollMargin != 5 {
+		t.Fatalf("ui = %+v, want hidden=true spacing=2 scroll margin=5", cfg.UI)
 	}
 	if !cfg.UI.Copy.PreserveTimestamps {
 		t.Fatalf("copy = %+v, want preserve_timestamps=true", cfg.UI.Copy)
@@ -231,6 +231,19 @@ func TestViewerRejectsNegativeMaxSize(t *testing.T) {
 	_, err := Load(path, testConfig(), Options{})
 	if err == nil || !strings.Contains(err.Error(), "viewer max_width and max_height must be zero or positive") {
 		t.Fatalf("Load error = %v, want negative viewer max size error", err)
+	}
+}
+
+func TestUIRejectsNegativeScrollMargin(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	if err := os.WriteFile(path, []byte(`nmf.ui(scroll_margin = -1)`), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	_, err := Load(path, testConfig(), Options{})
+	if err == nil || !strings.Contains(err.Error(), "scroll_margin must be zero or positive") {
+		t.Fatalf("Load error = %v, want negative scroll margin error", err)
 	}
 }
 
@@ -2303,7 +2316,8 @@ func testConfig() *config.Config {
 				SortOrder:        "asc",
 				DirectoriesFirst: true,
 			},
-			ItemSpacing: 4,
+			ItemSpacing:  4,
+			ScrollMargin: 3,
 			Archive: config.ArchiveConfig{
 				ZipNameEncoding: "shift_jis",
 			},

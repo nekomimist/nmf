@@ -1,12 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/config"
@@ -164,6 +166,186 @@ func TestCursorRefreshDiagnosticsTrackCurrentItemUpdate(t *testing.T) {
 	fm.noteCursorItemUpdated(0)
 	if fm.cursorItemUpdateSeq != seq {
 		t.Fatalf("cursorItemUpdateSeq = %d after duplicate update, want %d", fm.cursorItemUpdateSeq, seq)
+	}
+}
+
+func newScrollMarginTestFileManager(count, margin int) *FileManager {
+	files := make([]fileinfo.FileInfo, count)
+	for i := range files {
+		files[i] = fileinfo.FileInfo{
+			Name: fmt.Sprintf("file-%02d", i),
+			Path: fmt.Sprintf("/tmp/file-%02d", i),
+		}
+	}
+
+	item := widget.NewLabel("row")
+	fm := &FileManager{
+		files:              files,
+		fileListItemHeight: item.MinSize().Height,
+		config: &config.Config{
+			UI: config.UIConfig{ScrollMargin: margin},
+		},
+		cursorIndex: -1,
+	}
+	fm.fileList = widget.NewList(
+		func() int { return len(fm.files) },
+		func() fyne.CanvasObject { return widget.NewLabel("row") },
+		func(widget.ListItemID, fyne.CanvasObject) {},
+	)
+	return fm
+}
+
+func TestCursorScrollTargetAppliesMarginAndClampsToList(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	fm := newScrollMarginTestFileManager(20, 3)
+	padding := fm.fileList.Theme().Size(theme.SizeNamePadding)
+	rowStride := fm.fileListItemHeight + padding
+	fm.fileList.Resize(fyne.NewSize(300, fm.fileListItemHeight+6*rowStride))
+
+	tests := []struct {
+		name      string
+		cursor    int
+		direction int
+		want      int
+	}{
+		{name: "down", cursor: 5, direction: 1, want: 8},
+		{name: "up", cursor: 5, direction: -1, want: 2},
+		{name: "top", cursor: 1, direction: -1, want: 0},
+		{name: "bottom", cursor: 18, direction: 1, want: 19},
+		{name: "neutral", cursor: 5, direction: 0, want: 5},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := fm.cursorScrollTarget(tt.cursor, tt.direction); got != tt.want {
+				t.Fatalf("cursorScrollTarget(%d, %d) = %d, want %d", tt.cursor, tt.direction, got, tt.want)
+			}
+		})
+	}
+
+	fm.config.UI.ScrollMargin = 0
+	if got := fm.cursorScrollTarget(5, 1); got != 5 {
+		t.Fatalf("zero-margin target = %d, want cursor row 5", got)
+	}
+}
+
+func TestCursorScrollTargetCapsMarginForShortViewport(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	fm := newScrollMarginTestFileManager(20, 100)
+	padding := fm.fileList.Theme().Size(theme.SizeNamePadding)
+	rowStride := fm.fileListItemHeight + padding
+	// Three complete rows fit, so at most two row steps can be kept beside
+	// the cursor without forcing the cursor itself out of view.
+	fm.fileList.Resize(fyne.NewSize(300, fm.fileListItemHeight+2*rowStride))
+
+	if got := fm.cursorScrollTarget(5, 1); got != 7 {
+		t.Fatalf("short viewport down target = %d, want 7", got)
+	}
+	if got := fm.cursorScrollTarget(2, -1); got != 0 {
+		t.Fatalf("short viewport up target = %d, want 0", got)
+	}
+}
+
+func TestRefreshCursorStartsScrollingAtConfiguredMargin(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	fm := newScrollMarginTestFileManager(40, 3)
+	window := test.NewWindow(fm.fileList)
+	defer window.Close()
+	window.SetPadded(false)
+
+	padding := fm.fileList.Theme().Size(theme.SizeNamePadding)
+	rowStride := fm.fileListItemHeight + padding
+	window.Resize(fyne.NewSize(300, fm.fileListItemHeight+9*rowStride))
+
+	maxMargin, _, _ := fm.effectiveScrollMargin()
+	if maxMargin < 3 {
+		t.Fatalf("test viewport effective margin = %d, want at least 3", maxMargin)
+	}
+
+	fm.SetCursorByIndex(0)
+	fm.RefreshCursor()
+	lastFullyVisible := int((fm.fileList.Size().Height - fm.fileListItemHeight) / rowStride)
+	lastWithoutScroll := lastFullyVisible - fm.config.UI.ScrollMargin
+	for i := 1; i <= lastWithoutScroll; i++ {
+		fm.SetCursorByIndex(i)
+		fm.RefreshCursor()
+	}
+	if got := fm.fileList.GetScrollOffset(); got != 0 {
+		t.Fatalf("offset before bottom margin = %v, want 0", got)
+	}
+
+	fm.SetCursorByIndex(lastWithoutScroll + 1)
+	fm.RefreshCursor()
+	if got := fm.fileList.GetScrollOffset(); got <= 0 {
+		t.Fatalf("offset after entering bottom margin = %v, want positive", got)
+	}
+
+	startRow := 10
+	fm.fileList.ScrollToOffset(float32(startRow) * rowStride)
+	beforeUp := fm.fileList.GetScrollOffset()
+	fm.cursorPath = fm.files[startRow+4].Path
+	fm.cursorIndex = startRow + 4
+
+	// Three complete rows remain above index startRow+3, so reaching it must
+	// not scroll yet. The next upward move enters the margin and scrolls.
+	fm.SetCursorByIndex(startRow + 3)
+	fm.RefreshCursor()
+	if got := fm.fileList.GetScrollOffset(); got != beforeUp {
+		t.Fatalf("offset before top margin = %v, want %v", got, beforeUp)
+	}
+	fm.SetCursorByIndex(startRow + 2)
+	fm.RefreshCursor()
+	if got := fm.fileList.GetScrollOffset(); got >= beforeUp {
+		t.Fatalf("offset after entering top margin = %v, want less than %v", got, beforeUp)
+	}
+}
+
+func TestCursorScrollTargetCorrectsDirectionForOffscreenCursor(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	fm := newScrollMarginTestFileManager(40, 3)
+	window := test.NewWindow(fm.fileList)
+	defer window.Close()
+	window.SetPadded(false)
+
+	padding := fm.fileList.Theme().Size(theme.SizeNamePadding)
+	rowStride := fm.fileListItemHeight + padding
+	window.Resize(fyne.NewSize(300, fm.fileListItemHeight+9*rowStride))
+	fm.fileList.ScrollToOffset(20 * rowStride)
+
+	// The index increased relative to the old cursor, but the new cursor is
+	// above the manually scrolled viewport. The viewport position must win so
+	// ScrollTo uses an upward look-behind row and keeps the cursor visible.
+	if got := fm.cursorScrollTarget(5, 1); got != 2 {
+		t.Fatalf("offscreen cursor target = %d, want upward target 2", got)
+	}
+}
+
+func TestRefreshCursorConsumesMoveDirection(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	fm := newScrollMarginTestFileManager(10, 3)
+	fm.fileList.Resize(fyne.NewSize(300, 300))
+	fm.SetCursorByIndex(0)
+	fm.RefreshCursor()
+	fm.SetCursorByIndex(1)
+	if fm.cursorMoveDirection != 1 {
+		t.Fatalf("pending move direction = %d, want down", fm.cursorMoveDirection)
+	}
+	fm.RefreshCursor()
+	if fm.cursorMoveDirection != 0 {
+		t.Fatalf("move direction after refresh = %d, want consumed", fm.cursorMoveDirection)
+	}
+	fm.refreshListAndCursor()
+	if fm.cursorMoveDirection != 0 {
+		t.Fatalf("move direction after structural refresh = %d, want none", fm.cursorMoveDirection)
 	}
 }
 

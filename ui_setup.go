@@ -24,6 +24,7 @@ func (fm *FileManager) setupUI() {
 	fm.statusLabel.TextStyle = fyne.TextStyle{Monospace: true}
 
 	// Create file list
+	fm.fileListItemHeight = fm.newFileListRow().MinSize().Height
 	fm.fileList = widget.NewList(
 		func() int { return len(fm.files) },
 		fm.newFileListRow,

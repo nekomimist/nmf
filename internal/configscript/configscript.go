@@ -504,20 +504,26 @@ func (rt *Runtime) builtinUI(thread *starlark.Thread, fn *starlark.Builtin, args
 	}
 	showHiddenFiles := rt.cfg.UI.ShowHiddenFiles
 	itemSpacing := rt.cfg.UI.ItemSpacing
+	scrollMargin := rt.cfg.UI.ScrollMargin
 	if err := starlark.UnpackArgs(
 		fn.Name(),
 		args,
 		kwargs,
 		"show_hidden_files?", &showHiddenFiles,
 		"item_spacing?", &itemSpacing,
+		"scroll_margin?", &scrollMargin,
 	); err != nil {
 		return nil, err
 	}
 	if itemSpacing < 0 {
 		return nil, fmt.Errorf("item_spacing must be zero or positive")
 	}
+	if scrollMargin < 0 {
+		return nil, fmt.Errorf("scroll_margin must be zero or positive")
+	}
 	rt.cfg.UI.ShowHiddenFiles = showHiddenFiles
 	rt.cfg.UI.ItemSpacing = itemSpacing
+	rt.cfg.UI.ScrollMargin = scrollMargin
 	return starlark.None, nil
 }
 

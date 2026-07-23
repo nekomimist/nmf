@@ -57,7 +57,7 @@ if nmf.dark_theme():
 else:
     nmf.color("cursor", value = [0, 0, 0, 255])
 
-nmf.ui(show_hidden_files = True, item_spacing = 2)
+nmf.ui(show_hidden_files = True, item_spacing = 2, scroll_margin = 3)
 nmf.debug_logging(enabled = True, log_directory = "logs", max_files = 10)
 nmf.copy(preserve_timestamps = False)
 nmf.archive(zip_name_encoding = "shift_jis")
@@ -170,7 +170,7 @@ Scalar sections:
   monospace_font_name = str, monospace_font_path = str)`
 - `nmf.color(name, value = color|None, dark = color|None, light = color|None)`
 - `nmf.debug_logging(enabled = bool, log_directory = str, max_files = int)`
-- `nmf.ui(show_hidden_files = bool, item_spacing = int)`
+- `nmf.ui(show_hidden_files = bool, item_spacing = int, scroll_margin = int)`
 - `nmf.copy(preserve_timestamps = bool)`
 - `nmf.viewer(max_width = int, max_height = int, default_pane = str,
   default_wrap = bool)`
