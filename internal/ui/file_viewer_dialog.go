@@ -1365,6 +1365,24 @@ func (d *FileViewerDialog) ViewerSelectAll() {
 	d.focusActiveViewer()
 }
 
+func (d *FileViewerDialog) ViewerClearSelection() {
+	grid := d.activeGrid()
+	if grid == nil {
+		d.debug("FileViewer: clear-selection active=%s grid=false", d.activeName)
+		d.setStatusSuffix("clear=unsupported")
+		d.focusActiveViewer()
+		return
+	}
+	cleared := grid.ClearSelection()
+	d.debug("FileViewer: clear-selection active=%s cleared=%t", d.activeName, cleared)
+	if cleared {
+		d.setStatusSuffix("selected=0")
+	} else {
+		d.setStatusSuffix("clear=no-selection")
+	}
+	d.focusActiveViewer()
+}
+
 func (d *FileViewerDialog) moveCursorRows(delta int) {
 	if grid := d.activeGrid(); grid != nil {
 		grid.MoveRows(delta)

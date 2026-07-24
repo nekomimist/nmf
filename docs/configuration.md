@@ -501,7 +501,8 @@ Available file-viewer commands:
   `fileViewer.image.zoom.out`
 - `fileViewer.search.next`, `fileViewer.search.previous`, `fileViewer.search.focus`
 - `fileViewer.line.focus`
-- `fileViewer.selection.selectAll`, `fileViewer.selection.copy`
+- `fileViewer.selection.selectAll`, `fileViewer.selection.clear`,
+  `fileViewer.selection.copy`
 - `noop`
 
 ## External Commands

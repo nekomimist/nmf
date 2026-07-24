@@ -31,6 +31,7 @@ type fakeFileViewer struct {
 	line    int
 	copy    int
 	all     int
+	clear   int
 	fit     int
 	zoomIn  int
 	zoomOut int
@@ -56,6 +57,7 @@ func (f *fakeFileViewer) ViewerFocusSearch()    { f.search++ }
 func (f *fakeFileViewer) ViewerFocusLine()      { f.line++ }
 func (f *fakeFileViewer) ViewerCopySelection()  { f.copy++ }
 func (f *fakeFileViewer) ViewerSelectAll()      { f.all++ }
+func (f *fakeFileViewer) ViewerClearSelection() { f.clear++ }
 func (f *fakeFileViewer) ViewerImageToggleFit() { f.fit++ }
 func (f *fakeFileViewer) ViewerImageZoomIn()    { f.zoomIn++ }
 func (f *fakeFileViewer) ViewerImageZoomOut()   { f.zoomOut++ }
@@ -136,6 +138,22 @@ func TestFileViewerHandlerCtrlASelectsAll(t *testing.T) {
 	}
 	if handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyA}, ModifierState{}) {
 		t.Fatal("plain A should not be handled as an activation")
+	}
+}
+
+func TestFileViewerHandlerCtrlShiftAClearsSelection(t *testing.T) {
+	viewer := &fakeFileViewer{}
+	handler := NewFileViewerKeyHandler(viewer, nil)
+
+	modifiers := ModifierState{CtrlPressed: true, ShiftPressed: true}
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyA}, modifiers) {
+		t.Fatal("Ctrl+Shift+A should be handled")
+	}
+	if viewer.clear != 1 {
+		t.Fatalf("clear selection calls = %d, want 1", viewer.clear)
+	}
+	if viewer.all != 0 {
+		t.Fatalf("select all calls = %d, want 0", viewer.all)
 	}
 }
 

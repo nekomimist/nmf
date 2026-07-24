@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/test"
 	fynetheme "fyne.io/fyne/v2/theme"
@@ -932,6 +933,31 @@ func TestFileViewerTextGridSelectAllSkipsDisplayPadding(t *testing.T) {
 	}
 }
 
+func TestFileViewerTextGridClearSelection(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	grid := newFileViewerTextGrid("abc\ndef", nil, nil, nil)
+	grid.SelectAll()
+	grid.selecting = true
+
+	if !grid.ClearSelection() {
+		t.Fatal("ClearSelection() = false, want true for an existing selection")
+	}
+	if got := grid.SelectedText(); got != "" {
+		t.Fatalf("SelectedText() = %q, want empty after clear", got)
+	}
+	if grid.selection.set || grid.selecting {
+		t.Fatalf("selection state = %+v selecting=%t, want both cleared", grid.selection, grid.selecting)
+	}
+	if len(grid.selectionBG.Objects) != 0 {
+		t.Fatalf("selection backgrounds = %d, want 0 after clear", len(grid.selectionBG.Objects))
+	}
+	if grid.ClearSelection() {
+		t.Fatal("second ClearSelection() = true, want false without a selection")
+	}
+}
+
 func TestFileViewerTextGridSelectionUsesLineEditSelectionColor(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
@@ -955,10 +981,55 @@ func TestFileViewerTextGridSelectionUsesLineEditSelectionColor(t *testing.T) {
 	}
 	grid.refreshGrid()
 
-	got := color.RGBAModel.Convert(grid.grid.Rows[0].Cells[1].Style.BackgroundColor())
+	if len(grid.selectionBG.Objects) != 1 {
+		t.Fatalf("selection backgrounds = %d, want 1", len(grid.selectionBG.Objects))
+	}
+	background, ok := grid.selectionBG.Objects[0].(*canvas.Rectangle)
+	if !ok {
+		t.Fatalf("selection background = %T, want *canvas.Rectangle", grid.selectionBG.Objects[0])
+	}
+	got := color.RGBAModel.Convert(background.FillColor)
 	want := color.RGBAModel.Convert(color.RGBA{5, 6, 7, 8})
 	if got != want {
 		t.Fatalf("selection color = %#v, want lineEditSelection %#v", got, want)
+	}
+}
+
+func TestFileViewerTextGridSelectionDoesNotRestyleWideTextCells(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	grid := newFileViewerTextGrid("a日本b", nil, nil, nil)
+	grid.selection = viewerTextSelection{
+		start: viewerTextPosition{line: 0, col: 1},
+		end:   viewerTextPosition{line: 0, col: 3},
+		set:   true,
+	}
+	grid.refreshGrid()
+
+	row := grid.grid.Row(0)
+	for col, cell := range row.Cells {
+		if cell.Style != nil {
+			t.Fatalf("TextGrid cell %d style = %#v, want nil so selection does not refresh Japanese glyphs", col, cell.Style)
+		}
+	}
+	if len(grid.selectionBG.Objects) != 1 {
+		t.Fatalf("selection backgrounds = %d, want 1", len(grid.selectionBG.Objects))
+	}
+	background, ok := grid.selectionBG.Objects[0].(*canvas.Rectangle)
+	if !ok {
+		t.Fatalf("selection background = %T, want *canvas.Rectangle", grid.selectionBG.Objects[0])
+	}
+	cell := grid.textGridCellSize()
+	if got, want := background.Position(), fyne.NewPos(cell.Width, 0); got != want {
+		t.Fatalf("selection background position = %v, want %v", got, want)
+	}
+	if got, want := background.Size(), fyne.NewSize(4*cell.Width, cell.Height); got != want {
+		t.Fatalf("selection background size = %v, want %v", got, want)
+	}
+	objects := grid.CreateRenderer().Objects()
+	if len(objects) != 2 || objects[0] != grid.selectionBG || objects[1] != grid.grid {
+		t.Fatalf("renderer objects = %#v, want selection background behind TextGrid", objects)
 	}
 }
 
@@ -1083,6 +1154,36 @@ func TestFileViewerDialogTextGridCtrlAThenCtrlCCopiesAll(t *testing.T) {
 	}
 	if !strings.Contains(d.status.Text, "copied=7") {
 		t.Fatalf("status = %q, want copied count", d.status.Text)
+	}
+}
+
+func TestFileViewerDialogTextGridCtrlShiftAClearsSelection(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "note.txt",
+		Data:     []byte("abc\ndef"),
+		Text:     "abc\ndef",
+		Encoding: "UTF-8",
+	}, km)
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	d.textGrid.SelectAll()
+	d.textGrid.KeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
+	d.textGrid.KeyDown(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
+	d.textGrid.KeyDown(&fyne.KeyEvent{Name: fyne.KeyA})
+	d.textGrid.TypedKey(&fyne.KeyEvent{Name: fyne.KeyA})
+
+	if got := d.textGrid.SelectedText(); got != "" {
+		t.Fatalf("SelectedText() = %q, want empty after Ctrl+Shift+A", got)
+	}
+	if !strings.Contains(d.status.Text, "selected=0") {
+		t.Fatalf("status = %q, want cleared selection count", d.status.Text)
 	}
 }
 

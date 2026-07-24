@@ -2,12 +2,15 @@ package ui
 
 import (
 	"image/color"
+	"math"
 	"os"
 	"strings"
 	"time"
 	"unicode"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	locale "github.com/jeandeaual/go-locale"
@@ -28,6 +31,7 @@ type fileViewerTextGrid struct {
 	widget.BaseWidget
 
 	grid        *widget.TextGrid
+	selectionBG *fyne.Container
 	lines       []string
 	visible     []viewerVisibleLine
 	topLine     int
@@ -83,6 +87,7 @@ func newFileViewerTextGrid(text string, km *keymanager.KeyManager, onMoved func(
 	start := time.Now()
 	v := &fileViewerTextGrid{
 		grid:        widget.NewTextGrid(),
+		selectionBG: container.NewWithoutLayout(),
 		lines:       splitViewerLines(text),
 		visibleRows: fileViewerTextGridFallbackRows,
 		visibleCols: fileViewerTextGridFallbackCols,
@@ -459,8 +464,7 @@ func (v *fileViewerTextGrid) updateVisibleRows(size fyne.Size) {
 	if size.Width <= 0 && size.Height <= 0 {
 		return
 	}
-	textSize := v.Theme().Size(theme.SizeNameText)
-	cell := fyne.MeasureText("M", textSize, fyne.TextStyle{Monospace: true})
+	cell := v.textGridCellSize()
 	if cell.Width <= 0 || cell.Height <= 0 {
 		return
 	}
@@ -572,7 +576,7 @@ func (v *fileViewerTextGrid) refreshGrid() {
 		displayLines = append(displayLines, row.text)
 	}
 	v.grid.SetText(strings.Join(displayLines, "\n"))
-	v.applySelectionStyle()
+	v.updateSelectionBackground()
 	v.applySearchStyle()
 	v.grid.Refresh()
 	v.debug("FileViewer: text-grid-refresh elapsed=%s top=%d col=%d rows=%d cols=%d wrap=%t",
@@ -598,7 +602,19 @@ func (v *fileViewerTextGrid) renderVisibleLines(rows, cols int) []viewerVisibleL
 	return visible
 }
 
-func (v *fileViewerTextGrid) applySelectionStyle() {
+func (v *fileViewerTextGrid) textGridCellSize() fyne.Size {
+	textSize := v.Theme().Size(theme.SizeNameText)
+	cell := fyne.MeasureText("M", textSize, fyne.TextStyle{Monospace: true})
+	// TextGrid rounds its measured cell size so adjacent cell backgrounds do
+	// not leave seams. Keep the selection layer on the same geometry.
+	cell.Width = float32(math.Round(float64(cell.Width)))
+	cell.Height = float32(math.Round(float64(cell.Height)))
+	return cell
+}
+
+func (v *fileViewerTextGrid) updateSelectionBackground() {
+	v.selectionBG.RemoveAll()
+	defer v.selectionBG.Refresh()
 	if !v.selection.set || len(v.visible) == 0 {
 		return
 	}
@@ -606,9 +622,11 @@ func (v *fileViewerTextGrid) applySelectionStyle() {
 	if compareViewerTextPosition(start, end) == 0 {
 		return
 	}
-	style := &widget.CustomTextGridStyle{
-		BGColor: currentViewerSelectionColor(),
+	cell := v.textGridCellSize()
+	if cell.Width <= 0 || cell.Height <= 0 {
+		return
 	}
+	color := currentViewerSelectionColor()
 	for rowIdx, row := range v.visible {
 		if row.line < start.line || row.line > end.line || row.displayLen == 0 {
 			continue
@@ -630,7 +648,16 @@ func (v *fileViewerTextGrid) applySelectionStyle() {
 		if startCol >= endCol {
 			continue
 		}
-		v.grid.SetStyleRange(rowIdx, startCol, rowIdx, endCol-1, style)
+		background := canvas.NewRectangle(color)
+		background.Move(fyne.NewPos(
+			float32(startCol)*cell.Width,
+			float32(rowIdx)*cell.Height,
+		))
+		background.Resize(fyne.NewSize(
+			float32(endCol-startCol)*cell.Width,
+			cell.Height,
+		))
+		v.selectionBG.Add(background)
 	}
 }
 
@@ -747,6 +774,7 @@ func (v *fileViewerTextGrid) SelectedText() string {
 func (v *fileViewerTextGrid) SelectAll() int {
 	if len(v.lines) == 0 {
 		v.selection = viewerTextSelection{}
+		v.selecting = false
 		v.refreshGrid()
 		return 0
 	}
@@ -758,6 +786,16 @@ func (v *fileViewerTextGrid) SelectAll() int {
 	}
 	v.refreshGrid()
 	return len([]rune(v.SelectedText()))
+}
+
+func (v *fileViewerTextGrid) ClearSelection() bool {
+	hadSelection := v.selection.set
+	v.selection = viewerTextSelection{}
+	v.selecting = false
+	if hadSelection {
+		v.refreshGrid()
+	}
+	return hadSelection
 }
 
 func (v *fileViewerTextGrid) selectionDebugInfo() (viewerTextPosition, viewerTextPosition, int) {
@@ -1209,6 +1247,8 @@ type fileViewerTextGridRenderer struct {
 func (r *fileViewerTextGridRenderer) Destroy() {}
 
 func (r *fileViewerTextGridRenderer) Layout(size fyne.Size) {
+	r.viewer.selectionBG.Move(fyne.NewPos(0, 0))
+	r.viewer.selectionBG.Resize(size)
 	r.viewer.grid.Move(fyne.NewPos(0, 0))
 	r.viewer.grid.Resize(size)
 }
@@ -1218,9 +1258,10 @@ func (r *fileViewerTextGridRenderer) MinSize() fyne.Size {
 }
 
 func (r *fileViewerTextGridRenderer) Objects() []fyne.CanvasObject {
-	return []fyne.CanvasObject{r.viewer.grid}
+	return []fyne.CanvasObject{r.viewer.selectionBG, r.viewer.grid}
 }
 
 func (r *fileViewerTextGridRenderer) Refresh() {
+	r.viewer.updateSelectionBackground()
 	r.viewer.grid.Refresh()
 }

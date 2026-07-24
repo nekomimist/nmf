@@ -29,6 +29,7 @@ const (
 	CommandFileViewerFocusLine      = "fileViewer.line.focus"
 	CommandFileViewerCopySelection  = "fileViewer.selection.copy"
 	CommandFileViewerSelectAll      = "fileViewer.selection.selectAll"
+	CommandFileViewerClearSelection = "fileViewer.selection.clear"
 	CommandFileViewerImageToggleFit = "fileViewer.image.zoom.toggle"
 	CommandFileViewerImageZoomIn    = "fileViewer.image.zoom.in"
 	CommandFileViewerImageZoomOut   = "fileViewer.image.zoom.out"
@@ -56,6 +57,7 @@ type FileViewerInterface interface {
 	ViewerFocusLine()
 	ViewerCopySelection()
 	ViewerSelectAll()
+	ViewerClearSelection()
 	ViewerImageToggleFit()
 	ViewerImageZoomIn()
 	ViewerImageZoomOut()
@@ -188,6 +190,7 @@ func (h *FileViewerKeyHandler) defaultCommands() map[string]func() {
 		CommandFileViewerFocusLine:      h.viewer.ViewerFocusLine,
 		CommandFileViewerCopySelection:  h.viewer.ViewerCopySelection,
 		CommandFileViewerSelectAll:      h.viewer.ViewerSelectAll,
+		CommandFileViewerClearSelection: h.viewer.ViewerClearSelection,
 		CommandFileViewerImageToggleFit: h.viewer.ViewerImageToggleFit,
 		CommandFileViewerImageZoomIn:    h.viewer.ViewerImageZoomIn,
 		CommandFileViewerImageZoomOut:   h.viewer.ViewerImageZoomOut,
@@ -209,6 +212,7 @@ func defaultFileViewerBindings() []config.KeyBindingEntry {
 		{Key: "Space", Command: CommandFileViewerPageDown},
 		{Key: "/", Command: CommandFileViewerFocusSearch},
 		{Key: "C-A", Command: CommandFileViewerSelectAll},
+		{Key: "C-S-A", Command: CommandFileViewerClearSelection},
 		{Key: "C-C", Command: CommandFileViewerCopySelection},
 		{Key: "Q", Command: CommandFileViewerClose},
 		{Key: "J", Command: CommandFileViewerLineDown},
