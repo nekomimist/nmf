@@ -16,6 +16,7 @@ import (
 
 	"nmf/internal/fileinfo"
 	"nmf/internal/jobs"
+	"nmf/internal/keymanager"
 	"nmf/internal/ui"
 )
 
@@ -24,6 +25,16 @@ type droppedJobManager interface {
 	EnqueueCopyWithOptions([]string, string, jobs.ConflictResolver, jobs.TransferOptions) *jobs.Job
 	EnqueueMoveWithResolver([]string, string, jobs.ConflictResolver) *jobs.Job
 }
+
+type dropActionDialogActions struct {
+	copyDropped func()
+	moveDropped func()
+	cancelDrop  func()
+}
+
+func (a *dropActionDialogActions) CopyDropped() { a.copyDropped() }
+func (a *dropActionDialogActions) MoveDropped() { a.moveDropped() }
+func (a *dropActionDialogActions) CancelDrop()  { a.cancelDrop() }
 
 func (fm *FileManager) setupDropHandler() {
 	if fm.window == nil {
@@ -157,26 +168,43 @@ func droppedURIPaths(uris []fyne.URI) ([]string, error) {
 func (fm *FileManager) showDropActionDialog(paths []string, dest string) {
 	debugPrint("FileManager: Drop dialog showing sources=%d dest=%s", len(paths), dest)
 	var d *dialog.CustomDialog
-	closeDialog := func() {
-		debugPrint("FileManager: Drop dialog closed")
-		if d != nil {
-			d.Hide()
+	var sink *ui.KeySink
+	var kmToken keymanager.HandlerToken
+	closed := false
+	finishDialog := func(label string, afterClose func()) {
+		if closed {
+			return
 		}
-		fm.FocusFileList()
+		closed = true
+		debugPrint("FileManager: Drop dialog closed")
+		fm.keyManager.BeginOwnerTransition(label, func() {
+			fm.keyManager.RemoveHandler(kmToken)
+			if d != nil {
+				d.Hide()
+			}
+			fm.FocusFileList()
+			if afterClose != nil {
+				afterClose()
+			}
+		})
+	}
+	closeDialog := func() {
+		finishDialog("drop.cancel", nil)
 	}
 	queue := func(op ui.Operation) {
 		debugPrint("FileManager: Drop action=%s requested sources=%d dest=%s", string(op), len(paths), dest)
-		closeDialog()
-		if op == ui.OpMove {
-			paths = droppedMoveSources(paths, dest)
-			if len(paths) == 0 {
-				debugPrint("FileManager: Drop move skipped same-directory sources")
-				fm.ShowMessageDialog("Move", "Dropped item(s) are already in this directory.")
-				return
+		finishDialog("drop."+string(op), func() {
+			if op == ui.OpMove {
+				paths = droppedMoveSources(paths, dest)
+				if len(paths) == 0 {
+					debugPrint("FileManager: Drop move skipped same-directory sources")
+					fm.ShowMessageDialog("Move", "Dropped item(s) are already in this directory.")
+					return
+				}
 			}
-		}
-		enqueueDroppedTransfer(fm.jobManager(), op, paths, dest, fm.conflictResolver(), jobs.TransferOptions{PreserveTimestamps: fm.config.UI.Copy.PreserveTimestamps})
-		debugPrint("FileManager: Drop queued action=%s sources=%d dest=%s", string(op), len(paths), dest)
+			enqueueDroppedTransfer(fm.jobManager(), op, paths, dest, fm.conflictResolver(), jobs.TransferOptions{PreserveTimestamps: fm.config.UI.Copy.PreserveTimestamps})
+			debugPrint("FileManager: Drop queued action=%s sources=%d dest=%s", string(op), len(paths), dest)
+		})
 	}
 
 	summary := widget.NewLabel(dropSummary(paths, dest))
@@ -194,6 +222,7 @@ func (fm *FileManager) showDropActionDialog(paths []string, dest string) {
 	content := container.NewVBox(
 		summary,
 		targetsScroll,
+		widget.NewLabel("Shortcuts: C=Copy, M=Move, Esc=Cancel"),
 		ui.DialogButtonBar(
 			ui.DialogAuxButton("Copy", theme.ContentCopyIcon(), func() { queue(ui.OpCopy) }),
 			ui.DialogAuxButton("Move", theme.ContentCutIcon(), func() { queue(ui.OpMove) }),
@@ -201,9 +230,19 @@ func (fm *FileManager) showDropActionDialog(paths []string, dest string) {
 		),
 	)
 
-	d = dialog.NewCustomWithoutButtons("Dropped files", content, fm.window)
+	actions := &dropActionDialogActions{
+		copyDropped: func() { queue(ui.OpCopy) },
+		moveDropped: func() { queue(ui.OpMove) },
+		cancelDrop:  closeDialog,
+	}
+	kmToken = fm.keyManager.PushHandler(keymanager.NewDropActionDialogKeyHandler(actions))
+	sink = ui.NewKeySink(content, fm.keyManager, ui.WithTabCapture(true))
+
+	d = dialog.NewCustomWithoutButtons("Dropped files", sink, fm.window)
+	d.SetOnClosed(closeDialog)
 	d.Show()
 	d.Resize(fyne.NewSize(580, 300))
+	fm.window.Canvas().Focus(sink)
 }
 
 func dropSummary(paths []string, dest string) string {

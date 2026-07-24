@@ -9,8 +9,11 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/storage"
+	fynetest "fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/jobs"
+	"nmf/internal/keymanager"
 	"nmf/internal/ui"
 )
 
@@ -82,6 +85,31 @@ func TestDroppedMoveSourcesSkipsSameDirectory(t *testing.T) {
 	got := droppedMoveSources([]string{src, other}, tmp)
 	if len(got) != 1 || got[0] != other {
 		t.Fatalf("droppedMoveSources = %#v, want only %q", got, other)
+	}
+}
+
+func TestDropActionDialogOwnsKeyboardFocusAndHandler(t *testing.T) {
+	app := fynetest.NewApp()
+	defer app.Quit()
+
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	fileListView := ui.NewKeySink(widget.NewLabel("files"), km)
+	window := fynetest.NewWindow(fileListView)
+	defer window.Close()
+	fm := &FileManager{
+		window:       window,
+		fileListView: fileListView,
+		keyManager:   km,
+	}
+
+	fm.showDropActionDialog([]string{"/tmp/a.txt"}, "/tmp/dest")
+
+	if got := km.GetCurrentHandler(); got == nil || got.GetName() != "DropActionDialog" {
+		t.Fatalf("current handler = %v, want DropActionDialog", got)
+	}
+	focused := window.Canvas().Focused()
+	if _, ok := focused.(*ui.KeySink); !ok || focused == fileListView {
+		t.Fatalf("focused object = %T, want drop dialog KeySink", focused)
 	}
 }
 
