@@ -499,6 +499,8 @@ Available file-viewer commands:
   `fileViewer.pane.hex`
 - `fileViewer.image.zoom.toggle`, `fileViewer.image.zoom.in`,
   `fileViewer.image.zoom.out`
+- `fileViewer.file.previous`, `fileViewer.file.next`,
+  `fileViewer.file.markToggle`
 - `fileViewer.search.next`, `fileViewer.search.previous`, `fileViewer.search.focus`
 - `fileViewer.line.focus`
 - `fileViewer.selection.selectAll`, `fileViewer.selection.clear`,

@@ -47,6 +47,10 @@ type FileViewerDialog struct {
 	parent  fyne.Window
 	dialog  dialog.Dialog
 
+	inputSink   *KeySink
+	contentHost *fyne.Container
+	nameLabel   *widget.Label
+
 	textGrid      *fileViewerTextGrid
 	hexGrid       *fileViewerTextGrid
 	mdGrid        *fileViewerTextGrid
@@ -72,15 +76,20 @@ type FileViewerDialog struct {
 	paneOrder   []string
 	mdView      fyne.CanvasObject
 
-	activeName  string
-	closed      bool
-	handlerSet  bool
-	maxWidth    int
-	maxHeight   int
-	defaultPane string
-	defaultWrap bool
-	bindings    []config.KeyBindingEntry
-	debugPrint  func(format string, args ...interface{})
+	activeName     string
+	closed         bool
+	handlerSet     bool
+	maxWidth       int
+	maxHeight      int
+	defaultPane    string
+	defaultWrap    bool
+	preferredPane  string
+	bindings       []config.KeyBindingEntry
+	debugPrint     func(format string, args ...interface{})
+	onFilePrevious func()
+	onFileNext     func()
+	onMarkToggle   func()
+	onClosed       func()
 }
 
 func NewFileViewerDialog(preview *fileinfo.PreviewFile, km ...*keymanager.KeyManager) *FileViewerDialog {
@@ -125,6 +134,19 @@ func (d *FileViewerDialog) SetDefaultWrap(wrapped bool) {
 	d.defaultWrap = wrapped
 }
 
+// SetFileActions configures actions that operate on the file manager listing
+// while the viewer remains open.
+func (d *FileViewerDialog) SetFileActions(previous, next, markToggle func()) {
+	d.onFilePrevious = previous
+	d.onFileNext = next
+	d.onMarkToggle = markToggle
+}
+
+// SetOnClosed sets a callback invoked once when the viewer begins closing.
+func (d *FileViewerDialog) SetOnClosed(callback func()) {
+	d.onClosed = callback
+}
+
 func (d *FileViewerDialog) newViewerTextGrid(text string) *fileViewerTextGrid {
 	grid := newFileViewerTextGrid(text, d.km, d.updateLineDisplay, d.debugPrint)
 	grid.SetWrap(d.defaultWrap)
@@ -136,35 +158,16 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	totalStart := time.Now()
 	stepStart := totalStart
 	d.parent = parent
-	d.debug("FileViewer: dialog-start bytes=%d text_bytes=%d binary=%t markdown=%t image=%t image_error=%q",
-		len(d.preview.Data), len(d.preview.Text), d.preview.Binary, d.preview.Markdown, d.preview.Image != nil, d.preview.ImageError)
+	if d.preview != nil {
+		d.debug("FileViewer: dialog-start bytes=%d text_bytes=%d binary=%t markdown=%t image=%t image_error=%q",
+			len(d.preview.Data), len(d.preview.Text), d.preview.Binary, d.preview.Markdown, d.preview.Image != nil, d.preview.ImageError)
+	}
 
-	d.status = widget.NewLabel(d.statusText())
-	d.status.Truncation = fyne.TextTruncateClip
-	d.lineLabel = widget.NewLabel("")
-	d.lineLabel.TextStyle = fyne.TextStyle{Monospace: true}
 	d.closeButton = widget.NewButtonWithIcon("", theme.CancelIcon(), d.CancelDialog)
-	d.buildViewerPanes()
-	d.debug("FileViewer: panes elapsed=%s", time.Since(stepStart))
-	stepStart = time.Now()
-
-	d.selectInitialTab()
-	d.debug("FileViewer: tabs elapsed=%s active=%s", time.Since(stepStart), d.activeName)
-	stepStart = time.Now()
-
-	toolbar := d.buildViewerToolbar(parent)
-
-	nameLabel := widget.NewLabel(filepath.Base(d.preview.Path))
-	nameRow := container.NewBorder(nil, nil, nil, d.closeButton,
-		container.NewVBox(layout.NewSpacer(), nameLabel, layout.NewSpacer()))
-
-	content := container.NewBorder(
-		container.NewVBox(nameRow, d.status, container.NewBorder(nil, nil, nil, container.NewCenter(d.lineLabel), toolbar)),
-		nil,
-		nil,
-		nil,
-		container.NewBorder(d.tabBar.Container(), nil, nil, nil, d.paneStack),
-	)
+	d.nameLabel = widget.NewLabel("")
+	d.contentHost = container.NewStack()
+	d.inputSink = NewKeySink(d.contentHost, d.km)
+	d.setPreview(d.preview, false)
 	d.debug("FileViewer: layout elapsed=%s", time.Since(stepStart))
 	stepStart = time.Now()
 
@@ -175,7 +178,7 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	d.debug("FileViewer: handler elapsed=%s", time.Since(stepStart))
 	stepStart = time.Now()
 
-	d.dialog = dialog.NewCustomWithoutButtons("Viewer", content, parent)
+	d.dialog = dialog.NewCustomWithoutButtons("Viewer", d.inputSink, parent)
 	d.dialog.SetOnClosed(func() {
 		d.CancelDialog()
 	})
@@ -192,6 +195,132 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	d.focusActiveViewer()
 	d.debug("FileViewer: dialog-focus elapsed=%s", time.Since(stepStart))
 	d.debug("FileViewer: dialog-ready elapsed=%s", time.Since(totalStart))
+}
+
+// UpdatePreview replaces the displayed file without closing the viewer.
+func (d *FileViewerDialog) UpdatePreview(preview *fileinfo.PreviewFile) {
+	d.setPreview(preview, true)
+}
+
+// ShowLoading replaces the viewer panes with an inline loading state.
+func (d *FileViewerDialog) ShowLoading(path string) {
+	d.captureViewerState()
+	d.preview = nil
+	d.resetViewerContent()
+	d.setViewerMessage(path, "Loading preview...")
+}
+
+// ShowUnavailable replaces the viewer panes with a reason that explains why
+// the current directory entry cannot be previewed.
+func (d *FileViewerDialog) ShowUnavailable(path, reason string) {
+	d.captureViewerState()
+	d.preview = nil
+	d.resetViewerContent()
+	d.setViewerMessage(path, reason)
+}
+
+func (d *FileViewerDialog) setPreview(preview *fileinfo.PreviewFile, preserveState bool) {
+	if preserveState {
+		d.captureViewerState()
+	}
+	d.preview = preview
+	d.resetViewerContent()
+	if preview == nil {
+		d.setViewerMessage("", "Preview unavailable.")
+		return
+	}
+
+	d.status = widget.NewLabel(d.statusText())
+	d.status.Truncation = fyne.TextTruncateClip
+	d.lineLabel = widget.NewLabel("")
+	d.lineLabel.TextStyle = fyne.TextStyle{Monospace: true}
+
+	stepStart := time.Now()
+	d.buildViewerPanes()
+	d.debug("FileViewer: panes elapsed=%s", time.Since(stepStart))
+	stepStart = time.Now()
+
+	if d.preferredPane == "" || !d.selectViewerTab(d.preferredPane) {
+		d.selectInitialTab()
+	}
+	d.debug("FileViewer: tabs elapsed=%s active=%s", time.Since(stepStart), d.activeName)
+
+	toolbar := d.buildViewerToolbar(d.parent)
+	nameRow := d.viewerNameRow(preview.Path)
+	content := container.NewBorder(
+		container.NewVBox(nameRow, d.status, container.NewBorder(nil, nil, nil, container.NewCenter(d.lineLabel), toolbar)),
+		nil,
+		nil,
+		nil,
+		container.NewBorder(d.tabBar.Container(), nil, nil, nil, d.paneStack),
+	)
+	d.replaceViewerContent(content)
+	d.updateLineDisplay()
+	d.focusActiveViewer()
+}
+
+func (d *FileViewerDialog) captureViewerState() {
+	if pane := normalizeViewerPane(d.activeName); pane != "" && pane != viewerPaneAuto {
+		d.preferredPane = pane
+	}
+	if grid := d.activeGrid(); grid != nil {
+		d.defaultWrap = grid.Wrap()
+	}
+}
+
+func (d *FileViewerDialog) resetViewerContent() {
+	d.textGrid = nil
+	d.hexGrid = nil
+	d.mdGrid = nil
+	d.imageView = nil
+	d.search = nil
+	d.jump = nil
+	d.status = nil
+	d.lineLabel = nil
+	d.wrapButton = nil
+	d.prevButton = nil
+	d.nextButton = nil
+	d.zoomFitButton = nil
+	d.zoomInButton = nil
+	d.zoomOutButton = nil
+	d.imageToolbar = nil
+	d.hexToolbar = nil
+	d.toolbarStack = nil
+	d.tabBar = nil
+	d.paneStack = nil
+	d.paneObjects = nil
+	d.paneOrder = nil
+	d.mdView = nil
+	d.activeName = ""
+}
+
+func (d *FileViewerDialog) setViewerMessage(path, message string) {
+	content := container.NewBorder(
+		d.viewerNameRow(path),
+		nil,
+		nil,
+		nil,
+		container.NewCenter(widget.NewLabel(message)),
+	)
+	d.replaceViewerContent(content)
+	d.focusActiveViewer()
+}
+
+func (d *FileViewerDialog) viewerNameRow(path string) fyne.CanvasObject {
+	if d.nameLabel == nil {
+		d.nameLabel = widget.NewLabel("")
+	}
+	d.nameLabel.SetText(filepath.Base(path))
+	return container.NewBorder(nil, nil, nil, d.closeButton,
+		container.NewVBox(layout.NewSpacer(), d.nameLabel, layout.NewSpacer()))
+}
+
+func (d *FileViewerDialog) replaceViewerContent(content fyne.CanvasObject) {
+	if d.contentHost == nil {
+		return
+	}
+	d.contentHost.Objects = []fyne.CanvasObject{content}
+	d.contentHost.Refresh()
 }
 
 func (d *FileViewerDialog) buildViewerPanes() {
@@ -439,6 +568,7 @@ func (d *FileViewerDialog) selectViewerTab(pane string) bool {
 	d.paneStack.Refresh()
 	d.tabBar.SetActive(normalized)
 	d.activeName = viewerPaneDisplayName(normalized)
+	d.preferredPane = normalized
 	d.updateToolbarVisibility()
 	return true
 }
@@ -1017,6 +1147,9 @@ func (d *FileViewerDialog) CancelDialog() {
 		return
 	}
 	d.closed = true
+	if d.onClosed != nil {
+		d.onClosed()
+	}
 	deferDialogClose(d.km, "viewer.close", func() {
 		if d.handlerSet && d.km != nil {
 			d.km.RemoveHandler(d.kmToken)
@@ -1025,7 +1158,7 @@ func (d *FileViewerDialog) CancelDialog() {
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}
-		unfocusIfDialogOwned(d.parent, d.imageView, d.textGrid, d.hexGrid, d.mdGrid, d.search, d.jump)
+		unfocusIfDialogOwned(d.parent, d.inputSink, d.imageView, d.textGrid, d.hexGrid, d.mdGrid, d.search, d.jump)
 	})
 }
 
@@ -1047,17 +1180,10 @@ func (d *FileViewerDialog) activeGrid() *fileViewerTextGrid {
 }
 
 func (d *FileViewerDialog) focusActiveViewer() {
-	if d.parent == nil {
+	if d.parent == nil || d.inputSink == nil {
 		return
 	}
-	if d.activeName == "Image" && d.imageView != nil {
-		d.parent.Canvas().Focus(d.imageView)
-		return
-	}
-	grid := d.activeGrid()
-	if grid != nil {
-		d.parent.Canvas().Focus(grid)
-	}
+	d.parent.Canvas().Focus(d.inputSink)
 }
 
 func (d *FileViewerDialog) copySelection() {
@@ -1288,6 +1414,24 @@ func (d *FileViewerDialog) ViewerImageZoomOut() {
 	d.focusActiveViewer()
 }
 
+func (d *FileViewerDialog) ViewerFilePrevious() {
+	if d.onFilePrevious != nil {
+		d.onFilePrevious()
+	}
+}
+
+func (d *FileViewerDialog) ViewerFileNext() {
+	if d.onFileNext != nil {
+		d.onFileNext()
+	}
+}
+
+func (d *FileViewerDialog) ViewerMarkToggle() {
+	if d.onMarkToggle != nil {
+		d.onMarkToggle()
+	}
+}
+
 func (d *FileViewerDialog) showViewerPane(pane string) {
 	if !d.selectViewerTab(pane) {
 		return
@@ -1476,5 +1620,8 @@ func (d *FileViewerDialog) setWrapButtonWrapped(wrapped bool) {
 }
 
 func (d *FileViewerDialog) setStatusSuffix(suffix string) {
+	if d.status == nil {
+		return
+	}
 	d.status.SetText(d.statusText() + "  " + suffix)
 }

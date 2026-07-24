@@ -283,6 +283,15 @@ Built-in file viewer:
 - The handler owns less-like navigation keys (`j/k`, `f/b`, `g/G`, `n/N`,
   `/`, `:`, `q`) and pane switching keys (`i`, `t`, `m`, `x`) so keys do not fall
   through to the main file list if focus moves to non-text parts of the dialog.
+- `Shift+Up`/`Shift+Down` move the main file-list cursor and replace the
+  preview in the same dialog. `Shift+Space` mirrors the main list's mark
+  toggle and advances to the next entry. Parent, directory, deleted, and
+  unreadable entries replace all panes and toolbars with an inline reason;
+  the same persistent `KeySink` remains focused so navigation continues.
+- Preview replacement cancels stale reads. It preserves the active pane when
+  that pane exists for the next file and otherwise applies the configured
+  default/automatic pane choice. Per-file scroll, selection, search, and image
+  zoom state are rebuilt; the current wrap choice carries forward.
 - These keys are configurable through the `fileViewer` target.
 - Because of driver fact 6, viewer bindings are split at construction into a
   typed-key set and a rune set (`fileViewerRunePathSpec` in
@@ -296,8 +305,8 @@ Built-in file viewer:
   faster initial display. It supports less-like vertical movement, line jumps,
   horizontal movement, a wrap toggle, mouse drag selection, keyboard select-all,
   copy, and literal current-match search. Keyboard range selection is
-  intentionally not wired. Each pane starts from `viewer.defaultWrap` and then
-  keeps its own wrap state for the lifetime of the dialog.
+  intentionally not wired. The first pane starts from `viewer.defaultWrap`;
+  replacement previews inherit the active text pane's wrap choice.
 - Markdown files open on the Markdown pane by default unless
   `viewer.defaultPane` is set to `text`. The Markdown tab converts
   Markdown AST to simplified text, including fixed-width pipe tables and

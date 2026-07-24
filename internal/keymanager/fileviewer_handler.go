@@ -33,6 +33,9 @@ const (
 	CommandFileViewerImageToggleFit = "fileViewer.image.zoom.toggle"
 	CommandFileViewerImageZoomIn    = "fileViewer.image.zoom.in"
 	CommandFileViewerImageZoomOut   = "fileViewer.image.zoom.out"
+	CommandFileViewerFilePrevious   = "fileViewer.file.previous"
+	CommandFileViewerFileNext       = "fileViewer.file.next"
+	CommandFileViewerMarkToggle     = "fileViewer.file.markToggle"
 )
 
 // FileViewerInterface defines keyboard actions for the built-in viewer.
@@ -61,6 +64,9 @@ type FileViewerInterface interface {
 	ViewerImageToggleFit()
 	ViewerImageZoomIn()
 	ViewerImageZoomOut()
+	ViewerFilePrevious()
+	ViewerFileNext()
+	ViewerMarkToggle()
 }
 
 // FileViewerKeyHandler handles less-like keys for the built-in viewer.
@@ -194,6 +200,9 @@ func (h *FileViewerKeyHandler) defaultCommands() map[string]func() {
 		CommandFileViewerImageToggleFit: h.viewer.ViewerImageToggleFit,
 		CommandFileViewerImageZoomIn:    h.viewer.ViewerImageZoomIn,
 		CommandFileViewerImageZoomOut:   h.viewer.ViewerImageZoomOut,
+		CommandFileViewerFilePrevious:   h.viewer.ViewerFilePrevious,
+		CommandFileViewerFileNext:       h.viewer.ViewerFileNext,
+		CommandFileViewerMarkToggle:     h.viewer.ViewerMarkToggle,
 		CommandNoop:                     func() {},
 	}
 }
@@ -234,6 +243,9 @@ func defaultFileViewerBindings() []config.KeyBindingEntry {
 		{Key: "=", Command: CommandFileViewerImageToggleFit},
 		{Key: "S-=", Command: CommandFileViewerImageZoomIn},
 		{Key: "-", Command: CommandFileViewerImageZoomOut},
+		{Key: "S-Up", Command: CommandFileViewerFilePrevious},
+		{Key: "S-Down", Command: CommandFileViewerFileNext},
+		{Key: "S-Space", Command: CommandFileViewerMarkToggle},
 	}
 }
 

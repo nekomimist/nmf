@@ -808,6 +808,139 @@ func TestFileViewerDialogCloseButtonClosesDialog(t *testing.T) {
 	}
 }
 
+func TestFileViewerDialogFileActionsRemainAvailableWithoutPreview(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "note.txt",
+		Data:     []byte("hello"),
+		Text:     "hello",
+		Encoding: "UTF-8",
+	}, km)
+	var previous, next, marked int
+	d.SetFileActions(
+		func() { previous++ },
+		func() { next++ },
+		func() { marked++ },
+	)
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	sink := d.inputSink
+	d.ShowUnavailable("folder", "Directory: preview unavailable.")
+
+	if d.inputSink != sink {
+		t.Fatal("viewer key sink changed while replacing the content")
+	}
+	if d.paneStack != nil || d.tabBar != nil || d.toolbarStack != nil {
+		t.Fatal("unavailable state should not expose viewer panes or toolbars")
+	}
+	if d.nameLabel.Text != "folder" {
+		t.Fatalf("name label = %q, want folder", d.nameLabel.Text)
+	}
+
+	activateShift := func(key fyne.KeyName) {
+		sink.KeyDown(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
+		sink.KeyDown(&fyne.KeyEvent{Name: key})
+		sink.TypedKey(&fyne.KeyEvent{Name: key})
+		sink.KeyUp(&fyne.KeyEvent{Name: key})
+		sink.KeyUp(&fyne.KeyEvent{Name: desktop.KeyShiftLeft})
+	}
+	activateShift(fyne.KeyUp)
+	activateShift(fyne.KeyDown)
+	activateShift(fyne.KeySpace)
+	if previous != 1 || next != 1 || marked != 1 {
+		t.Fatalf("file actions = previous:%d next:%d marked:%d, want each once", previous, next, marked)
+	}
+}
+
+func TestFileViewerDialogUpdatePreservesCompatiblePaneAndWrap(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "first.txt",
+		Data:     []byte("first"),
+		Text:     "first",
+		Encoding: "UTF-8",
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	d.ViewerShowHex()
+	d.ViewerToggleWrap()
+	oldHex := d.hexGrid
+	oldHex.SelectAll()
+	d.search.SetText("needle")
+	oldSearch := d.search
+	sink := d.inputSink
+	d.ShowLoading("second.txt")
+	d.UpdatePreview(&fileinfo.PreviewFile{
+		Path:     "second.txt",
+		Data:     []byte("second"),
+		Text:     "second",
+		Encoding: "UTF-8",
+	})
+
+	if d.inputSink != sink {
+		t.Fatal("viewer key sink changed after preview update")
+	}
+	if d.activeName != "Hex" {
+		t.Fatalf("activeName = %q, want Hex", d.activeName)
+	}
+	if d.hexGrid == nil || d.hexGrid == oldHex {
+		t.Fatal("hex grid was not recreated for the new file")
+	}
+	if !d.hexGrid.Wrap() {
+		t.Fatal("wrap state was not preserved for the replacement preview")
+	}
+	if d.hexGrid.CurrentLine() != 1 || d.hexGrid.SelectedText() != "" {
+		t.Fatal("replacement preview retained per-file position or selection state")
+	}
+	if d.search == nil || d.search == oldSearch || d.search.Text != "" {
+		t.Fatal("replacement preview retained per-file search state")
+	}
+}
+
+func TestFileViewerDialogUpdateFallsBackWhenPaneIsIncompatible(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "note.txt",
+		Data:     []byte("note"),
+		Text:     "note",
+		Encoding: "UTF-8",
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+	d.ViewerShowText()
+
+	d.ShowLoading("pixel.png")
+	d.UpdatePreview(&fileinfo.PreviewFile{
+		Path:        "pixel.png",
+		Data:        []byte{0x89, 'P', 'N', 'G'},
+		Binary:      true,
+		ImageFormat: "png",
+		Image:       image.NewRGBA(image.Rect(0, 0, 1, 1)),
+	})
+
+	if d.activeName != "Image" {
+		t.Fatalf("activeName = %q, want Image fallback", d.activeName)
+	}
+	if d.imageView == nil || d.imageView.Zoom() != 1 || !d.imageView.Fit() {
+		t.Fatal("replacement image did not start with fresh zoom state")
+	}
+}
+
 func TestFileViewerTextGridPageMovementUsesVisibleRows(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
@@ -1411,8 +1544,8 @@ func TestFileViewerDialogEscapeFromSearchReturnsToViewer(t *testing.T) {
 	if d.closed {
 		t.Fatal("viewer closed after Escape in search entry")
 	}
-	if w.Canvas().Focused() != d.textGrid {
-		t.Fatal("focus did not return to text grid after Escape in search entry")
+	if w.Canvas().Focused() != d.inputSink {
+		t.Fatal("focus did not return to viewer key sink after Escape in search entry")
 	}
 	if d.search.Text != "beta" {
 		t.Fatalf("search text = %q, want preserved", d.search.Text)
@@ -1473,8 +1606,8 @@ func TestFileViewerDialogEscapeFromLineReturnsToViewer(t *testing.T) {
 	if d.closed {
 		t.Fatal("viewer closed after Escape in line entry")
 	}
-	if w.Canvas().Focused() != d.textGrid {
-		t.Fatal("focus did not return to text grid after Escape in line entry")
+	if w.Canvas().Focused() != d.inputSink {
+		t.Fatal("focus did not return to viewer key sink after Escape in line entry")
 	}
 	if d.jump.Text != "2" {
 		t.Fatalf("line text = %q, want preserved", d.jump.Text)

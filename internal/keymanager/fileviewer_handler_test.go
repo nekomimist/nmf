@@ -11,30 +11,33 @@ import (
 )
 
 type fakeFileViewer struct {
-	closed  int
-	down    int
-	up      int
-	pgDown  int
-	pgUp    int
-	home    int
-	end     int
-	left    int
-	right   int
-	wrap    int
-	image   int
-	text    int
-	md      int
-	hex     int
-	next    int
-	prev    int
-	search  int
-	line    int
-	copy    int
-	all     int
-	clear   int
-	fit     int
-	zoomIn  int
-	zoomOut int
+	closed   int
+	down     int
+	up       int
+	pgDown   int
+	pgUp     int
+	home     int
+	end      int
+	left     int
+	right    int
+	wrap     int
+	image    int
+	text     int
+	md       int
+	hex      int
+	next     int
+	prev     int
+	search   int
+	line     int
+	copy     int
+	all      int
+	clear    int
+	fit      int
+	zoomIn   int
+	zoomOut  int
+	filePrev int
+	fileNext int
+	mark     int
 }
 
 func (f *fakeFileViewer) CloseViewer()          { f.closed++ }
@@ -61,6 +64,9 @@ func (f *fakeFileViewer) ViewerClearSelection() { f.clear++ }
 func (f *fakeFileViewer) ViewerImageToggleFit() { f.fit++ }
 func (f *fakeFileViewer) ViewerImageZoomIn()    { f.zoomIn++ }
 func (f *fakeFileViewer) ViewerImageZoomOut()   { f.zoomOut++ }
+func (f *fakeFileViewer) ViewerFilePrevious()   { f.filePrev++ }
+func (f *fakeFileViewer) ViewerFileNext()       { f.fileNext++ }
+func (f *fakeFileViewer) ViewerMarkToggle()     { f.mark++ }
 
 func TestFileViewerHandlerLessKeys(t *testing.T) {
 	viewer := &fakeFileViewer{}
@@ -180,6 +186,31 @@ func TestFileViewerHandlerNavigationKeys(t *testing.T) {
 		viewer.pgUp != 1 || viewer.home != 1 || viewer.end != 1 ||
 		viewer.left != 1 || viewer.right != 1 {
 		t.Fatalf("viewer actions = %+v, want each navigation action once", viewer)
+	}
+}
+
+func TestFileViewerHandlerShiftFileActions(t *testing.T) {
+	viewer := &fakeFileViewer{}
+	handler := NewFileViewerKeyHandler(viewer, nil)
+
+	tests := []struct {
+		key fyne.KeyName
+		got *int
+	}{
+		{key: fyne.KeyUp, got: &viewer.filePrev},
+		{key: fyne.KeyDown, got: &viewer.fileNext},
+		{key: fyne.KeySpace, got: &viewer.mark},
+	}
+	for _, tt := range tests {
+		if !handler.OnKeyActivated(&fyne.KeyEvent{Name: tt.key}, ModifierState{ShiftPressed: true}) {
+			t.Fatalf("Shift+%s should be handled", tt.key)
+		}
+		if *tt.got != 1 {
+			t.Fatalf("Shift+%s command count = %d, want 1", tt.key, *tt.got)
+		}
+	}
+	if viewer.up != 0 || viewer.down != 0 || viewer.pgDown != 0 {
+		t.Fatalf("plain viewer navigation also fired: %+v", viewer)
 	}
 }
 
