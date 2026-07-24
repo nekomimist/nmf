@@ -1,6 +1,7 @@
 package fileinfo
 
 import (
+	"context"
 	"fmt"
 	"path"
 	"path/filepath"
@@ -63,6 +64,15 @@ func CanonicalDisplayPath(input string) (string, Parsed, error) {
 // ResolvePathDisplay resolves user input to a canonical display/navigation path.
 // SMB inputs are returned as canonical smb:// paths. Local inputs are returned as absolute paths.
 func ResolvePathDisplay(input string) (string, Parsed, error) {
+	return ResolvePathDisplayContext(context.Background(), input)
+}
+
+// ResolvePathDisplayContext resolves user input while propagating cancellation
+// to providers opened as part of resolution.
+func ResolvePathDisplayContext(ctx context.Context, input string) (string, Parsed, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	trimmed := strings.TrimSpace(input)
 	if trimmed == "" {
 		return "", Parsed{}, fmt.Errorf("path is empty")
@@ -73,7 +83,7 @@ func ResolvePathDisplay(input string) (string, Parsed, error) {
 	}
 
 	normalized := NormalizeInputPath(trimmed)
-	vfs, parsed, err := ResolveRead(normalized)
+	vfs, parsed, err := ResolveReadContext(ctx, normalized)
 	if err != nil {
 		return "", parsed, err
 	}
@@ -144,11 +154,20 @@ func ResolveDirectoryPath(input string) (string, Parsed, error) {
 // ResolveAccessibleDirectoryPath resolves input to a canonical path and validates accessibility.
 // Both local and SMB paths must be stat'able directories.
 func ResolveAccessibleDirectoryPath(input string) (string, Parsed, error) {
-	resolved, parsed, err := ResolvePathDisplay(input)
+	return ResolveAccessibleDirectoryPathContext(context.Background(), input)
+}
+
+// ResolveAccessibleDirectoryPathContext resolves input and validates directory
+// accessibility while propagating cancellation to context-aware providers.
+func ResolveAccessibleDirectoryPathContext(ctx context.Context, input string) (string, Parsed, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	resolved, parsed, err := ResolvePathDisplayContext(ctx, input)
 	if err != nil {
 		return "", parsed, err
 	}
-	info, err := StatPortable(resolved)
+	info, err := StatPortableContext(ctx, resolved)
 	if err != nil {
 		return "", parsed, err
 	}

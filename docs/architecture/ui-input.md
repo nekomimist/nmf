@@ -157,6 +157,15 @@ Long-running UI actions:
   goroutine; `ChildUIDs` and `IsBranch` never perform VFS I/O. Platform-root
   branch accessibility (including Windows drive roots) is classified during
   that background read and cached before refresh.
+- Maintenance snapshots its runtime-state targets before scanning them on a
+  worker goroutine. The dialog keeps focus on its `KeySink`, so Escape closes
+  immediately and cancels the scan; late results are discarded. Archive paths
+  inherit the network/removable classification of their backing file before
+  any accessibility check. Maintenance only checks that an archive's backing
+  file exists; it never opens archive contents or prompts for a password.
+  On Windows, drive roots reported as unknown or currently absent are
+  classified as unavailable volumes and skipped by default, protecting history
+  for unplugged removable media.
 - File preview reads run behind the main busy/input guard on a worker goroutine.
   A per-window viewer generation drops late results after cancellation or
   window close before they can push a viewer handler.

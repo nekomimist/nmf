@@ -395,19 +395,43 @@ func (s SMBFS) ReadDirContext(ctx context.Context, relPath string) ([]os.DirEntr
 
 // Stat returns file info for a path relative to the share (leading separators allowed).
 func (s SMBFS) Stat(relPath string) (os.FileInfo, error) {
-	share, sess, conn, _, err := s.dialAndMount(relPath)
+	return s.StatContext(context.Background(), relPath)
+}
+
+// StatContext returns file info and closes the SMB connection when the caller
+// cancels an in-flight operation.
+func (s SMBFS) StatContext(ctx context.Context, relPath string) (os.FileInfo, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	share, sess, conn, _, err := s.dialAndMountContext(ctx, relPath)
 	if err != nil {
 		return nil, err
 	}
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = conn.Close()
+		case <-done:
+		}
+	}()
 	defer func() {
+		close(done)
 		_ = closeSMBSession(nil, share, sess, conn)
 	}()
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	fi, err := share.Stat(normalizeSMBPathForStat(relPath))
 	if err != nil {
 		if isAuthError(err) {
 			ClearCachedCredentials(s.host, s.share)
 		}
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	return fi, nil

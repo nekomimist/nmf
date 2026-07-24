@@ -1,11 +1,15 @@
 package maintenance
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"nmf/internal/config"
+	"nmf/internal/fileinfo"
 )
 
 func TestPlanFindsInaccessibleEntries(t *testing.T) {
@@ -57,10 +61,11 @@ func TestPlanRespectsTaskSelection(t *testing.T) {
 	}
 }
 
-func TestPlanSkipsNetworkAndRemovable(t *testing.T) {
+func TestPlanSkipsNetworkRemovableAndUnavailable(t *testing.T) {
 	cfg := testState()
 	cfg.CursorMemory.Entries["/network"] = "file.txt"
 	cfg.CursorMemory.Entries["/removable"] = "file.txt"
+	cfg.CursorMemory.Entries["/unavailable"] = "file.txt"
 	cfg.CursorMemory.Entries["/local"] = "file.txt"
 
 	result := Plan(cfg, DefaultOptions(), func(path string) (PathClass, error) {
@@ -69,6 +74,8 @@ func TestPlanSkipsNetworkAndRemovable(t *testing.T) {
 			return PathClass{Network: true}, nil
 		case "/removable":
 			return PathClass{Removable: true}, nil
+		case "/unavailable":
+			return PathClass{Unavailable: true}, nil
 		default:
 			return PathClass{}, nil
 		}
@@ -82,8 +89,104 @@ func TestPlanSkipsNetworkAndRemovable(t *testing.T) {
 	if result.SkippedRemovable != 1 {
 		t.Fatalf("SkippedRemovable = %d, want 1", result.SkippedRemovable)
 	}
+	if result.SkippedUnavailable != 1 {
+		t.Fatalf("SkippedUnavailable = %d, want 1", result.SkippedUnavailable)
+	}
 	if len(result.Candidates) != 1 || result.Candidates[0].Path != "/local" {
 		t.Fatalf("candidates = %#v, want only /local", result.Candidates)
+	}
+}
+
+func TestPlanCanIncludeUnavailableVolumes(t *testing.T) {
+	cfg := testState()
+	cfg.CursorMemory.Entries["X:\\missing"] = "file.txt"
+	options := DefaultOptions()
+	options.SkipUnavailableVolumes = false
+
+	result := Plan(cfg, options, func(string) (PathClass, error) {
+		return PathClass{Unavailable: true}, nil
+	}, func(string) error {
+		return fmt.Errorf("volume is unavailable")
+	})
+
+	if result.SkippedUnavailable != 0 {
+		t.Fatalf("SkippedUnavailable = %d, want 0", result.SkippedUnavailable)
+	}
+	if len(result.Candidates) != 1 || result.Candidates[0].Path != "X:\\missing" {
+		t.Fatalf("candidates = %#v, want unavailable path", result.Candidates)
+	}
+}
+
+func TestPlanSkipsArchiveStoredOnNetworkPath(t *testing.T) {
+	cfg := testState()
+	path := "smb://server/share/backup.zip!/inside"
+	cfg.CursorMemory.Entries[path] = "file.txt"
+	accessibleCalled := false
+
+	result := Plan(cfg, DefaultOptions(), nil, func(string) error {
+		accessibleCalled = true
+		return fmt.Errorf("must not access a skipped network archive")
+	})
+
+	if accessibleCalled {
+		t.Fatal("network archive was accessed despite SkipNetworkPaths")
+	}
+	if result.SkippedNetwork != 1 {
+		t.Fatalf("SkippedNetwork = %d, want 1", result.SkippedNetwork)
+	}
+	if len(result.Candidates) != 0 {
+		t.Fatalf("candidates = %#v, want none", result.Candidates)
+	}
+}
+
+func TestDefaultAccessibleChecksOnlyArchiveBackingFile(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "encrypted.zip")
+	if err := os.WriteFile(archivePath, []byte("not readable archive contents"), 0600); err != nil {
+		t.Fatalf("write archive backing file: %v", err)
+	}
+
+	if err := DefaultAccessible(fileinfo.ArchiveRootPath(archivePath)); err != nil {
+		t.Fatalf("existing archive backing file should be retained without opening it: %v", err)
+	}
+}
+
+func TestDefaultAccessibleRejectsMissingArchiveBackingFile(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "missing.zip")
+
+	if err := DefaultAccessible(fileinfo.ArchiveRootPath(archivePath)); err == nil {
+		t.Fatal("missing archive backing file should be inaccessible")
+	}
+}
+
+func TestPlanTargetsStopsAfterCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	targets := Targets{CursorMemory: []string{"/first", "/second"}}
+	firstStarted := make(chan struct{})
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := PlanTargets(ctx, targets, DefaultOptions(), classifyNone, func(ctx context.Context, _ string) error {
+			close(firstStarted)
+			<-ctx.Done()
+			return ctx.Err()
+		})
+		done <- err
+	}()
+
+	select {
+	case <-firstStarted:
+	case <-time.After(time.Second):
+		t.Fatal("first accessibility check did not start")
+	}
+	cancel()
+
+	select {
+	case err := <-done:
+		if err != context.Canceled {
+			t.Fatalf("PlanTargets error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("PlanTargets did not stop after cancellation")
 	}
 }
 

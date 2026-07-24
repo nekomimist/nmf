@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 
 	"fyne.io/fyne/v2"
@@ -25,6 +26,7 @@ type MaintenanceDialog struct {
 	navigationHistoryCheck *widget.Check
 	skipNetworkCheck       *widget.Check
 	skipRemovableCheck     *widget.Check
+	skipUnavailableCheck   *widget.Check
 	summaryLabel           *widget.Label
 	resultList             *widget.List
 	resultBinding          binding.StringList
@@ -38,6 +40,12 @@ type MaintenanceDialog struct {
 	dialog   dialog.Dialog
 	sink     *KeySink
 	closed   bool
+	scanning bool
+
+	scanCancel context.CancelFunc
+	scanSerial uint64
+	plan       func(context.Context, maintenance.Targets, maintenance.Options, maintenance.ClassifyFunc, maintenance.AccessibleContextFunc) (maintenance.Result, error)
+	runOnMain  func(func())
 }
 
 func NewMaintenanceDialog(state *config.State, km *keymanager.KeyManager, debugPrint func(format string, args ...interface{})) *MaintenanceDialog {
@@ -45,6 +53,8 @@ func NewMaintenanceDialog(state *config.State, km *keymanager.KeyManager, debugP
 		state:      state,
 		keyManager: km,
 		debugPrint: debugPrint,
+		plan:       maintenance.PlanTargets,
+		runOnMain:  fyne.Do,
 	}
 	d.createWidgets()
 	return d
@@ -60,6 +70,8 @@ func (d *MaintenanceDialog) createWidgets() {
 	d.skipNetworkCheck.SetChecked(options.SkipNetworkPaths)
 	d.skipRemovableCheck = widget.NewCheck("Skip removable media paths", func(bool) { d.invalidateScan() })
 	d.skipRemovableCheck.SetChecked(options.SkipRemovablePaths)
+	d.skipUnavailableCheck = widget.NewCheck("Skip unavailable volumes", func(bool) { d.invalidateScan() })
+	d.skipUnavailableCheck.SetChecked(options.SkipUnavailableVolumes)
 
 	d.summaryLabel = widget.NewLabel("Scan maintenance targets to find inaccessible directories.")
 	d.summaryLabel.Wrapping = fyne.TextWrapWord
@@ -90,7 +102,9 @@ func (d *MaintenanceDialog) ShowDialog(parent fyne.Window, onApply func(maintena
 	d.onApply = onApply
 
 	content := d.createContent()
-	d.sink = NewKeySink(content, d.keyManager, WithTabCapture(false))
+	// Keep the dialog's keyboard ownership on the sink so Escape remains
+	// available throughout a scan instead of focus traversing into a control.
+	d.sink = NewKeySink(content, d.keyManager, WithTabCapture(true))
 
 	handler := keymanager.NewMaintenanceDialogKeyHandler(d)
 	d.kmToken = d.keyManager.PushHandler(handler)
@@ -116,6 +130,7 @@ func (d *MaintenanceDialog) createContent() fyne.CanvasObject {
 		widget.NewLabel("Safety"),
 		d.skipNetworkCheck,
 		d.skipRemovableCheck,
+		d.skipUnavailableCheck,
 	)
 
 	listScroll := container.NewScroll(d.resultList)
@@ -146,22 +161,52 @@ func (d *MaintenanceDialog) options() maintenance.Options {
 		CleanNavigationHistory: d.navigationHistoryCheck.Checked,
 		SkipNetworkPaths:       d.skipNetworkCheck.Checked,
 		SkipRemovablePaths:     d.skipRemovableCheck.Checked,
+		SkipUnavailableVolumes: d.skipUnavailableCheck.Checked,
 	}
 }
 
 func (d *MaintenanceDialog) Scan() {
-	if d.closed {
+	if d.closed || d.scanning {
 		return
 	}
+
+	targets := maintenance.Snapshot(d.state)
+	options := d.options()
+	ctx, cancel := context.WithCancel(context.Background())
+	d.scanCancel = cancel
+	d.scanSerial++
+	serial := d.scanSerial
+	d.scanning = true
+	d.scanned = false
+	d.lastScan = maintenance.Result{}
+	d.setScanControlsEnabled(false)
+	d.summaryLabel.SetText("Scanning maintenance targets... Press Escape to close.")
 	d.debugPrint("MaintenanceDialog: Scan started")
-	d.lastScan = maintenance.Plan(d.state, d.options(), nil, nil)
-	d.scanned = true
-	d.updateResults()
-	d.debugPrint("MaintenanceDialog: Scan finished candidates=%d", len(d.lastScan.Candidates))
+
+	go func() {
+		result, err := d.plan(ctx, targets, options, nil, nil)
+		d.runOnMain(func() {
+			if d.closed || serial != d.scanSerial {
+				return
+			}
+			d.scanning = false
+			d.scanCancel = nil
+			d.setScanControlsEnabled(true)
+			if err != nil {
+				d.summaryLabel.SetText(fmt.Sprintf("Scan stopped: %v", err))
+				d.debugPrint("MaintenanceDialog: Scan stopped err=%v", err)
+				return
+			}
+			d.lastScan = result
+			d.scanned = true
+			d.updateResults()
+			d.debugPrint("MaintenanceDialog: Scan finished candidates=%d", len(d.lastScan.Candidates))
+		})
+	}()
 }
 
 func (d *MaintenanceDialog) Apply() {
-	if d.closed || !d.scanned || len(d.lastScan.Candidates) == 0 {
+	if d.closed || d.scanning || !d.scanned || len(d.lastScan.Candidates) == 0 {
 		return
 	}
 	if d.onApply == nil {
@@ -185,8 +230,16 @@ func (d *MaintenanceDialog) Cancel() {
 		return
 	}
 	d.closed = true
+	d.scanSerial++
+	d.scanning = false
+	if d.scanCancel != nil {
+		d.scanCancel()
+		d.scanCancel = nil
+	}
 	deferDialogClose(d.keyManager, "maintenance.close", func() {
-		d.keyManager.RemoveHandler(d.kmToken)
+		if d.keyManager != nil {
+			d.keyManager.RemoveHandler(d.kmToken)
+		}
 		if d.dialog != nil {
 			d.dialog.Hide()
 		}
@@ -195,12 +248,45 @@ func (d *MaintenanceDialog) Cancel() {
 }
 
 func (d *MaintenanceDialog) invalidateScan() {
+	if d.scanning {
+		return
+	}
 	if d.applyButton != nil {
 		d.applyButton.Disable()
 	}
 	d.scanned = false
 	if d.summaryLabel != nil {
 		d.summaryLabel.SetText("Options changed. Scan again before applying cleanup.")
+	}
+}
+
+func (d *MaintenanceDialog) setScanControlsEnabled(enabled bool) {
+	checks := []*widget.Check{
+		d.cursorMemoryCheck,
+		d.navigationHistoryCheck,
+		d.skipNetworkCheck,
+		d.skipRemovableCheck,
+		d.skipUnavailableCheck,
+	}
+	for _, check := range checks {
+		if check == nil {
+			continue
+		}
+		if enabled {
+			check.Enable()
+		} else {
+			check.Disable()
+		}
+	}
+	if d.scanButton != nil {
+		if enabled {
+			d.scanButton.Enable()
+		} else {
+			d.scanButton.Disable()
+		}
+	}
+	if d.applyButton != nil {
+		d.applyButton.Disable()
 	}
 }
 
@@ -212,11 +298,12 @@ func (d *MaintenanceDialog) updateResults() {
 	d.resultBinding.Set(lines)
 
 	d.summaryLabel.SetText(fmt.Sprintf(
-		"Scanned %d Cursor Memory entries, %d Navigation History entries. Skipped %d network and %d removable paths. Found %d cleanup candidates.",
+		"Scanned %d Cursor Memory entries, %d Navigation History entries. Skipped %d network, %d removable, and %d unavailable-volume paths. Found %d cleanup candidates.",
 		d.lastScan.ScannedCursorMemory,
 		d.lastScan.ScannedNavigationHistory,
 		d.lastScan.SkippedNetwork,
 		d.lastScan.SkippedRemovable,
+		d.lastScan.SkippedUnavailable,
 		len(d.lastScan.Candidates),
 	))
 	if len(d.lastScan.Candidates) > 0 {

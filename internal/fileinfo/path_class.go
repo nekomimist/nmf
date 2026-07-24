@@ -3,13 +3,22 @@ package fileinfo
 // PathClass describes storage properties that affect whether maintenance
 // cleanup should treat a missing directory as safe to remove from runtime state.
 type PathClass struct {
-	Network   bool
-	Removable bool
+	Network     bool
+	Removable   bool
+	Unavailable bool
 }
 
-// ClassifyPath reports whether a path is known to be network-backed or
-// removable. Unknown local paths return a zero PathClass.
+// ClassifyPath reports whether a path is known to be network-backed,
+// removable, or on a currently unavailable volume. Unknown local paths return
+// a zero PathClass.
 func ClassifyPath(p string) (PathClass, error) {
+	// An archive inherits the storage properties of its backing file. Without
+	// this, a network archive looks local and maintenance may open it even when
+	// the caller asked to skip network paths.
+	if archiveFile, _, ok := SplitArchivePath(p); ok {
+		return ClassifyPath(archiveFile)
+	}
+
 	_, parsed, err := CanonicalDisplayPath(p)
 	if err != nil {
 		return PathClass{}, err

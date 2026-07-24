@@ -1,6 +1,8 @@
 package fileinfo
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -51,5 +53,15 @@ func TestResolveAccessibleDirectoryPath_LocalDirectory(t *testing.T) {
 func TestResolveAccessibleDirectoryPath_EmptyRejected(t *testing.T) {
 	if _, _, err := ResolveAccessibleDirectoryPath("   "); err == nil {
 		t.Fatalf("expected empty path to fail")
+	}
+}
+
+func TestResolveAccessibleDirectoryPathContext_Cancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, err := ResolveAccessibleDirectoryPathContext(ctx, t.TempDir())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
 	}
 }

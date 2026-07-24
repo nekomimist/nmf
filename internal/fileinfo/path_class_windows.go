@@ -10,6 +10,8 @@ import (
 )
 
 const (
+	driveUnknown   = 0
+	driveNoRootDir = 1
 	driveRemovable = 2
 	driveRemote    = 4
 )
@@ -24,12 +26,18 @@ func classifyLocalPath(p string) (PathClass, error) {
 	if err != nil {
 		return PathClass{}, err
 	}
-	switch windows.GetDriveType(ptr) {
+	return pathClassForWindowsDriveType(windows.GetDriveType(ptr)), nil
+}
+
+func pathClassForWindowsDriveType(driveType uint32) PathClass {
+	switch driveType {
+	case driveUnknown, driveNoRootDir:
+		return PathClass{Unavailable: true}
 	case driveRemote:
-		return PathClass{Network: true}, nil
+		return PathClass{Network: true}
 	case driveRemovable:
-		return PathClass{Removable: true}, nil
+		return PathClass{Removable: true}
 	default:
-		return PathClass{}, nil
+		return PathClass{}
 	}
 }
