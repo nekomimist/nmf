@@ -92,6 +92,7 @@ type NavigationHistoryDialog struct {
 	matchers         *search.Provider
 	listScroller     *dialogListScroller
 	scrollRight      bool
+	ownerFrame       dialogHighlightState
 }
 
 // NewNavigationHistoryDialog creates a new navigation history dialog
@@ -219,6 +220,11 @@ func (nhd *NavigationHistoryDialog) SetOnSelectedPathChanged(callback func(strin
 	nhd.notifySelectedPathChanged()
 }
 
+// SetOwnerHighlighted changes the accent frame around the owning dialog.
+func (nhd *NavigationHistoryDialog) SetOwnerHighlighted(highlighted bool) {
+	nhd.ownerFrame.setHighlighted(highlighted)
+}
+
 func (nhd *NavigationHistoryDialog) notifySelectedPathChanged() {
 	if nhd.onPathChanged != nil {
 		nhd.onPathChanged(nhd.selectedPath)
@@ -304,7 +310,8 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 	nhd.searchEntry.SetFocusRedirect(parent, nhd.sink)
 
 	// Create custom dialog with proper focus handling (wrapped by sink)
-	nhd.dialog = dialog.NewCustomWithoutButtons("Select Directory", nhd.sink, parent)
+	framedContent := nhd.ownerFrame.wrap(nhd.sink)
+	nhd.dialog = dialog.NewCustomWithoutButtons("Select Directory", framedContent, parent)
 
 	// Show dialog and ensure focus stays on sink so KeyManager gets keys
 	nhd.dialog.Show()

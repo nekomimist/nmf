@@ -46,3 +46,16 @@ func TestBuildEnhancedNavigationHistoryPathsDeduplicatesEarlierSources(t *testin
 		t.Fatalf("unpinRemoves = %#v, want none removable", unpinRemoves)
 	}
 }
+
+func TestOpenPathsInWindowsIncludesCurrentWindow(t *testing.T) {
+	fm := &FileManager{currentPath: "/current"}
+
+	pathList, openPaths := fm.openPathsInWindows()
+
+	if len(pathList) != 1 || pathList[0] != "/current" {
+		t.Fatalf("open path list = %#v, want current path", pathList)
+	}
+	if !openPaths["/current"] {
+		t.Fatalf("open paths = %#v, want current path marked open", openPaths)
+	}
+}

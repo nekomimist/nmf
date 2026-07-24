@@ -31,8 +31,8 @@ const (
 
 // DestinationCandidate describes a copy/move destination and where it came from.
 type DestinationCandidate struct {
-	Path              string
-	OpenInOtherWindow bool
+	Path         string
+	OpenInWindow bool
 }
 
 // CopyMoveResult describes the accepted copy/move dialog choices.
@@ -67,6 +67,7 @@ type CopyMoveDialog struct {
 	destScroll  *dialogListScroller
 	destEmpty   *widget.Label
 	scrollRight bool
+	ownerFrame  dialogHighlightState
 
 	onAccept      func(CopyMoveResult)
 	onPathChanged func(string)
@@ -230,7 +231,8 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveRe
 	d.searchEntry.SetFocusRedirect(parent, d.sink)
 
 	// Custom dialog without stock buttons (bar lives inside content)
-	d.dialog = dialog.NewCustomWithoutButtons(fmt.Sprintf("%s To...", strings.Title(string(d.op))), d.sink, parent)
+	framedContent := d.ownerFrame.wrap(d.sink)
+	d.dialog = dialog.NewCustomWithoutButtons(fmt.Sprintf("%s To...", strings.Title(string(d.op))), framedContent, parent)
 	d.dialog.Show()
 	if d.parent != nil && d.sink != nil {
 		d.parent.Canvas().Focus(d.sink)
@@ -276,6 +278,11 @@ func (d *CopyMoveDialog) updateFiltered(q string) {
 func (d *CopyMoveDialog) SetOnSelectedPathChanged(callback func(string)) {
 	d.onPathChanged = callback
 	d.notifySelectedPathChanged()
+}
+
+// SetOwnerHighlighted changes the accent frame around the owning dialog.
+func (d *CopyMoveDialog) SetOwnerHighlighted(highlighted bool) {
+	d.ownerFrame.setHighlighted(highlighted)
 }
 
 func (d *CopyMoveDialog) notifySelectedPathChanged() {
@@ -523,7 +530,7 @@ func (d *CopyMoveDialog) destinationTextColor(path string) color.Color {
 func destinationOpenMap(candidates []DestinationCandidate) map[string]bool {
 	result := make(map[string]bool, len(candidates))
 	for _, candidate := range candidates {
-		if candidate.OpenInOtherWindow {
+		if candidate.OpenInWindow {
 			result[candidate.Path] = true
 		}
 	}

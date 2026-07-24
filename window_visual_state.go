@@ -3,9 +3,6 @@ package main
 import (
 	"image/color"
 
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
-
 	customtheme "nmf/internal/theme"
 	"nmf/internal/ui"
 )
@@ -52,39 +49,29 @@ func (fm *FileManager) setWindowHighlight(active bool) {
 	if fm == nil || fm.windowHighlight == nil {
 		return
 	}
-	if active {
-		fm.windowHighlight.StrokeColor = fm.windowHighlightColor()
-	} else {
-		fm.windowHighlight.StrokeColor = color.Transparent
-	}
-	canvas.Refresh(fm.windowHighlight)
+	fm.windowHighlight.SetHighlighted(active)
 	if fm.window != nil {
 		fm.window.Canvas().Refresh(fm.windowHighlight)
 	}
-}
-
-func (fm *FileManager) windowHighlightColor() color.Color {
-	if fm != nil && fm.customTheme != nil {
-		return fm.customTheme.GetCustomColor(customtheme.ColorCopyMoveOpenDestination)
-	}
-	return currentAppColor(customtheme.ColorCopyMoveOpenDestination, color.RGBA{R: 30, G: 120, B: 80, A: 255})
-}
-
-func currentAppColor(name string, fallback color.RGBA) color.Color {
-	if app := fyne.CurrentApp(); app != nil {
-		if provider, ok := app.Settings().Theme().(interface {
-			GetCustomColor(string) color.RGBA
-		}); ok {
-			return provider.GetCustomColor(name)
-		}
-	}
-	return fallback
 }
 
 func clearFileManagerWindowHighlights() {
 	for _, manager := range snapshotFileManagerWindows() {
 		manager.setWindowHighlight(false)
 	}
+}
+
+func updateOpenPathHighlights(fm *FileManager, path string, openPaths map[string]bool, setOwnerHighlighted func(bool)) {
+	open := openPaths[path]
+	ownerHighlighted := open && fm != nil && sameDirectoryPath(path, fm.currentPath)
+	if setOwnerHighlighted != nil {
+		setOwnerHighlighted(ownerHighlighted)
+	}
+	if open {
+		highlightFileManagerWindowForPath(path)
+		return
+	}
+	clearFileManagerWindowHighlights()
 }
 
 func highlightFileManagerWindowForPath(path string) {
@@ -97,7 +84,6 @@ func highlightFileManagerWindowForPath(path string) {
 			continue
 		}
 		manager.setWindowHighlight(true)
-		return
 	}
 }
 

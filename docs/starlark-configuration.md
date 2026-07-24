@@ -289,8 +289,10 @@ Color API:
   `dialogListCursor` applies to Navigation History, Directory Jump, Filter,
   Copy/Move, and Jobs list cursor rows.
   `menuCursor` applies to command menu cursor rows.
-  `copyMoveOpenDestination` applies to Copy/Move destination rows and
-  Navigation History rows that are open in another File Manager window.
+  `copyMoveOpenDestination` applies to Copy/Move and Compare Directories
+  destination rows and Navigation History rows that are open in a File Manager
+  window, including the current one. It also colors the matching File Manager
+  frames and the owning dialog frame shown above the modal dim layer.
 - A color can be an RGBA list or tuple like `[255, 255, 255, 255]`, a Fyne
   theme color name like `"foreground"` or `"selection"`, or a Fyne primary
   color name like `"blue"` or `"green"`.

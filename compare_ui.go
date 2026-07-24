@@ -23,11 +23,7 @@ func (fm *FileManager) ShowCompareDialog() {
 	dlg := ui.NewCompareDialog(fm.currentPath, len(sourceFiles), dest, fm.keyManager, debugPrint, fm.searchMatchers)
 	openDest := destinationCandidateOpenMap(dest)
 	dlg.SetOnSelectedPathChanged(func(path string) {
-		if openDest[path] {
-			highlightFileManagerWindowForPath(path)
-			return
-		}
-		clearFileManagerWindowHighlights()
+		updateOpenPathHighlights(fm, path, openDest, dlg.SetOwnerHighlighted)
 	})
 	sourcePath := fm.currentPath
 	dlg.ShowDialog(fm.window, func(result ui.CompareResult) {

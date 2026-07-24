@@ -6,6 +6,8 @@ import (
 
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
+
+	"nmf/internal/config"
 )
 
 func TestJobsButtonText(t *testing.T) {
@@ -45,5 +47,21 @@ func TestJobsBlinkDropsTicksAfterWindowClose(t *testing.T) {
 
 	if fm.jobsButton.Importance != widget.MediumImportance {
 		t.Fatalf("closed window jobs importance = %v, want unchanged", fm.jobsButton.Importance)
+	}
+}
+
+func TestBuildDestinationCandidatesMarksCurrentWindowPathOpen(t *testing.T) {
+	fm := &FileManager{
+		currentPath: "/current",
+		state:       &config.State{},
+	}
+
+	candidates := fm.buildDestinationCandidates()
+
+	if len(candidates) != 1 {
+		t.Fatalf("destination candidates = %#v, want current path only", candidates)
+	}
+	if candidates[0].Path != "/current" || !candidates[0].OpenInWindow {
+		t.Fatalf("current destination = %#v, want open current path", candidates[0])
 	}
 }

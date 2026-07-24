@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/config"
@@ -30,7 +29,7 @@ type FileManager struct {
 	fileList             *widget.List
 	fileListView         *ui.KeySink
 	fileListItemHeight   float32
-	windowHighlight      *canvas.Rectangle
+	windowHighlight      *ui.HighlightFrame
 	windowActive         bool
 	pathDisplay          *widget.Label
 	statusLabel          *widget.Label

@@ -50,6 +50,7 @@ type CompareDialog struct {
 	closed      bool
 	destScroll  *dialogListScroller
 	scrollRight bool
+	ownerFrame  dialogHighlightState
 
 	onAccept      func(CompareResult)
 	onPathChanged func(string)
@@ -182,7 +183,8 @@ func (d *CompareDialog) ShowDialog(parent fyne.Window, onAccept func(CompareResu
 	d.sink = NewKeySink(content, d.keyManager, WithTabCapture(true))
 	d.searchEntry.SetFocusRedirect(parent, d.sink)
 
-	d.dialog = dialog.NewCustomWithoutButtons("Compare Directories", d.sink, parent)
+	framedContent := d.ownerFrame.wrap(d.sink)
+	d.dialog = dialog.NewCustomWithoutButtons("Compare Directories", framedContent, parent)
 	d.dialog.Show()
 	if d.parent != nil && d.sink != nil {
 		d.parent.Canvas().Focus(d.sink)
@@ -227,6 +229,11 @@ func (d *CompareDialog) updateFiltered(q string) {
 func (d *CompareDialog) SetOnSelectedPathChanged(callback func(string)) {
 	d.onPathChanged = callback
 	d.notifySelectedPathChanged()
+}
+
+// SetOwnerHighlighted changes the accent frame around the owning dialog.
+func (d *CompareDialog) SetOwnerHighlighted(highlighted bool) {
+	d.ownerFrame.setHighlighted(highlighted)
 }
 
 func (d *CompareDialog) notifySelectedPathChanged() {

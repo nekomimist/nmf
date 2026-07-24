@@ -43,7 +43,7 @@ func (fm *FileManager) ShowDirectoryTreeDialog() {
 func (fm *FileManager) ShowNavigationHistoryDialog() {
 	fm.normalizeNavigationHistoryForRuntimeState()
 	historyPaths := fm.state.GetNavigationHistory()
-	openPathList, openPaths := fm.openPathsInOtherWindows()
+	openPathList, openPaths := fm.openPathsInWindows()
 
 	enhancedPaths, unpinRemovesPath := buildEnhancedNavigationHistoryPaths(
 		fm.currentPath,
@@ -68,11 +68,7 @@ func (fm *FileManager) ShowNavigationHistoryDialog() {
 		fm.searchMatchers,
 	)
 	dialog.SetOnSelectedPathChanged(func(path string) {
-		if openPaths[path] {
-			highlightFileManagerWindowForPath(path)
-			return
-		}
-		clearFileManagerWindowHighlights()
+		updateOpenPathHighlights(fm, path, openPaths, dialog.SetOwnerHighlighted)
 	})
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
 		debugPrint("FileManager: history dialog selected path=%s focused=%s", selectedPath, focusedObjectLabel(fm.window))
@@ -176,16 +172,19 @@ func (fm *FileManager) UnpinHistoryPath(path string) bool {
 	return true
 }
 
-func (fm *FileManager) openPathsInOtherWindows() ([]string, map[string]bool) {
+func (fm *FileManager) openPathsInWindows() ([]string, map[string]bool) {
 	openPaths := map[string]bool{}
 	windowRegistry.Range(func(k, v any) bool {
 		other, ok := v.(*FileManager)
-		if !ok || other == fm || other.currentPath == "" {
+		if !ok || other.currentPath == "" {
 			return true
 		}
 		openPaths[other.currentPath] = true
 		return true
 	})
+	if fm != nil && fm.currentPath != "" {
+		openPaths[fm.currentPath] = true
+	}
 	pathList := make([]string, 0, len(openPaths))
 	for path := range openPaths {
 		pathList = append(pathList, path)

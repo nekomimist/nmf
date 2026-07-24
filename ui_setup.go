@@ -1,11 +1,9 @@
 package main
 
 import (
-	"image/color"
 	"os"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
@@ -112,9 +110,7 @@ func (fm *FileManager) setupUI() {
 		nil, nil, nil,
 		fm.fileListView,
 	)
-	fm.windowHighlight = canvas.NewRectangle(color.Transparent)
-	fm.windowHighlight.StrokeColor = color.Transparent
-	fm.windowHighlight.StrokeWidth = 4
+	fm.windowHighlight = ui.NewHighlightFrame(fm.customTheme)
 
 	// Stack main content with overlays on top (search, busy)
 	content := container.NewMax(

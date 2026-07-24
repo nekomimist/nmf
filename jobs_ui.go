@@ -196,11 +196,7 @@ func (fm *FileManager) showTransferDestinationDialog(op ui.Operation, targets []
 		return
 	}
 	dlg.SetOnSelectedPathChanged(func(path string) {
-		if openDest[path] {
-			highlightFileManagerWindowForPath(path)
-			return
-		}
-		clearFileManagerWindowHighlights()
+		updateOpenPathHighlights(fm, path, openDest, dlg.SetOwnerHighlighted)
 	})
 	dlg.SetOnOpenDestination(func(path string) {
 		fm.openWindowAtPath(path)
@@ -330,9 +326,9 @@ func (fm *FileManager) ShowJobsDialog() {
 	}
 }
 
-// buildDestinationCandidates composes other windows' dirs then history without dups.
+// buildDestinationCandidates composes open windows' dirs then history without dups.
 func (fm *FileManager) buildDestinationCandidates() []ui.DestinationCandidate {
-	// Collect from other windows
+	// Collect from other windows first.
 	seen := map[string]int{}
 	var candidates []ui.DestinationCandidate
 	windowRegistry.Range(func(k, v any) bool {
@@ -345,12 +341,12 @@ func (fm *FileManager) buildDestinationCandidates() []ui.DestinationCandidate {
 					return true
 				}
 				if idx, ok := seen[other.currentPath]; ok {
-					candidates[idx].OpenInOtherWindow = true
+					candidates[idx].OpenInWindow = true
 				} else {
 					seen[other.currentPath] = len(candidates)
 					candidates = append(candidates, ui.DestinationCandidate{
-						Path:              other.currentPath,
-						OpenInOtherWindow: true,
+						Path:         other.currentPath,
+						OpenInWindow: true,
 					})
 				}
 			}
@@ -360,9 +356,14 @@ func (fm *FileManager) buildDestinationCandidates() []ui.DestinationCandidate {
 
 	// Optionally include current path after other windows
 	if fm.currentPath != "" && !fileinfo.IsArchivePath(fm.currentPath) {
-		if _, ok := seen[fm.currentPath]; !ok {
+		if idx, ok := seen[fm.currentPath]; ok {
+			candidates[idx].OpenInWindow = true
+		} else {
 			seen[fm.currentPath] = len(candidates)
-			candidates = append(candidates, ui.DestinationCandidate{Path: fm.currentPath})
+			candidates = append(candidates, ui.DestinationCandidate{
+				Path:         fm.currentPath,
+				OpenInWindow: true,
+			})
 		}
 	}
 
@@ -383,7 +384,7 @@ func (fm *FileManager) buildDestinationCandidates() []ui.DestinationCandidate {
 func destinationCandidateOpenMap(candidates []ui.DestinationCandidate) map[string]bool {
 	result := make(map[string]bool, len(candidates))
 	for _, candidate := range candidates {
-		if candidate.OpenInOtherWindow {
+		if candidate.OpenInWindow {
 			result[candidate.Path] = true
 		}
 	}

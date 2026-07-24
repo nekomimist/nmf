@@ -4,8 +4,10 @@ import (
 	"testing"
 	"time"
 
+	fynetest "fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 
+	"nmf/internal/keymanager"
 	"nmf/internal/search"
 )
 
@@ -14,7 +16,7 @@ func TestCopyMoveFilterKeepsOpenDestinationMetadata(t *testing.T) {
 		OpCopy,
 		[]string{"file.txt"},
 		[]DestinationCandidate{
-			{Path: "/tmp/open", OpenInOtherWindow: true},
+			{Path: "/tmp/open", OpenInWindow: true},
 			{Path: "/tmp/history"},
 		},
 		map[string]time.Time{},
@@ -213,5 +215,33 @@ func TestMoveDialogDoesNotExposePreserveTimestamps(t *testing.T) {
 
 	if dialog.PreserveTimestamps() {
 		t.Fatal("move dialog should not expose copy preserve timestamps option")
+	}
+}
+
+func TestCopyMoveDialogOwnerFrameKeepsSinkFocused(t *testing.T) {
+	app := fynetest.NewApp()
+	defer app.Quit()
+
+	window := app.NewWindow("copy")
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	dialog := NewCopyMoveDialog(
+		OpCopy,
+		[]string{"file.txt"},
+		[]DestinationCandidate{{Path: "/tmp/one", OpenInWindow: true}},
+		map[string]time.Time{},
+		false,
+		km,
+		func(string, ...interface{}) {},
+	)
+	dialog.SetOwnerHighlighted(true)
+	dialog.ShowDialog(window, func(CopyMoveResult) {})
+	defer dialog.dialog.Hide()
+	defer km.RemoveHandler(dialog.kmToken)
+
+	if dialog.ownerFrame.frame == nil || !dialog.ownerFrame.frame.IsHighlighted() {
+		t.Fatal("shown copy dialog should retain its owner highlight")
+	}
+	if focused := window.Canvas().Focused(); focused != dialog.sink {
+		t.Fatalf("focused object = %T, want copy dialog sink", focused)
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 
@@ -68,30 +67,120 @@ func TestHighlightFileManagerWindowForPathHighlightsOpenWindow(t *testing.T) {
 	current := &FileManager{
 		window:          app.NewWindow("current"),
 		currentPath:     "/current",
-		windowHighlight: canvas.NewRectangle(color.Transparent),
+		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	target := &FileManager{
 		window:          app.NewWindow("target"),
 		currentPath:     "/target",
-		windowHighlight: canvas.NewRectangle(color.Transparent),
+		windowHighlight: ui.NewHighlightFrame(nil),
 	}
-	current.windowHighlight.StrokeColor = color.Transparent
-	target.windowHighlight.StrokeColor = color.Transparent
 	registerFileManagerWindow(current)
 	registerFileManagerWindow(target)
 
 	highlightFileManagerWindowForPath("/target")
 
-	if color.RGBAModel.Convert(current.windowHighlight.StrokeColor).(color.RGBA).A != 0 {
-		t.Fatal("current window highlight should stay transparent")
+	if current.windowHighlight.IsHighlighted() {
+		t.Fatal("current window highlight should stay inactive")
 	}
-	if color.RGBAModel.Convert(target.windowHighlight.StrokeColor).(color.RGBA).A == 0 {
-		t.Fatal("target window highlight should be visible")
+	if !target.windowHighlight.IsHighlighted() {
+		t.Fatal("target window highlight should be active")
 	}
 
 	clearFileManagerWindowHighlights()
-	if color.RGBAModel.Convert(target.windowHighlight.StrokeColor).(color.RGBA).A != 0 {
+	if target.windowHighlight.IsHighlighted() {
 		t.Fatal("target window highlight should be cleared")
+	}
+}
+
+func TestHighlightFileManagerWindowForPathHighlightsEveryMatchingWindow(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	resetFileManagerWindowTestRegistry(t)
+
+	first := &FileManager{
+		window:          app.NewWindow("first"),
+		currentPath:     "/shared",
+		windowHighlight: ui.NewHighlightFrame(nil),
+	}
+	second := &FileManager{
+		window:          app.NewWindow("second"),
+		currentPath:     "/shared",
+		windowHighlight: ui.NewHighlightFrame(nil),
+	}
+	other := &FileManager{
+		window:          app.NewWindow("other"),
+		currentPath:     "/other",
+		windowHighlight: ui.NewHighlightFrame(nil),
+	}
+	registerFileManagerWindow(first)
+	registerFileManagerWindow(second)
+	registerFileManagerWindow(other)
+
+	highlightFileManagerWindowForPath("/shared")
+
+	if !first.windowHighlight.IsHighlighted() {
+		t.Fatal("first matching window highlight should be active")
+	}
+	if !second.windowHighlight.IsHighlighted() {
+		t.Fatal("second matching window highlight should be active")
+	}
+	if other.windowHighlight.IsHighlighted() {
+		t.Fatal("non-matching window highlight should stay inactive")
+	}
+}
+
+func TestUpdateOpenPathHighlightsMarksDialogOwnerAndClears(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	resetFileManagerWindowTestRegistry(t)
+
+	current := &FileManager{
+		window:          app.NewWindow("current"),
+		currentPath:     "/current",
+		windowHighlight: ui.NewHighlightFrame(nil),
+	}
+	target := &FileManager{
+		window:          app.NewWindow("target"),
+		currentPath:     "/target",
+		windowHighlight: ui.NewHighlightFrame(nil),
+	}
+	registerFileManagerWindow(current)
+	registerFileManagerWindow(target)
+
+	ownerHighlighted := false
+	setOwnerHighlighted := func(highlighted bool) {
+		ownerHighlighted = highlighted
+	}
+	openPaths := map[string]bool{"/current": true, "/target": true}
+
+	updateOpenPathHighlights(current, "/current", openPaths, setOwnerHighlighted)
+
+	if !ownerHighlighted {
+		t.Fatal("current open path should highlight the owning dialog")
+	}
+	if !current.windowHighlight.IsHighlighted() {
+		t.Fatal("current open path should keep the dimmed window frame active")
+	}
+	if target.windowHighlight.IsHighlighted() {
+		t.Fatal("non-matching target should stay inactive")
+	}
+
+	updateOpenPathHighlights(current, "/target", openPaths, setOwnerHighlighted)
+
+	if ownerHighlighted {
+		t.Fatal("other open path should clear the owning dialog highlight")
+	}
+	if current.windowHighlight.IsHighlighted() {
+		t.Fatal("current window frame should clear for another path")
+	}
+	if !target.windowHighlight.IsHighlighted() {
+		t.Fatal("matching target window should be active")
+	}
+
+	updateOpenPathHighlights(current, "/history", openPaths, setOwnerHighlighted)
+
+	if ownerHighlighted || current.windowHighlight.IsHighlighted() || target.windowHighlight.IsHighlighted() {
+		t.Fatal("non-open path should clear dialog and window highlights")
 	}
 }
 
@@ -107,24 +196,24 @@ func TestCloseWindowClearsOtherWindowHighlight(t *testing.T) {
 	current := &FileManager{
 		window:          app.NewWindow("current"),
 		currentPath:     "/current",
-		windowHighlight: canvas.NewRectangle(color.Transparent),
+		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	target := &FileManager{
 		window:          app.NewWindow("target"),
 		currentPath:     "/target",
-		windowHighlight: canvas.NewRectangle(color.Transparent),
+		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	registerFileManagerWindow(current)
 	registerFileManagerWindow(target)
 	highlightFileManagerWindowForPath("/target")
 
-	if color.RGBAModel.Convert(target.windowHighlight.StrokeColor).(color.RGBA).A == 0 {
-		t.Fatal("target window highlight should be visible before close")
+	if !target.windowHighlight.IsHighlighted() {
+		t.Fatal("target window highlight should be active before close")
 	}
 
 	current.closeWindow()
 
-	if color.RGBAModel.Convert(target.windowHighlight.StrokeColor).(color.RGBA).A != 0 {
+	if target.windowHighlight.IsHighlighted() {
 		t.Fatal("target window highlight should be cleared when source window closes")
 	}
 }
