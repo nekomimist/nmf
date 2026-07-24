@@ -23,6 +23,11 @@ const (
 	fileViewerImagePanStep  = 32
 )
 
+var (
+	_ fyne.Scrollable        = (*fileViewerImageView)(nil)
+	_ fyne.SecondaryTappable = (*fileViewerImageView)(nil)
+)
+
 // fileViewerImageView renders only the visible viewport. Keeping the generated
 // raster at viewport size avoids creating a GPU texture as large as the source
 // image while still making 100% mean one source pixel per physical pixel.
@@ -116,6 +121,29 @@ func (v *fileViewerImageView) KeyUp(ev *fyne.KeyEvent) {
 func (v *fileViewerImageView) AcceptsTab() bool { return true }
 
 func (v *fileViewerImageView) Tapped(*fyne.PointEvent) {}
+
+func (v *fileViewerImageView) TappedSecondary(*fyne.PointEvent) {
+	if !v.ctrlPressed() {
+		return
+	}
+	v.ToggleFit()
+}
+
+func (v *fileViewerImageView) Scrolled(ev *fyne.ScrollEvent) {
+	if ev == nil || !v.ctrlPressed() {
+		return
+	}
+	switch {
+	case ev.Scrolled.DY > 0:
+		v.ZoomIn()
+	case ev.Scrolled.DY < 0:
+		v.ZoomOut()
+	}
+}
+
+func (v *fileViewerImageView) ctrlPressed() bool {
+	return v.km != nil && v.km.GetModifierState().CtrlPressed
+}
 
 func (v *fileViewerImageView) Dragged(ev *fyne.DragEvent) {
 	if ev == nil {

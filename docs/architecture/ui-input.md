@@ -309,8 +309,9 @@ Built-in file viewer:
   closing the viewer.
 - Image files expose Image and Hex panes without search or line-jump inputs.
   `=` toggles between shrink-to-fit and the saved free-zoom state, `+` and `-`
-  zoom the free state from 10% to 800%, and mouse dragging or cursor keys pan
-  while free zoom is active. Fit mode never enlarges an image above 100%.
+  zoom the free state from 10% to 800%, Ctrl+wheel zooms that same free state,
+  and Ctrl+secondary click toggles fit like `=`. Mouse dragging or cursor keys
+  pan while free zoom is active. Fit mode never enlarges an image above 100%.
 
 Filter-style text input:
 

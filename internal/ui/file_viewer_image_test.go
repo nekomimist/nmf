@@ -6,7 +6,10 @@ import (
 	"testing"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/test"
+
+	"nmf/internal/keymanager"
 )
 
 func TestFileViewerImageViewFitAndZoomState(t *testing.T) {
@@ -87,6 +90,64 @@ func TestFileViewerImageViewZoomLimitsAndPanClamp(t *testing.T) {
 	}
 	if got := view.Zoom(); got != fileViewerImageMinZoom {
 		t.Fatalf("minimum zoom = %f, want %f", got, fileViewerImageMinZoom)
+	}
+}
+
+func TestFileViewerImageViewCtrlMouseZoomAndFitToggle(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	changed := 0
+	view := newFileViewerImageView(
+		image.NewNRGBA(image.Rect(0, 0, 400, 400)),
+		km,
+		func() { changed++ },
+		nil,
+	)
+	view.Resize(fyne.NewSize(100, 100))
+	changed = 0
+
+	view.TappedSecondary(&fyne.PointEvent{})
+	view.Scrolled(&fyne.ScrollEvent{Scrolled: fyne.NewDelta(0, 1)})
+	if !view.Fit() || view.Zoom() != 1 || changed != 0 {
+		t.Fatalf("unmodified mouse changed fit=%t zoom=%f callbacks=%d", view.Fit(), view.Zoom(), changed)
+	}
+
+	view.KeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
+	view.Scrolled(&fyne.ScrollEvent{Scrolled: fyne.NewDelta(0, 1)})
+	if !view.Fit() || view.Zoom() != 1 || changed != 0 {
+		t.Fatalf("Ctrl+wheel in fit mode changed fit=%t zoom=%f callbacks=%d", view.Fit(), view.Zoom(), changed)
+	}
+	view.TappedSecondary(&fyne.PointEvent{})
+	if view.Fit() {
+		t.Fatal("Ctrl+secondary tap should leave fit mode")
+	}
+	if changed != 1 {
+		t.Fatalf("callbacks after Ctrl+secondary tap = %d, want 1", changed)
+	}
+
+	view.Scrolled(&fyne.ScrollEvent{Scrolled: fyne.NewDelta(0, 1)})
+	if got := view.Zoom(); math.Abs(got-1.25) > 0.001 {
+		t.Fatalf("zoom after Ctrl+wheel up = %f, want 1.25", got)
+	}
+	view.Scrolled(&fyne.ScrollEvent{Scrolled: fyne.NewDelta(0, -1)})
+	if got := view.Zoom(); math.Abs(got-1) > 0.001 {
+		t.Fatalf("zoom after Ctrl+wheel down = %f, want 1", got)
+	}
+	view.Scrolled(&fyne.ScrollEvent{Scrolled: fyne.NewDelta(1, 0)})
+	if got := view.Zoom(); math.Abs(got-1) > 0.001 {
+		t.Fatalf("zoom after horizontal Ctrl+wheel = %f, want unchanged", got)
+	}
+
+	view.KeyUp(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
+	view.Scrolled(&fyne.ScrollEvent{Scrolled: fyne.NewDelta(0, 1)})
+	view.TappedSecondary(&fyne.PointEvent{})
+	if view.Fit() || view.Zoom() != 1 {
+		t.Fatalf("mouse after Ctrl release changed fit=%t zoom=%f", view.Fit(), view.Zoom())
+	}
+	if changed != 3 {
+		t.Fatalf("mouse change callbacks = %d, want 3", changed)
 	}
 }
 
