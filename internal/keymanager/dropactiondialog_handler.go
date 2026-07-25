@@ -14,9 +14,12 @@ type DropActionDialogKeyHandler struct {
 
 // NewDropActionDialogKeyHandler creates a drop action dialog key handler.
 func NewDropActionDialogKeyHandler(d DropActionDialogInterface) *DropActionDialogKeyHandler {
+	// A printable key press delivers both a TypedKey and a TypedRune (see
+	// docs/architecture/ui-input.md, driver fact 6), so each spec belongs to
+	// exactly one of the two paths. C and M are letters and live on the rune
+	// path, matching SortDialog's o/d and the viewer's letter bindings; only
+	// Escape, which produces no rune, stays on the typed-key path.
 	base := newDialogKeyHandler("DropActionDialog", nil, []dialogBinding{
-		{"C", d.CopyDropped},
-		{"M", d.MoveDropped},
 		{"Escape", d.CancelDrop},
 	}).withRune(func(r rune, modifiers ModifierState) bool {
 		if modifiers.CtrlPressed || modifiers.AltPressed {
