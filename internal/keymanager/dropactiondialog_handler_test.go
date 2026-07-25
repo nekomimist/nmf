@@ -20,24 +20,28 @@ func TestDropActionDialogHandlerActions(t *testing.T) {
 	d := &fakeDropActionDialog{}
 	handler := NewDropActionDialogKeyHandler(d)
 
-	tests := []struct {
-		name string
-		key  fyne.KeyName
-		want func() int
-	}{
-		{name: "copy", key: fyne.KeyC, want: func() int { return d.copied }},
-		{name: "move", key: fyne.KeyM, want: func() int { return d.moved }},
-		{name: "cancel", key: fyne.KeyEscape, want: func() int { return d.cancelled }},
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyEscape}, ModifierState{}) {
+		t.Fatal("Escape should be handled")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if !handler.OnKeyActivated(&fyne.KeyEvent{Name: tt.key}, ModifierState{}) {
-				t.Fatalf("%s should be handled", tt.key)
-			}
-			if got := tt.want(); got != 1 {
-				t.Fatalf("action count = %d, want 1", got)
-			}
-		})
+	if d.cancelled != 1 {
+		t.Fatalf("cancel count = %d, want 1", d.cancelled)
+	}
+}
+
+// Driver fact 6 (docs/architecture/ui-input.md): a printable key press delivers
+// both a TypedKey and a TypedRune, so a spec matched on both paths fires twice.
+// C and M belong to the rune path only.
+func TestDropActionDialogHandlerBindsLettersOnOnePathOnly(t *testing.T) {
+	d := &fakeDropActionDialog{}
+	handler := NewDropActionDialogKeyHandler(d)
+
+	for _, key := range []fyne.KeyName{fyne.KeyC, fyne.KeyM} {
+		if handler.OnKeyActivated(&fyne.KeyEvent{Name: key}, ModifierState{}) {
+			t.Fatalf("%s must not also be handled on the typed-key path", key)
+		}
+	}
+	if d.copied != 0 || d.moved != 0 {
+		t.Fatalf("typed-key path ran an action: copy=%d move=%d", d.copied, d.moved)
 	}
 }
 
