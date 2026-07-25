@@ -3,6 +3,7 @@ package fileinfo
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"image"
 	_ "image/gif"
@@ -214,12 +215,38 @@ func supportedPreviewImageFormat(data []byte) string {
 		return "GIF"
 	case len(data) >= 12 && bytes.Equal(data[:4], []byte("RIFF")) && bytes.Equal(data[8:12], []byte("WEBP")):
 		return "WebP"
-	case len(data) >= 2 && bytes.Equal(data[:2], []byte("BM")):
+	case looksLikeBMP(data):
 		return "BMP"
 	case len(data) >= 4 && (bytes.Equal(data[:4], []byte{'I', 'I', '*', 0}) || bytes.Equal(data[:4], []byte{'M', 'M', 0, '*'})):
 		return "TIFF"
 	default:
 		return ""
+	}
+}
+
+// looksLikeBMP reports whether data starts with a BMP the decoder could
+// actually read. The "BM" signature alone is only two bytes, so matching on it
+// would claim every text file that happens to start with those letters ("BMW
+// parts list", "BM (Business Model) memo") and, because an image classification
+// skips text decoding entirely, would leave such a file with no readable pane.
+// The DIB header length at offset 14 is the discriminator: golang.org/x/image
+// /bmp accepts exactly BITMAPINFOHEADER, BITMAPV4HEADER and BITMAPV5HEADER, and
+// each of those values requires NUL bytes that text does not contain.
+func looksLikeBMP(data []byte) bool {
+	const (
+		fileHeaderLen   = 14
+		infoHeaderLen   = 40
+		v4InfoHeaderLen = 108
+		v5InfoHeaderLen = 124
+	)
+	if len(data) < fileHeaderLen+4 || !bytes.Equal(data[:2], []byte("BM")) {
+		return false
+	}
+	switch binary.LittleEndian.Uint32(data[fileHeaderLen : fileHeaderLen+4]) {
+	case infoHeaderLen, v4InfoHeaderLen, v5InfoHeaderLen:
+		return true
+	default:
+		return false
 	}
 }
 
