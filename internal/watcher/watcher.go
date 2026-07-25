@@ -29,10 +29,15 @@ type DirectoryWatcher struct {
 	pollInterval  time.Duration
 	subscription  *Subscription
 	stopChan      chan struct{}
-	changeChan    chan *PendingChanges                     // Channel for thread-safe change communication
-	running       bool                                     // True while current watcher run is active
-	runID         uint64                                   // Monotonically increasing watcher run generation
-	debugPrint    func(format string, args ...interface{}) // Debug function
+	changeChan    chan *PendingChanges // Channel for thread-safe change communication
+	running       bool                 // True while current watcher run is active
+	runID         uint64               // Monotonically increasing watcher run generation
+	// baselineGen increments whenever previousFiles is reset from the file
+	// manager's list rather than advanced from a directory read. It lets a
+	// change set that is already in flight notice that its baseline was
+	// replaced underneath it.
+	baselineGen uint64
+	debugPrint  func(format string, args ...interface{}) // Debug function
 }
 
 // PendingChanges represents file changes waiting to be applied
@@ -136,6 +141,7 @@ func (dw *DirectoryWatcher) updateSnapshot() {
 	defer dw.mu.Unlock()
 
 	dw.previousFiles = make(map[string]fileinfo.FileInfo)
+	dw.baselineGen++
 
 	// Take snapshot of current files (excluding ".." entry and deleted files)
 	for _, file := range dw.fm.GetFiles() {
@@ -188,8 +194,10 @@ func (dw *DirectoryWatcher) queueSnapshotChanges(runID uint64, currentFiles Snap
 		return
 	}
 
-	// Detect changes
-	added, deleted, modified := dw.detectChanges(currentFiles)
+	// Detect changes. baselineGen identifies the baseline they were derived
+	// from, so a reset that lands while this change set is in flight can be
+	// told apart from the steady state.
+	added, deleted, modified, baselineGen := dw.detectChanges(currentFiles)
 
 	// Apply changes if any detected
 	if len(added) > 0 || len(deleted) > 0 || len(modified) > 0 {
@@ -206,7 +214,7 @@ func (dw *DirectoryWatcher) queueSnapshotChanges(runID uint64, currentFiles Snap
 			// Advance the expected baseline only after the change set is queued.
 			// This prevents a burst of snapshots from deriving duplicate adds or
 			// deletes while the first UI application is still pending.
-			dw.advanceSnapshot(runID, currentFiles)
+			dw.advanceSnapshot(runID, baselineGen, currentFiles)
 		default:
 			// Channel full, skip this update
 			dw.debugPrint("DirectoryWatcher: Change channel full, skipping update")
@@ -214,10 +222,24 @@ func (dw *DirectoryWatcher) queueSnapshotChanges(runID uint64, currentFiles Snap
 	}
 }
 
-func (dw *DirectoryWatcher) advanceSnapshot(runID uint64, files Snapshot) {
+// advanceSnapshot promotes the directory read that produced the queued change
+// set to be the new baseline.
+//
+// baselineGen is the generation the change set was derived from. Detection and
+// this promotion are separate critical sections with a channel send between
+// them, so RefreshSnapshot can install a newer baseline in the gap; without the
+// generation check this would overwrite it with the older read. The UI's reset
+// then wins, and the next directory read reconciles against it -- otherwise a
+// file the UI had just added would be missing from the baseline and reported as
+// "added" a second time.
+func (dw *DirectoryWatcher) advanceSnapshot(runID, baselineGen uint64, files Snapshot) {
 	dw.mu.Lock()
 	defer dw.mu.Unlock()
 	if !dw.running || dw.runID != runID {
+		return
+	}
+	if dw.baselineGen != baselineGen {
+		dw.debugPrint("DirectoryWatcher: baseline reset during detection, keeping gen=%d", dw.baselineGen)
 		return
 	}
 	// Each subscriber receives its own cloned snapshot from WatchHub. After the
@@ -226,8 +248,11 @@ func (dw *DirectoryWatcher) advanceSnapshot(runID uint64, files Snapshot) {
 	dw.previousFiles = files
 }
 
-// detectChanges compares current and previous states to find differences
-func (dw *DirectoryWatcher) detectChanges(currentFiles map[string]fileinfo.FileInfo) (added, deleted, modified []fileinfo.FileInfo) {
+// detectChanges compares current and previous states to find differences. It
+// also reports the baseline generation the comparison used, so the caller can
+// tell whether that baseline is still current by the time it acts on the
+// result.
+func (dw *DirectoryWatcher) detectChanges(currentFiles map[string]fileinfo.FileInfo) (added, deleted, modified []fileinfo.FileInfo, baselineGen uint64) {
 	dw.mu.RLock()
 	defer dw.mu.RUnlock()
 
@@ -254,7 +279,7 @@ func (dw *DirectoryWatcher) detectChanges(currentFiles map[string]fileinfo.FileI
 		}
 	}
 
-	return added, deleted, modified
+	return added, deleted, modified, dw.baselineGen
 }
 
 // applyDataChanges applies detected changes to the file manager data. The
