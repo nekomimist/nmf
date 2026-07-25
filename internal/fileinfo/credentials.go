@@ -147,11 +147,40 @@ func GetCachedCredentials(host, share string) (Credentials, bool) {
 	return Credentials{}, false
 }
 
-// ClearCachedCredentials removes cached credentials for host/share.
+// ClearCachedCredentials removes cached credentials for host/share from the
+// in-memory cache only. Use it for per-operation failures, where the error says
+// something about the requested path rather than about the login itself.
 func ClearCachedCredentials(host, share string) {
 	if cp, ok := currentCredentialsProvider().(*CachedCredentialsProvider); ok {
 		cp.mu.Lock()
 		delete(cp.cache, host+"\x00"+share)
 		cp.mu.Unlock()
 	}
+}
+
+// ClearRejectedLogin drops credentials the server refused at authentication
+// time from the in-memory cache and, when the OS keyring is holding those same
+// values, from the keyring too.
+//
+// Clearing only the memory copy is not recoverable: getCredentials consults the
+// keyring before it prompts, so a password changed on the server would loop
+// "keyring hit -> refused -> clear memory -> keyring hit" forever and the login
+// dialog would never reappear. The keyring entry is removed only when it
+// matches what was just refused, so credentials seeded from an smb:// URL or
+// typed into the prompt cannot evict a different stored login.
+func ClearRejectedLogin(host, share string, rejected Credentials) {
+	ClearCachedCredentials(host, share)
+
+	store := currentSecretStore()
+	if store == nil {
+		return
+	}
+	domain, user, pass, found, err := store.Get(host, share)
+	if err != nil || !found {
+		return
+	}
+	if domain != rejected.Domain || user != rejected.Username || pass != rejected.Password {
+		return
+	}
+	_ = store.Delete(host, share)
 }
