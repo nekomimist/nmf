@@ -321,6 +321,15 @@ Built-in file viewer:
   Markdown AST to simplified text, including fixed-width pipe tables and
   front-matter metadata tables with long cells wrapped to multiple rows, and
   leaves diagram rendering to external viewers.
+- Column widths come from one source only: `go-runewidth`, which is also what
+  `widget.TextGrid` measures with when it paints. The detected locale's East
+  Asian ambiguous-width convention is pushed into `runewidth`'s default
+  condition once (`syncAmbiguousWidthPolicy`) rather than applied privately, so
+  pipe tables and the grid cannot disagree. Measuring separately is what
+  misaligns tables: on Japanese Windows `runewidth` reports ambiguous runes as
+  narrow because `GetConsoleOutputCP` returns 0 in a GUI process, and combining
+  marks occupy a grid cell even though `golang.org/x/text/width` scores them
+  zero.
 - Search and line inputs are normal entries with the line-edit cursor and
   selection theme colors. Submitted searches return focus to the active viewer
   pane regardless of match result; Escape returns focus without submitting or

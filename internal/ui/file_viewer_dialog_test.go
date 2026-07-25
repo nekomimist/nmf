@@ -14,6 +14,7 @@ import (
 	"fyne.io/fyne/v2/test"
 	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/mattn/go-runewidth"
 
 	"nmf/internal/config"
 	"nmf/internal/fileinfo"
@@ -168,7 +169,7 @@ func TestViewerMarkdownWrapsLongTableCells(t *testing.T) {
 func assertViewerLinesWithinWidth(t *testing.T, lines []string, width int) {
 	t.Helper()
 	for _, line := range lines {
-		if got := viewerDisplayLineWidth(line, false); got > width {
+		if got := viewerTextGridLineWidth(line); got > width {
 			t.Fatalf("line width = %d, want <= %d: %q", got, width, line)
 		}
 	}
@@ -1624,12 +1625,36 @@ func TestSplitViewerLinesKeepsTrailingEmptyLine(t *testing.T) {
 	}
 }
 
-func TestViewerRuneWidthUsesLocaleForAmbiguousRunes(t *testing.T) {
-	if got := viewerRuneWidth('·', false); got != 1 {
-		t.Fatalf("viewerRuneWidth(..., false) = %d, want narrow ambiguous rune", got)
+// The ambiguous-width convention has to reach go-runewidth itself, because
+// that is what Fyne's TextGrid measures with when it paints. Measuring
+// ambiguous runes differently from the grid is what misaligns Markdown tables.
+func TestSyncAmbiguousWidthPolicyDrivesRuneWidth(t *testing.T) {
+	oldWide := runewidth.EastAsianWidth
+	oldCondition := runewidth.DefaultCondition.EastAsianWidth
+	t.Cleanup(func() {
+		runewidth.EastAsianWidth = oldWide
+		runewidth.DefaultCondition.EastAsianWidth = oldCondition
+	})
+
+	runewidth.DefaultCondition.EastAsianWidth = false
+	if got := viewerTextGridRuneWidth('·'); got != 1 {
+		t.Fatalf("viewerTextGridRuneWidth('·') = %d, want narrow ambiguous rune", got)
 	}
-	if got := viewerRuneWidth('·', true); got != 2 {
-		t.Fatalf("viewerRuneWidth(..., true) = %d, want wide ambiguous rune", got)
+	runewidth.DefaultCondition.EastAsianWidth = true
+	if got := viewerTextGridRuneWidth('·'); got != 2 {
+		t.Fatalf("viewerTextGridRuneWidth('·') = %d, want wide ambiguous rune", got)
+	}
+	if got := runewidth.StringWidth("·"); got != viewerTextGridRuneWidth('·') {
+		t.Fatalf("grid width %d disagrees with TextGrid's measurement %d", viewerTextGridRuneWidth('·'), got)
+	}
+}
+
+// Combining marks occupy a grid cell of their own, so measuring them as zero
+// (which golang.org/x/text/width does) would make a table row too wide.
+func TestViewerTextGridWidthMatchesTextGridForCombiningMarks(t *testing.T) {
+	const decomposed = "é"
+	if got, want := viewerTextGridLineWidth(decomposed), 2; got != want {
+		t.Fatalf("viewerTextGridLineWidth(%q) = %d, want %d", decomposed, got, want)
 	}
 }
 
