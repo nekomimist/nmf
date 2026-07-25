@@ -5,8 +5,8 @@ import (
 	"math"
 	"os"
 	"strings"
+	"sync"
 	"time"
-	"unicode"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -15,7 +15,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 	locale "github.com/jeandeaual/go-locale"
 	"github.com/mattn/go-runewidth"
-	"golang.org/x/text/width"
 
 	"nmf/internal/keymanager"
 	customtheme "nmf/internal/theme"
@@ -33,16 +32,20 @@ type fileViewerTextGrid struct {
 	grid        *widget.TextGrid
 	selectionBG *fyne.Container
 	lines       []string
-	visible     []viewerVisibleLine
-	topLine     int
-	leftCol     int
-	visibleRows int
-	visibleCols int
-	wrap        bool
-	cellSize    fyne.Size
-	selection   viewerTextSelection
-	selecting   bool
-	search      viewerTextSearch
+	// maxLineWidth caches the widest display line. lines is fixed for the
+	// grid's lifetime, so the scan behind it runs at most once instead of on
+	// every horizontal cursor move and every resize.
+	maxLineWidth int
+	visible      []viewerVisibleLine
+	topLine      int
+	leftCol      int
+	visibleRows  int
+	visibleCols  int
+	wrap         bool
+	cellSize     fyne.Size
+	selection    viewerTextSelection
+	selecting    bool
+	search       viewerTextSearch
 
 	km         *keymanager.KeyManager
 	onMoved    func()
@@ -85,6 +88,7 @@ type viewerVisibleLine struct {
 
 func newFileViewerTextGrid(text string, km *keymanager.KeyManager, onMoved func(), debugPrint func(format string, args ...interface{})) *fileViewerTextGrid {
 	start := time.Now()
+	syncAmbiguousWidthPolicy()
 	v := &fileViewerTextGrid{
 		grid:        widget.NewTextGrid(),
 		selectionBG: container.NewWithoutLayout(),
@@ -94,6 +98,11 @@ func newFileViewerTextGrid(text string, km *keymanager.KeyManager, onMoved func(
 		km:          km,
 		onMoved:     onMoved,
 		debugPrint:  debugPrint,
+	}
+	for _, line := range v.lines {
+		if w := viewerTextGridLineWidth(line); w > v.maxLineWidth {
+			v.maxLineWidth = w
+		}
 	}
 	v.grid.Scroll = fyne.ScrollNone
 	v.ExtendBaseWidget(v)
@@ -157,32 +166,23 @@ func viewerLocaleLanguageUsesWideAmbiguous(locale string) bool {
 	}
 }
 
-func viewerDisplayLineWidth(line string, wideAmbiguous bool) int {
-	col := 0
-	for _, r := range line {
-		if r == '\t' {
-			col = nextTabStop(col, fileViewerTextGridTabWidth)
-			continue
-		}
-		col += viewerRuneWidth(r, wideAmbiguous)
-	}
-	return col
-}
-
-func viewerRuneWidth(r rune, wideAmbiguous bool) int {
-	if r == 0 || unicode.Is(unicode.Mn, r) || unicode.Is(unicode.Me, r) {
-		return 0
-	}
-	switch width.LookupRune(r).Kind() {
-	case width.EastAsianWide, width.EastAsianFullwidth:
-		return 2
-	case width.EastAsianAmbiguous:
-		if wideAmbiguous {
-			return 2
-		}
-	}
-	return 1
-}
+// syncAmbiguousWidthPolicy makes go-runewidth -- the single width source used
+// by this viewer and by Fyne's TextGrid alike -- follow the locale's East Asian
+// ambiguous-width convention.
+//
+// Applying the policy globally is what keeps measurement and rendering in
+// agreement. TextGrid calls runewidth directly (widget/textgrid.go), so any
+// convention the viewer applied only to its own measurements would disagree
+// with what actually gets painted: on Japanese Windows runewidth answers
+// "narrow" for ambiguous runes because GetConsoleOutputCP returns 0 in a GUI
+// process, and every Markdown table containing one would be padded to a width
+// the grid does not use. runewidth is referenced nowhere else in Fyne, so the
+// reach of this is exactly the viewer's text panes.
+var syncAmbiguousWidthPolicy = sync.OnceFunc(func() {
+	wide := viewerLocaleUsesWideAmbiguous()
+	runewidth.EastAsianWidth = wide
+	runewidth.DefaultCondition.EastAsianWidth = wide
+})
 
 func nextTabStop(col, tabWidth int) int {
 	if tabWidth <= 0 {
@@ -547,13 +547,7 @@ func (v *fileViewerTextGrid) maxLeftCol() int {
 	if cols < 1 {
 		cols = fileViewerTextGridFallbackCols
 	}
-	maxWidth := 0
-	for _, line := range v.lines {
-		if w := viewerTextGridLineWidth(line); w > maxWidth {
-			maxWidth = w
-		}
-	}
-	maxCol := maxWidth - cols
+	maxCol := v.maxLineWidth - cols
 	if maxCol < 0 {
 		return 0
 	}
@@ -885,7 +879,12 @@ func newViewerDisplayLineMap(line string) viewerDisplayLineMap {
 func viewerTextGridRuneWidth(r rune) int {
 	// Match TextGrid.parseRows exactly so our viewport and its native
 	// continuation cells agree across locale-dependent ambiguous widths.
-	width := runewidth.StringWidth(string(r))
+	// parseRows measures with runewidth.StringWidth(string(cell.Rune)); for a
+	// single rune that is by construction RuneWidth(r) (StringWidth returns
+	// RuneWidth as soon as the string decodes to one rune, and grapheme
+	// clustering needs two), so this is the same number without the per-rune
+	// string allocation that shows up when scanning a whole file.
+	width := runewidth.RuneWidth(r)
 	if width < 1 {
 		return 1
 	}

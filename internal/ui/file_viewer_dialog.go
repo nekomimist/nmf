@@ -648,21 +648,20 @@ func formatMarkdownFrontMatter(src string) []string {
 		return nil
 	}
 	widths := []int{3, 5}
-	wideAmbiguous := viewerLocaleUsesWideAmbiguous()
 	for _, row := range rows {
 		for col, cell := range row {
-			if width := viewerDisplayLineWidth(cell, wideAmbiguous); width > widths[col] {
+			if width := viewerTextGridLineWidth(cell); width > widths[col] {
 				widths[col] = width
 			}
 		}
 	}
 	widths = capMarkdownTableWidths(widths, markdownTableTargetColumns)
 	lines := []string{
-		formatMarkdownTableRows([]string{"Name", "Value"}, widths, nil, wideAmbiguous)[0],
+		formatMarkdownTableRows([]string{"Name", "Value"}, widths, nil)[0],
 		formatMarkdownTableSeparator(widths),
 	}
 	for _, row := range rows {
-		lines = append(lines, formatMarkdownTableRows(row, widths, nil, wideAmbiguous)...)
+		lines = append(lines, formatMarkdownTableRows(row, widths, nil)...)
 	}
 	return lines
 }
@@ -803,10 +802,9 @@ func renderMarkdownTable(source []byte, table *tableast.Table) []string {
 		}
 	}
 	widths := make([]int, cols)
-	wideAmbiguous := viewerLocaleUsesWideAmbiguous()
 	for _, row := range rows {
 		for col, cell := range row {
-			if width := viewerDisplayLineWidth(cell, wideAmbiguous); width > widths[col] {
+			if width := viewerTextGridLineWidth(cell); width > widths[col] {
 				widths[col] = width
 			}
 		}
@@ -820,7 +818,7 @@ func renderMarkdownTable(source []byte, table *tableast.Table) []string {
 
 	lines := make([]string, 0, len(rows)+1)
 	for i, row := range rows {
-		lines = append(lines, formatMarkdownTableRows(row, widths, table.Alignments, wideAmbiguous)...)
+		lines = append(lines, formatMarkdownTableRows(row, widths, table.Alignments)...)
 		if i == 0 {
 			lines = append(lines, formatMarkdownTableSeparator(widths))
 		}
@@ -875,7 +873,7 @@ func markdownTableContentWidth(widths []int) int {
 	return total
 }
 
-func formatMarkdownTableRows(row []string, widths []int, alignments []tableast.Alignment, wideAmbiguous bool) []string {
+func formatMarkdownTableRows(row []string, widths []int, alignments []tableast.Alignment) []string {
 	cells := make([][]string, len(widths))
 	maxRows := 1
 	for col, width := range widths {
@@ -883,19 +881,19 @@ func formatMarkdownTableRows(row []string, widths []int, alignments []tableast.A
 		if col < len(row) {
 			cell = row[col]
 		}
-		cells[col] = wrapMarkdownTableCell(cell, width, wideAmbiguous)
+		cells[col] = wrapMarkdownTableCell(cell, width)
 		if len(cells[col]) > maxRows {
 			maxRows = len(cells[col])
 		}
 	}
 	lines := make([]string, 0, maxRows)
 	for rowIndex := 0; rowIndex < maxRows; rowIndex++ {
-		lines = append(lines, formatMarkdownTableRow(cells, rowIndex, widths, alignments, wideAmbiguous))
+		lines = append(lines, formatMarkdownTableRow(cells, rowIndex, widths, alignments))
 	}
 	return lines
 }
 
-func formatMarkdownTableRow(cells [][]string, rowIndex int, widths []int, alignments []tableast.Alignment, wideAmbiguous bool) string {
+func formatMarkdownTableRow(cells [][]string, rowIndex int, widths []int, alignments []tableast.Alignment) string {
 	var b strings.Builder
 	b.WriteByte('|')
 	for col, width := range widths {
@@ -908,14 +906,14 @@ func formatMarkdownTableRow(cells [][]string, rowIndex int, widths []int, alignm
 			align = alignments[col]
 		}
 		b.WriteByte(' ')
-		b.WriteString(padMarkdownTableCell(cell, width, align, wideAmbiguous))
+		b.WriteString(padMarkdownTableCell(cell, width, align))
 		b.WriteByte(' ')
 		b.WriteByte('|')
 	}
 	return b.String()
 }
 
-func wrapMarkdownTableCell(cell string, width int, wideAmbiguous bool) []string {
+func wrapMarkdownTableCell(cell string, width int) []string {
 	if width < 1 {
 		width = 1
 	}
@@ -927,24 +925,24 @@ func wrapMarkdownTableCell(cell string, width int, wideAmbiguous bool) []string 
 	current := ""
 	for _, word := range words {
 		if current == "" {
-			if viewerDisplayLineWidth(word, wideAmbiguous) <= width {
+			if viewerTextGridLineWidth(word) <= width {
 				current = word
 				continue
 			}
-			lines = append(lines, splitMarkdownTableWord(word, width, wideAmbiguous)...)
+			lines = append(lines, splitMarkdownTableWord(word, width)...)
 			continue
 		}
 		candidate := current + " " + word
-		if viewerDisplayLineWidth(candidate, wideAmbiguous) <= width {
+		if viewerTextGridLineWidth(candidate) <= width {
 			current = candidate
 			continue
 		}
 		lines = append(lines, current)
 		current = ""
-		if viewerDisplayLineWidth(word, wideAmbiguous) <= width {
+		if viewerTextGridLineWidth(word) <= width {
 			current = word
 		} else {
-			lines = append(lines, splitMarkdownTableWord(word, width, wideAmbiguous)...)
+			lines = append(lines, splitMarkdownTableWord(word, width)...)
 		}
 	}
 	if current != "" {
@@ -956,7 +954,7 @@ func wrapMarkdownTableCell(cell string, width int, wideAmbiguous bool) []string 
 	return lines
 }
 
-func splitMarkdownTableWord(word string, width int, wideAmbiguous bool) []string {
+func splitMarkdownTableWord(word string, width int) []string {
 	if width < 1 {
 		width = 1
 	}
@@ -964,7 +962,7 @@ func splitMarkdownTableWord(word string, width int, wideAmbiguous bool) []string
 	var b strings.Builder
 	col := 0
 	for _, r := range word {
-		w := viewerRuneWidth(r, wideAmbiguous)
+		w := viewerTextGridRuneWidth(r)
 		if w < 1 {
 			w = 1
 		}
@@ -997,8 +995,8 @@ func formatMarkdownTableSeparator(widths []int) string {
 	return b.String()
 }
 
-func padMarkdownTableCell(cell string, width int, align tableast.Alignment, wideAmbiguous bool) string {
-	padding := width - viewerDisplayLineWidth(cell, wideAmbiguous)
+func padMarkdownTableCell(cell string, width int, align tableast.Alignment) string {
+	padding := width - viewerTextGridLineWidth(cell)
 	if padding <= 0 {
 		return cell
 	}
