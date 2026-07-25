@@ -211,6 +211,15 @@ func (fm *FileManager) RemoveFromSelections(path string) {
 // marshals into this call via fyne.DoAndWait (internal/watcher/watcher.go
 // applyDataChanges), since fm.files/fm.selectedFiles are otherwise mutated
 // without synchronization from UI-thread code such as SetFileSelected.
+func indexOfFilePath(files []fileinfo.FileInfo, path string) int {
+	for i, file := range files {
+		if file.Path == path {
+			return i
+		}
+	}
+	return -1
+}
+
 func (fm *FileManager) ApplyChanges(added, deleted, modified []fileinfo.FileInfo) {
 	files := fm.GetFiles()
 
@@ -240,8 +249,15 @@ func (fm *FileManager) ApplyChanges(added, deleted, modified []fileinfo.FileInfo
 		}
 	}
 
-	// Handle added files - append to end
+	// Handle added files - append to end. A path already in the list is
+	// replaced rather than appended: the baseline excludes entries marked
+	// deleted, so a file recreated under a name the list still shows as deleted
+	// arrives here as an add, and appending it would leave the row twice.
 	for _, addedFile := range added {
+		if i := indexOfFilePath(files, addedFile.Path); i >= 0 {
+			files[i] = addedFile
+			continue
+		}
 		files = append(files, addedFile)
 	}
 

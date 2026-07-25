@@ -136,3 +136,24 @@ func TestApplyChangesModifyOnlyIsDirFlipResorts(t *testing.T) {
 		t.Fatalf("expected flipped entry to be marked as a directory: %+v", fm.files[0])
 	}
 }
+
+// A file recreated under a name the list still shows as deleted arrives as an
+// add, because the watcher baseline excludes deleted entries. Appending it
+// would leave the same path in the list twice.
+func TestApplyChangesReplacesRecreatedPathInsteadOfDuplicating(t *testing.T) {
+	deleted := fileinfo.FileInfo{Path: "/tmp/a.txt", Name: "a.txt", Status: fileinfo.StatusDeleted}
+	other := fileinfo.FileInfo{Path: "/tmp/b.txt", Name: "b.txt"}
+	fm := newApplyChangesTestFileManager([]fileinfo.FileInfo{deleted, other},
+		config.SortConfig{SortBy: "name", SortOrder: "asc"})
+
+	recreated := fileinfo.FileInfo{Path: "/tmp/a.txt", Name: "a.txt", Status: fileinfo.StatusAdded}
+	fm.ApplyChanges([]fileinfo.FileInfo{recreated}, nil, nil)
+
+	got := fm.GetFiles()
+	if want := []string{"a.txt", "b.txt"}; !reflect.DeepEqual(namesOf(got), want) {
+		t.Fatalf("files = %v, want %v", namesOf(got), want)
+	}
+	if got[0].Status != fileinfo.StatusAdded {
+		t.Fatalf("status = %v, want the recreated entry to replace the deleted one", got[0].Status)
+	}
+}

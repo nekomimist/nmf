@@ -95,7 +95,7 @@ func TestDetectChanges_AddedDeletedModified(t *testing.T) {
 		"/tmp/c.txt": fi("/tmp/c.txt", "c.txt", 1, t2),
 	}
 
-	added, deleted, modified := dw.detectChanges(current)
+	added, deleted, modified, _ := dw.detectChanges(current)
 	if len(added) != 1 || added[0].Name != "c.txt" {
 		t.Fatalf("expected 1 added c.txt, got %#v", added)
 	}
@@ -132,7 +132,7 @@ func TestDetectChanges_IsDirFlipWithSameMtimeSize(t *testing.T) {
 		"/tmp/beta": betaAsDir,
 	}
 
-	added, deleted, modified := dw.detectChanges(current)
+	added, deleted, modified, _ := dw.detectChanges(current)
 	if len(added) != 0 || len(deleted) != 0 {
 		t.Fatalf("expected no added/deleted, got added=%#v deleted=%#v", added, deleted)
 	}
@@ -324,5 +324,71 @@ func TestApplyDataChanges_NoopWhenAllEmpty(t *testing.T) {
 
 	if len(m.files) != 1 {
 		t.Fatalf("files should be untouched, got %#v", m.files)
+	}
+}
+
+// A RefreshSnapshot that lands between detection and the baseline promotion
+// must win. Otherwise the promotion installs the older directory read, the
+// entry the UI just created is missing from the baseline, and the next poll
+// reports it as added a second time.
+func TestAdvanceSnapshotKeepsBaselineResetDuringDetection(t *testing.T) {
+	m := &mockFM{path: "/tmp"}
+	dw := NewDirectoryWatcher(m, nil, dummyDebug)
+	dw.running = true
+
+	now := time.Now()
+	existing := fi("/tmp/a.txt", "a.txt", 10, now)
+	m.files = []fileinfo.FileInfo{existing}
+	dw.updateSnapshot()
+
+	// A directory read taken before the user created anything.
+	staleRead := Snapshot{"/tmp/a.txt": existing}
+	_, _, _, baselineGen := dw.detectChanges(staleRead)
+
+	// The user creates a directory; the UI merges it and resets the baseline.
+	created := fi("/tmp/new-dir", "new-dir", 0, now)
+	created.IsDir = true
+	m.files = append(m.files, created)
+	dw.RefreshSnapshot()
+
+	// The in-flight change set now tries to promote its own, older read.
+	dw.advanceSnapshot(dw.runID, baselineGen, staleRead)
+
+	if _, ok := dw.previousFiles["/tmp/new-dir"]; !ok {
+		t.Fatal("baseline reset was overwritten by the older directory read")
+	}
+
+	// The next poll sees the directory and must not report it as added.
+	nextRead := Snapshot{"/tmp/a.txt": existing, "/tmp/new-dir": created}
+	added, _, _, _ := dw.detectChanges(nextRead)
+	if len(added) != 0 {
+		t.Fatalf("added = %#v, want none", added)
+	}
+}
+
+// The steady state still advances: without an intervening reset the directory
+// read becomes the baseline, so the same change is not reported twice.
+func TestAdvanceSnapshotPromotesReadWhenBaselineUnchanged(t *testing.T) {
+	m := &mockFM{path: "/tmp"}
+	dw := NewDirectoryWatcher(m, nil, dummyDebug)
+	dw.running = true
+
+	now := time.Now()
+	existing := fi("/tmp/a.txt", "a.txt", 10, now)
+	m.files = []fileinfo.FileInfo{existing}
+	dw.updateSnapshot()
+
+	added := fi("/tmp/b.txt", "b.txt", 3, now)
+	read := Snapshot{"/tmp/a.txt": existing, "/tmp/b.txt": added}
+	gotAdded, _, _, baselineGen := dw.detectChanges(read)
+	if len(gotAdded) != 1 {
+		t.Fatalf("added = %#v, want b.txt", gotAdded)
+	}
+
+	dw.advanceSnapshot(dw.runID, baselineGen, read)
+
+	gotAdded, _, _, _ = dw.detectChanges(read)
+	if len(gotAdded) != 0 {
+		t.Fatalf("added = %#v, want none after the baseline advanced", gotAdded)
 	}
 }

@@ -11,7 +11,8 @@ Source: `internal/watcher/watcher.go` and `internal/watcher/hub.go`.
 - Each `Start()` increments a watcher `runID` generation.
 - Background loops discard stale work when generation no longer matches current run.
 - `RefreshSnapshot()` resets the per-window baseline from the current
-  `FileManager` file list.
+  `FileManager` file list, and wins over any change set already in flight
+  (see the baseline generation below).
 
 Concurrency model:
 
@@ -22,6 +23,15 @@ Concurrency model:
   immediately, so a burst cannot derive duplicate changes while an earlier UI
   merge is pending. A full queue does not advance the baseline; the next
   snapshot therefore includes the skipped cumulative difference.
+- Detection and that advance are separate critical sections with a channel send
+  between them, so a `RefreshSnapshot()` can land in the gap. A `baselineGen`
+  counter, incremented on every reset and captured during detection, makes the
+  advance skip rather than reinstate the older directory read. The reset wins
+  and the next read reconciles against it; without this, an entry the UI had
+  just created would be missing from the baseline and reported as added again.
+- `ApplyChanges` replaces an added path that is already in the list instead of
+  appending it, since the baseline excludes entries marked deleted and a
+  recreated file therefore arrives as an add.
 - FileManager access happens through watcher-facing interface methods:
   - `GetCurrentPath`
   - `GetFiles`
