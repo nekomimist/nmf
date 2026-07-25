@@ -24,8 +24,39 @@ type ArchiveVFS struct {
 	archivePath string
 	localPath   string
 	tempPath    string
-	fsys        fs.FS
-	mu          sync.Mutex
+	// ctx is the context the archive was resolved with. Reads carry it for the
+	// life of the VFS, including through a password retry, so cancelling the
+	// work that opened the archive keeps aborting decodes afterwards.
+	ctx context.Context
+	// fsysMu guards fsys alone and is never held across a password prompt, so a
+	// reader never blocks behind the interactive part of a re-authentication.
+	// mu serializes the re-authentications themselves.
+	fsysMu sync.RWMutex
+	fsys   fs.FS
+	mu     sync.Mutex
+}
+
+// currentFS returns the archive filesystem in use, which a password retry may
+// have replaced since the last read.
+func (a *ArchiveVFS) currentFS() fs.FS {
+	a.fsysMu.RLock()
+	defer a.fsysMu.RUnlock()
+	return a.fsys
+}
+
+func (a *ArchiveVFS) setFS(fsys fs.FS) {
+	a.fsysMu.Lock()
+	defer a.fsysMu.Unlock()
+	a.fsys = fsys
+}
+
+// readContext returns the context reads are performed with. Zero-value
+// ArchiveVFS values built by tests have no context.
+func (a *ArchiveVFS) readContext() context.Context {
+	if a.ctx == nil {
+		return context.Background()
+	}
+	return a.ctx
 }
 
 // ArchiveEntry describes one entry streamed from an archive.
@@ -71,6 +102,7 @@ func NewArchiveVFSContext(ctx context.Context, archivePath string) (*ArchiveVFS,
 		archivePath: archivePath,
 		localPath:   localPath,
 		tempPath:    tempPath,
+		ctx:         ctx,
 		fsys:        fsys,
 	}, nil
 }
@@ -440,7 +472,7 @@ func (a *ArchiveVFS) ReadDir(p string) ([]os.DirEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	entries, err := fs.ReadDir(a.fsys, native)
+	entries, err := fs.ReadDir(a.currentFS(), native)
 	if err != nil {
 		return nil, err
 	}
@@ -457,7 +489,7 @@ func (a *ArchiveVFS) Stat(p string) (os.FileInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	return fs.Stat(a.fsys, native)
+	return fs.Stat(a.currentFS(), native)
 }
 
 func (a *ArchiveVFS) Capabilities() Capabilities {
@@ -496,7 +528,7 @@ func (a *ArchiveVFS) Open(p string) (io.ReadCloser, error) {
 	}
 	var f fs.File
 	for attempt := 0; attempt < archiveOpenAttempts; attempt++ {
-		f, err = a.fsys.Open(native)
+		f, err = a.currentFS().Open(native)
 		if err == nil || !isArchivePasswordError(err) {
 			break
 		}
@@ -548,11 +580,14 @@ func (a *ArchiveVFS) retryWithArchivePassword(ctx context.Context, retry bool) e
 		} else if err := probeArchiveReadable(ctx, a.localPath, extractor); err != nil {
 			lastErr = err
 		} else {
-			a.fsys = &archives.ArchiveFS{
+			// The rebuilt filesystem carries the context the archive was
+			// resolved with, not the one that drove the prompt, so cancelling
+			// the work that opened the archive still aborts later decodes.
+			a.setFS(&archives.ArchiveFS{
 				Path:    a.localPath,
 				Format:  extractor,
-				Context: ctx,
-			}
+				Context: a.readContext(),
+			})
 			putCachedArchivePassword(a.archivePath, password)
 			return nil
 		}
