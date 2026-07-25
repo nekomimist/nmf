@@ -222,6 +222,71 @@ func TestFormatHexDump(t *testing.T) {
 	}
 }
 
+// Text files whose first two bytes happen to be "BM" must not be classified as
+// images: an image classification skips text decoding entirely, which would
+// leave the file with no readable pane in the viewer.
+func TestReadPreviewFileKeepsTextStartingWithBM(t *testing.T) {
+	dir := t.TempDir()
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{name: "bmw.csv", content: "BMW parts list\nfront brake,12000\nrear brake,9800\n"},
+		{name: "notes.md", content: "BM (Business Model) memo\n\n- item one\n- item two\n"},
+		{name: "just-bm.txt", content: "BM"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(dir, tt.name)
+			if err := os.WriteFile(path, []byte(tt.content), 0644); err != nil {
+				t.Fatalf("WriteFile returned error: %v", err)
+			}
+			preview, err := ReadPreviewFile(path)
+			if err != nil {
+				t.Fatalf("ReadPreviewFile returned error: %v", err)
+			}
+			if preview.ImageFormat != "" {
+				t.Fatalf("ImageFormat = %q, want empty", preview.ImageFormat)
+			}
+			if preview.Binary {
+				t.Fatal("Binary = true, want false")
+			}
+			if preview.Text != tt.content {
+				t.Fatalf("Text = %q, want %q", preview.Text, tt.content)
+			}
+		})
+	}
+}
+
+func TestLooksLikeBMP(t *testing.T) {
+	header := func(infoLen uint32) []byte {
+		b := make([]byte, 18)
+		copy(b, "BM")
+		binary.LittleEndian.PutUint32(b[14:18], infoLen)
+		return b
+	}
+	tests := []struct {
+		name string
+		data []byte
+		want bool
+	}{
+		{name: "BITMAPINFOHEADER", data: header(40), want: true},
+		{name: "BITMAPV4HEADER", data: header(108), want: true},
+		{name: "BITMAPV5HEADER", data: header(124), want: true},
+		{name: "BITMAPCOREHEADER is not decodable", data: header(12), want: false},
+		{name: "text starting with BM", data: []byte("BMW parts list\nfront brake"), want: false},
+		{name: "too short", data: []byte("BM"), want: false},
+		{name: "wrong signature", data: header(40)[1:], want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := looksLikeBMP(tt.data); got != tt.want {
+				t.Fatalf("looksLikeBMP() = %t, want %t", got, tt.want)
+			}
+		})
+	}
+}
+
 func encodeText(t *testing.T, transformer transform.Transformer, text string) []byte {
 	t.Helper()
 	out, err := io.ReadAll(transform.NewReader(strings.NewReader(text), transformer))
