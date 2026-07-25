@@ -124,7 +124,7 @@ func withArchivePasswordRetry(ctx context.Context, archivePath, localPath string
 	var lastErr error
 	password, cached := cachedArchivePassword(archivePath)
 	retry := false
-	for attempt := 0; attempt < 4; attempt++ {
+	for attempt := 0; attempt < archivePasswordPromptAttempts; attempt++ {
 		configured := applyArchiveFormatOptions(format, opts, password)
 		if probeReadable {
 			if extractor, ok := configured.(archives.Extractor); ok {
@@ -472,15 +472,37 @@ func (a *ArchiveVFS) Base(p string) string {
 	return pathBase(p)
 }
 
+const (
+	// archivePasswordPromptAttempts bounds how many passwords the user may try
+	// for one archive. Every attempt costs a prompt plus a validating pass over
+	// the archive, so this is the only budget that should exist -- the callers
+	// below must not multiply it.
+	archivePasswordPromptAttempts = 4
+
+	// archiveOpenAttempts is the number of times Open re-reads an entry around
+	// a re-authentication. retryWithArchivePassword only returns success after
+	// it has decrypted real entry data, so one retry is enough: a second
+	// password error on the same entry means the entry needs a different
+	// password than the archive, which more prompting cannot resolve. Anything
+	// larger multiplies with archivePasswordPromptAttempts and would subject
+	// the user to a dozen-plus prompts for a single mistyped password.
+	archiveOpenAttempts = 2
+)
+
 func (a *ArchiveVFS) Open(p string) (io.ReadCloser, error) {
 	native, err := safeArchiveNativePath(p)
 	if err != nil {
 		return nil, err
 	}
 	var f fs.File
-	for attempt := 0; attempt < 4; attempt++ {
+	for attempt := 0; attempt < archiveOpenAttempts; attempt++ {
 		f, err = a.fsys.Open(native)
 		if err == nil || !isArchivePasswordError(err) {
+			break
+		}
+		if attempt == archiveOpenAttempts-1 {
+			// No further read would follow, so re-authenticating here would
+			// only cost the user another round of prompts.
 			break
 		}
 		if retryErr := a.retryWithArchivePassword(context.Background(), attempt > 0); retryErr != nil {
@@ -507,7 +529,7 @@ func (a *ArchiveVFS) retryWithArchivePassword(ctx context.Context, retry bool) e
 	}
 	clearCachedArchivePassword(a.archivePath)
 	var lastErr error
-	for attempt := 0; attempt < 4; attempt++ {
+	for attempt := 0; attempt < archivePasswordPromptAttempts; attempt++ {
 		password, err := getArchivePassword(ctx, ArchivePasswordRequest{
 			ArchivePath: a.archivePath,
 			Format:      archivePasswordFormatName(format),
