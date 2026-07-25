@@ -682,3 +682,51 @@ func TestArchiveVFSOpenBoundsPasswordPrompts(t *testing.T) {
 		t.Fatal("no password prompt happened, the test is not exercising the retry path")
 	}
 }
+
+// A password retry rebuilds the archive filesystem. It must keep the context
+// the archive was resolved with, so cancelling the work that opened the archive
+// still aborts decodes afterwards rather than running them to completion.
+func TestArchiveVFSRetryKeepsResolveContext(t *testing.T) {
+	setArchivePasswordProviderForTest(t, "secret")
+	archivePath := filepath.Join("testdata", "encrypted-names-visible.7z")
+	format, err := identifyArchiveFormat(t.Context(), archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	extractor, ok := format.(archives.Extractor)
+	if !ok {
+		t.Fatal("test archive format is not extractable")
+	}
+
+	resolveCtx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	vfs := &ArchiveVFS{
+		archivePath: archivePath,
+		localPath:   archivePath,
+		ctx:         resolveCtx,
+		fsys: &archives.ArchiveFS{
+			Path:    archivePath,
+			Format:  extractor,
+			Context: resolveCtx,
+		},
+	}
+
+	// t.Context() stands in for the context.Background() the read paths pass to
+	// the prompt; it is deliberately not resolveCtx.
+	if err := vfs.retryWithArchivePassword(t.Context(), false); err != nil {
+		t.Fatalf("retryWithArchivePassword() error = %v", err)
+	}
+
+	rebuilt, ok := vfs.currentFS().(*archives.ArchiveFS)
+	if !ok {
+		t.Fatalf("archive filesystem = %T, want *archives.ArchiveFS", vfs.currentFS())
+	}
+	if rebuilt.Context != resolveCtx {
+		t.Fatal("rebuilt archive filesystem dropped the resolve context")
+	}
+
+	cancel()
+	if _, err := vfs.Open("secret.txt"); err == nil {
+		t.Fatal("Open() succeeded after the resolve context was cancelled")
+	}
+}
