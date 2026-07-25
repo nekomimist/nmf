@@ -52,6 +52,11 @@ func newApplicationRuntime(app fyne.App) *ApplicationRuntime {
 	return runtime
 }
 
+// Close releases the application-scoped resources that need releasing. The
+// other two the runtime owns deliberately do not appear here: WatchHub sources
+// shut themselves down when their last subscriber unsubscribes, which every
+// window does on close, and the jobs manager is a process-lifetime singleton
+// (jobs.GetManager). Neither has, or wants, a shutdown entry point.
 func (r *ApplicationRuntime) Close() {
 	if r == nil {
 		return
