@@ -35,6 +35,12 @@ func (fm *FileManager) setWindowActive(active bool) {
 	if fm == nil || fm.windowActive == active {
 		return
 	}
+	// Fyne can deliver a focus change while the window is being torn down, and
+	// this runs from the KeySink's focus callback (ui_setup.go). Every other
+	// window-owned callback takes the same guard.
+	if fm.isWindowClosed() {
+		return
+	}
 	debugPrint("FileManager: window active change active=%t focused=%s path=%s", active, focusedObjectLabel(fm.window), fm.currentPath)
 	fm.windowActive = active
 	if fm.runtime != nil && fm.runtime.promptBroker != nil && fm.promptTargetID != 0 {

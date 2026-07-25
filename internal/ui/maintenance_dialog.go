@@ -184,6 +184,10 @@ func (d *MaintenanceDialog) Scan() {
 	d.debugPrint("MaintenanceDialog: Scan started")
 
 	go func() {
+		// Release the scan context on every path. Clearing d.scanCancel below
+		// only drops the dialog's reference, and the early return above it
+		// (a superseded or closed scan) does not even do that.
+		defer cancel()
 		result, err := d.plan(ctx, targets, options, nil, nil)
 		d.runOnMain(func() {
 			if d.closed || serial != d.scanSerial {

@@ -359,7 +359,13 @@ func (fm *FileManager) finishDirectoryLoad(loadID uint64) bool {
 		return false
 	}
 	fm.activeLoadID = 0
-	fm.loadCancel = nil
+	// Release the context rather than only dropping the reference: anything
+	// still holding it, such as an archives.ArchiveFS built during the load,
+	// keeps observing a live context otherwise.
+	if fm.loadCancel != nil {
+		fm.loadCancel()
+		fm.loadCancel = nil
+	}
 	return true
 }
 
