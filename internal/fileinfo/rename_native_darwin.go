@@ -2,15 +2,8 @@
 
 package fileinfo
 
-import (
-	"os"
+import "golang.org/x/sys/unix"
 
-	"golang.org/x/sys/unix"
-)
-
-func renameNativeSameDir(oldNative, newNative string, _ bool) error {
-	if err := unix.RenamexNp(oldNative, newNative, unix.RENAME_EXCL); err != nil {
-		return &os.LinkError{Op: "rename", Old: oldNative, New: newNative, Err: err}
-	}
-	return nil
+func renameNoReplaceSyscall(oldNative, newNative string) error {
+	return unix.RenamexNp(oldNative, newNative, unix.RENAME_EXCL)
 }

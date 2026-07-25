@@ -204,6 +204,19 @@ Constraints:
   uses `MoveFileW` without replace, SMB rename sends `ReplaceIfExists=0`, text
   creation uses `O_EXCL`, and directory creation uses single-level `Mkdir`
   rather than `MkdirAll`.
+- Flagged rename is not implemented by every filesystem. 9p/drvfs (WSL's
+  `/mnt/<drive>` and its UNC mounts), vfat, exfat and several network mounts
+  answer `EINVAL`, old kernels answer `ENOSYS`, and macOS answers `ENOTSUP` off
+  APFS. Rejecting those would make rename impossible on the Windows drives and
+  shares Linux users browse, so `renameNativeSameDir` degrades to a plain
+  rename guarded by an immediate `Lstat`. On those filesystems only, the
+  safety boundary is that check rather than the kernel, which is the guarantee
+  this package offered before flagged rename was introduced.
+- A case-only rename on a case-insensitive filesystem surfaces as `EEXIST`
+  from the flagged syscall, because the destination resolves to the source
+  itself. `RenamePortable` has already proven that with `sameNativeFile`, so
+  that specific `EEXIST` takes the same degraded path; every other `EEXIST` is
+  reported as a real conflict.
 
 Delete behavior:
 
