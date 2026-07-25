@@ -653,3 +653,32 @@ func (p *fakeArchivePasswordProvider) sawRetry(path string) bool {
 	defer p.mu.Unlock()
 	return p.retried[path]
 }
+
+// One mistyped password must cost one round of prompts, not the product of the
+// Open retry loop and the prompt loop.
+func TestArchiveVFSOpenBoundsPasswordPrompts(t *testing.T) {
+	wrong := make([]string, 20)
+	for i := range wrong {
+		wrong[i] = "wrong"
+	}
+	provider := setArchivePasswordProviderForTest(t, wrong...)
+	archivePath := filepath.Join("testdata", "encrypted-names-visible.7z")
+
+	entryPath := JoinPath(ArchiveRootPath(archivePath), "secret.txt")
+	vfs, parsed, err := ResolveRead(entryPath)
+	if err == nil {
+		rc, openErr := vfs.Open(parsed.Native)
+		if openErr == nil {
+			rc.Close()
+			CloseVFS(vfs)
+			t.Fatal("opening the entry succeeded with a wrong password")
+		}
+		CloseVFS(vfs)
+	}
+	if got := provider.callsFor(archivePath); got > archivePasswordPromptAttempts {
+		t.Fatalf("prompt count = %d, want at most %d", got, archivePasswordPromptAttempts)
+	}
+	if provider.callsFor(archivePath) == 0 {
+		t.Fatal("no password prompt happened, the test is not exercising the retry path")
+	}
+}
