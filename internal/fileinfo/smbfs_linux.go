@@ -261,7 +261,7 @@ func (s SMBFS) dialAndMountContext(ctx context.Context, relPath string) (*smb2.S
 	sess, err := d.DialContext(ctx, conn)
 	if err != nil {
 		if isAuthError(err) {
-			ClearCachedCredentials(s.host, s.share)
+			ClearRejectedLogin(s.host, s.share, creds)
 		}
 		_ = conn.Close()
 		return nil, nil, nil, creds, err
@@ -270,7 +270,7 @@ func (s SMBFS) dialAndMountContext(ctx context.Context, relPath string) (*smb2.S
 	share, err := sess.Mount(s.share)
 	if err != nil {
 		if isAuthError(err) {
-			ClearCachedCredentials(s.host, s.share)
+			ClearRejectedLogin(s.host, s.share, creds)
 		}
 		_ = sess.Logoff()
 		_ = conn.Close()
