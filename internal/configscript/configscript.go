@@ -634,7 +634,7 @@ func (rt *Runtime) builtinCursorStyle(thread *starlark.Thread, fn *starlark.Buil
 		return nil, err
 	}
 	if !config.IsValidCursorStyleType(styleType) {
-		return nil, fmt.Errorf("cursor style type must be underline, border, background, icon, or font")
+		return nil, fmt.Errorf("cursor style type must be underline, border, or background")
 	}
 	if thickness < 0 {
 		return nil, fmt.Errorf("cursor thickness must be zero or positive")

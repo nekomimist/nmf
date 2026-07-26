@@ -341,7 +341,7 @@ type ViewerConfig struct {
 
 // CursorStyleConfig represents cursor appearance settings
 type CursorStyleConfig struct {
-	Type      string `json:"type"`      // "underline", "border", "background", "icon", "font"
+	Type      string `json:"type"`      // "underline", "border", "background"
 	Thickness int    `json:"thickness"` // Line thickness for underline/border
 }
 
@@ -789,7 +789,7 @@ func validateRawConfig(cfg *rawConfig) error {
 		return fmt.Errorf("ui.archive.zipNameEncoding must not be empty")
 	}
 	if cfg.UI.CursorStyle.Type != nil && !IsValidCursorStyleType(*cfg.UI.CursorStyle.Type) {
-		return fmt.Errorf("ui.cursorStyle.type must be underline, border, background, icon, or font")
+		return fmt.Errorf("ui.cursorStyle.type must be underline, border, or background")
 	}
 	if cfg.UI.CursorStyle.Thickness != nil && *cfg.UI.CursorStyle.Thickness < 0 {
 		return fmt.Errorf("ui.cursorStyle.thickness must be zero or positive")
@@ -824,7 +824,7 @@ func IsValidSortOrder(value string) bool {
 // IsValidCursorStyleType reports whether value is a supported cursor style.
 func IsValidCursorStyleType(value string) bool {
 	switch value {
-	case "underline", "border", "background", "icon", "font":
+	case "underline", "border", "background":
 		return true
 	default:
 		return false

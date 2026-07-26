@@ -143,7 +143,7 @@ func TestFileListRowCursorStyles(t *testing.T) {
 		},
 		{
 			name:       "unsupported style falls back to underline",
-			style:      "icon",
+			style:      "unknown",
 			wantBottom: cursorColor,
 		},
 	}

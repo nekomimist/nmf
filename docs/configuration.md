@@ -177,8 +177,7 @@ custom commands for key bindings. See `docs/starlark-configuration.md`.
   and `utf-8`.
 - `ime.enabled`: enable native IME candidate/composition position hints on
   platforms that support them. Set to `false` to disable this integration.
-- `cursorStyle.type`: one of `underline`, `border`, `background`, `icon`, or
-  `font`.
+- `cursorStyle.type`: one of `underline`, `border`, or `background`.
 - `cursorStyle.thickness`: underline or border thickness.
 
 ## Debug Logging
