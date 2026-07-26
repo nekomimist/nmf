@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/mholt/archives"
 	"golang.org/x/text/encoding"
@@ -804,5 +805,56 @@ func TestArchiveVFSOpenRetriesAfterReauthentication(t *testing.T) {
 	data, err := io.ReadAll(rc)
 	if err != nil || string(data) != "secret archive data\n" {
 		t.Fatalf("entry content = %q, %v", data, err)
+	}
+}
+
+// blockingArchivePasswordProvider stands in for the real dialog: it stays open
+// until its context is done.
+type blockingArchivePasswordProvider struct {
+	entered chan struct{}
+	once    sync.Once
+}
+
+func (p *blockingArchivePasswordProvider) GetArchivePassword(ctx context.Context, _ ArchivePasswordRequest) (string, error) {
+	p.once.Do(func() { close(p.entered) })
+	<-ctx.Done()
+	return "", ctx.Err()
+}
+
+// Cancelling the work that opened the archive has to reach a password prompt
+// raised by a later read, or a viewer the user already closed leaves its dialog
+// on screen with nothing left to receive the answer.
+func TestArchiveVFSOpenPropagatesCancelToPasswordPrompt(t *testing.T) {
+	provider := &blockingArchivePasswordProvider{entered: make(chan struct{})}
+	previous := archivePasswordProvider
+	SetArchivePasswordProvider(NewCachedArchivePasswordProvider(provider))
+	t.Cleanup(func() { SetArchivePasswordProvider(previous) })
+
+	archivePath := filepath.Join("testdata", "encrypted-names-visible.7z")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	vfs := &ArchiveVFS{
+		archivePath: archivePath,
+		localPath:   archivePath,
+		ctx:         ctx,
+		fsys:        passwordErrorFS{},
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := vfs.Open("secret.txt")
+		done <- err
+	}()
+
+	<-provider.entered
+	cancel()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("Open() succeeded after the resolve context was cancelled")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Open() did not return; the password prompt never saw the cancellation")
 	}
 }

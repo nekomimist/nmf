@@ -538,7 +538,11 @@ func (a *ArchiveVFS) Open(p string) (io.ReadCloser, error) {
 			// only cost the user another round of prompts.
 			break
 		}
-		if retryErr := a.retryWithArchivePassword(context.Background(), attempt > 0); retryErr != nil {
+		// The resolve-time context, not a fresh one: cancelling the work that
+		// opened the archive has to reach the password prompt and the
+		// validation behind it, or a viewer the user already closed leaves its
+		// dialog on screen.
+		if retryErr := a.retryWithArchivePassword(a.readContext(), attempt > 0); retryErr != nil {
 			return nil, retryErr
 		}
 	}
