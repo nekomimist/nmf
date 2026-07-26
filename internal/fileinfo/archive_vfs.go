@@ -153,49 +153,25 @@ func withArchivePasswordRetry(ctx context.Context, archivePath, localPath string
 		return op(applyArchiveFormatOptions(format, opts, ""))
 	}
 
+	// Each iteration tries one candidate and only then asks for the next, so
+	// the loop must run once more than it prompts -- otherwise the last
+	// password the user typed would be collected and thrown away, and a correct
+	// final attempt would be reported as a failure. The first candidate is the
+	// cached password (or none), which costs no prompt.
 	var lastErr error
 	password, cached := cachedArchivePassword(archivePath)
 	retry := false
-	for attempt := 0; attempt < archivePasswordPromptAttempts; attempt++ {
-		configured := applyArchiveFormatOptions(format, opts, password)
-		if probeReadable {
-			if extractor, ok := configured.(archives.Extractor); ok {
-				if err := validateArchiveFileSystem(ctx, localPath, extractor, false); err != nil {
-					lastErr = err
-					if !isArchivePasswordError(err) {
-						return err
-					}
-				} else if err := probeArchiveReadable(ctx, localPath, extractor); err != nil {
-					lastErr = err
-					if !isArchivePasswordError(err) {
-						return err
-					}
-				} else if err := op(configured); err != nil {
-					lastErr = err
-					if !isArchivePasswordError(err) {
-						return err
-					}
-				} else {
-					if password != "" {
-						putCachedArchivePassword(archivePath, password)
-					}
-					return nil
-				}
-			} else if err := op(configured); err != nil {
-				return err
-			} else {
-				return nil
-			}
-		} else if err := op(configured); err != nil {
-			lastErr = err
-			if !isArchivePasswordError(err) {
-				return err
-			}
-		} else {
-			if password != "" {
+	for prompts := 0; ; {
+		done, err := tryArchivePassword(ctx, localPath, format, opts, password, probeReadable, op)
+		if done {
+			if err == nil && password != "" {
 				putCachedArchivePassword(archivePath, password)
 			}
-			return nil
+			return err
+		}
+		lastErr = err
+		if prompts >= archivePasswordPromptAttempts {
+			break
 		}
 
 		if password != "" || cached {
@@ -209,6 +185,7 @@ func withArchivePasswordRetry(ctx context.Context, archivePath, localPath string
 		if err != nil {
 			return fmt.Errorf("%w: %v", ErrArchivePasswordRequired, err)
 		}
+		prompts++
 		cached = false
 		retry = true
 	}
@@ -216,6 +193,30 @@ func withArchivePasswordRetry(ctx context.Context, archivePath, localPath string
 		lastErr = ErrArchivePasswordRequired
 	}
 	return lastErr
+}
+
+// tryArchivePassword runs op once with a single candidate password. done
+// reports that the caller must stop: either it succeeded (err is nil) or it
+// failed for a reason no other password can fix.
+func tryArchivePassword(ctx context.Context, localPath string, format archives.Format, opts ArchiveOptions, password string, probeReadable bool, op func(archives.Format) error) (done bool, err error) {
+	configured := applyArchiveFormatOptions(format, opts, password)
+	if probeReadable {
+		extractor, ok := configured.(archives.Extractor)
+		if !ok {
+			// Nothing to probe and nothing a password would change.
+			return true, op(configured)
+		}
+		if err := validateArchiveFileSystem(ctx, localPath, extractor, false); err != nil {
+			return !isArchivePasswordError(err), err
+		}
+		if err := probeArchiveReadable(ctx, localPath, extractor); err != nil {
+			return !isArchivePasswordError(err), err
+		}
+	}
+	if err := op(configured); err != nil {
+		return !isArchivePasswordError(err), err
+	}
+	return true, nil
 }
 
 func applyArchiveFormatOptions(format archives.Format, opts ArchiveOptions, password string) archives.Format {
@@ -505,10 +506,10 @@ func (a *ArchiveVFS) Base(p string) string {
 }
 
 const (
-	// archivePasswordPromptAttempts bounds how many passwords the user may try
-	// for one archive. Every attempt costs a prompt plus a validating pass over
-	// the archive, so this is the only budget that should exist -- the callers
-	// below must not multiply it.
+	// archivePasswordPromptAttempts bounds how many times the user is asked for
+	// a password for one archive. Every prompt costs a validating pass over the
+	// archive, so this is the only budget that should exist -- the callers
+	// below must not multiply it. Every prompted password is validated.
 	archivePasswordPromptAttempts = 4
 
 	// archiveOpenAttempts is the number of times Open re-reads an entry around
