@@ -27,3 +27,10 @@ func TestStartFileDragReturnsUnsupportedOffWindows(t *testing.T) {
 		t.Fatalf("StartFileDrag error = %v, want ErrUnsupported", err)
 	}
 }
+
+func TestTrashReturnsUnsupportedOffWindows(t *testing.T) {
+	err := Trash("/tmp/example")
+	if !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("Trash error = %v, want ErrUnsupported", err)
+	}
+}

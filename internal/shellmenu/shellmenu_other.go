@@ -25,3 +25,8 @@ func ShowAtClientPosition(_ uintptr, _ []string, _, _ int) error {
 func StartFileDrag(_ uintptr, _ []string) error {
 	return ErrUnsupported
 }
+
+// Trash moves a platform-native path to the recycle bin.
+func Trash(_ string) error {
+	return ErrUnsupported
+}

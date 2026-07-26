@@ -13,8 +13,6 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
-
-	"nmf/internal/fileinfo"
 )
 
 // ErrUnsupported indicates that the shell context menu is unavailable.
@@ -31,9 +29,9 @@ func dbg(format string, args ...interface{}) {
 
 const (
 	coinitApartmentThreaded = 0x2
+	clsctxInprocServer      = 0x1
 	sFalse                  = 0x1
 	rpcEChangedMode         = 0x80010106
-	hResultFileNotFound     = 0x80070002
 	sOK                     = 0x0
 
 	cmfNormal = 0x0
@@ -69,32 +67,51 @@ const (
 	wmNCDestroy     = 0x0082
 
 	cwUseDefault = 0x80000000
+
+	csidlNetwork = 0x0012
+
+	shcontfFolders       = 0x0020
+	shcontfNonFolders    = 0x0040
+	shcontfIncludeHidden = 0x0080
+
+	fofAllowUndo      = 0x0040
+	fofNoConfirmation = 0x0010
+	fofSilent         = 0x0004
+
+	fofxRecycleOnDelete = 0x00080000
 )
 
 const gwlUserData = ^uintptr(20)
 
 var (
-	iidIUnknown      = windows.GUID{Data1: 0x00000000, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
-	iidIDataObject   = windows.GUID{Data1: 0x0000010E, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
-	iidIDropSource   = windows.GUID{Data1: 0x00000121, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
-	iidIShellFolder  = windows.GUID{Data1: 0x000214E6, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
-	iidIContextMenu  = windows.GUID{Data1: 0x000214E4, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
-	iidIContextMenu2 = windows.GUID{Data1: 0x000214F4, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
-	iidIContextMenu3 = windows.GUID{Data1: 0xBCFCE0A0, Data2: 0xEC17, Data3: 0x11D0, Data4: [8]byte{0x8D, 0x10, 0x00, 0xA0, 0xC9, 0x0F, 0x27, 0x19}}
+	iidIUnknown        = windows.GUID{Data1: 0x00000000, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
+	iidIDataObject     = windows.GUID{Data1: 0x0000010E, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
+	iidIDropSource     = windows.GUID{Data1: 0x00000121, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
+	iidIShellFolder    = windows.GUID{Data1: 0x000214E6, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
+	iidIContextMenu    = windows.GUID{Data1: 0x000214E4, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
+	iidIContextMenu2   = windows.GUID{Data1: 0x000214F4, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
+	iidIContextMenu3   = windows.GUID{Data1: 0xBCFCE0A0, Data2: 0xEC17, Data3: 0x11D0, Data4: [8]byte{0x8D, 0x10, 0x00, 0xA0, 0xC9, 0x0F, 0x27, 0x19}}
+	iidIFileOperation  = windows.GUID{Data1: 0x947AAB5F, Data2: 0x0A5C, Data3: 0x4C13, Data4: [8]byte{0xB4, 0xD6, 0x4B, 0xF7, 0x83, 0x6F, 0xC9, 0xF8}}
+	clsidFileOperation = windows.GUID{Data1: 0x3AD05575, Data2: 0x8857, Data3: 0x4850, Data4: [8]byte{0x92, 0x77, 0x11, 0xB8, 0x5B, 0xDB, 0x8E, 0x09}}
 
 	modShell32 = windows.NewLazySystemDLL("shell32.dll")
 	modUser32  = windows.NewLazySystemDLL("user32.dll")
 	modOle32   = windows.NewLazySystemDLL("ole32.dll")
+	modShlwapi = windows.NewLazySystemDLL("shlwapi.dll")
 
-	procSHParseDisplayName = modShell32.NewProc("SHParseDisplayName")
-	procSHBindToParent     = modShell32.NewProc("SHBindToParent")
+	procSHParseDisplayName         = modShell32.NewProc("SHParseDisplayName")
+	procSHBindToParent             = modShell32.NewProc("SHBindToParent")
+	procSHGetSpecialFolderLocation = modShell32.NewProc("SHGetSpecialFolderLocation")
+	procSHCreateShellItem          = modShell32.NewProc("SHCreateShellItem")
+	procStrRetToBufW               = modShlwapi.NewProc("StrRetToBufW")
 
-	procCoInitializeEx  = modOle32.NewProc("CoInitializeEx")
-	procCoUninitialize  = modOle32.NewProc("CoUninitialize")
-	procCoTaskMemFree   = modOle32.NewProc("CoTaskMemFree")
-	procOleInitialize   = modOle32.NewProc("OleInitialize")
-	procOleUninitialize = modOle32.NewProc("OleUninitialize")
-	procDoDragDrop      = modOle32.NewProc("DoDragDrop")
+	procCoInitializeEx   = modOle32.NewProc("CoInitializeEx")
+	procCoUninitialize   = modOle32.NewProc("CoUninitialize")
+	procCoCreateInstance = modOle32.NewProc("CoCreateInstance")
+	procCoTaskMemFree    = modOle32.NewProc("CoTaskMemFree")
+	procOleInitialize    = modOle32.NewProc("OleInitialize")
+	procOleUninitialize  = modOle32.NewProc("OleUninitialize")
+	procDoDragDrop       = modOle32.NewProc("DoDragDrop")
 
 	procCreatePopupMenu   = modUser32.NewProc("CreatePopupMenu")
 	procDestroyMenu       = modUser32.NewProc("DestroyMenu")
@@ -188,6 +205,62 @@ type shellFolderVtbl struct {
 
 type shellFolder struct {
 	vtbl *shellFolderVtbl
+}
+
+type shellItem struct {
+	vtbl *unknownVtbl
+}
+
+type fileOperationVtbl struct {
+	queryInterface          uintptr
+	addRef                  uintptr
+	release                 uintptr
+	advise                  uintptr
+	unadvise                uintptr
+	setOperationFlags       uintptr
+	setProgressMessage      uintptr
+	setProgressDialog       uintptr
+	setProperties           uintptr
+	setOwnerWindow          uintptr
+	applyPropertiesToItem   uintptr
+	applyPropertiesToItems  uintptr
+	renameItem              uintptr
+	renameItems             uintptr
+	moveItem                uintptr
+	moveItems               uintptr
+	copyItem                uintptr
+	copyItems               uintptr
+	deleteItem              uintptr
+	deleteItems             uintptr
+	newItem                 uintptr
+	performOperations       uintptr
+	getAnyOperationsAborted uintptr
+}
+
+type fileOperation struct {
+	vtbl *fileOperationVtbl
+}
+
+type enumIDListVtbl struct {
+	queryInterface uintptr
+	addRef         uintptr
+	release        uintptr
+	next           uintptr
+	skip           uintptr
+	reset          uintptr
+	clone          uintptr
+}
+
+type enumIDList struct {
+	vtbl *enumIDListVtbl
+}
+
+// strret has the same layout as STRRET. The union is MAX_PATH bytes on both
+// 32-bit and 64-bit Windows; the explicit padding aligns its pointer variant.
+type strret struct {
+	typ  uint32
+	_pad uint32
+	data [260]byte
 }
 
 type contextMenuVtbl struct {
@@ -314,13 +387,13 @@ func StartFileDrag(hwnd uintptr, paths []string) error {
 		defer procOleUninitialize.Call()
 	}
 
-	folder, childPIDLs, absPIDLs, err := shellFolderAndChildren(nativePaths)
+	folder, childPIDLs, err := shellFolderAndChildren(nativePaths)
 	if err != nil {
 		dbg("StartFileDrag shell folder error=%v", err)
 		return err
 	}
 	defer releaseUnknown((*unknown)(unsafe.Pointer(folder)))
-	for _, pidl := range absPIDLs {
+	for _, pidl := range childPIDLs {
 		defer procCoTaskMemFree.Call(pidl)
 	}
 
@@ -344,6 +417,61 @@ func StartFileDrag(hwnd uintptr, paths []string) error {
 	if failed(hr) && uint32(hr) != dragdropSCancel {
 		return fmt.Errorf("DoDragDrop failed: 0x%x", uint32(hr))
 	}
+	return nil
+}
+
+// Trash moves a file system item to the Windows Recycle Bin. It resolves the
+// item from its parent folder and relative PIDL, avoiding legacy full-path
+// parsing for long local and UNC paths.
+func Trash(path string) error {
+	nativePaths := normalizePaths([]string{path})
+	if len(nativePaths) == 0 {
+		return fmt.Errorf("Trash requires a path")
+	}
+
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	coinited, err := initializeCOM()
+	if err != nil {
+		return err
+	}
+	if coinited {
+		defer procCoUninitialize.Call()
+	}
+
+	folder, childPIDLs, err := shellFolderAndChildren(nativePaths)
+	if err != nil {
+		return err
+	}
+	defer releaseUnknown((*unknown)(unsafe.Pointer(folder)))
+	defer freePIDLs(childPIDLs)
+
+	item, err := shellItemFromFolderAndPIDL(folder, childPIDLs[0])
+	if err != nil {
+		return err
+	}
+	defer releaseUnknown((*unknown)(unsafe.Pointer(item)))
+
+	op, err := newFileOperation()
+	if err != nil {
+		return err
+	}
+	defer releaseUnknown((*unknown)(unsafe.Pointer(op)))
+
+	if err := setFileOperationFlags(op, fofAllowUndo|fofNoConfirmation|fofSilent|fofxRecycleOnDelete); err != nil {
+		return err
+	}
+	if err := queueRecycleDelete(op, item); err != nil {
+		return err
+	}
+	if err := performFileOperations(op); err != nil {
+		return err
+	}
+	if err := checkFileOperationAborted(op); err != nil {
+		return err
+	}
+	dbg("Trash completed with relative PIDL")
 	return nil
 }
 
@@ -377,12 +505,12 @@ func showAtScreenPosition(hwnd uintptr, paths []string, pt point) error {
 	}
 	defer procDestroyMenu.Call(menu)
 
-	folder, childPIDLs, absPIDLs, err := shellFolderAndChildren(nativePaths)
+	folder, childPIDLs, err := shellFolderAndChildren(nativePaths)
 	if err != nil {
 		return logErr(err)
 	}
 	defer releaseUnknown((*unknown)(unsafe.Pointer(folder)))
-	for _, pidl := range absPIDLs {
+	for _, pidl := range childPIDLs {
 		defer procCoTaskMemFree.Call(pidl)
 	}
 
@@ -599,7 +727,7 @@ func normalizePaths(paths []string) []string {
 		if p == "" {
 			continue
 		}
-		out = append(out, fileinfo.NormalizeInputPath(p))
+		out = append(out, normalizeWindowsShellPath(p))
 	}
 	return out
 }
@@ -647,51 +775,362 @@ func initializeOLE() (bool, error) {
 	}
 }
 
-func shellFolderAndChildren(paths []string) (*shellFolder, []uintptr, []uintptr, error) {
-	var folder *shellFolder
-	childPIDLs := make([]uintptr, 0, len(paths))
-	absPIDLs := make([]uintptr, 0, len(paths))
-
-	for i, p := range paths {
-		pidl, err := parseDisplayName(p)
-		if err != nil {
-			for _, allocated := range absPIDLs {
-				procCoTaskMemFree.Call(allocated)
-			}
-			if folder != nil {
-				releaseUnknown((*unknown)(unsafe.Pointer(folder)))
-			}
-			return nil, nil, nil, err
-		}
-		absPIDLs = append(absPIDLs, pidl)
-
-		var currentFolder *shellFolder
-		var child uintptr
-		hr, _, _ := procSHBindToParent.Call(
-			pidl,
-			uintptr(unsafe.Pointer(&iidIShellFolder)),
-			uintptr(unsafe.Pointer(&currentFolder)),
-			uintptr(unsafe.Pointer(&child)),
-		)
-		if failed(hr) {
-			for _, allocated := range absPIDLs {
-				procCoTaskMemFree.Call(allocated)
-			}
-			if folder != nil {
-				releaseUnknown((*unknown)(unsafe.Pointer(folder)))
-			}
-			return nil, nil, nil, fmt.Errorf("SHBindToParent failed for %s: 0x%x", p, uint32(hr))
-		}
-
-		if i == 0 {
-			folder = currentFolder
-		} else {
-			releaseUnknown((*unknown)(unsafe.Pointer(currentFolder)))
-		}
-		childPIDLs = append(childPIDLs, child)
+func shellFolderAndChildren(paths []string) (*shellFolder, []uintptr, error) {
+	if len(paths) == 0 {
+		return nil, nil, ErrUnsupported
 	}
 
-	return folder, childPIDLs, absPIDLs, nil
+	firstPath, err := parseWindowsShellPath(paths[0])
+	if err != nil {
+		return nil, nil, err
+	}
+	parentPath, firstName, err := firstPath.parentAndName()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	folder, err := shellFolderForPath(parentPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	dbg("Resolved Shell folder with relative PIDLs root=%s parentComponents=%d items=%d", parentPath.root, len(parentPath.components), len(paths))
+	childPIDLs := make([]uintptr, 0, len(paths))
+
+	for i, p := range paths {
+		path := firstPath
+		name := firstName
+		if i > 0 {
+			path, err = parseWindowsShellPath(p)
+			if err != nil {
+				freePIDLs(childPIDLs)
+				releaseUnknown((*unknown)(unsafe.Pointer(folder)))
+				return nil, nil, err
+			}
+			var parent windowsShellPath
+			parent, name, err = path.parentAndName()
+			if err != nil {
+				freePIDLs(childPIDLs)
+				releaseUnknown((*unknown)(unsafe.Pointer(folder)))
+				return nil, nil, err
+			}
+			if !parentPath.sameFolder(parent) {
+				freePIDLs(childPIDLs)
+				releaseUnknown((*unknown)(unsafe.Pointer(folder)))
+				return nil, nil, fmt.Errorf("Explorer context menu requires files in the same folder")
+			}
+		}
+
+		pidl, err := childPIDL(folder, name)
+		if err != nil {
+			freePIDLs(childPIDLs)
+			releaseUnknown((*unknown)(unsafe.Pointer(folder)))
+			return nil, nil, err
+		}
+		childPIDLs = append(childPIDLs, pidl)
+	}
+
+	return folder, childPIDLs, nil
+}
+
+func shellFolderForPath(path windowsShellPath) (*shellFolder, error) {
+	folder, err := shellFolderForRoot(path)
+	if err != nil {
+		return nil, err
+	}
+	for _, component := range path.components {
+		pidl, err := childPIDL(folder, component)
+		if err != nil {
+			releaseUnknown((*unknown)(unsafe.Pointer(folder)))
+			return nil, err
+		}
+		next, err := bindChildFolder(folder, pidl)
+		procCoTaskMemFree.Call(pidl)
+		releaseUnknown((*unknown)(unsafe.Pointer(folder)))
+		if err != nil {
+			return nil, err
+		}
+		folder = next
+	}
+	return folder, nil
+}
+
+func shellFolderForRoot(path windowsShellPath) (*shellFolder, error) {
+	folder, err := shellFolderFromAbsolutePath(path.root)
+	if err == nil || !path.unc {
+		return folder, err
+	}
+
+	// Some UNC roots cannot be parsed as one display name. Start from the
+	// Network shell folder and resolve server/share one component at a time.
+	dbg("Shell root parse failed; resolving UNC components server=%s share=%s", path.server, path.share)
+	folder, networkErr := shellNetworkFolder()
+	if networkErr != nil {
+		return nil, fmt.Errorf("%w; Network shell folder failed: %v", err, networkErr)
+	}
+	for _, component := range []string{path.server, path.share} {
+		pidl, childErr := childPIDL(folder, component)
+		if childErr != nil {
+			releaseUnknown((*unknown)(unsafe.Pointer(folder)))
+			return nil, fmt.Errorf("%w; resolving UNC component %q failed: %v", err, component, childErr)
+		}
+		next, bindErr := bindChildFolder(folder, pidl)
+		procCoTaskMemFree.Call(pidl)
+		releaseUnknown((*unknown)(unsafe.Pointer(folder)))
+		if bindErr != nil {
+			return nil, fmt.Errorf("%w; binding UNC component %q failed: %v", err, component, bindErr)
+		}
+		folder = next
+	}
+	return folder, nil
+}
+
+func shellFolderFromAbsolutePath(path string) (*shellFolder, error) {
+	pidl, err := parseDisplayName(path)
+	if err != nil {
+		return nil, err
+	}
+	defer procCoTaskMemFree.Call(pidl)
+	return shellFolderFromAbsolutePIDL(pidl)
+}
+
+func shellNetworkFolder() (*shellFolder, error) {
+	var pidl uintptr
+	hr, _, _ := procSHGetSpecialFolderLocation.Call(0, csidlNetwork, uintptr(unsafe.Pointer(&pidl)))
+	if failed(hr) {
+		return nil, fmt.Errorf("SHGetSpecialFolderLocation(CSIDL_NETWORK) failed: 0x%x", uint32(hr))
+	}
+	defer procCoTaskMemFree.Call(pidl)
+	return shellFolderFromAbsolutePIDL(pidl)
+}
+
+func shellFolderFromAbsolutePIDL(pidl uintptr) (*shellFolder, error) {
+	var parent *shellFolder
+	var child uintptr
+	hr, _, _ := procSHBindToParent.Call(
+		pidl,
+		uintptr(unsafe.Pointer(&iidIShellFolder)),
+		uintptr(unsafe.Pointer(&parent)),
+		uintptr(unsafe.Pointer(&child)),
+	)
+	if failed(hr) {
+		return nil, fmt.Errorf("SHBindToParent failed: 0x%x", uint32(hr))
+	}
+	defer releaseUnknown((*unknown)(unsafe.Pointer(parent)))
+	return bindChildFolder(parent, child)
+}
+
+func bindChildFolder(parent *shellFolder, child uintptr) (*shellFolder, error) {
+	var folder *shellFolder
+	hr, _, _ := syscall.SyscallN(
+		parent.vtbl.bindToObject,
+		uintptr(unsafe.Pointer(parent)),
+		child,
+		0,
+		uintptr(unsafe.Pointer(&iidIShellFolder)),
+		uintptr(unsafe.Pointer(&folder)),
+	)
+	if failed(hr) {
+		return nil, fmt.Errorf("IShellFolder.BindToObject failed: 0x%x", uint32(hr))
+	}
+	return folder, nil
+}
+
+func shellItemFromFolderAndPIDL(folder *shellFolder, pidl uintptr) (*shellItem, error) {
+	var item *shellItem
+	hr, _, _ := procSHCreateShellItem.Call(
+		0,
+		uintptr(unsafe.Pointer(folder)),
+		pidl,
+		uintptr(unsafe.Pointer(&item)),
+	)
+	if failed(hr) {
+		return nil, fmt.Errorf("SHCreateShellItem failed: 0x%x", uint32(hr))
+	}
+	return item, nil
+}
+
+func newFileOperation() (*fileOperation, error) {
+	var op *fileOperation
+	hr, _, _ := procCoCreateInstance.Call(
+		uintptr(unsafe.Pointer(&clsidFileOperation)),
+		0,
+		clsctxInprocServer,
+		uintptr(unsafe.Pointer(&iidIFileOperation)),
+		uintptr(unsafe.Pointer(&op)),
+	)
+	if failed(hr) {
+		return nil, fmt.Errorf("CoCreateInstance(CLSID_FileOperation) failed: 0x%x", uint32(hr))
+	}
+	return op, nil
+}
+
+func setFileOperationFlags(op *fileOperation, flags uint32) error {
+	hr, _, _ := syscall.SyscallN(
+		op.vtbl.setOperationFlags,
+		uintptr(unsafe.Pointer(op)),
+		uintptr(flags),
+	)
+	if failed(hr) {
+		return fmt.Errorf("IFileOperation.SetOperationFlags failed: 0x%x", uint32(hr))
+	}
+	return nil
+}
+
+func queueRecycleDelete(op *fileOperation, item *shellItem) error {
+	hr, _, _ := syscall.SyscallN(
+		op.vtbl.deleteItem,
+		uintptr(unsafe.Pointer(op)),
+		uintptr(unsafe.Pointer(item)),
+		0,
+	)
+	if failed(hr) {
+		return fmt.Errorf("IFileOperation.DeleteItem failed: 0x%x", uint32(hr))
+	}
+	return nil
+}
+
+func performFileOperations(op *fileOperation) error {
+	hr, _, _ := syscall.SyscallN(
+		op.vtbl.performOperations,
+		uintptr(unsafe.Pointer(op)),
+	)
+	if failed(hr) {
+		return fmt.Errorf("IFileOperation.PerformOperations failed: 0x%x", uint32(hr))
+	}
+	return nil
+}
+
+func checkFileOperationAborted(op *fileOperation) error {
+	var aborted int32
+	hr, _, _ := syscall.SyscallN(
+		op.vtbl.getAnyOperationsAborted,
+		uintptr(unsafe.Pointer(op)),
+		uintptr(unsafe.Pointer(&aborted)),
+	)
+	if failed(hr) {
+		return fmt.Errorf("IFileOperation.GetAnyOperationsAborted failed: 0x%x", uint32(hr))
+	}
+	if aborted != 0 {
+		return fmt.Errorf("delete to recycle bin was aborted")
+	}
+	return nil
+}
+
+func childPIDL(folder *shellFolder, name string) (uintptr, error) {
+	wideName, err := windows.UTF16PtrFromString(name)
+	if err != nil {
+		return 0, err
+	}
+	var eaten uint32
+	var pidl uintptr
+	var attributes uint32
+	hr, _, _ := syscall.SyscallN(
+		folder.vtbl.parseDisplayName,
+		uintptr(unsafe.Pointer(folder)),
+		0,
+		0,
+		uintptr(unsafe.Pointer(wideName)),
+		uintptr(unsafe.Pointer(&eaten)),
+		uintptr(unsafe.Pointer(&pidl)),
+		uintptr(unsafe.Pointer(&attributes)),
+	)
+	if !failed(hr) {
+		return pidl, nil
+	}
+
+	parseErr := fmt.Errorf("IShellFolder.ParseDisplayName failed for %s: 0x%x", name, uint32(hr))
+	dbg("Child PIDL parse failed; enumerating name=%s", name)
+	pidl, enumErr := findChildPIDLByName(folder, name)
+	if enumErr == nil {
+		dbg("Child PIDL enumeration fallback succeeded name=%s", name)
+		return pidl, nil
+	}
+	return 0, fmt.Errorf("%w; directory enumeration fallback failed: %v", parseErr, enumErr)
+}
+
+func findChildPIDLByName(folder *shellFolder, name string) (uintptr, error) {
+	var enumerator *enumIDList
+	hr, _, _ := syscall.SyscallN(
+		folder.vtbl.enumObjects,
+		uintptr(unsafe.Pointer(folder)),
+		0,
+		shcontfFolders|shcontfNonFolders|shcontfIncludeHidden,
+		uintptr(unsafe.Pointer(&enumerator)),
+	)
+	if failed(hr) {
+		return 0, fmt.Errorf("IShellFolder.EnumObjects failed: 0x%x", uint32(hr))
+	}
+	defer releaseUnknown((*unknown)(unsafe.Pointer(enumerator)))
+
+	var caseInsensitiveMatch uintptr
+	for {
+		var pidl uintptr
+		var fetched uint32
+		hr, _, _ = syscall.SyscallN(
+			enumerator.vtbl.next,
+			uintptr(unsafe.Pointer(enumerator)),
+			1,
+			uintptr(unsafe.Pointer(&pidl)),
+			uintptr(unsafe.Pointer(&fetched)),
+		)
+		if uint32(hr) == sFalse || fetched == 0 {
+			break
+		}
+		if failed(hr) {
+			if caseInsensitiveMatch != 0 {
+				procCoTaskMemFree.Call(caseInsensitiveMatch)
+			}
+			return 0, fmt.Errorf("IEnumIDList.Next failed: 0x%x", uint32(hr))
+		}
+
+		displayName, err := childDisplayName(folder, pidl)
+		if err == nil && displayName == name {
+			if caseInsensitiveMatch != 0 {
+				procCoTaskMemFree.Call(caseInsensitiveMatch)
+			}
+			return pidl, nil
+		}
+		if err == nil && caseInsensitiveMatch == 0 && strings.EqualFold(displayName, name) {
+			caseInsensitiveMatch = pidl
+			continue
+		}
+		procCoTaskMemFree.Call(pidl)
+	}
+	if caseInsensitiveMatch != 0 {
+		return caseInsensitiveMatch, nil
+	}
+	return 0, fmt.Errorf("child %q was not found", name)
+}
+
+func childDisplayName(folder *shellFolder, pidl uintptr) (string, error) {
+	var value strret
+	hr, _, _ := syscall.SyscallN(
+		folder.vtbl.getDisplayNameOf,
+		uintptr(unsafe.Pointer(folder)),
+		pidl,
+		0x0001, // SHGDN_INFOLDER
+		uintptr(unsafe.Pointer(&value)),
+	)
+	if failed(hr) {
+		return "", fmt.Errorf("IShellFolder.GetDisplayNameOf failed: 0x%x", uint32(hr))
+	}
+	buf := make([]uint16, 1024)
+	hr, _, _ = procStrRetToBufW.Call(
+		uintptr(unsafe.Pointer(&value)),
+		pidl,
+		uintptr(unsafe.Pointer(&buf[0])),
+		uintptr(len(buf)),
+	)
+	if failed(hr) {
+		return "", fmt.Errorf("StrRetToBufW failed: 0x%x", uint32(hr))
+	}
+	return windows.UTF16PtrToString(&buf[0]), nil
+}
+
+func freePIDLs(pidls []uintptr) {
+	for _, pidl := range pidls {
+		procCoTaskMemFree.Call(pidl)
+	}
 }
 
 func parseDisplayName(path string) (uintptr, error) {
@@ -708,11 +1147,7 @@ func parseDisplayName(path string) (uintptr, error) {
 		0,
 	)
 	if failed(hr) {
-		err := fmt.Errorf("SHParseDisplayName failed for %s: 0x%x", path, uint32(hr))
-		if uint32(hr) == hResultFileNotFound && exceedsLegacyShellPathLimit(path) {
-			return 0, fmt.Errorf("%w: %v", ErrPathTooLong, err)
-		}
-		return 0, err
+		return 0, fmt.Errorf("SHParseDisplayName failed for %s: 0x%x", path, uint32(hr))
 	}
 	return pidl, nil
 }
