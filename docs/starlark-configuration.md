@@ -177,8 +177,7 @@ Scalar sections:
 - `nmf.archive(zip_name_encoding = str)`
 - `nmf.sort(by = "name|size|modified|extension", order = "asc|desc",
   directories_first = bool, temporary = bool)`
-- `nmf.cursor_style(type = "underline|border|background|icon|font",
-  thickness = int)`
+- `nmf.cursor_style(type = "underline|border|background", thickness = int)`
 - `nmf.cursor_memory(max_entries = int)`
 - `nmf.navigation_history(max_entries = int)`
 - `nmf.file_filter(max_entries = int)`

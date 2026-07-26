@@ -591,6 +591,10 @@ func TestManagerLoadRejectsInvalidValues(t *testing.T) {
 		{name: "scroll margin", json: `{"ui":{"scrollMargin":-1}}`, want: "ui.scrollMargin"},
 		{name: "cursor entries", json: `{"ui":{"cursorMemory":{"maxEntries":-1}}}`, want: "ui.cursorMemory.maxEntries"},
 		{name: "viewer size", json: `{"ui":{"viewer":{"maxWidth":-1}}}`, want: "ui.viewer.maxWidth"},
+		// icon and font were listed as cursor styles but never implemented, so
+		// setting one silently rendered an underline instead.
+		{name: "cursor style icon", json: `{"ui":{"cursorStyle":{"type":"icon"}}}`, want: "ui.cursorStyle.type"},
+		{name: "cursor style font", json: `{"ui":{"cursorStyle":{"type":"font"}}}`, want: "ui.cursorStyle.type"},
 	}
 
 	for _, tt := range tests {
@@ -615,8 +619,15 @@ func TestSharedConfigValueValidators(t *testing.T) {
 	if !IsValidSortOrder("desc") || IsValidSortOrder("sideways") {
 		t.Fatal("sort order validator returned an unexpected result")
 	}
-	if !IsValidCursorStyleType("border") || IsValidCursorStyleType("blink") {
-		t.Fatal("cursor style validator returned an unexpected result")
+	for _, valid := range []string{"underline", "border", "background"} {
+		if !IsValidCursorStyleType(valid) {
+			t.Fatalf("IsValidCursorStyleType(%q) = false, want true", valid)
+		}
+	}
+	for _, invalid := range []string{"blink", "icon", "font"} {
+		if IsValidCursorStyleType(invalid) {
+			t.Fatalf("IsValidCursorStyleType(%q) = true, want false", invalid)
+		}
 	}
 	if got := NormalizeViewerDefaultPane(" Markdown "); got != "markdown" {
 		t.Fatalf("NormalizeViewerDefaultPane() = %q, want markdown", got)
