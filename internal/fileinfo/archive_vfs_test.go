@@ -4,7 +4,9 @@ import (
 	"archive/zip"
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
@@ -655,8 +657,9 @@ func (p *fakeArchivePasswordProvider) sawRetry(path string) bool {
 }
 
 // One mistyped password must cost one round of prompts, not the product of the
-// Open retry loop and the prompt loop.
-func TestArchiveVFSOpenBoundsPasswordPrompts(t *testing.T) {
+// Open retry loop and the prompt loop. This covers the resolve path, where a
+// content-encrypted archive prompts before any entry is opened.
+func TestArchiveResolveBoundsPasswordPrompts(t *testing.T) {
 	wrong := make([]string, 20)
 	for i := range wrong {
 		wrong[i] = "wrong"
@@ -728,5 +731,78 @@ func TestArchiveVFSRetryKeepsResolveContext(t *testing.T) {
 	cancel()
 	if _, err := vfs.Open("secret.txt"); err == nil {
 		t.Fatal("Open() succeeded after the resolve context was cancelled")
+	}
+}
+
+// Every password the user is asked for must actually be tried. The retry loop
+// tests the current candidate and then prompts for the next one, so the last
+// prompted password used to be collected and discarded when the loop ended.
+func TestArchivePasswordProviderValidatesTheLastPrompt(t *testing.T) {
+	answers := make([]string, archivePasswordPromptAttempts)
+	for i := range answers {
+		answers[i] = "wrong"
+	}
+	answers[len(answers)-1] = "secret"
+	provider := setArchivePasswordProviderForTest(t, answers...)
+	archivePath := filepath.Join("testdata", "encrypted.7z")
+
+	entries, err := ReadDirPortable(ArchiveRootPath(archivePath))
+	if err != nil {
+		t.Fatalf("ReadDirPortable returned error after the last prompt: %v", err)
+	}
+	if got := entryNames(entries); len(got) != 1 || got[0] != "secret.txt" {
+		t.Fatalf("entries = %v, want [secret.txt]", got)
+	}
+	if got := provider.callsFor(archivePath); got != archivePasswordPromptAttempts {
+		t.Fatalf("prompt count = %d, want %d", got, archivePasswordPromptAttempts)
+	}
+}
+
+// passwordErrorFS stands in for an archive filesystem whose entries need a
+// password the current extractor does not have.
+type passwordErrorFS struct{}
+
+func (passwordErrorFS) Open(string) (fs.File, error) {
+	return nil, fmt.Errorf("stub entry: %w", ErrArchivePasswordRequired)
+}
+
+// Open re-reads the entry after a successful re-authentication, which is the
+// whole point of its retry loop: the first read fails with a password error,
+// retryWithArchivePassword installs a working filesystem, and the second read
+// runs against that one. The guard that stops it from re-authenticating again
+// when no further read would follow is structural (archiveOpenAttempts).
+func TestArchiveVFSOpenRetriesAfterReauthentication(t *testing.T) {
+	provider := setArchivePasswordProviderForTest(t, "secret")
+	archivePath := filepath.Join("testdata", "encrypted-names-visible.7z")
+
+	vfs := &ArchiveVFS{
+		archivePath: archivePath,
+		localPath:   archivePath,
+		ctx:         t.Context(),
+		fsys:        passwordErrorFS{},
+	}
+
+	// The re-read lands on the rebuilt filesystem, so a missing entry now fails
+	// as "not exist" rather than as another password error.
+	_, err := vfs.Open("no-such-entry.txt")
+	if err == nil {
+		t.Fatal("Open() of a missing entry returned no error")
+	}
+	if isArchivePasswordError(err) {
+		t.Fatalf("Open() = %v, want the retry to have replaced the filesystem", err)
+	}
+	if got := provider.callsFor(archivePath); got != 1 {
+		t.Fatalf("prompt count = %d, want 1", got)
+	}
+
+	// The rebuilt filesystem is the one later reads use.
+	rc, err := vfs.Open("secret.txt")
+	if err != nil {
+		t.Fatalf("Open() after re-authentication returned error: %v", err)
+	}
+	defer rc.Close()
+	data, err := io.ReadAll(rc)
+	if err != nil || string(data) != "secret archive data\n" {
+		t.Fatalf("entry content = %q, %v", data, err)
 	}
 }
