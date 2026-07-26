@@ -45,7 +45,7 @@ func TestSMBCopyRoundtrip(t *testing.T) {
 	job.ctx, job.cancel = context.WithCancel(context.Background())
 
 	// local -> smb
-	if err := copyOrMovePath(job, sourcePath, smbDir); err != nil {
+	if err := transferOneSource(job, sourcePath, smbDir); err != nil {
 		t.Fatalf("copy local->smb failed: %v", err)
 	}
 
@@ -63,7 +63,7 @@ func TestSMBCopyRoundtrip(t *testing.T) {
 	if err := os.MkdirAll(restoreDir, 0755); err != nil {
 		t.Fatalf("failed to create restore dir: %v", err)
 	}
-	if err := copyOrMovePath(job, smbFileDisplay, restoreDir); err != nil {
+	if err := transferOneSource(job, smbFileDisplay, restoreDir); err != nil {
 		t.Fatalf("copy smb->local failed: %v", err)
 	}
 

@@ -114,6 +114,12 @@ Jobs:
 - Pending jobs can be canceled and removed from queue.
 - Running job cancellation signals context and transitions to `StatusCanceled`.
 - First failed path ends that job as `StatusFailed` with failure details recorded.
+- The destination is resolved and validated once, before any source is
+  processed (`openTransferDestination`): it must already exist and be a
+  directory, and archive paths are rejected outright since archive mutation is
+  out of scope. A mistyped destination tree is never created implicitly. The
+  execution context that validation opens is shared by every source of the job,
+  so a remote backend is dialed once per job rather than once per source.
 - Failed jobs remain visible in history; selecting a failed job in the Jobs
   window marks that failure as acknowledged so main-window Jobs indicators stop
   error blinking for that job.

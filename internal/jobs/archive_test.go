@@ -22,8 +22,8 @@ func TestCopyFromArchiveToLocalDirectory(t *testing.T) {
 	job := &Job{Type: TypeCopy, ctx: t.Context()}
 
 	src := fileinfo.JoinPath(fileinfo.ArchiveRootPath(archivePath), "dir")
-	if err := copyOrMovePath(job, src, dstDir); err != nil {
-		t.Fatalf("copyOrMovePath returned error: %v", err)
+	if err := transferOneSource(job, src, dstDir); err != nil {
+		t.Fatalf("transferOneSource returned error: %v", err)
 	}
 
 	data, err := os.ReadFile(filepath.Join(dstDir, "dir", "file.txt"))
@@ -41,8 +41,8 @@ func TestMoveFromArchiveIsRejected(t *testing.T) {
 	job := &Job{Type: TypeMove, ctx: t.Context()}
 
 	src := fileinfo.JoinPath(fileinfo.ArchiveRootPath(archivePath), "file.txt")
-	if err := copyOrMovePath(job, src, dstDir); err == nil {
-		t.Fatal("copyOrMovePath move from archive returned nil error")
+	if err := transferOneSource(job, src, dstDir); err == nil {
+		t.Fatal("transferOneSource move from archive returned nil error")
 	}
 }
 
@@ -54,9 +54,9 @@ func TestCopyFromArchiveRejectsUnsafeEntryName(t *testing.T) {
 	job := &Job{Type: TypeCopy, ctx: t.Context()}
 
 	src := fileinfo.ArchiveRootPath(archivePath)
-	err := copyOrMovePath(job, src, dstDir)
+	err := transferOneSource(job, src, dstDir)
 	if !errors.Is(err, fileinfo.ErrUnsafeArchiveEntry) {
-		t.Fatalf("copyOrMovePath unsafe archive error = %v, want ErrUnsafeArchiveEntry", err)
+		t.Fatalf("transferOneSource unsafe archive error = %v, want ErrUnsafeArchiveEntry", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(dstDir, "evil.txt")); !os.IsNotExist(statErr) {
 		t.Fatalf("unsafe destination was created or stat failed unexpectedly: %v", statErr)

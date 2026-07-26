@@ -353,19 +353,15 @@ func (m *Manager) runJob(j *Job) error {
 	if j.Type == TypeExtract {
 		return m.runExtractJob(j)
 	}
-	destPath, err := resolveExecutionPath(j.DestDir)
+	destPath, execCtx, err := openTransferDestination(j.DestDir)
 	if err != nil {
-		return wrapPath(j.DestDir, err)
+		return err
 	}
-	execCtx := newExecutionContext()
 	defer func() {
 		if err := execCtx.close(); err != nil {
 			dbg("job %d: execution context close error: %v", j.ID, err)
 		}
 	}()
-	if err := validateDestinationDirectory(execCtx, destPath); err != nil {
-		return err
-	}
 	for i, src := range j.Sources {
 		if canceled(j) {
 			return errCanceled
@@ -377,12 +373,7 @@ func (m *Manager) runJob(j *Job) error {
 		j.mu.Unlock()
 		dbg("job %d: process %s", j.ID, src)
 		m.notify()
-		srcPath, err := resolveExecutionPath(src)
-		if err != nil {
-			err = wrapPath(src, err)
-		} else {
-			err = copyOrMovePathResolved(j, execCtx, srcPath, destPath)
-		}
+		err := transferSource(j, execCtx, src, destPath)
 		if err != nil {
 			if errors.Is(err, errSkipped) {
 				dbg("job %d: skipped %s", j.ID, src)
@@ -754,28 +745,34 @@ func linkTargetForCopy(execCtx *executionContext, p executionPath, fi os.FileInf
 	return target, true, nil
 }
 
-// copyOrMovePath copies or moves a path (file or directory).
-func copyOrMovePath(j *Job, src string, destDir string) error {
+// openTransferDestination resolves and validates a copy/move destination and
+// returns the execution context every source of that job shares. The caller
+// owns the context and must close it. Sharing one context per job is what keeps
+// a remote backend dialed once instead of once per source, so this preamble
+// runs before any transfer rather than inside the per-source loop.
+func openTransferDestination(destDir string) (executionPath, *executionContext, error) {
+	destPath, err := resolveExecutionPath(destDir)
+	if err != nil {
+		return executionPath{}, nil, wrapPath(destDir, err)
+	}
+	execCtx := newExecutionContext()
+	if err := validateDestinationDirectory(execCtx, destPath); err != nil {
+		if closeErr := execCtx.close(); closeErr != nil {
+			dbg("execution context close error: %v", closeErr)
+		}
+		return executionPath{}, nil, err
+	}
+	return destPath, execCtx, nil
+}
+
+// transferSource copies or moves one top-level source into an already-validated
+// destination, reusing the job's shared execution context.
+func transferSource(j *Job, execCtx *executionContext, src string, destDir executionPath) error {
 	srcPath, err := resolveExecutionPath(src)
 	if err != nil {
 		return wrapPath(src, err)
 	}
-	destPath, err := resolveExecutionPath(destDir)
-	if err != nil {
-		return wrapPath(destDir, err)
-	}
-
-	execCtx := newExecutionContext()
-	defer func() {
-		if err := execCtx.close(); err != nil {
-			dbg("job %d: SMB session close error: %v", j.ID, err)
-		}
-	}()
-	if err := validateDestinationDirectory(execCtx, destPath); err != nil {
-		return err
-	}
-
-	return copyOrMovePathResolved(j, execCtx, srcPath, destPath)
+	return copyOrMovePathResolved(j, execCtx, srcPath, destDir)
 }
 
 func validateDestinationDirectory(execCtx *executionContext, dest executionPath) error {
