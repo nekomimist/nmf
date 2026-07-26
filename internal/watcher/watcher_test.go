@@ -54,7 +54,17 @@ func (m *mockFM) ApplyChanges(added, deleted, modified []fileinfo.FileInfo) {
 	}
 
 	for _, addedFile := range added {
-		files = append(files, addedFile)
+		replaced := false
+		for i, file := range files {
+			if file.Path == addedFile.Path {
+				files[i] = addedFile
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			files = append(files, addedFile)
+		}
 	}
 
 	m.UpdateFiles(files)
@@ -218,9 +228,9 @@ func TestApplyDataChangesOnUIRechecksRunGeneration(t *testing.T) {
 	dw.running = true
 	dw.runID = 2
 
-	dw.applyDataChangesOnUI(1, []fileinfo.FileInfo{
-		fi("./stale.txt", "stale.txt", 1, time.Now()),
-	}, nil, nil)
+	dw.applyDataChangesOnUI(1, &PendingChanges{
+		Added: []fileinfo.FileInfo{fi("./stale.txt", "stale.txt", 1, time.Now())},
+	})
 
 	if len(m.files) != 0 {
 		t.Fatalf("stale UI callback changed files: %#v", m.files)
@@ -282,7 +292,7 @@ func TestApplyDataChanges_MergesAddedDeletedModified(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		dw.applyDataChanges(1, added, deleted, modified)
+		dw.applyDataChanges(1, &PendingChanges{Added: added, Deleted: deleted, Modified: modified})
 	}()
 	<-done
 
@@ -320,7 +330,7 @@ func TestApplyDataChanges_NoopWhenAllEmpty(t *testing.T) {
 
 	// All three slices empty: must return before reaching fyne.Do, so this is
 	// safe to call directly without a running app.
-	dw.applyDataChanges(0, nil, nil, nil)
+	dw.applyDataChanges(0, &PendingChanges{})
 
 	if len(m.files) != 1 {
 		t.Fatalf("files should be untouched, got %#v", m.files)
@@ -390,5 +400,70 @@ func TestAdvanceSnapshotPromotesReadWhenBaselineUnchanged(t *testing.T) {
 	gotAdded, _, _, _ = dw.detectChanges(read)
 	if len(gotAdded) != 0 {
 		t.Fatalf("added = %#v, want none after the baseline advanced", gotAdded)
+	}
+}
+
+// The queue-time generation check is not enough on its own: a change set can be
+// queued, then the UI can merge the same creation itself and reset the
+// baseline, and only then does the apply loop get to it. Applying it at that
+// point restamps the entry the UI added with StatusAdded.
+func TestApplyDataChangesOnUIDropsChangesFromAResetBaseline(t *testing.T) {
+	now := time.Now()
+	existing := fi("/tmp/a.txt", "a.txt", 10, now)
+	m := &mockFM{path: "/tmp", files: []fileinfo.FileInfo{existing}}
+	dw := NewDirectoryWatcher(m, nil, dummyDebug)
+	dw.running = true
+	dw.runID = 1
+	dw.updateSnapshot()
+
+	// The watcher detects the new file and queues it.
+	created := fi("/tmp/new.txt", "new.txt", 3, now)
+	created.Status = fileinfo.StatusAdded
+	read := Snapshot{"/tmp/a.txt": existing, "/tmp/new.txt": created}
+	added, deleted, modified, baselineGen := dw.detectChanges(read)
+	if len(added) != 1 {
+		t.Fatalf("added = %#v, want new.txt", added)
+	}
+	queued := &PendingChanges{Added: added, Deleted: deleted, Modified: modified, BaselineGen: baselineGen}
+
+	// Before the apply loop gets to it, the UI merges its own creation as a
+	// normal entry and resets the baseline.
+	uiCreated := fi("/tmp/new.txt", "new.txt", 3, now)
+	m.files = append(m.files, uiCreated)
+	dw.RefreshSnapshot()
+
+	dw.applyDataChangesOnUI(1, queued)
+
+	if len(m.files) != 2 {
+		t.Fatalf("files = %#v, want 2 entries", m.files)
+	}
+	for _, f := range m.files {
+		if f.Path == "/tmp/new.txt" && f.Status != fileinfo.StatusNormal {
+			t.Fatalf("stale change set restamped the UI's entry: status = %v", f.Status)
+		}
+	}
+}
+
+// The steady state still applies: a change set whose baseline is unchanged
+// reaches the file manager.
+func TestApplyDataChangesOnUIAppliesCurrentBaseline(t *testing.T) {
+	now := time.Now()
+	existing := fi("/tmp/a.txt", "a.txt", 10, now)
+	m := &mockFM{path: "/tmp", files: []fileinfo.FileInfo{existing}}
+	dw := NewDirectoryWatcher(m, nil, dummyDebug)
+	dw.running = true
+	dw.runID = 1
+	dw.updateSnapshot()
+
+	created := fi("/tmp/new.txt", "new.txt", 3, now)
+	read := Snapshot{"/tmp/a.txt": existing, "/tmp/new.txt": created}
+	added, deleted, modified, baselineGen := dw.detectChanges(read)
+
+	dw.applyDataChangesOnUI(1, &PendingChanges{
+		Added: added, Deleted: deleted, Modified: modified, BaselineGen: baselineGen,
+	})
+
+	if len(m.files) != 2 {
+		t.Fatalf("files = %#v, want the added entry merged", m.files)
 	}
 }

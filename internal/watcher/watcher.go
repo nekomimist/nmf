@@ -45,6 +45,10 @@ type PendingChanges struct {
 	Added    []fileinfo.FileInfo
 	Deleted  []fileinfo.FileInfo
 	Modified []fileinfo.FileInfo
+	// BaselineGen is the baseline generation these changes were derived from.
+	// It travels with them so the merge can be abandoned when the baseline was
+	// reset while they sat in the queue.
+	BaselineGen uint64
 }
 
 // NewDirectoryWatcher creates a new directory watcher
@@ -207,9 +211,10 @@ func (dw *DirectoryWatcher) queueSnapshotChanges(runID uint64, currentFiles Snap
 
 		select {
 		case changeChan <- &PendingChanges{
-			Added:    added,
-			Deleted:  deleted,
-			Modified: modified,
+			Added:       added,
+			Deleted:     deleted,
+			Modified:    modified,
+			BaselineGen: baselineGen,
 		}:
 			// Advance the expected baseline only after the change set is queued.
 			// This prevents a burst of snapshots from deriving duplicate adds or
@@ -234,18 +239,19 @@ func (dw *DirectoryWatcher) queueSnapshotChanges(runID uint64, currentFiles Snap
 // "added" a second time.
 func (dw *DirectoryWatcher) advanceSnapshot(runID, baselineGen uint64, files Snapshot) {
 	dw.mu.Lock()
-	defer dw.mu.Unlock()
-	if !dw.running || dw.runID != runID {
-		return
+	live := dw.running && dw.runID == runID
+	currentGen := dw.baselineGen
+	if live && currentGen == baselineGen {
+		// Each subscriber receives its own cloned snapshot from WatchHub. After
+		// the watcher goroutine receives it, ownership transfers here and no
+		// second copy is needed.
+		dw.previousFiles = files
 	}
-	if dw.baselineGen != baselineGen {
-		dw.debugPrint("DirectoryWatcher: baseline reset during detection, keeping gen=%d", dw.baselineGen)
-		return
+	dw.mu.Unlock()
+
+	if live && currentGen != baselineGen {
+		dw.debugPrint("DirectoryWatcher: baseline reset during detection, keeping gen=%d", currentGen)
 	}
-	// Each subscriber receives its own cloned snapshot from WatchHub. After the
-	// watcher goroutine receives it, ownership transfers here and no second copy
-	// is needed.
-	dw.previousFiles = files
 }
 
 // detectChanges compares current and previous states to find differences. It
@@ -288,22 +294,52 @@ func (dw *DirectoryWatcher) detectChanges(currentFiles map[string]fileinfo.FileI
 // fm.files/fm.selectedFiles access; the previous background-goroutine merge
 // (calling GetFiles/RemoveFromSelections here directly) raced with UI-thread
 // code such as SetFileSelected, which mutates fm.selectedFiles without a lock.
-func (dw *DirectoryWatcher) applyDataChanges(runID uint64, added, deleted, modified []fileinfo.FileInfo) {
-	if len(added) == 0 && len(deleted) == 0 && len(modified) == 0 {
+func (dw *DirectoryWatcher) applyDataChanges(runID uint64, changes *PendingChanges) {
+	if changes == nil {
 		return
 	}
-	dw.debugPrint("DirectoryWatcher: Applying changes: %d added, %d deleted, %d modified", len(added), len(deleted), len(modified))
+	if len(changes.Added) == 0 && len(changes.Deleted) == 0 && len(changes.Modified) == 0 {
+		return
+	}
+	dw.debugPrint("DirectoryWatcher: Applying changes: %d added, %d deleted, %d modified",
+		len(changes.Added), len(changes.Deleted), len(changes.Modified))
 
 	fyne.DoAndWait(func() {
-		dw.applyDataChangesOnUI(runID, added, deleted, modified)
+		dw.applyDataChangesOnUI(runID, changes)
 	})
 }
 
-func (dw *DirectoryWatcher) applyDataChangesOnUI(runID uint64, added, deleted, modified []fileinfo.FileInfo) {
-	if !dw.isCurrentRun(runID) {
+// applyDataChangesOnUI merges a change set into the file manager's list. The
+// baseline check belongs here rather than only at queue time: RefreshSnapshot
+// runs on this same goroutine, so checking it immediately before the merge is
+// what makes the two atomic with respect to each other. A change set that
+// outlived its baseline is dropped -- the UI has already merged whatever it
+// created, and the next directory read reconciles anything genuinely missing.
+// Applying it anyway would restamp the entry the UI just added with
+// StatusAdded and could overwrite fresh metadata with the older read's.
+func (dw *DirectoryWatcher) applyDataChangesOnUI(runID uint64, changes *PendingChanges) {
+	if changes == nil || !dw.canApply(runID, changes.BaselineGen) {
 		return
 	}
-	dw.fm.ApplyChanges(added, deleted, modified)
+	dw.fm.ApplyChanges(changes.Added, changes.Deleted, changes.Modified)
+}
+
+// canApply reports whether a change set still belongs to the active run and to
+// the current baseline.
+func (dw *DirectoryWatcher) canApply(runID, baselineGen uint64) bool {
+	dw.mu.RLock()
+	live := dw.running && dw.runID == runID
+	currentGen := dw.baselineGen
+	dw.mu.RUnlock()
+
+	if !live {
+		return false
+	}
+	if currentGen != baselineGen {
+		dw.debugPrint("DirectoryWatcher: dropping changes from baseline gen=%d, current=%d", baselineGen, currentGen)
+		return false
+	}
+	return true
 }
 
 // applyPendingChanges applies a queued change set only when it belongs to the active watcher run.
@@ -312,5 +348,5 @@ func (dw *DirectoryWatcher) applyPendingChanges(runID uint64, changes *PendingCh
 		return
 	}
 	// Apply data changes (binding auto-updates UI)
-	dw.applyDataChanges(runID, changes.Added, changes.Deleted, changes.Modified)
+	dw.applyDataChanges(runID, changes)
 }
