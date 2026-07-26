@@ -277,6 +277,10 @@ func (s SMBFS) dialAndMountContext(ctx context.Context, relPath string) (*smb2.S
 		return nil, nil, nil, creds, err
 	}
 
+	// These credentials work, so any session-scoped refusal recorded for this
+	// share is stale.
+	ForgetRejectedLogin(s.host, s.share)
+
 	// Persist credentials after a successful mount if requested.
 	if store := currentSecretStore(); creds.Persist && store != nil {
 		_ = store.Set(s.host, s.share, creds.Domain, creds.Username, creds.Password)
