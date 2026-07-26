@@ -60,13 +60,16 @@ func getCredentials(ctx context.Context, host, share, rel string) (Credentials, 
 	if c, ok := GetCachedCredentials(host, share); ok {
 		return c, nil
 	}
-	// 2) Then try keyring (if available)
+	// 2) Then try keyring (if available), unless it is holding credentials this
+	// session already watched the server refuse.
 	if store := currentSecretStore(); store != nil {
 		if d, u, p, found, _ := store.Get(host, share); found {
 			c := Credentials{Domain: d, Username: u, Password: p}
-			// Seed memory cache for this session
-			PutCachedCredentials(host, share, c)
-			return c, nil
+			if !loginWasRejected(host, share, c) {
+				// Seed memory cache for this session
+				PutCachedCredentials(host, share, c)
+				return c, nil
+			}
 		}
 	}
 	// 3) Finally, ask provider (may prompt UI). The provider itself caches.
@@ -182,5 +185,43 @@ func ClearRejectedLogin(host, share string, rejected Credentials) {
 	if domain != rejected.Domain || user != rejected.Username || pass != rejected.Password {
 		return
 	}
-	_ = store.Delete(host, share)
+	if err := store.Delete(host, share); err != nil {
+		// The keyring kept the entry, so the next lookup would read the same
+		// refused credentials straight back and the loop this function exists
+		// to break would survive. Remember them instead: the keyring branch
+		// skips them for the rest of the session and the prompt runs.
+		rememberRejectedLogin(host, share, rejected)
+	}
+}
+
+var (
+	rejectedLoginsMu sync.Mutex
+	rejectedLogins   = map[string]Credentials{}
+)
+
+func rememberRejectedLogin(host, share string, rejected Credentials) {
+	rejectedLoginsMu.Lock()
+	rejectedLogins[host+"\x00"+share] = rejected
+	rejectedLoginsMu.Unlock()
+}
+
+// loginWasRejected reports whether these are credentials the server already
+// refused this session and the keyring would not give up.
+func loginWasRejected(host, share string, c Credentials) bool {
+	rejectedLoginsMu.Lock()
+	defer rejectedLoginsMu.Unlock()
+	rejected, ok := rejectedLogins[host+"\x00"+share]
+	return ok &&
+		rejected.Domain == c.Domain &&
+		rejected.Username == c.Username &&
+		rejected.Password == c.Password
+}
+
+// ForgetRejectedLogin clears the session-scoped refusal for host/share. Call it
+// once a login succeeds, so credentials that start working again -- a password
+// reverted on the server -- are not denied for the rest of the session.
+func ForgetRejectedLogin(host, share string) {
+	rejectedLoginsMu.Lock()
+	delete(rejectedLogins, host+"\x00"+share)
+	rejectedLoginsMu.Unlock()
 }

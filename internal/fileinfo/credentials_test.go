@@ -2,6 +2,7 @@ package fileinfo
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -160,5 +161,71 @@ func TestClearRejectedLoginWithoutSecretStore(t *testing.T) {
 
 	if _, ok := GetCachedCredentials("nas", "pub"); ok {
 		t.Fatal("memory cache still holds the rejected credentials")
+	}
+}
+
+// stubbornSecret hands out its entry but refuses to delete it.
+type stubbornSecret struct {
+	d, u, p string
+	found   bool
+}
+
+func (s *stubbornSecret) Get(host, share string) (string, string, string, bool, error) {
+	return s.d, s.u, s.p, s.found, nil
+}
+func (s *stubbornSecret) Set(host, share, d, u, p string) error { return nil }
+func (s *stubbornSecret) Delete(host, share string) error {
+	return errors.New("keyring unavailable")
+}
+
+// If the keyring will not give up a refused entry, the next lookup must not
+// hand it back: that restores the very loop the eviction exists to break.
+func TestClearRejectedLoginSurvivesAKeyringThatWillNotDelete(t *testing.T) {
+	base := &countingProv{ret: Credentials{Username: "typed", Password: "fresh"}}
+	SetCredentialsProvider(NewCachedCredentialsProvider(base))
+	SetSecretStore(&stubbornSecret{d: "kd", u: "ku", p: "stale", found: true})
+	t.Cleanup(func() { ForgetRejectedLogin("stubborn", "pub") })
+
+	stored, err := getCredentials(context.Background(), "stubborn", "pub", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Password != "stale" {
+		t.Fatalf("keyring credentials = %+v, want the stored entry", stored)
+	}
+
+	ClearRejectedLogin("stubborn", "pub", stored)
+
+	got, err := getCredentials(context.Background(), "stubborn", "pub", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Password != "fresh" || base.calls != 1 {
+		t.Fatalf("prompt did not run after a failed keyring delete: creds=%+v calls=%d", got, base.calls)
+	}
+}
+
+// A refusal must not be a one-way door: once a login works again, the stored
+// entry becomes usable.
+func TestForgetRejectedLoginReenablesTheKeyringEntry(t *testing.T) {
+	base := &countingProv{ret: Credentials{Username: "typed", Password: "fresh"}}
+	SetCredentialsProvider(NewCachedCredentialsProvider(base))
+	SetSecretStore(&stubbornSecret{d: "kd", u: "ku", p: "restored", found: true})
+	t.Cleanup(func() { ForgetRejectedLogin("reverted", "pub") })
+
+	stored, err := getCredentials(context.Background(), "reverted", "pub", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ClearRejectedLogin("reverted", "pub", stored)
+	ForgetRejectedLogin("reverted", "pub")
+	ClearCachedCredentials("reverted", "pub")
+
+	got, err := getCredentials(context.Background(), "reverted", "pub", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Password != "restored" || base.calls != 0 {
+		t.Fatalf("keyring entry not usable again: creds=%+v calls=%d", got, base.calls)
 	}
 }
