@@ -33,6 +33,7 @@ const (
 	coinitApartmentThreaded = 0x2
 	sFalse                  = 0x1
 	rpcEChangedMode         = 0x80010106
+	hResultFileNotFound     = 0x80070002
 	sOK                     = 0x0
 
 	cmfNormal = 0x0
@@ -707,7 +708,11 @@ func parseDisplayName(path string) (uintptr, error) {
 		0,
 	)
 	if failed(hr) {
-		return 0, fmt.Errorf("SHParseDisplayName failed for %s: 0x%x", path, uint32(hr))
+		err := fmt.Errorf("SHParseDisplayName failed for %s: 0x%x", path, uint32(hr))
+		if uint32(hr) == hResultFileNotFound && exceedsLegacyShellPathLimit(path) {
+			return 0, fmt.Errorf("%w: %v", ErrPathTooLong, err)
+		}
+		return 0, err
 	}
 	return pidl, nil
 }

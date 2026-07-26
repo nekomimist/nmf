@@ -59,7 +59,10 @@ func (fm *FileManager) ShowExplorerContextMenu() {
 		err = shellmenu.Show(winCtx.HWND, paths)
 	})
 	if err != nil {
-		if errors.Is(err, shellmenu.ErrUnsupported) {
+		if message, ok := explorerContextMenuErrorMessage(err); ok {
+			debugPrint("FileManager: Explorer context menu error path too long: %v", err)
+			fm.ShowMessageDialog("Explorer Menu", message)
+		} else if errors.Is(err, shellmenu.ErrUnsupported) {
 			debugPrint("FileManager: Explorer context menu error unsupported: %v", err)
 		} else {
 			debugPrint("FileManager: Explorer context menu error failed: %v", err)
@@ -68,6 +71,13 @@ func (fm *FileManager) ShowExplorerContextMenu() {
 
 	fm.FocusFileList()
 	fm.refreshDirectoryAfterShellMenu()
+}
+
+func explorerContextMenuErrorMessage(err error) (string, bool) {
+	if errors.Is(err, shellmenu.ErrPathTooLong) {
+		return "The Explorer Menu cannot be displayed because the file path is too long.", true
+	}
+	return "", false
 }
 
 func (fm *FileManager) cursorMenuClientPosition() (int, int, bool) {
