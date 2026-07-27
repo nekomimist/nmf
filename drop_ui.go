@@ -202,7 +202,8 @@ func (fm *FileManager) showDropActionDialog(paths []string, dest string) {
 					return
 				}
 			}
-			enqueueDroppedTransfer(fm.jobManager(), op, paths, dest, fm.conflictResolver(), jobs.TransferOptions{PreserveTimestamps: fm.config.UI.Copy.PreserveTimestamps})
+			job := enqueueDroppedTransfer(fm.jobManager(), op, paths, dest, fm.conflictResolver(), jobs.TransferOptions{PreserveTimestamps: fm.config.UI.Copy.PreserveTimestamps})
+			fm.trackNavigationHistoryJob(job)
 			debugPrint("FileManager: Drop queued action=%s sources=%d dest=%s", string(op), len(paths), dest)
 		})
 	}

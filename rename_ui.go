@@ -68,6 +68,9 @@ func (fm *FileManager) renameCurrentFile(target fileinfo.FileInfo, newName strin
 	}
 
 	fm.applyRenameToList(target.Path, trimmed, newPath)
+	if target.IsDir {
+		fm.updateNavigationHistoryAfterRename(target.Path, newPath)
+	}
 	debugPrint("FileManager: Renamed %s -> %s", target.Path, newPath)
 	fm.FocusFileList()
 	return true

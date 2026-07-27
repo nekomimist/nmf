@@ -201,18 +201,20 @@ func (m *Manager) enqueueDelete(sources []string, mode DeleteMode) *Job {
 // Cancel cancels a job by ID.
 func (m *Manager) Cancel(id int64) bool {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	// pending in queue
 	for i, j := range m.queue {
 		if j.ID == id {
 			j.mu.Lock()
 			j.Status = StatusCanceled
 			j.CompletedAt = time.Now()
+			callbacks, snapshot := j.takeFinishedCallbacksLocked()
 			j.mu.Unlock()
 			m.queue = append(m.queue[:i], m.queue[i+1:]...)
 			dbg("cancel pending id=%d", id)
 			m.addHistoryLocked(j)
-			go m.notify()
+			m.mu.Unlock()
+			m.notify()
+			invokeFinishedCallbacks(callbacks, snapshot)
 			return true
 		}
 	}
@@ -220,9 +222,11 @@ func (m *Manager) Cancel(id int64) bool {
 	if m.current != nil && m.current.ID == id {
 		m.current.Cancel()
 		dbg("cancel running id=%d", id)
-		go m.notify()
+		m.mu.Unlock()
+		m.notify()
 		return true
 	}
+	m.mu.Unlock()
 	return false
 }
 
@@ -324,8 +328,10 @@ func (m *Manager) worker() {
 			dbg("job completed id=%d done=%d", j.ID, j.DoneFiles)
 		}
 		j.CompletedAt = time.Now()
+		callbacks, snapshot := j.takeFinishedCallbacksLocked()
 		j.mu.Unlock()
 		m.notify()
+		invokeFinishedCallbacks(callbacks, snapshot)
 		m.mu.Lock()
 		m.current = nil
 		m.addHistoryLocked(j)
@@ -419,6 +425,7 @@ func (m *Manager) runDeleteJob(j *Job) error {
 		j.mu.Unlock()
 		m.notify()
 
+		result, isDirectory := topLevelDirectoryResult(execCtx, src)
 		var err error
 		if j.DeleteMode == DeleteModePermanent {
 			err = deletePermanentPath(j, execCtx, src)
@@ -431,6 +438,9 @@ func (m *Manager) runDeleteJob(j *Job) error {
 			j.Failures = append(j.Failures, JobFailure{TopSource: src, Path: fp, Error: err.Error()})
 			j.mu.Unlock()
 			return err
+		}
+		if isDirectory {
+			j.addResult(result)
 		}
 		j.mu.Lock()
 		j.DoneFiles = i + 1
@@ -552,6 +562,18 @@ func deletePermanentPath(j *Job, execCtx *executionContext, src string) error {
 		return wrapPath(srcPath.displayPath(), err)
 	}
 	return deletePermanentResolved(j, execCtx, srcPath)
+}
+
+func topLevelDirectoryResult(execCtx *executionContext, src string) (Result, bool) {
+	path, err := resolveExecutionPath(src)
+	if err != nil {
+		return Result{}, false
+	}
+	info, err := lstatPath(execCtx, path)
+	if err != nil || !info.IsDir() {
+		return Result{}, false
+	}
+	return Result{Source: path.displayPath(), SourceIsDir: true}, true
 }
 
 func validateDeleteTarget(p executionPath) error {
@@ -772,7 +794,14 @@ func transferSource(j *Job, execCtx *executionContext, src string, destDir execu
 	if err != nil {
 		return wrapPath(src, err)
 	}
-	return copyOrMovePathResolved(j, execCtx, srcPath, destDir)
+	result := Result{Source: srcPath.displayPath()}
+	if err := copyOrMovePathResolved(j, execCtx, srcPath, destDir, &result); err != nil {
+		return err
+	}
+	if result.SourceIsDir && result.Destination != "" {
+		j.addResult(result)
+	}
+	return nil
 }
 
 func validateDestinationDirectory(execCtx *executionContext, dest executionPath) error {
@@ -789,7 +818,7 @@ func validateDestinationDirectory(execCtx *executionContext, dest executionPath)
 	return nil
 }
 
-func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath, destDir executionPath) error {
+func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath, destDir executionPath, result *Result) error {
 	if destDir.backend == backendArchive {
 		return wrapPath(destDir.displayPath(), errors.New("archive destinations are read-only"))
 	}
@@ -813,8 +842,16 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 	if skipped {
 		return errSkipped
 	}
+	if result != nil {
+		result.Source = src.displayPath()
+		result.Destination = dst.displayPath()
+		result.SourceIsDir = fi.IsDir()
+	}
 	if sameExecutionPath(src, dst) {
 		dbg("job %d: source and destination are identical; no-op %s", j.ID, src.displayPath())
+		if result != nil {
+			result.Destination = ""
+		}
 		return nil
 	}
 
@@ -885,7 +922,7 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 			}
 			child := joinPath(src, e.Name())
 			dbg("job %d: recurse %s -> %s", j.ID, child.displayPath(), dst.displayPath())
-			if err := copyOrMovePathResolved(j, execCtx, child, dst); err != nil {
+			if err := copyOrMovePathResolved(j, execCtx, child, dst, nil); err != nil {
 				if errors.Is(err, errSkipped) {
 					skippedChild = true
 					continue
@@ -959,7 +996,8 @@ func extractArchivePath(j *Job, execCtx *executionContext, src string, destDir e
 	if skipped {
 		return errSkipped
 	}
-	if err := ensureDir(execCtx, root, rootInfo.Mode()); err != nil {
+	rootCreated, err := createDirectoryIfMissing(execCtx, root, rootInfo.Mode())
+	if err != nil {
 		return wrapPath(root.displayPath(), err)
 	}
 
@@ -1010,6 +1048,9 @@ func extractArchivePath(j *Job, execCtx *executionContext, src string, destDir e
 	})
 	if err != nil {
 		return wrapPath(src, err)
+	}
+	if rootCreated {
+		j.addResult(Result{Source: src, Destination: root.displayPath(), DestinationCreated: true})
 	}
 	return nil
 }
@@ -1530,6 +1571,51 @@ func ensureDir(execCtx *executionContext, p executionPath, mode os.FileMode) err
 	// best-effort to set mode
 	_ = os.Chmod(p.path, perm)
 	return nil
+}
+
+// createDirectoryIfMissing creates exactly p and reports whether this call
+// created it. Its callers already guarantee that p's parent exists.
+func createDirectoryIfMissing(execCtx *executionContext, p executionPath, mode os.FileMode) (bool, error) {
+	if p.backend == backendArchive {
+		return false, errors.New("archive paths are read-only")
+	}
+	if info, err := lstatPath(execCtx, p); err == nil {
+		if !info.IsDir() {
+			return false, fmt.Errorf("path exists and is not a directory")
+		}
+		return false, nil
+	} else if !fileinfo.IsNotExist(err) {
+		return false, err
+	}
+
+	perm := mode.Perm()
+	if perm == 0 {
+		perm = 0755
+	}
+	var err error
+	if p.backend == backendSMB {
+		ops, opsErr := execCtx.smbOpsFor(p)
+		if opsErr != nil {
+			return false, opsErr
+		}
+		err = ops.Mkdir(p.path, perm)
+	} else {
+		err = os.Mkdir(p.path, perm)
+	}
+	if err == nil {
+		if p.backend == backendLocal {
+			_ = os.Chmod(p.path, perm)
+		}
+		return true, nil
+	}
+
+	// A concurrent creator may have won the race. Treat a resulting directory
+	// as pre-existing rather than claiming it as nmf's newly created root.
+	info, statErr := lstatPath(execCtx, p)
+	if statErr == nil && info.IsDir() {
+		return false, nil
+	}
+	return false, err
 }
 
 func chtimesPath(execCtx *executionContext, p executionPath, atime, mtime time.Time) error {

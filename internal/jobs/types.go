@@ -67,10 +67,22 @@ type Job struct {
 	CurrentUpdatedAt    time.Time
 	lastProgressNotify  time.Time
 	progressNotify      func()
+	results             []Result
+	finishedCallbacks   []func(JobSnapshot)
 
 	// cancellation
 	ctx    context.Context
 	cancel context.CancelFunc
+}
+
+// Result records a successfully completed top-level operation. Directory
+// results deliberately exclude recursively processed children, so consumers
+// can distinguish an explicit user action from its implementation details.
+type Result struct {
+	Source             string
+	Destination        string
+	SourceIsDir        bool
+	DestinationCreated bool
 }
 
 // TransferOptions controls copy/move execution details.
@@ -120,6 +132,10 @@ type ConflictResolution struct {
 func (j *Job) Snapshot() JobSnapshot {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
+	return j.snapshotLocked()
+}
+
+func (j *Job) snapshotLocked() JobSnapshot {
 	return JobSnapshot{
 		ID:                  j.ID,
 		Type:                j.Type,
@@ -142,7 +158,53 @@ func (j *Job) Snapshot() JobSnapshot {
 		CurrentUpdatedAt:    j.CurrentUpdatedAt,
 		Sources:             append([]string(nil), j.Sources...),
 		Failures:            append([]JobFailure(nil), j.Failures...),
+		Results:             append([]Result(nil), j.results...),
 	}
+}
+
+// OnFinished registers fn to be called once when this job reaches a terminal
+// state. If the job is already finished, fn is scheduled immediately.
+func (j *Job) OnFinished(fn func(JobSnapshot)) {
+	if j == nil || fn == nil {
+		return
+	}
+
+	j.mu.Lock()
+	if !isTerminalStatus(j.Status) {
+		j.finishedCallbacks = append(j.finishedCallbacks, fn)
+		j.mu.Unlock()
+		return
+	}
+	snapshot := j.snapshotLocked()
+	j.mu.Unlock()
+	go fn(snapshot)
+}
+
+func (j *Job) addResult(result Result) {
+	if j == nil {
+		return
+	}
+	j.mu.Lock()
+	j.results = append(j.results, result)
+	j.mu.Unlock()
+}
+
+func (j *Job) takeFinishedCallbacksLocked() ([]func(JobSnapshot), JobSnapshot) {
+	callbacks := append([]func(JobSnapshot){}, j.finishedCallbacks...)
+	j.finishedCallbacks = nil
+	return callbacks, j.snapshotLocked()
+}
+
+func invokeFinishedCallbacks(callbacks []func(JobSnapshot), snapshot JobSnapshot) {
+	for _, callback := range callbacks {
+		if callback != nil {
+			callback(snapshot)
+		}
+	}
+}
+
+func isTerminalStatus(status Status) bool {
+	return status == StatusCompleted || status == StatusFailed || status == StatusCanceled
 }
 
 func (j *Job) beginFileProgress(path string, totalBytes int64) {
@@ -223,6 +285,7 @@ type JobSnapshot struct {
 	Message             string
 	Error               string
 	Failures            []JobFailure
+	Results             []Result
 	FailureAcknowledged bool
 	EnqueuedAt          time.Time
 	StartedAt           time.Time

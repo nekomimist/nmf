@@ -136,7 +136,8 @@ func (fm *FileManager) ShowExtractArchiveDialog() {
 		return
 	}
 	fm.showTransferDestinationDialog(ui.OpExtract, targets, func(result ui.CopyMoveResult) {
-		fm.jobManager().EnqueueExtractWithOptions(srcPaths, result.Destination, fm.conflictResolver(), jobs.TransferOptions{PreserveTimestamps: result.PreserveTimestamps})
+		job := fm.jobManager().EnqueueExtractWithOptions(srcPaths, result.Destination, fm.conflictResolver(), jobs.TransferOptions{PreserveTimestamps: result.PreserveTimestamps})
+		fm.trackNavigationHistoryJob(job)
 		fm.FocusFileList()
 	})
 }
@@ -162,11 +163,13 @@ func (fm *FileManager) showCopyMoveDialog(op ui.Operation) {
 
 		mgr := fm.jobManager()
 		resolver := fm.conflictResolver()
+		var job *jobs.Job
 		if op == ui.OpCopy {
-			mgr.EnqueueCopyWithOptions(srcPaths, selectedDest, resolver, jobs.TransferOptions{PreserveTimestamps: result.PreserveTimestamps})
+			job = mgr.EnqueueCopyWithOptions(srcPaths, selectedDest, resolver, jobs.TransferOptions{PreserveTimestamps: result.PreserveTimestamps})
 		} else {
-			mgr.EnqueueMoveWithResolver(srcPaths, selectedDest, resolver)
+			job = mgr.EnqueueMoveWithResolver(srcPaths, selectedDest, resolver)
 		}
+		fm.trackNavigationHistoryJob(job)
 		fm.FocusFileList()
 	})
 }
