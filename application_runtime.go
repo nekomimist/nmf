@@ -21,12 +21,14 @@ var errNoInteractiveWindow = errors.New("no open window is available for an inte
 
 // ApplicationRuntime owns services shared by every FileManager window.
 type ApplicationRuntime struct {
-	app                  fyne.App
-	watchHub             *watcher.WatchHub
-	jobManager           *jobs.Manager
-	jobsWindowController *JobsWindowController
-	promptBroker         *applicationPromptBroker
-	closeOnce            sync.Once
+	app                   fyne.App
+	watchHub              *watcher.WatchHub
+	jobManager            *jobs.Manager
+	jobsWindowController  *JobsWindowController
+	promptBroker          *applicationPromptBroker
+	viewerSearchText      string
+	viewerSearchMatchCase bool
+	closeOnce             sync.Once
 }
 
 func newApplicationRuntime(app fyne.App) *ApplicationRuntime {

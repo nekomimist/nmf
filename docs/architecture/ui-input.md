@@ -299,8 +299,11 @@ Built-in file viewer:
   the same persistent `KeySink` remains focused so navigation continues.
 - Preview replacement cancels stale reads. It preserves the active pane when
   that pane exists for the next file and otherwise applies the configured
-  default/automatic pane choice. Per-file scroll, selection, search, and image
-  zoom state are rebuilt; the current wrap choice carries forward.
+  default/automatic pane choice. Per-file scroll, selection, search result,
+  and image zoom state are rebuilt; the current wrap choice carries forward.
+  The search text and case mode are application-scoped transient state: they
+  remain visible after replacement (and after reopening a Viewer), but do not
+  search the replacement preview until a next/previous search is requested.
 - These keys are configurable through the `fileViewer` target.
 - Because of driver fact 6, viewer bindings are split at construction into a
   typed-key set and a rune set (`fileViewerRunePathSpec` in
@@ -331,9 +334,11 @@ Built-in file viewer:
   marks occupy a grid cell even though `golang.org/x/text/width` scores them
   zero.
 - Search and line inputs are normal entries with the line-edit cursor and
-  selection theme colors. Submitted searches return focus to the active viewer
-  pane regardless of match result; Escape returns focus without submitting or
-  closing the viewer.
+  selection theme colors. Viewer search is a literal substring search that
+  ignores case by default; its `Aa` checkbox enables case-sensitive matching.
+  `/` focuses the search input and selects its current text. Submitted searches
+  return focus to the active viewer pane regardless of match result; Escape
+  returns focus without submitting or closing the viewer.
 - Image files expose Image and Hex panes without search or line-jump inputs.
   `=` toggles between shrink-to-fit and the saved free-zoom state, `+` and `-`
   zoom the free state from 10% to 800%, Ctrl+wheel zooms that same free state,

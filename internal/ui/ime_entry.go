@@ -70,6 +70,12 @@ func (e *IMEEntry) TypedRune(r rune) {
 	e.UpdateIMEAnchor()
 }
 
+// SelectAll selects the entire entry text and keeps the IME anchor in sync.
+func (e *IMEEntry) SelectAll() {
+	e.Entry.TypedShortcut(&fyne.ShortcutSelectAll{})
+	e.UpdateIMEAnchor()
+}
+
 func (e *IMEEntry) UpdateIMEAnchor() {
 	setIMEAnchorAtTextEnd(e.imeWindow, e, e.Text, e.TextStyle)
 }

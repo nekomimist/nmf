@@ -54,6 +54,12 @@ func (fm *FileManager) ShowFileViewer() {
 			dialog.SetDefaultWrap(fm.config.UI.Viewer.DefaultWrap)
 			dialog.SetKeyBindings(fm.config.UI.KeyBindings)
 			dialog.SetDebugPrint(debugPrint)
+			if runtime := fm.runtime; runtime != nil {
+				dialog.SetSearchState(runtime.viewerSearchText, runtime.viewerSearchMatchCase, func(text string, matchCase bool) {
+					runtime.viewerSearchText = text
+					runtime.viewerSearchMatchCase = matchCase
+				})
+			}
 			session := &fileViewerSession{
 				fm:         fm,
 				dialog:     dialog,

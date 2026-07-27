@@ -32,6 +32,7 @@ type fileViewerTextGrid struct {
 	grid        *widget.TextGrid
 	selectionBG *fyne.Container
 	lines       []string
+	foldedLines []string
 	// maxLineWidth caches the widest display line. lines is fixed for the
 	// grid's lifetime, so the scan behind it runs at most once instead of on
 	// every horizontal cursor move and every resize.
@@ -65,10 +66,11 @@ type viewerTextSelection struct {
 }
 
 type viewerTextSearch struct {
-	query string
-	start viewerTextPosition
-	end   viewerTextPosition
-	set   bool
+	query     string
+	matchCase bool
+	start     viewerTextPosition
+	end       viewerTextPosition
+	set       bool
 }
 
 type viewerTextSearchResult struct {
@@ -99,10 +101,14 @@ func newFileViewerTextGrid(text string, km *keymanager.KeyManager, onMoved func(
 		onMoved:     onMoved,
 		debugPrint:  debugPrint,
 	}
+	v.foldedLines = make([]string, len(v.lines))
 	for _, line := range v.lines {
 		if w := viewerTextGridLineWidth(line); w > v.maxLineWidth {
 			v.maxLineWidth = w
 		}
+	}
+	for i, line := range v.lines {
+		v.foldedLines[i] = strings.ToLower(line)
 	}
 	v.grid.Scroll = fyne.ScrollNone
 	v.ExtendBaseWidget(v)
@@ -385,6 +391,12 @@ func (v *fileViewerTextGrid) TotalLines() int {
 }
 
 func (v *fileViewerTextGrid) Find(query string, direction int) viewerTextSearchResult {
+	return v.FindWithCase(query, direction, false)
+}
+
+// FindWithCase finds the next literal query match. By default the viewer is
+// case-insensitive, while callers can request exact-case matching.
+func (v *fileViewerTextGrid) FindWithCase(query string, direction int, matchCase bool) viewerTextSearchResult {
 	if query == "" {
 		v.search = viewerTextSearch{}
 		v.refreshGrid()
@@ -396,20 +408,27 @@ func (v *fileViewerTextGrid) Find(query string, direction int) viewerTextSearchR
 		direction = 1
 	}
 
-	start := v.searchStart(query, direction)
-	match, wrapped, ok := findViewerTextMatch(v.lines, query, start, direction)
+	searchLines := v.lines
+	searchQuery := query
+	if !matchCase {
+		searchLines = v.foldedLines
+		searchQuery = strings.ToLower(query)
+	}
+	start := v.searchStart(query, matchCase, direction)
+	match, wrapped, ok := findViewerTextMatch(searchLines, searchQuery, start, direction)
 	if !ok {
-		v.search = viewerTextSearch{query: query}
+		v.search = viewerTextSearch{query: query, matchCase: matchCase}
 		v.refreshGrid()
 		v.debug("FileViewer: text-grid-search query=%q direction=%d matched=false", query, direction)
 		return viewerTextSearchResult{}
 	}
 
 	v.search = viewerTextSearch{
-		query: query,
-		start: match.start,
-		end:   match.end,
-		set:   true,
+		query:     query,
+		matchCase: matchCase,
+		start:     match.start,
+		end:       viewerTextPosition{line: match.start.line, col: match.start.col + len([]rune(query))},
+		set:       true,
 	}
 	v.revealSearchMatch()
 	v.debug("FileViewer: text-grid-search query=%q direction=%d matched=true wrapped=%t line=%d col=%d",
@@ -422,8 +441,8 @@ func (v *fileViewerTextGrid) Find(query string, direction int) viewerTextSearchR
 	}
 }
 
-func (v *fileViewerTextGrid) searchStart(query string, direction int) viewerTextPosition {
-	if v.search.set && v.search.query == query {
+func (v *fileViewerTextGrid) searchStart(query string, matchCase bool, direction int) viewerTextPosition {
+	if v.search.set && v.search.query == query && v.search.matchCase == matchCase {
 		if direction < 0 {
 			if v.search.start.col > 0 {
 				return viewerTextPosition{line: v.search.start.line, col: v.search.start.col - 1}

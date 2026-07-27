@@ -879,6 +879,7 @@ func TestFileViewerDialogUpdatePreservesCompatiblePaneAndWrap(t *testing.T) {
 	oldHex := d.hexGrid
 	oldHex.SelectAll()
 	d.search.SetText("needle")
+	d.searchCase.SetChecked(true)
 	oldSearch := d.search
 	sink := d.inputSink
 	d.ShowLoading("second.txt")
@@ -904,8 +905,11 @@ func TestFileViewerDialogUpdatePreservesCompatiblePaneAndWrap(t *testing.T) {
 	if d.hexGrid.CurrentLine() != 1 || d.hexGrid.SelectedText() != "" {
 		t.Fatal("replacement preview retained per-file position or selection state")
 	}
-	if d.search == nil || d.search == oldSearch || d.search.Text != "" {
-		t.Fatal("replacement preview retained per-file search state")
+	if d.search == nil || d.search == oldSearch || d.search.Text != "needle" {
+		t.Fatal("replacement preview did not retain the search text")
+	}
+	if d.searchCase == nil || !d.searchCase.Checked {
+		t.Fatal("replacement preview did not retain the match-case state")
 	}
 }
 
@@ -1341,6 +1345,22 @@ func TestFileViewerTextGridFindForwardAndBackward(t *testing.T) {
 	}
 }
 
+func TestFileViewerTextGridFindDefaultsToCaseInsensitive(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	grid := newFileViewerTextGrid("Alpha\nalpha", nil, nil, nil)
+
+	result := grid.Find("alpha", 1)
+	if !result.Matched || result.Line != 1 || result.Column != 1 {
+		t.Fatalf("case-insensitive Find = %+v, want Alpha on line 1", result)
+	}
+	result = grid.FindWithCase("alpha", 1, true)
+	if !result.Matched || result.Line != 2 || result.Column != 1 {
+		t.Fatalf("case-sensitive FindWithCase = %+v, want alpha on line 2", result)
+	}
+}
+
 func TestFileViewerTextGridFindWraps(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
@@ -1413,6 +1433,122 @@ func TestFileViewerDialogFindUsesSearchTextLiterally(t *testing.T) {
 	}
 }
 
+func TestFileViewerDialogReplacementDefersRestoredSearch(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "first.txt",
+		Data:     []byte("needle"),
+		Text:     "needle",
+		Encoding: "UTF-8",
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	d.search.SetText("needle")
+	d.findNext()
+	d.UpdatePreview(&fileinfo.PreviewFile{
+		Path:     "second.txt",
+		Data:     []byte("first line\nneedle"),
+		Text:     "first line\nneedle",
+		Encoding: "UTF-8",
+	})
+
+	if d.search.Text != "needle" {
+		t.Fatalf("search text = %q, want restored query", d.search.Text)
+	}
+	if d.textGrid.search.set {
+		t.Fatal("replacement preview started a search before next/previous search")
+	}
+	if d.textGrid.CurrentLine() != 1 {
+		t.Fatalf("replacement preview line = %d, want initial line 1", d.textGrid.CurrentLine())
+	}
+
+	d.ViewerSearchNext()
+	if d.textGrid.CurrentLine() != 2 {
+		t.Fatalf("next search line = %d, want matched line 2", d.textGrid.CurrentLine())
+	}
+}
+
+func TestFileViewerDialogMatchCaseToggleDefersSearch(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path:     "note.txt",
+		Data:     []byte("NEEDLE"),
+		Text:     "NEEDLE",
+		Encoding: "UTF-8",
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	d.search.SetText("needle")
+	d.searchCase.SetChecked(true)
+	if d.textGrid.search.set {
+		t.Fatal("changing match case started a search")
+	}
+	d.ViewerSearchNext()
+	if d.textGrid.search.set {
+		t.Fatal("case-sensitive search matched differently cased text")
+	}
+
+	d.searchCase.SetChecked(false)
+	if d.textGrid.search.set {
+		t.Fatal("changing match case started a search")
+	}
+	d.ViewerSearchNext()
+	if !d.textGrid.search.set || d.textGrid.CurrentLine() != 1 {
+		t.Fatal("case-insensitive search did not find the text after next search")
+	}
+}
+
+func TestFileViewerDialogSearchStateSurvivesReopen(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	var searchText string
+	matchCase := false
+	setSearchState := func(d *FileViewerDialog) {
+		d.SetSearchState(searchText, matchCase, func(text string, caseSensitive bool) {
+			searchText = text
+			matchCase = caseSensitive
+		})
+	}
+	preview := &fileinfo.PreviewFile{
+		Path:     "note.txt",
+		Data:     []byte("note"),
+		Text:     "note",
+		Encoding: "UTF-8",
+	}
+
+	first := NewFileViewerDialog(preview)
+	setSearchState(first)
+	first.ShowDialog(w)
+	first.search.SetText("Needle")
+	first.searchCase.SetChecked(true)
+	first.CancelDialog()
+
+	if searchText != "Needle" || !matchCase {
+		t.Fatalf("reported state = text:%q matchCase:%t, want Needle:true", searchText, matchCase)
+	}
+
+	second := NewFileViewerDialog(preview)
+	setSearchState(second)
+	second.ShowDialog(w)
+	defer second.CancelDialog()
+	if second.search.Text != "Needle" || !second.searchCase.Checked {
+		t.Fatalf("restored state = text:%q matchCase:%t, want Needle:true", second.search.Text, second.searchCase.Checked)
+	}
+}
+
 func TestFileViewerDialogFindSwitchesMarkdownToText(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
@@ -1461,6 +1597,7 @@ func TestFileViewerDialogSlashFocusesSearchAfterKeyRelease(t *testing.T) {
 	// press delivers KeyDown, an unhandled TypedKey, and the TypedRune that
 	// actually triggers the command -- mirroring what Fyne's GLFW driver
 	// sends for one physical "/" press.
+	d.search.SetText("old")
 	d.textGrid.KeyDown(&fyne.KeyEvent{Name: fyne.KeySlash})
 	d.textGrid.TypedKey(&fyne.KeyEvent{Name: fyne.KeySlash})
 	d.textGrid.TypedRune('/')
@@ -1470,8 +1607,19 @@ func TestFileViewerDialogSlashFocusesSearchAfterKeyRelease(t *testing.T) {
 	if w.Canvas().Focused() != d.search {
 		t.Fatal("search not focused after slash activation")
 	}
-	if d.search.Text != "" {
-		t.Fatalf("search text = %q, want empty after slash command", d.search.Text)
+	if got := d.search.SelectedText(); got != "old" {
+		t.Fatalf("selected search text = %q, want old after slash command", got)
+	}
+	d.search.TypedRune('n')
+	if d.search.Text != "n" {
+		t.Fatalf("search text after replacing selection = %q, want n", d.search.Text)
+	}
+	d.search.SetText("old")
+	d.search.SelectAll()
+	d.search.TypedKey(&fyne.KeyEvent{Name: fyne.KeyRight})
+	d.search.TypedRune('!')
+	if d.search.Text != "old!" {
+		t.Fatalf("search text after right and append = %q, want old!", d.search.Text)
 	}
 }
 

@@ -56,6 +56,7 @@ type FileViewerDialog struct {
 	mdGrid        *fileViewerTextGrid
 	imageView     *fileViewerImageView
 	search        *IMEEntry
+	searchCase    *widget.Check
 	jump          *IMEEntry
 	status        *widget.Label
 	lineLabel     *widget.Label
@@ -76,20 +77,23 @@ type FileViewerDialog struct {
 	paneOrder   []string
 	mdView      fyne.CanvasObject
 
-	activeName     string
-	closed         bool
-	handlerSet     bool
-	maxWidth       int
-	maxHeight      int
-	defaultPane    string
-	defaultWrap    bool
-	preferredPane  string
-	bindings       []config.KeyBindingEntry
-	debugPrint     func(format string, args ...interface{})
-	onFilePrevious func()
-	onFileNext     func()
-	onMarkToggle   func()
-	onClosed       func()
+	activeName      string
+	closed          bool
+	handlerSet      bool
+	maxWidth        int
+	maxHeight       int
+	defaultPane     string
+	defaultWrap     bool
+	preferredPane   string
+	bindings        []config.KeyBindingEntry
+	debugPrint      func(format string, args ...interface{})
+	searchText      string
+	searchMatchCase bool
+	onSearchChanged func(text string, matchCase bool)
+	onFilePrevious  func()
+	onFileNext      func()
+	onMarkToggle    func()
+	onClosed        func()
 }
 
 func NewFileViewerDialog(preview *fileinfo.PreviewFile, km ...*keymanager.KeyManager) *FileViewerDialog {
@@ -132,6 +136,21 @@ func (d *FileViewerDialog) SetDefaultPane(pane string) {
 
 func (d *FileViewerDialog) SetDefaultWrap(wrapped bool) {
 	d.defaultWrap = wrapped
+}
+
+// SetSearchState initializes the viewer search controls and reports later
+// edits. Search state is intentionally separate from per-preview search
+// results, so changing files does not immediately search the new content.
+func (d *FileViewerDialog) SetSearchState(text string, matchCase bool, onChanged func(text string, matchCase bool)) {
+	d.searchText = text
+	d.searchMatchCase = matchCase
+	d.onSearchChanged = onChanged
+	if d.search != nil {
+		d.search.SetText(text)
+	}
+	if d.searchCase != nil {
+		d.searchCase.SetChecked(matchCase)
+	}
 }
 
 // SetFileActions configures actions that operate on the file manager listing
@@ -260,6 +279,12 @@ func (d *FileViewerDialog) setPreview(preview *fileinfo.PreviewFile, preserveSta
 }
 
 func (d *FileViewerDialog) captureViewerState() {
+	if d.search != nil {
+		d.searchText = d.search.Text
+	}
+	if d.searchCase != nil {
+		d.searchMatchCase = d.searchCase.Checked
+	}
 	if pane := normalizeViewerPane(d.activeName); pane != "" && pane != viewerPaneAuto {
 		d.preferredPane = pane
 	}
@@ -274,6 +299,7 @@ func (d *FileViewerDialog) resetViewerContent() {
 	d.mdGrid = nil
 	d.imageView = nil
 	d.search = nil
+	d.searchCase = nil
 	d.jump = nil
 	d.status = nil
 	d.lineLabel = nil
@@ -380,8 +406,19 @@ func (d *FileViewerDialog) buildViewerToolbar(parent fyne.Window) fyne.CanvasObj
 
 	d.search = NewIMEEntry(parent)
 	d.search.SetPlaceHolder("Search")
+	d.search.SetText(d.searchText)
+	d.search.OnChanged = func(text string) {
+		d.searchText = text
+		d.reportSearchState()
+	}
 	d.search.OnEscape = d.focusActiveViewer
 	d.search.OnSubmitted = func(_ string) { d.findNext() }
+	d.searchCase = widget.NewCheck("Aa", nil)
+	d.searchCase.SetChecked(d.searchMatchCase)
+	d.searchCase.OnChanged = func(matchCase bool) {
+		d.searchMatchCase = matchCase
+		d.reportSearchState()
+	}
 	d.jump = NewIMEEntry(parent)
 	d.jump.SetPlaceHolder("Line")
 	d.jump.OnEscape = d.focusActiveViewer
@@ -393,12 +430,19 @@ func (d *FileViewerDialog) buildViewerToolbar(parent fyne.Window) fyne.CanvasObj
 		container.NewHBox(d.wrapButton, copyBtn),
 		container.NewHBox(
 			container.NewCenter(container.NewGridWrap(fyne.NewSize(fileViewerSearchWidth, d.search.MinSize().Height), lineEditThemeOverride(d.search))),
+			d.searchCase,
 			d.prevButton,
 			d.nextButton,
 			widget.NewSeparator(),
 			container.NewCenter(container.NewGridWrap(fyne.NewSize(fileViewerLineWidth, d.jump.MinSize().Height), lineEditThemeOverride(d.jump))),
 			confirmBtn,
 		))
+}
+
+func (d *FileViewerDialog) reportSearchState() {
+	if d.onSearchChanged != nil {
+		d.onSearchChanged(d.searchText, d.searchMatchCase)
+	}
 }
 
 func fileViewerDialogSize(parent fyne.Window, maxWidth, maxHeight int) fyne.Size {
@@ -1238,7 +1282,7 @@ func (d *FileViewerDialog) find(direction int) {
 		d.selectViewerTab(viewerPaneText)
 	}
 	if grid := d.activeGrid(); grid != nil {
-		result := grid.Find(query, direction)
+		result := grid.FindWithCase(query, direction, d.searchMatchCase)
 		d.updateLineDisplay()
 		if !result.Matched {
 			d.setStatusSuffix("search=not-found")
@@ -1468,6 +1512,7 @@ func (d *FileViewerDialog) ViewerFocusSearch() {
 	d.deferViewerFocus("viewer.focusSearch", func() {
 		if d.parent != nil && d.search != nil {
 			d.parent.Canvas().Focus(d.search)
+			d.search.SelectAll()
 		}
 	})
 }
