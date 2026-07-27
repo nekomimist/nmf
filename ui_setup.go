@@ -20,7 +20,11 @@ func (fm *FileManager) setupUI() {
 	fm.pathDisplay.Truncation = fyne.TextTruncateClip
 	fm.statusLabel = widget.NewLabel("")
 	fm.statusLabel.TextStyle = fyne.TextStyle{Monospace: true}
-	fm.statusLabel.Wrapping = fyne.TextWrapBreak
+	// Truncate instead of wrap so the label always renders as exactly one
+	// line; a status notice can contain two paths and would otherwise wrap
+	// to multiple lines and shift the file list, defeating status_bar.go's
+	// single-line invariant.
+	fm.statusLabel.Truncation = fyne.TextTruncateClip
 
 	// Create file list
 	fm.fileListItemHeight = fm.newFileListRow().MinSize().Height

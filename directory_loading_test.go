@@ -8,7 +8,13 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
+
+	"nmf/internal/config"
 	"nmf/internal/fileinfo"
 )
 
@@ -164,6 +170,99 @@ func TestReadDirectoryWithParentFallbackStopsAtSMBShareRoot(t *testing.T) {
 	}
 }
 
+// TestReadDirectoryWithParentFallbackStopsOnENOTDIR locks in the ENOTDIR vs
+// ENOENT boundary: fileinfo.IsNotExist (see internal/fileinfo/not_exist.go)
+// only matches errors.Is(err, fs.ErrNotExist) plus provider-native
+// not-exist errors, and ENOTDIR is neither, so a request whose failure is
+// "not a directory" (an intermediate path component exists but is a regular
+// file) must stop and surface the error instead of walking up to a parent.
+func TestReadDirectoryWithParentFallbackStopsOnENOTDIR(t *testing.T) {
+	parent := t.TempDir()
+	blocker := filepath.Join(parent, "blocker.txt")
+	if err := os.WriteFile(blocker, []byte("not a directory"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	requested := filepath.Join(blocker, "child")
+
+	entries, opened, usedFallback, err := readDirectoryWithParentFallback(
+		context.Background(), requested, true, fileinfo.ReadDirPortableContext,
+	)
+	if err == nil {
+		t.Fatal("readDirectoryWithParentFallback succeeded, want ENOTDIR surfaced")
+	}
+	if fileinfo.IsNotExist(err) {
+		t.Fatalf("IsNotExist(%v) = true, want false: ENOTDIR must not be classified as missing", err)
+	}
+	if opened != "" {
+		t.Fatalf("opened = %q, want empty on stop", opened)
+	}
+	if usedFallback {
+		t.Fatal("usedFallback = true, want false: ENOTDIR must not trigger the parent walk")
+	}
+	if entries != nil {
+		t.Fatalf("entries = %v, want nil on stop", entries)
+	}
+}
+
+// TestReadDirectoryWithParentFallbackEscapesArchiveBoundaryToFilesystemParent
+// locks in archiveParentPath's escape hatch (internal/fileinfo/archive_path.go):
+// once the walk reaches the archive root ("archive.ext!/", inner == "."),
+// ParentPath delegates to ParentPath(archiveFile), stepping out of the
+// archive scheme entirely and onto the archive file's own filesystem parent.
+// This matters when the archive file itself no longer opens (e.g. it was
+// deleted): identifyArchiveFormat's os.Open on the missing archive produces
+// a plain *PathError satisfying fileinfo.IsNotExist, so the walk treats a
+// vanished archive exactly like a vanished directory and keeps climbing
+// plain filesystem parents afterward.
+//
+// The archive read itself (opening an actual .zip via archives.ArchiveFS) is
+// not exercised here: readDirectoryWithParentFallback only depends on the
+// injected read function plus fileinfo.ParentPath/archiveParentPath, both
+// pure path functions, so a fake reader fully exercises the real boundary
+// logic without needing a real archive file on disk.
+func TestReadDirectoryWithParentFallbackEscapesArchiveBoundaryToFilesystemParent(t *testing.T) {
+	tmpRoot := t.TempDir()
+	// subDir deliberately does not exist on disk: the fake reader simulates
+	// its absence too, so the walk must continue past it after escaping the
+	// archive scheme, all the way to tmpRoot.
+	subDir := filepath.Join(tmpRoot, "sub")
+	archiveFile := filepath.Join(subDir, "archive.zip")
+	requested := fileinfo.ArchiveDisplayPath(archiveFile, "deep")
+	archiveRoot := fileinfo.ArchiveRootPath(archiveFile)
+
+	var calls []string
+	entries, opened, usedFallback, err := readDirectoryWithParentFallback(
+		context.Background(), requested, true,
+		func(_ context.Context, path string) ([]os.DirEntry, error) {
+			calls = append(calls, path)
+			switch path {
+			case requested, archiveRoot, subDir:
+				return nil, fs.ErrNotExist
+			case tmpRoot:
+				return []os.DirEntry{}, nil
+			default:
+				t.Fatalf("unexpected read path %q", path)
+				return nil, nil
+			}
+		},
+	)
+	if err != nil {
+		t.Fatalf("readDirectoryWithParentFallback returned error: %v", err)
+	}
+	if !usedFallback {
+		t.Fatal("usedFallback = false, want true")
+	}
+	if opened != tmpRoot {
+		t.Fatalf("opened = %q, want %q", opened, tmpRoot)
+	}
+	if entries == nil {
+		t.Fatal("entries = nil, want successful empty directory listing")
+	}
+	if want := []string{requested, archiveRoot, subDir, tmpRoot}; !reflect.DeepEqual(calls, want) {
+		t.Fatalf("read paths = %#v, want %#v (requested -> archive root -> archive file's fs parent -> grandparent)", calls, want)
+	}
+}
+
 func TestReadDirectoryWithParentFallbackHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -244,5 +343,127 @@ func TestInvalidateActiveDirectoryLoadCancelsWithoutRestart(t *testing.T) {
 	}
 	if fm.finishDirectoryLoad(loadID) {
 		t.Fatal("invalidated load should not apply a queued UI callback")
+	}
+}
+
+// newParentFallbackTestFileManager builds a minimally-wired FileManager
+// suitable for driving loadDirectoryAsync directly. fileListView and window
+// are deliberately left nil: with fileListView nil, focusFileList takes its
+// "skipped" branch (see directory_loading.go), so no fyne.Window is needed at
+// all. fyne.Do runs synchronously against the fyne/v2/test driver (see
+// test/driver.go DoFromGoroutine), so calling loadDirectoryAsync directly
+// (not via `go`) applies its UI-thread callback inline and deterministically.
+func newParentFallbackTestFileManager(state *config.State) *FileManager {
+	return &FileManager{
+		state: state,
+		config: &config.Config{UI: config.UIConfig{
+			NavigationHistory: config.NavigationHistoryConfig{MaxEntries: 20},
+			CursorMemory:      config.CursorMemoryConfig{MaxEntries: 20},
+		}},
+		fileList: widget.NewList(
+			func() int { return 0 },
+			func() fyne.CanvasObject { return widget.NewLabel("") },
+			func(widget.ListItemID, fyne.CanvasObject) {},
+		),
+		selectedFiles: map[string]bool{},
+	}
+}
+
+// TestLoadDirectoryAsyncFallbackSkipsHistoryWhenReopeningSameDirectory pins
+// down that the post-fallback "did we actually change directory" check in
+// loadDirectoryAsync (directory_loading.go: `if previousPath != "" &&
+// previousPath != path`) compares previousPath against the opened path, not
+// the originally-requested missing one. requested never exists, so a version
+// of the guard that compared against requestedPath instead would consider
+// this "a move" (previousPath != requestedPath) and wrongly record history,
+// even though the fallback lands back on the exact directory the user was
+// already in.
+func TestLoadDirectoryAsyncFallbackSkipsHistoryWhenReopeningSameDirectory(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	opened := t.TempDir()
+	requested := filepath.Join(opened, "missing", "child")
+
+	state := &config.State{
+		CursorMemory: config.CursorMemoryState{
+			Entries:  map[string]string{},
+			LastUsed: map[string]time.Time{},
+		},
+		NavigationHistory: config.NavigationHistoryState{
+			Entries:  []string{},
+			LastUsed: map[string]time.Time{},
+			UseCount: map[string]int{},
+			Pinned:   []string{},
+		},
+	}
+	fm := newParentFallbackTestFileManager(state)
+
+	ctx, loadID := fm.beginDirectoryLoad()
+	fm.loadDirectoryAsync(ctx, loadID, requested, opened, config.SortConfig{SortBy: "name", SortOrder: "asc"}, true)
+
+	if fm.currentPath != opened {
+		t.Fatalf("currentPath = %q, want fallback to have opened %q", fm.currentPath, opened)
+	}
+	if got := state.NavigationHistory.Entries; len(got) != 0 {
+		t.Fatalf("NavigationHistory.Entries = %#v, want empty: reopening the same directory via fallback is not a navigation", got)
+	}
+}
+
+// TestLoadDirectoryAsyncFallbackRestoresCursorForOpenedPathNotRequestedPath
+// pins down that restoreCursorPosition is called with the opened path (see
+// directory_loading.go's `fm.restoreCursorPosition(path)`, where path was
+// reassigned to loadedPath after the fallback succeeded), not the originally
+// requested missing path. Cursor memory is seeded only under the opened
+// path's key; if the code looked up the requested path instead, the memory
+// entry below would never be reached and the cursor would fall back to
+// index 0.
+func TestLoadDirectoryAsyncFallbackRestoresCursorForOpenedPathNotRequestedPath(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	opened := t.TempDir()
+	if err := os.WriteFile(filepath.Join(opened, "aaa_first.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(opened, "zzz_target.txt"), []byte("z"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	requested := filepath.Join(opened, "missing", "child")
+	// previousPath is unrelated to opened, so this exercises a genuine
+	// directory change alongside the cursor-restoration assertion below.
+	previousPath := t.TempDir()
+
+	state := &config.State{
+		CursorMemory: config.CursorMemoryState{
+			// Keyed by the opened (fallback) path, never by requested: if the
+			// code restored by requestedPath, this entry would be unreachable.
+			Entries:  map[string]string{opened: "zzz_target.txt"},
+			LastUsed: map[string]time.Time{},
+		},
+		NavigationHistory: config.NavigationHistoryState{
+			Entries:  []string{},
+			LastUsed: map[string]time.Time{},
+			UseCount: map[string]int{},
+			Pinned:   []string{},
+		},
+	}
+	fm := newParentFallbackTestFileManager(state)
+
+	ctx, loadID := fm.beginDirectoryLoad()
+	fm.loadDirectoryAsync(ctx, loadID, requested, previousPath, config.SortConfig{SortBy: "name", SortOrder: "asc"}, true)
+
+	if fm.currentPath != opened {
+		t.Fatalf("currentPath = %q, want fallback to have opened %q", fm.currentPath, opened)
+	}
+	wantCursor := filepath.Join(opened, "zzz_target.txt")
+	if fm.cursorPath != wantCursor {
+		t.Fatalf("cursorPath = %q, want %q (restored from cursor memory keyed by the opened path)", fm.cursorPath, wantCursor)
+	}
+	if _, ok := state.CursorMemory.LastUsed[opened]; !ok {
+		t.Fatal("restoreCursorPosition should have refreshed LastUsed for the opened path's cursor-memory entry")
+	}
+	if got := state.NavigationHistory.Entries; len(got) != 1 || got[0] != previousPath {
+		t.Fatalf("NavigationHistory.Entries = %#v, want only %q recorded", got, previousPath)
 	}
 }

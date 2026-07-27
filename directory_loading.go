@@ -199,7 +199,19 @@ func (fm *FileManager) loadDirectory(path string, allowParentFallback bool) {
 // loadDirectoryAsync lists a path in a background goroutine and applies UI updates on the main thread.
 func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, path string, previousPath string, sortCfg config.SortConfig, allowParentFallback bool) {
 	requestedPath := path
-	entries, loadedPath, usedParentFallback, err := readDirectoryWithParentFallback(ctx, path, allowParentFallback, fileinfo.ReadDirPortableContext)
+	// Keep the busy overlay naming the ancestor currently being probed as the
+	// fallback walk advances, instead of the (already-rejected) requested
+	// path. This callback runs on the background goroutine, so the overlay
+	// mutation itself must be dispatched through fyne.Do.
+	onCandidate := func(candidate string) {
+		fyne.Do(func() {
+			if fm.ignoreCanceledDirectoryLoad(ctx, loadID, nil) {
+				return
+			}
+			fm.updateBusyText(fmt.Sprintf("Loading %s...", candidate))
+		})
+	}
+	entries, loadedPath, usedParentFallback, err := readDirectoryWithParentFallback(ctx, path, allowParentFallback, fileinfo.ReadDirPortableContext, onCandidate)
 	if err != nil {
 		if fm.ignoreCanceledDirectoryLoad(ctx, loadID, err) {
 			return
@@ -365,7 +377,17 @@ type directoryReadFunc func(context.Context, string) ([]os.DirEntry, error)
 // readDirectoryWithParentFallback reads requestedPath. When enabled, only a
 // confirmed not-exist error advances to the next parent; access, authentication,
 // network, archive, and cancellation errors remain ordinary load failures.
-func readDirectoryWithParentFallback(ctx context.Context, requestedPath string, allowParentFallback bool, readDir directoryReadFunc) ([]os.DirEntry, string, bool, error) {
+//
+// onCandidate, if provided (only its first value is used), is called with
+// each ancestor path just before it is probed, letting a caller such as
+// loadDirectoryAsync keep a progress indicator in sync with the walk. It is
+// optional and variadic purely so existing callers/tests need not change.
+func readDirectoryWithParentFallback(ctx context.Context, requestedPath string, allowParentFallback bool, readDir directoryReadFunc, onCandidate ...func(string)) ([]os.DirEntry, string, bool, error) {
+	var notify func(string)
+	if len(onCandidate) > 0 {
+		notify = onCandidate[0]
+	}
+
 	path := requestedPath
 	for {
 		if err := ctx.Err(); err != nil {
@@ -388,6 +410,9 @@ func readDirectoryWithParentFallback(ctx context.Context, requestedPath string, 
 			return nil, "", false, err
 		}
 		path = parent
+		if notify != nil {
+			notify(path)
+		}
 	}
 }
 
@@ -532,6 +557,21 @@ func (fm *FileManager) beginBusy(text string, onCancel ...func()) {
 			}
 		})
 	})
+}
+
+// updateBusyText updates the message on an already-shown busy overlay
+// without altering busy state or the key handler stack. It is a no-op once
+// busy has ended (e.g. a stale ancestor-probe callback arriving after
+// endBusy), so callers do not need to guard against that themselves. Must be
+// called on the UI thread (via fyne.Do) since it touches fm.busyOverlay.
+func (fm *FileManager) updateBusyText(text string) {
+	fm.busyMu.Lock()
+	defer fm.busyMu.Unlock()
+	if !fm.busyActive {
+		return
+	}
+	fm.busyText = text
+	fm.busyOverlay.Show(fm.window, text)
 }
 
 // endBusy hides the busy overlay and pops the swallowing key handler.

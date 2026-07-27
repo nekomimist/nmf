@@ -90,6 +90,48 @@ Subscription rules:
 - Notifications are emitted without holding manager lock.
 - UI callbacks must marshal to Fyne main thread (`fyne.Do`) when touching widgets.
 
+Result recording (`Job.Result`, `internal/jobs/types.go` and `manager.go`):
+
+- A `Result` records one top-level operation's outcome: `Source`, `Destination`,
+  `SourceIsDir`, and `DestinationCreated` (source/destination display paths,
+  whether the source was a directory, and whether extraction created a new
+  root directory that did not already exist).
+- Results are appended only for top-level items via `Job.addResult`, never for
+  recursively processed children — `copyOrMovePathResolved` passes a `nil`
+  result pointer on every recursive call, and permanent-delete recursion never
+  calls `addResult`.
+- Only items that individually succeed produce a `Result`; a skipped item
+  (`errSkipped`) never reaches `addResult`, and a later item's failure aborts
+  the job without discarding results already recorded for earlier top-level
+  items in that same job.
+- Copy/move: recorded only when the top-level source is a directory and the
+  resolved destination is non-empty (a same-path no-op clears `Destination`
+  and is not recorded).
+- Delete: recorded only when the top-level source is a directory, in both
+  `trash` and `permanent` modes; deleted files never produce a `Result`.
+- Extract: recorded only when the archive's root directory did not already
+  exist at the destination (`DestinationCreated: true`); extracting into an
+  existing root records nothing.
+
+Completion callback (`Job.OnFinished`, `internal/jobs/types.go`):
+
+- `OnFinished(fn func(JobSnapshot))` registers a one-shot callback invoked
+  exactly once when the job reaches a terminal status (`StatusCompleted`,
+  `StatusFailed`, `StatusCanceled`).
+- If the job has already finished when `OnFinished` is called, `fn` runs
+  immediately on a new goroutine (`go fn(snapshot)`).
+- Otherwise `fn` is queued on the job and drained by whichever path drives
+  that job to a terminal state: `Manager.worker` after a job finishes
+  running, or `Manager.Cancel` for a job still pending in the queue.
+  Canceling a currently *running* job only cancels its context — the
+  worker's own drain still delivers the callback once that job actually
+  stops.
+- Callbacks are always invoked outside `j.mu` and `m.mu`, but not on any
+  single guaranteed goroutine: depending on the path above they run on the
+  worker goroutine, on whichever goroutine called `Cancel`, or on an ad-hoc
+  goroutine. Consumers must not assume a particular thread and must marshal
+  to Fyne's main goroutine themselves (`fyne.Do`) before touching UI state.
+
 ## UI Integration Requirements
 
 - Windows that subscribe to jobs updates must always call returned `unsubscribe` on close.
@@ -106,6 +148,21 @@ Subscription rules:
 - Confirmed window destruction first cancels and invalidates its active
   directory-load generation. Queued load completions must fail the generation
   check and must not restart the watcher or restore focus after close.
+- `FileManager.trackNavigationHistoryJob` (`navigation_history_mutation.go`)
+  registers an `OnFinished` callback on every enqueued copy/move/delete/extract
+  job to update persisted navigation history once the job's outcome is known,
+  driven entirely off `JobSnapshot.Results`: copy and extract add the new
+  directory to history, move rebases entries under the old root to the new
+  root, and delete removes entries under the deleted root. Enqueue sites are
+  `delete_ui.go`, two sites in `jobs_ui.go`, and `drop_ui.go`.
+- That callback is registered once per enqueue call and is never unregistered,
+  unlike `Manager.Subscribe`'s `unsubscribe` closure that window lifecycle
+  code must call on close — `OnFinished` has no unregister path by design,
+  since it fires once and is done. This is safe only because `fm.state` is a
+  shared `*config.State` pointer handed to every window opened from the same
+  process (see the `NewFileManager` call in `navigation_ui.go`), so a
+  lingering per-job callback still mutates the one shared state rather than a
+  stale copy. Do not assume `OnFinished` is symmetrical with `Subscribe`.
 
 ## Failure and Cancellation Semantics
 

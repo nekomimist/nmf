@@ -19,6 +19,13 @@ func (fm *FileManager) updateStatusBar() {
 }
 
 func (fm *FileManager) statusBarText() string {
+	// While a notice is active it fully replaces the normal status line so
+	// the label never grows past one line (see ui_setup.go's Truncation
+	// setting on fm.statusLabel, which relies on this invariant).
+	if fm.statusNotice != "" {
+		return fm.statusNotice
+	}
+
 	markCount := countMarkedFiles(fm.selectedFiles)
 	visibleEntries := countEntriesExcludingParent(fm.files)
 	totalEntries := countEntriesExcludingParent(fm.originalFiles)
@@ -35,12 +42,8 @@ func (fm *FileManager) statusBarText() string {
 		total = fileinfo.FormatFileSize(int64(fm.storageInfo.Total))
 	}
 
-	status := fmt.Sprintf("Mark: %d | Entry: %d/%d | Free: %s | Used: %s | Total: %s",
+	return fmt.Sprintf("Mark: %d | Entry: %d/%d | Free: %s | Used: %s | Total: %s",
 		markCount, visibleEntries, totalEntries, free, used, total)
-	if fm.statusNotice == "" {
-		return status
-	}
-	return status + "\n" + fm.statusNotice
 }
 
 func parentFallbackStatusNotice(requestedPath, openedPath string) string {
@@ -60,13 +63,22 @@ func (fm *FileManager) showStatusNotice(notice string) {
 
 	time.AfterFunc(statusNoticeDuration, func() {
 		fyne.Do(func() {
-			if fm.isWindowClosed() || fm.statusNoticeGeneration != generation {
-				return
-			}
-			fm.statusNotice = ""
-			fm.updateStatusBar()
+			fm.expireStatusNotice(generation)
 		})
 	})
+}
+
+// expireStatusNotice clears the notice if generation still matches the most
+// recently shown one, i.e. no newer notice (or clearStatusNotice) has
+// superseded it since the timer was scheduled. Split out from showStatusNotice
+// so the stale-timer guard can be exercised directly by tests without
+// waiting for the real statusNoticeDuration.
+func (fm *FileManager) expireStatusNotice(generation uint64) {
+	if fm.isWindowClosed() || fm.statusNoticeGeneration != generation {
+		return
+	}
+	fm.statusNotice = ""
+	fm.updateStatusBar()
 }
 
 // clearStatusNotice removes a previous navigation result when another
