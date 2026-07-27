@@ -89,6 +89,10 @@ type FileManager struct {
 	jobsBlinking  bool
 	jobsBlinkStop chan struct{}
 	jobsUnsub     func()
+
+	// Transient non-modal notice appended to the status bar.
+	statusNotice           string
+	statusNoticeGeneration uint64
 }
 
 func (fm *FileManager) beginViewerLoad() (uint64, context.Context) {

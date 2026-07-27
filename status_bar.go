@@ -2,9 +2,14 @@ package main
 
 import (
 	"fmt"
+	"time"
+
+	"fyne.io/fyne/v2"
 
 	"nmf/internal/fileinfo"
 )
+
+const statusNoticeDuration = 5 * time.Second
 
 func (fm *FileManager) updateStatusBar() {
 	if fm.statusLabel == nil {
@@ -30,8 +35,52 @@ func (fm *FileManager) statusBarText() string {
 		total = fileinfo.FormatFileSize(int64(fm.storageInfo.Total))
 	}
 
-	return fmt.Sprintf("Mark: %d | Entry: %d/%d | Free: %s | Used: %s | Total: %s",
+	status := fmt.Sprintf("Mark: %d | Entry: %d/%d | Free: %s | Used: %s | Total: %s",
 		markCount, visibleEntries, totalEntries, free, used, total)
+	if fm.statusNotice == "" {
+		return status
+	}
+	return status + "\n" + fm.statusNotice
+}
+
+func parentFallbackStatusNotice(requestedPath, openedPath string) string {
+	return fmt.Sprintf("Path not found; opened nearest parent: %s → %s", requestedPath, openedPath)
+}
+
+// showStatusNotice appends a short-lived, non-modal notice to the status bar.
+// The generation token prevents an older timer from clearing a newer message.
+func (fm *FileManager) showStatusNotice(notice string) {
+	if fm == nil || notice == "" {
+		return
+	}
+	fm.statusNoticeGeneration++
+	generation := fm.statusNoticeGeneration
+	fm.statusNotice = notice
+	fm.updateStatusBar()
+
+	time.AfterFunc(statusNoticeDuration, func() {
+		fyne.Do(func() {
+			if fm.isWindowClosed() || fm.statusNoticeGeneration != generation {
+				return
+			}
+			fm.statusNotice = ""
+			fm.updateStatusBar()
+		})
+	})
+}
+
+// clearStatusNotice removes a previous navigation result when another
+// directory load begins. It also invalidates that notice's expiry callback.
+func (fm *FileManager) clearStatusNotice() {
+	if fm == nil {
+		return
+	}
+	fm.statusNoticeGeneration++
+	if fm.statusNotice == "" {
+		return
+	}
+	fm.statusNotice = ""
+	fm.updateStatusBar()
 }
 
 func countMarkedFiles(selected map[string]bool) int {

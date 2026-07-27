@@ -7,6 +7,39 @@ import (
 	"nmf/internal/fileinfo"
 )
 
+func TestParentFallbackStatusNoticeNamesRequestedAndOpenedPaths(t *testing.T) {
+	requested := "/home/neko/removed/child"
+	opened := "/home/neko"
+	notice := parentFallbackStatusNotice(requested, opened)
+	for _, want := range []string{requested, opened, "opened nearest parent"} {
+		if !strings.Contains(notice, want) {
+			t.Fatalf("notice %q does not contain %q", notice, want)
+		}
+	}
+}
+
+func TestStatusBarTextIncludesAndClearsNotice(t *testing.T) {
+	fm := &FileManager{
+		files:         []fileinfo.FileInfo{{Name: "entry"}},
+		originalFiles: []fileinfo.FileInfo{{Name: "entry"}},
+		statusNotice:  "opened parent",
+	}
+	if got := fm.statusBarText(); !strings.Contains(got, "opened parent") {
+		t.Fatalf("statusBarText %q does not include notice", got)
+	}
+
+	fm.clearStatusNotice()
+	if fm.statusNotice != "" {
+		t.Fatalf("statusNotice = %q, want empty", fm.statusNotice)
+	}
+	if fm.statusNoticeGeneration != 1 {
+		t.Fatalf("statusNoticeGeneration = %d, want 1", fm.statusNoticeGeneration)
+	}
+	if got := fm.statusBarText(); strings.Contains(got, "opened parent") {
+		t.Fatalf("statusBarText %q retained cleared notice", got)
+	}
+}
+
 func TestCountEntriesExcludingParent(t *testing.T) {
 	files := []fileinfo.FileInfo{
 		{Name: ".."},

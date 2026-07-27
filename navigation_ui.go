@@ -72,7 +72,7 @@ func (fm *FileManager) ShowNavigationHistoryDialog() {
 	})
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
 		debugPrint("FileManager: history dialog selected path=%s focused=%s", selectedPath, focusedObjectLabel(fm.window))
-		fm.LoadDirectory(selectedPath)
+		fm.loadDirectoryWithParentFallback(selectedPath)
 		fm.focusFileList("history-dialog-selected")
 	}, fm.UnpinHistoryPath)
 }

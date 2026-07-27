@@ -172,6 +172,9 @@ Long-running UI actions:
 - Direct paths typed into path/history/copy-move/compare dialogs are only
   canonicalized synchronously. Accessibility is checked by the downstream
   asynchronous directory load, job, or comparison, which owns error reporting.
+  Edit Path and Navigation History recover a confirmed missing destination by
+  opening the nearest listable parent and showing a transient status notice;
+  access, authentication, network, and other errors are not recovered.
   Copy/move/extract jobs require the destination root to be an existing
   directory; they never create a mistyped destination tree implicitly.
 

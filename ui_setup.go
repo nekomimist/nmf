@@ -20,6 +20,7 @@ func (fm *FileManager) setupUI() {
 	fm.pathDisplay.Truncation = fyne.TextTruncateClip
 	fm.statusLabel = widget.NewLabel("")
 	fm.statusLabel.TextStyle = fyne.TextStyle{Monospace: true}
+	fm.statusLabel.Wrapping = fyne.TextWrapBreak
 
 	// Create file list
 	fm.fileListItemHeight = fm.newFileListRow().MinSize().Height

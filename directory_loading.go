@@ -124,8 +124,9 @@ func (fm *FileManager) navigateToPath(inputPath string) bool {
 		})
 	}
 
-	// Accessibility is checked by the asynchronous directory load.
-	fm.LoadDirectory(resolvedPath)
+	// Accessibility is checked by the asynchronous directory load. Path edits
+	// may recover from a missing target by opening its nearest accessible parent.
+	fm.loadDirectoryWithParentFallback(resolvedPath)
 
 	// Return focus to file list after successful navigation
 	fm.focusFileList("path-edit-navigation")
@@ -149,8 +150,23 @@ func (fm *FileManager) focusFileList(reason string) {
 	debugPrint("FileManager: FocusFileList skipped reason=%s fileListView=nil path=%s", reason, fm.currentPath)
 }
 
+// LoadDirectory opens path without recovering from a missing destination. Most
+// navigation sources retain this behavior so an unexpected directory failure
+// is reported directly to the user.
 func (fm *FileManager) LoadDirectory(path string) {
+	fm.loadDirectory(path, false)
+}
+
+// loadDirectoryWithParentFallback opens path and, only when it does not exist,
+// tries its parents until it finds one that can be listed. It is deliberately
+// limited to user-entered paths and navigation-history selections.
+func (fm *FileManager) loadDirectoryWithParentFallback(path string) {
+	fm.loadDirectory(path, true)
+}
+
+func (fm *FileManager) loadDirectory(path string, allowParentFallback bool) {
 	path = canonicalNavigationHistoryPath(path)
+	fm.clearStatusNotice()
 
 	// Save current cursor position before changing directory
 	// Skip saving if already saved manually (e.g., during refresh)
@@ -165,7 +181,7 @@ func (fm *FileManager) LoadDirectory(path string) {
 
 	// Store the previous directory for parent navigation logic
 	previousPath := fm.currentPath
-	debugPrint("FileManager: LoadDirectory start path=%s previous=%s focused=%s active=%t", path, previousPath, focusedObjectLabel(fm.window), fm.windowActive)
+	debugPrint("FileManager: LoadDirectory start path=%s previous=%s fallback=%t focused=%s active=%t", path, previousPath, allowParentFallback, focusedObjectLabel(fm.window), fm.windowActive)
 	ctx, loadID := fm.beginDirectoryLoad()
 
 	// Indicate busy and block input while loading
@@ -177,12 +193,13 @@ func (fm *FileManager) LoadDirectory(path string) {
 	sortCfg := fm.state.EffectiveSort(fm.config.UI.Sort)
 
 	// Load directory asynchronously to avoid blocking UI (applies to both local and remote paths)
-	go fm.loadDirectoryAsync(ctx, loadID, path, previousPath, sortCfg)
+	go fm.loadDirectoryAsync(ctx, loadID, path, previousPath, sortCfg, allowParentFallback)
 }
 
 // loadDirectoryAsync lists a path in a background goroutine and applies UI updates on the main thread.
-func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, path string, previousPath string, sortCfg config.SortConfig) {
-	entries, err := fileinfo.ReadDirPortableContext(ctx, path)
+func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, path string, previousPath string, sortCfg config.SortConfig, allowParentFallback bool) {
+	requestedPath := path
+	entries, loadedPath, usedParentFallback, err := readDirectoryWithParentFallback(ctx, path, allowParentFallback, fileinfo.ReadDirPortableContext)
 	if err != nil {
 		if fm.ignoreCanceledDirectoryLoad(ctx, loadID, err) {
 			return
@@ -207,6 +224,7 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 		})
 		return
 	}
+	path = loadedPath
 	if fm.ignoreCanceledDirectoryLoad(ctx, loadID, nil) {
 		return
 	}
@@ -323,6 +341,10 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 		// refreshListAndCursor) and re-query the list length even when empty.
 		fm.refreshListAndCursor()
 		fm.updateStatusBar()
+		if usedParentFallback {
+			fm.showStatusNotice(parentFallbackStatusNotice(requestedPath, path))
+			debugPrint("FileManager: LoadDirectory fallback requested=%s opened=%s", requestedPath, path)
+		}
 
 		// Hide busy only now that list state and cursor are rendered-ready,
 		// so input stays blocked until the new listing is actually usable.
@@ -336,6 +358,37 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 		fm.focusFileList("directory-load-success")
 		debugPrint("FileManager: LoadDirectory done path=%s previous=%s files=%d cursor=%s index=%d focused=%s active=%t", path, previousPath, len(fm.files), fm.cursorPath, fm.GetCurrentCursorIndex(), focusedObjectLabel(fm.window), fm.windowActive)
 	})
+}
+
+type directoryReadFunc func(context.Context, string) ([]os.DirEntry, error)
+
+// readDirectoryWithParentFallback reads requestedPath. When enabled, only a
+// confirmed not-exist error advances to the next parent; access, authentication,
+// network, archive, and cancellation errors remain ordinary load failures.
+func readDirectoryWithParentFallback(ctx context.Context, requestedPath string, allowParentFallback bool, readDir directoryReadFunc) ([]os.DirEntry, string, bool, error) {
+	path := requestedPath
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, "", false, err
+		}
+
+		entries, err := readDir(ctx, path)
+		if err == nil {
+			return entries, path, path != requestedPath, nil
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, "", false, ctxErr
+		}
+		if !allowParentFallback || !fileinfo.IsNotExist(err) {
+			return nil, "", false, err
+		}
+
+		parent := fileinfo.ParentPath(path)
+		if parent == path {
+			return nil, "", false, err
+		}
+		path = parent
+	}
 }
 
 func (fm *FileManager) beginDirectoryLoad() (context.Context, uint64) {
