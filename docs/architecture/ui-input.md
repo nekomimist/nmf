@@ -191,9 +191,10 @@ Text entries that must not steal Tab:
 - Use `ui.TabEntry` (`AcceptsTab` aware entry wrapper).
 - One-line edit dialogs use the `lineEdit` target. The copy/move conflict
   dialog's rename entry uses the same line-edit bindings while preserving the
-  conflict choice Alt shortcuts; it feeds key down/up into the KeyManager and
-  matches its private line-edit handler against the tracked modifier state,
-  so Shift-modified keys skip the unmodified bindings and fall through to the
+  conflict choice Alt shortcuts, including `Alt+U` to toggle applying the
+  choice to remaining conflicts; it feeds key down/up into the KeyManager and
+  matches its private line-edit handler against the tracked modifier state, so
+  Shift-modified keys skip the unmodified bindings and fall through to the
   entry's native selection handling.
 - Wrappers that embed an already-extended widget must take the widget impl
   slot themselves: `ExtendBaseWidget` is a no-op once an impl is set, so the

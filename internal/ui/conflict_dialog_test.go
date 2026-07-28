@@ -71,6 +71,32 @@ func TestConflictDialogChoiceRequiresSelection(t *testing.T) {
 	}
 }
 
+func TestConflictDialogToggleApplyToRestUpdatesResolution(t *testing.T) {
+	var got jobs.ConflictResolution
+	dialog := &ConflictDialog{
+		choice:    widget.NewRadioGroup([]string{"Auto name"}, nil),
+		applyRest: widget.NewCheck("", nil),
+		callback:  func(res jobs.ConflictResolution) { got = res },
+	}
+	dialog.choice.SetSelected("Auto name")
+
+	dialog.ToggleApplyToRest()
+	if !dialog.applyRest.Checked {
+		t.Fatal("apply-to-rest checkbox should be checked after toggle")
+	}
+
+	dialog.ToggleApplyToRest()
+	if dialog.applyRest.Checked {
+		t.Fatal("apply-to-rest checkbox should clear after the second toggle")
+	}
+	dialog.ToggleApplyToRest()
+
+	dialog.Continue()
+	if !got.ApplyToRest {
+		t.Fatal("conflict resolution should retain the toggled apply-to-rest value")
+	}
+}
+
 func TestConflictNameEntryForwardsAltShortcutsToKeyManager(t *testing.T) {
 	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
 	handler := &conflictEntryTestHandler{}
@@ -78,11 +104,11 @@ func TestConflictNameEntryForwardsAltShortcutsToKeyManager(t *testing.T) {
 	entry := newConflictNameEntry(km, nil)
 
 	entry.KeyDown(&fyne.KeyEvent{Name: desktop.KeyAltLeft}) // modifier: tracked, does not arm
-	entry.KeyDown(&fyne.KeyEvent{Name: fyne.KeyN})          // fresh press arms the gate
-	entry.TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyN, Modifier: fyne.KeyModifierAlt})
+	entry.KeyDown(&fyne.KeyEvent{Name: fyne.KeyU})          // fresh press arms the gate
+	entry.TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyU, Modifier: fyne.KeyModifierAlt})
 
-	if len(handler.keys) != 1 || handler.keys[0] != fyne.KeyN {
-		t.Fatalf("forwarded keys = %v, want [N]", handler.keys)
+	if len(handler.keys) != 1 || handler.keys[0] != fyne.KeyU {
+		t.Fatalf("forwarded keys = %v, want [U]", handler.keys)
 	}
 	if !handler.mods[0].AltPressed {
 		t.Fatalf("forwarded mods = %+v, want AltPressed", handler.mods[0])

@@ -26,6 +26,7 @@ const (
 	conflictOverwriteLabel        = "Overwrite (Alt+O)"
 	conflictSkipLabel             = "Skip this item (Alt+S)"
 	conflictRenameLabel           = "Rename to (Alt+R):"
+	conflictApplyToRestLabel      = "Use this choice for remaining conflicts in this job (Alt+U)"
 )
 
 // ConflictDialog resolves one copy/move destination name collision.
@@ -108,7 +109,7 @@ func (d *ConflictDialog) ShowDialog(parent fyne.Window, callback func(jobs.Confl
 	d.nameEntry.OnSubmitted = func(string) {
 		d.Continue()
 	}
-	d.applyRest = widget.NewCheck("Use this choice for remaining conflicts in this job", nil)
+	d.applyRest = widget.NewCheck(conflictApplyToRestLabel, nil)
 	d.errorLabel = widget.NewLabel("")
 	d.errorLabel.Wrapping = fyne.TextWrapWord
 	d.errorLabel.Hide()
@@ -231,6 +232,15 @@ func (d *ConflictDialog) SelectSkip() {
 	d.selectChoiceByPrefix("Skip")
 }
 
+// ToggleApplyToRest toggles whether this choice resolves remaining conflicts
+// in the current job.
+func (d *ConflictDialog) ToggleApplyToRest() {
+	if d.applyRest == nil {
+		return
+	}
+	d.applyRest.SetChecked(!d.applyRest.Checked)
+}
+
 func (d *ConflictDialog) finish(res jobs.ConflictResolution) {
 	if d.closed {
 		return
@@ -299,12 +309,14 @@ func (d *ConflictDialog) registerShortcuts() {
 		{KeyName: fyne.KeyA, Modifier: fyne.KeyModifierAlt},
 		{KeyName: fyne.KeyR, Modifier: fyne.KeyModifierAlt},
 		{KeyName: fyne.KeyS, Modifier: fyne.KeyModifierAlt},
+		{KeyName: fyne.KeyU, Modifier: fyne.KeyModifierAlt},
 	}
 	c.AddShortcut(d.shortcuts[0], func(fyne.Shortcut) { d.SelectOverwriteIfNewer() })
 	c.AddShortcut(d.shortcuts[1], func(fyne.Shortcut) { d.SelectOverwrite() })
 	c.AddShortcut(d.shortcuts[2], func(fyne.Shortcut) { d.SelectAutoName() })
 	c.AddShortcut(d.shortcuts[3], func(fyne.Shortcut) { d.SelectRename() })
 	c.AddShortcut(d.shortcuts[4], func(fyne.Shortcut) { d.SelectSkip() })
+	c.AddShortcut(d.shortcuts[5], func(fyne.Shortcut) { d.ToggleApplyToRest() })
 }
 
 func (d *ConflictDialog) unregisterShortcuts() {
@@ -375,7 +387,7 @@ func (e *conflictNameEntry) TypedKey(ev *fyne.KeyEvent) {
 	e.LineEditEntry.TypedKey(ev)
 }
 
-// TypedShortcut forwards shortcut activations (e.g. Alt+N choice keys) to the
+// TypedShortcut forwards shortcut activations (e.g. Alt+N and Alt+U) to the
 // KeyManager so the conflict dialog handler sees them while the entry is
 // focused. Standard editing shortcuts stay with the entry.
 func (e *conflictNameEntry) TypedShortcut(shortcut fyne.Shortcut) {

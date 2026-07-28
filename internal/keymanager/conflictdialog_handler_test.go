@@ -12,6 +12,7 @@ type fakeConflictDialog struct {
 	autoName         int
 	rename           int
 	skip             int
+	applyToRest      int
 }
 
 func (f *fakeConflictDialog) Continue()               {}
@@ -21,6 +22,7 @@ func (f *fakeConflictDialog) SelectOverwrite()        { f.overwrite++ }
 func (f *fakeConflictDialog) SelectAutoName()         { f.autoName++ }
 func (f *fakeConflictDialog) SelectRename()           { f.rename++ }
 func (f *fakeConflictDialog) SelectSkip()             { f.skip++ }
+func (f *fakeConflictDialog) ToggleApplyToRest()      { f.applyToRest++ }
 
 func TestConflictDialogAltShortcutsSelectChoices(t *testing.T) {
 	dialog := &fakeConflictDialog{}
@@ -37,6 +39,7 @@ func TestConflictDialogAltShortcutsSelectChoices(t *testing.T) {
 		{name: "auto name", key: fyne.KeyA, want: func() int { return dialog.autoName }},
 		{name: "rename", key: fyne.KeyR, want: func() int { return dialog.rename }},
 		{name: "skip", key: fyne.KeyS, want: func() int { return dialog.skip }},
+		{name: "apply to rest", key: fyne.KeyU, want: func() int { return dialog.applyToRest }},
 	}
 	for _, tt := range tests {
 		before := tt.want()

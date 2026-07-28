@@ -9,6 +9,7 @@ type ConflictDialogInterface interface {
 	SelectAutoName()
 	SelectRename()
 	SelectSkip()
+	ToggleApplyToRest()
 }
 
 // ConflictDialogKeyHandler handles commit/cancel keys while resolving a copy/move conflict.
@@ -24,6 +25,7 @@ func NewConflictDialogKeyHandler(d ConflictDialogInterface) *ConflictDialogKeyHa
 		{"A-A", d.SelectAutoName},
 		{"A-R", d.SelectRename},
 		{"A-S", d.SelectSkip},
+		{"A-U", d.ToggleApplyToRest},
 
 		{"Return", d.Continue},
 		{"Escape", d.CancelJob},
