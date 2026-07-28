@@ -117,10 +117,13 @@ func (fm *FileManager) setupUI() {
 	)
 	fm.windowHighlight = ui.NewHighlightFrame(fm.customTheme)
 
+	// Keep normal content clear of the full-bounds highlight frame. This also
+	// leaves stable room beside the list scrollbar when no highlight is active.
+	highlightedMainContent := fm.windowHighlight.WrapContent(mainContent)
+
 	// Stack main content with overlays on top (search, busy)
 	content := container.NewMax(
-		mainContent,
-		fm.windowHighlight,
+		highlightedMainContent,
 		container.NewBorder(
 			fm.searchOverlay.GetContainer(), // Top overlay
 			nil, nil, nil,

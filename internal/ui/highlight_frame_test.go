@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"testing"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 
@@ -47,6 +48,29 @@ func TestHighlightFrameUsesConfiguredColorAndClears(t *testing.T) {
 
 	if got := color.RGBAModel.Convert(frame.border.StrokeColor).(color.RGBA); got.A != 0 {
 		t.Fatalf("cleared stroke color = %#v, want transparent", got)
+	}
+}
+
+func TestHighlightFrameWrapContentReservesFixedInset(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	frame := NewHighlightFrame(nil)
+	content := widget.NewLabel("content")
+	wrapped := frame.WrapContent(content)
+	wrapped.Resize(fyne.NewSize(100, 80))
+
+	if got, want := content.Position(), fyne.NewPos(highlightFrameContentInset, highlightFrameContentInset); got != want {
+		t.Fatalf("content position = %v, want %v", got, want)
+	}
+	if got, want := content.Size(), fyne.NewSize(92, 72); got != want {
+		t.Fatalf("content size = %v, want %v", got, want)
+	}
+	if got := frame.Position(); got != fyne.NewPos(0, 0) {
+		t.Fatalf("frame position = %v, want origin", got)
+	}
+	if got, want := frame.Size(), fyne.NewSize(100, 80); got != want {
+		t.Fatalf("frame size = %v, want %v", got, want)
 	}
 }
 

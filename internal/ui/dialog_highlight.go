@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/container"
 )
 
 type dialogHighlightState struct {
@@ -20,5 +19,5 @@ func (s *dialogHighlightState) setHighlighted(highlighted bool) {
 func (s *dialogHighlightState) wrap(content fyne.CanvasObject) fyne.CanvasObject {
 	s.frame = NewHighlightFrame(nil)
 	s.frame.SetHighlighted(s.highlighted)
-	return container.NewMax(content, s.frame)
+	return s.frame.WrapContent(content)
 }

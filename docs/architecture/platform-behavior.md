@@ -137,9 +137,11 @@ inside the same NMF process.
 Copy/move, directory-comparison, and navigation-history dialogs can highlight
 every File Manager window, including the dialog's own window, that displays the
 currently selected open-directory candidate. This is an in-content overlay
-border, not a native OS window decoration. On Windows, iconified File Manager
-windows are skipped using the native `IsIconic` state; other platforms do not
-currently expose iconified state through Fyne and use the normal overlay path.
+border, not a native OS window decoration. A fixed 4 logical-pixel safe inset
+keeps the frame clear of main content, dialog controls, and list scrollbars.
+On Windows, iconified File Manager windows are skipped using the native
+`IsIconic` state; other platforms do not currently expose iconified state
+through Fyne and use the normal overlay path.
 When the selected path belongs to the dialog's own File Manager, the dialog
 content also uses the same frame above Fyne's modal dim layer so the accent
 remains clear; the dimmed File Manager frame remains active underneath.

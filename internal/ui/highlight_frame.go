@@ -5,12 +5,17 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
 	customtheme "nmf/internal/theme"
 )
 
-const highlightFrameStrokeWidth float32 = 4
+const (
+	highlightFrameStrokeWidth  float32 = 4
+	highlightFrameContentInset float32 = 4
+)
 
 var defaultHighlightFrameColor = color.RGBA{R: 30, G: 120, B: 80, A: 255}
 
@@ -33,6 +38,23 @@ func NewHighlightFrame(themeProvider ThemeColorProvider) *HighlightFrame {
 	frame.border.StrokeWidth = highlightFrameStrokeWidth
 	frame.ExtendBaseWidget(frame)
 	return frame
+}
+
+// WrapContent keeps content clear of the frame's in-content stroke while the
+// frame itself continues to cover the full available bounds. The inset is
+// deliberately fixed rather than theme padding so compact item-spacing themes
+// retain enough room for the highlight and a scrollbar at the window edge.
+func (f *HighlightFrame) WrapContent(content fyne.CanvasObject) fyne.CanvasObject {
+	if f == nil {
+		return content
+	}
+	padding := layout.NewCustomPaddedLayout(
+		highlightFrameContentInset,
+		highlightFrameContentInset,
+		highlightFrameContentInset,
+		highlightFrameContentInset,
+	)
+	return container.NewMax(container.New(padding, content), f)
 }
 
 // SetHighlighted changes whether the frame uses the open-directory accent.
