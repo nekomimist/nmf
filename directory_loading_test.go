@@ -467,3 +467,52 @@ func TestLoadDirectoryAsyncFallbackRestoresCursorForOpenedPathNotRequestedPath(t
 		t.Fatalf("NavigationHistory.Entries = %#v, want only %q recorded", got, previousPath)
 	}
 }
+
+func TestLoadDirectoryAsyncRefreshRestoresNearestSurvivingCursorNeighbor(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	dir := t.TempDir()
+	first := filepath.Join(dir, "aaa_first.txt")
+	deleted := filepath.Join(dir, "bbb_deleted.txt")
+	next := filepath.Join(dir, "ccc_next.txt")
+	for _, path := range []string{first, next} {
+		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q): %v", path, err)
+		}
+	}
+
+	state := &config.State{
+		CursorMemory: config.CursorMemoryState{
+			Entries:  map[string]string{},
+			LastUsed: map[string]time.Time{},
+		},
+		NavigationHistory: config.NavigationHistoryState{
+			Entries:  []string{},
+			LastUsed: map[string]time.Time{},
+			UseCount: map[string]int{},
+			Pinned:   []string{},
+		},
+	}
+	fm := newParentFallbackTestFileManager(state)
+	fm.currentPath = dir
+	fm.files = []fileinfo.FileInfo{
+		{Name: "..", Path: fileinfo.ParentPath(dir), IsDir: true},
+		{Name: "aaa_first.txt", Path: first},
+		{Name: "bbb_deleted.txt", Path: deleted, Status: fileinfo.StatusDeleted},
+		{Name: "ccc_next.txt", Path: next},
+	}
+	fm.SetCursorByIndex(2)
+
+	neighbors := fm.cursorNeighborPaths()
+	if want := []string{next, first}; !reflect.DeepEqual(neighbors, want) {
+		t.Fatalf("cursorNeighborPaths() = %#v, want %#v", neighbors, want)
+	}
+
+	ctx, loadID := fm.beginDirectoryLoad()
+	fm.loadDirectoryAsync(ctx, loadID, dir, dir, config.SortConfig{SortBy: "name", SortOrder: "asc"}, false, neighbors)
+
+	if fm.cursorPath != next {
+		t.Fatalf("cursorPath = %q, want following pre-refresh neighbor %q", fm.cursorPath, next)
+	}
+}

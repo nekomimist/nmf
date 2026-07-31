@@ -168,6 +168,16 @@ func (fm *FileManager) loadDirectory(path string, allowParentFallback bool) {
 	path = canonicalNavigationHistoryPath(path)
 	fm.clearStatusNotice()
 
+	// A refresh replaces the list wholesale. Keep the surrounding entries as
+	// a transient fallback before starting the asynchronous read, so a cursor
+	// on a file which disappeared since the watcher's last update does not
+	// unexpectedly land on the first row. Prefer the following row on a tie:
+	// it occupies the deleted row's former screen position after the refresh.
+	var refreshCursorNeighbors []string
+	if fm.currentPath != "" && fm.currentPath == path {
+		refreshCursorNeighbors = fm.cursorNeighborPaths()
+	}
+
 	// Save current cursor position before changing directory
 	// Skip saving if already saved manually (e.g., during refresh)
 	if fm.currentPath != "" && fm.currentPath != path {
@@ -193,11 +203,18 @@ func (fm *FileManager) loadDirectory(path string, allowParentFallback bool) {
 	sortCfg := fm.state.EffectiveSort(fm.config.UI.Sort)
 
 	// Load directory asynchronously to avoid blocking UI (applies to both local and remote paths)
-	go fm.loadDirectoryAsync(ctx, loadID, path, previousPath, sortCfg, allowParentFallback)
+	go fm.loadDirectoryAsync(ctx, loadID, path, previousPath, sortCfg, allowParentFallback, refreshCursorNeighbors)
 }
 
 // loadDirectoryAsync lists a path in a background goroutine and applies UI updates on the main thread.
-func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, path string, previousPath string, sortCfg config.SortConfig, allowParentFallback bool) {
+// refreshCursorNeighbors is supplied only for a same-directory reload. It is
+// variadic to keep direct test callers concise when no refresh fallback is
+// relevant.
+func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, path string, previousPath string, sortCfg config.SortConfig, allowParentFallback bool, refreshCursorNeighbors ...[]string) {
+	var cursorNeighbors []string
+	if len(refreshCursorNeighbors) > 0 {
+		cursorNeighbors = refreshCursorNeighbors[0]
+	}
 	requestedPath := path
 	// Keep the busy overlay naming the ancestor currently being probed as the
 	// fallback walk advances, instead of the (already-rejected) requested
@@ -343,6 +360,22 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 					}
 				}
 				if !cursorSet {
+					for _, neighborPath := range cursorNeighbors {
+						for i, f := range fm.files {
+							if f.Path != neighborPath {
+								continue
+							}
+							fm.SetCursorByIndex(i)
+							cursorSet = true
+							debugPrint("FileManager: refresh cursor fallback path=%s index=%d", neighborPath, i)
+							break
+						}
+						if cursorSet {
+							break
+						}
+					}
+				}
+				if !cursorSet {
 					fm.SetCursorByIndex(0)
 				}
 			}
@@ -370,6 +403,33 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 		fm.focusFileList("directory-load-success")
 		debugPrint("FileManager: LoadDirectory done path=%s previous=%s files=%d cursor=%s index=%d focused=%s active=%t", path, previousPath, len(fm.files), fm.cursorPath, fm.GetCurrentCursorIndex(), focusedObjectLabel(fm.window), fm.windowActive)
 	})
+}
+
+// cursorNeighborPaths returns the ordinary files nearest to the cursor in
+// the current visible order. The row after the cursor is considered before
+// the row before it for an equal distance, preserving the on-screen position
+// when the cursor's row is removed by a refresh. Deleted rows and the parent
+// entry cannot be useful cursor restoration targets after a reload.
+func (fm *FileManager) cursorNeighborPaths() []string {
+	cursorIndex := fm.GetCurrentCursorIndex()
+	if cursorIndex < 0 {
+		return nil
+	}
+
+	neighbors := make([]string, 0, len(fm.files)-1)
+	for distance := 1; distance < len(fm.files); distance++ {
+		for _, index := range []int{cursorIndex + distance, cursorIndex - distance} {
+			if index < 0 || index >= len(fm.files) {
+				continue
+			}
+			file := fm.files[index]
+			if file.Name == ".." || file.Status == fileinfo.StatusDeleted {
+				continue
+			}
+			neighbors = append(neighbors, file.Path)
+		}
+	}
+	return neighbors
 }
 
 type directoryReadFunc func(context.Context, string) ([]os.DirEntry, error)
