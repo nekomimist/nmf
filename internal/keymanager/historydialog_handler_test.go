@@ -65,3 +65,18 @@ func TestHistoryDialogHandlerPlainDeleteOnlyClearsSearch(t *testing.T) {
 		t.Fatal("Shift+Delete should not be handled by HistoryDialog")
 	}
 }
+
+func TestHistoryDialogHandlerPasteShortcuts(t *testing.T) {
+	dialog := &fakeFilterSearchDialog{}
+	handler := NewHistoryDialogKeyHandler(dialog, func(string, ...interface{}) {})
+
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyV}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("Ctrl+V should be handled")
+	}
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyInsert}, ModifierState{ShiftPressed: true}) {
+		t.Fatal("Shift+Insert should be handled")
+	}
+	if dialog.paste != 2 {
+		t.Fatalf("PasteFromClipboard count = %d, want 2", dialog.paste)
+	}
+}

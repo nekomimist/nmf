@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/search"
@@ -26,6 +27,30 @@ func TestNavigationHistoryBackspaceRemovesUTF8Rune(t *testing.T) {
 
 	if got := dialog.GetSearchText(); got != "日本" {
 		t.Fatalf("search text got %q, want %q", got, "日本")
+	}
+}
+
+func TestNavigationHistoryPasteFromClipboardAppendsSingleLineText(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	app.Clipboard().SetContent("/tmp/one\n/tmp/two")
+
+	dialog := NewNavigationHistoryDialog(
+		[]string{"/tmp/one", "/tmp/two"},
+		nil,
+		nil,
+		nil,
+		map[string]time.Time{},
+		nil,
+		func(string, ...interface{}) {},
+		search.NewPlainProvider(),
+	)
+	dialog.searchEntry.SetText("prefix:")
+
+	dialog.PasteFromClipboard()
+
+	if got := dialog.GetSearchText(); got != "prefix:/tmp/one /tmp/two" {
+		t.Fatalf("search text = %q, want flattened clipboard content appended", got)
 	}
 }
 

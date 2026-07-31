@@ -438,6 +438,9 @@ func (e *LineEditEntry) MoveCursorRight() {
 }
 
 func (e *LineEditEntry) DeleteBeforeCursor() {
+	if e.deleteSelection(fyne.KeyBackspace) {
+		return
+	}
 	pos := e.normalizedCursor()
 	if pos <= 0 {
 		return
@@ -446,6 +449,9 @@ func (e *LineEditEntry) DeleteBeforeCursor() {
 }
 
 func (e *LineEditEntry) DeleteAtCursor() {
+	if e.deleteSelection(fyne.KeyDelete) {
+		return
+	}
 	pos := e.normalizedCursor()
 	if pos >= utf8.RuneCountInString(e.Text) {
 		return
@@ -474,6 +480,19 @@ func (e *LineEditEntry) DeleteAfterCursorToEnd() {
 
 func (e *LineEditEntry) InsertText(text string) {
 	e.replaceRunes(e.normalizedCursor(), e.normalizedCursor(), text)
+}
+
+// deleteSelection delegates to Entry's native key path so its selection
+// bookkeeping, callbacks, and cursor placement stay consistent with normal
+// text fields. Our direct rune replacement path below is only for the
+// no-selection single-rune case.
+func (e *LineEditEntry) deleteSelection(key fyne.KeyName) bool {
+	if e.SelectedText() == "" {
+		return false
+	}
+	e.TabEntry.TypedKey(&fyne.KeyEvent{Name: key})
+	e.UpdateIMEAnchor()
+	return true
 }
 
 func (e *LineEditEntry) PasteFromClipboard() {

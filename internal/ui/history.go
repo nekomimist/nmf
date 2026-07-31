@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image/color"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -504,6 +505,21 @@ func (nhd *NavigationHistoryDialog) AppendToSearch(char string) {
 		nhd.searchEntry.SetText(current + char)
 		nhd.debugPrint("HistoryDialog: Appended '%s' to search, now: '%s'", char, nhd.searchEntry.Text)
 	}
+}
+
+// PasteFromClipboard appends clipboard text to the focusless search entry.
+// The search field is single-line, so match LineEditEntry's newline handling.
+func (nhd *NavigationHistoryDialog) PasteFromClipboard() {
+	app := fyne.CurrentApp()
+	if nhd.searchEntry == nil || app == nil || app.Clipboard() == nil {
+		return
+	}
+	text := app.Clipboard().Content()
+	if text == "" {
+		return
+	}
+	nhd.AppendToSearch(strings.ReplaceAll(text, "\n", " "))
+	nhd.debugPrint("HistoryDialog: Pasted search text")
 }
 
 // BackspaceSearch removes the last character from search

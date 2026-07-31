@@ -16,6 +16,7 @@ type HistoryDialogInterface interface {
 	ClearSearch()
 	AppendToSearch(char string)
 	BackspaceSearch()
+	PasteFromClipboard()
 	GetSearchText() string
 	CopySelectedPathToSearch() // Copy selected path to search entry
 	ScrollSelectedRight()
@@ -48,6 +49,8 @@ func NewHistoryDialogKeyHandler(hd HistoryDialogInterface, debugPrint func(forma
 		{"C-F", func() {}},
 		{"C-H", hd.BackspaceSearch},
 		{"C-D", hd.UnpinSelectedPath},
+		{"C-V", hd.PasteFromClipboard},
+		{"S-Insert", hd.PasteFromClipboard},
 
 		{"Up", hd.MoveUp},
 		{"S-Up", hd.MoveToTop},

@@ -89,6 +89,36 @@ func TestLineEditEntryDeleteAtCursor(t *testing.T) {
 	}
 }
 
+func TestLineEditEntrySingleRuneDeletionClearsSelection(t *testing.T) {
+	tests := []struct {
+		name   string
+		delete func(*LineEditEntry)
+	}{
+		{name: "backspace", delete: (*LineEditEntry).DeleteBeforeCursor},
+		{name: "delete", delete: (*LineEditEntry).DeleteAtCursor},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entry := NewLineEditEntry(nil)
+			entry.SetText("note.txt")
+			entry.SelectRange(0, 4)
+
+			tt.delete(entry)
+
+			if entry.Text != ".txt" {
+				t.Fatalf("text = %q, want %q", entry.Text, ".txt")
+			}
+			if entry.CursorColumn != 0 {
+				t.Fatalf("cursor = %d, want 0", entry.CursorColumn)
+			}
+			if got := entry.SelectedText(); got != "" {
+				t.Fatalf("SelectedText() = %q, want empty", got)
+			}
+		})
+	}
+}
+
 func TestLineEditEntryDeleteBeforeCursorToStart(t *testing.T) {
 	entry := NewLineEditEntry(nil)
 	entry.SetText("abcd")

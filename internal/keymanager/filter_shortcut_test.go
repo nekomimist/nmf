@@ -17,6 +17,7 @@ type fakeFilterSearchDialog struct {
 	direct    int
 	deleted   int
 	unpinned  int
+	paste     int
 }
 
 func (f *fakeFilterSearchDialog) MoveUp()                       {}
@@ -26,6 +27,7 @@ func (f *fakeFilterSearchDialog) MoveToBottom()                 {}
 func (f *fakeFilterSearchDialog) ClearSearch()                  {}
 func (f *fakeFilterSearchDialog) AppendToSearch(char string)    { f.search += char }
 func (f *fakeFilterSearchDialog) BackspaceSearch()              { f.backspace++ }
+func (f *fakeFilterSearchDialog) PasteFromClipboard()           { f.paste++ }
 func (f *fakeFilterSearchDialog) GetSearchText() string         { return "" }
 func (f *fakeFilterSearchDialog) IsSearchFocused() bool         { return false }
 func (f *fakeFilterSearchDialog) FocusList()                    {}
