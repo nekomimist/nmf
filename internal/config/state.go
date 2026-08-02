@@ -436,8 +436,16 @@ var ErrStateManagerClosed = errors.New("state manager closed")
 // NewStateManager creates a new runtime-state manager and starts its
 // background save worker.
 func NewStateManager(debugPrint func(format string, args ...interface{})) *StateManager {
+	return NewStateManagerWithPath(getStatePath(), debugPrint)
+}
+
+// NewStateManagerWithPath creates a runtime-state manager rooted at an
+// explicit state.json path instead of the OS-default location (see
+// getStatePath), and starts its background save worker. Used by the
+// -profile/-state-dir CLI overrides.
+func NewStateManagerWithPath(statePath string, debugPrint func(format string, args ...interface{})) *StateManager {
 	m := &StateManager{
-		statePath:     getStatePath(),
+		statePath:     statePath,
 		debugPrint:    debugPrint,
 		saveDelay:     500 * time.Millisecond,
 		saveRequests:  make(chan *State, 1),

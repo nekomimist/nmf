@@ -247,6 +247,98 @@ func TestResolveDebugLogDirectory(t *testing.T) {
 	}
 }
 
+func TestResolveDataDirs(t *testing.T) {
+	tests := []struct {
+		name       string
+		profile    string
+		configDir  string
+		stateDir   string
+		wantConfig string
+		wantState  string
+	}{
+		{
+			name: "all empty",
+		},
+		{
+			name:       "profile only",
+			profile:    filepath.Join("prof"),
+			wantConfig: filepath.Join("prof", "config.json"),
+			wantState:  filepath.Join("prof", "state.json"),
+		},
+		{
+			name:       "config-dir only",
+			configDir:  filepath.Join("cfg"),
+			wantConfig: filepath.Join("cfg", "config.json"),
+		},
+		{
+			name:      "state-dir only",
+			stateDir:  filepath.Join("st"),
+			wantState: filepath.Join("st", "state.json"),
+		},
+		{
+			name:       "profile+config-dir: config-dir wins, profile still supplies state",
+			profile:    filepath.Join("prof"),
+			configDir:  filepath.Join("cfg"),
+			wantConfig: filepath.Join("cfg", "config.json"),
+			wantState:  filepath.Join("prof", "state.json"),
+		},
+		{
+			name:       "profile+state-dir: state-dir wins, profile still supplies config",
+			profile:    filepath.Join("prof"),
+			stateDir:   filepath.Join("st"),
+			wantConfig: filepath.Join("prof", "config.json"),
+			wantState:  filepath.Join("st", "state.json"),
+		},
+		{
+			name:       "all three",
+			profile:    filepath.Join("prof"),
+			configDir:  filepath.Join("cfg"),
+			stateDir:   filepath.Join("st"),
+			wantConfig: filepath.Join("cfg", "config.json"),
+			wantState:  filepath.Join("st", "state.json"),
+		},
+		{
+			name:       "relative path stays relative",
+			profile:    filepath.Join("relative", "profile"),
+			wantConfig: filepath.Join("relative", "profile", "config.json"),
+			wantState:  filepath.Join("relative", "profile", "state.json"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotConfig, gotState, err := resolveDataDirs(tt.profile, tt.configDir, tt.stateDir)
+			if err != nil {
+				t.Fatalf("resolveDataDirs returned error: %v", err)
+			}
+			if gotConfig != tt.wantConfig {
+				t.Errorf("configPath = %q, want %q", gotConfig, tt.wantConfig)
+			}
+			if gotState != tt.wantState {
+				t.Errorf("statePath = %q, want %q", gotState, tt.wantState)
+			}
+		})
+	}
+
+	t.Run("~ expansion", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		gotConfig, gotState, err := resolveDataDirs(filepath.Join("~", "profile"), "", "")
+		if err != nil {
+			t.Fatalf("resolveDataDirs returned error: %v", err)
+		}
+		wantConfig := filepath.Join(home, "profile", "config.json")
+		wantState := filepath.Join(home, "profile", "state.json")
+		if gotConfig != wantConfig {
+			t.Errorf("configPath = %q, want %q", gotConfig, wantConfig)
+		}
+		if gotState != wantState {
+			t.Errorf("statePath = %q, want %q", gotState, wantState)
+		}
+	})
+}
+
 func TestOpenDebugSessionLogUsesSuffixOnCollision(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Date(2026, 6, 8, 21, 30, 0, 0, time.UTC)

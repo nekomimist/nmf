@@ -53,6 +53,7 @@ v2.8.0 (VFS with local/SMB/archive support, background jobs, multi-window).
 ## Configuration Tips
 - Config file: OS‑specific path ending in `config.json` (XDG/AppData conventions). Use `internal/config.Manager` to load it; it is read-only from the app (never saved back to).
 - Runtime state (cursor memory, navigation history, file filter history, last-applied sort) lives in a separate `state.json`, managed by `internal/config.StateManager`; see "Runtime State" in `docs/configuration.md`.
+- For isolated test/screenshot runs, pass `-profile DIR` (or `-config-dir`/`-state-dir` for finer control) to redirect config.json/init.star/logs/state.json; see "Data Directory Overrides" in `docs/configuration.md`.
 - Debugging: run `go run -tags migrated_fynedo . -d` or `./dist/nmf -d` after `make build` to enable verbose logs via `debugPrint`.
 - Config schema source of truth: `internal/config/config.go`.
 - Default main-screen key bindings: `defaultMainScreenBindings()` in

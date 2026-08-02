@@ -26,6 +26,45 @@ After `config.json` is loaded, NMF also loads an optional `init.star` from the
 same directory. Starlark settings overlay JSON for the current run and can define
 custom commands for key bindings. See `docs/starlark-configuration.md`.
 
+## Data Directory Overrides
+
+Three CLI flags redirect where NMF reads and writes its user-data files, for
+running an isolated profile (useful for screenshots and GUI verification runs
+that must not touch real settings):
+
+- `-profile DIR` — `config.json`, `init.star`, the default debug-log
+  directory, and `state.json` all live under `DIR`.
+  Example: `nmf -profile ~/nmf-test-profile`
+- `-config-dir DIR` — overrides only the config directory (`config.json`,
+  `init.star`, and the default debug-log directory).
+  Example: `nmf -config-dir /tmp/nmf-config`
+- `-state-dir DIR` — overrides only the state directory (`state.json`).
+  Example: `nmf -state-dir /tmp/nmf-state`
+
+`-config-dir` and `-state-dir` each take precedence over `-profile` for their
+own piece, so `-profile DIR -config-dir OTHER` puts `config.json` under
+`OTHER` while `state.json` still lands under `DIR`. With none of these flags
+set, NMF uses the OS-default locations described above.
+
+Since `init.star` and the default debug-log directory (see
+[Debug Logging](#debug-logging) below) both derive from the config path, they
+automatically follow `-profile`/`-config-dir` too. Target directories are
+created on demand, and a missing `config.json` under the overridden path
+simply means NMF starts with built-in defaults, same as the non-overridden
+case.
+
+**Caveat:** using `-state-dir` alone is not full isolation. `state.json`'s
+first-run migration reads legacy runtime-state keys out of `config.json` at
+the *real*, non-overridden config path (`config.json` is never written to, so
+this is read-only), which means a fresh `state.json` under `-state-dir` can
+still be seeded from your real config's legacy data. Use `-profile` when you
+need a config path and a state path that are both isolated from the real
+ones.
+
+Not redirected by any of these flags: archive-open temp files (the system
+temp directory), SMB credentials cached in the OS keyring (service
+`nmf.smb`), and Fyne's own internal app storage.
+
 ## Example
 
 ```json

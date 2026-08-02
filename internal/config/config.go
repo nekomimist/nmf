@@ -414,11 +414,18 @@ type Manager struct {
 
 // NewManager creates a new configuration manager
 func NewManager(debugPrint func(format string, args ...interface{})) *Manager {
+	return NewManagerWithPath(getConfigPath(), debugPrint)
+}
+
+// NewManagerWithPath creates a configuration manager rooted at an explicit
+// config.json path instead of the OS-default location (see getConfigPath).
+// Used by the -profile/-config-dir CLI overrides.
+func NewManagerWithPath(configPath string, debugPrint func(format string, args ...interface{})) *Manager {
 	if debugPrint == nil {
 		debugPrint = func(string, ...interface{}) {}
 	}
 	return &Manager{
-		configPath: getConfigPath(),
+		configPath: configPath,
 		debugPrint: debugPrint,
 	}
 }

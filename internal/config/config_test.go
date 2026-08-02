@@ -734,3 +734,25 @@ func TestManagerLoadRejectsCorruptExistingConfigFile(t *testing.T) {
 		t.Fatal("expected error loading corrupt config.json")
 	}
 }
+
+func TestNewManagerWithPath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "profile", "config.json")
+
+	manager := NewManagerWithPath(path, nil)
+
+	if manager.ConfigPath() != path {
+		t.Errorf("ConfigPath() = %q, want %q", manager.ConfigPath(), path)
+	}
+
+	config, err := manager.Load()
+	if err != nil {
+		t.Fatalf("Load should not return error for non-existent path under a fresh temp dir, got: %v", err)
+	}
+	if config == nil {
+		t.Fatal("Load should return default config for non-existent path")
+	}
+	if config.Window.Width != 800 {
+		t.Errorf("Should return default config with width 800, got %d", config.Window.Width)
+	}
+}

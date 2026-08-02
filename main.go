@@ -69,9 +69,15 @@ func main() {
 	// Parse command line flags
 	var startPath string
 	var debugLogPath string
+	var profileDir string
+	var configDirOverride string
+	var stateDirOverride string
 	flag.BoolVar(&debugMode, "d", false, "Enable debug mode")
 	flag.StringVar(&debugLogPath, "debug-log", "", "Write debug logs to the specified file")
 	flag.StringVar(&startPath, "path", "", "Starting directory path")
+	flag.StringVar(&profileDir, "profile", "", "Use an isolated profile directory for config.json, init.star, logs, and state.json")
+	flag.StringVar(&configDirOverride, "config-dir", "", "Override the config directory (config.json, init.star, default log directory); takes precedence over -profile")
+	flag.StringVar(&stateDirOverride, "state-dir", "", "Override the state directory (state.json); takes precedence over -profile")
 	flag.Parse()
 	cliDebugMode := debugMode
 
@@ -99,8 +105,30 @@ func main() {
 	}
 	cliStartPath := startPath != ""
 
+	// Resolve -profile/-config-dir/-state-dir into effective config.json and
+	// state.json paths (empty means "use the OS default location").
+	overrideConfigPath, overrideStatePath, err := resolveDataDirs(profileDir, configDirOverride, stateDirOverride)
+	if err != nil {
+		log.Printf("Error resolving data directory overrides: %v", err)
+		showStartupErrorAndExit(nil, "startup error", startupFailureMessage("Invalid -profile/-config-dir/-state-dir", err))
+		return
+	}
+	if overrideConfigPath != "" || overrideStatePath != "" {
+		debugPrint("Config: data dir override config=%s state=%s", overrideConfigPath, overrideStatePath)
+	}
+
 	// Load configuration
-	configManager := config.NewManager(debugPrint)
+	var configManager *config.Manager
+	if overrideConfigPath != "" {
+		if err := os.MkdirAll(filepath.Dir(overrideConfigPath), 0755); err != nil {
+			log.Printf("Error creating config directory '%s': %v", filepath.Dir(overrideConfigPath), err)
+			showStartupErrorAndExit(nil, "startup error", startupFailureMessage(fmt.Sprintf("Failed to create config directory '%s'", filepath.Dir(overrideConfigPath)), err))
+			return
+		}
+		configManager = config.NewManagerWithPath(overrideConfigPath, debugPrint)
+	} else {
+		configManager = config.NewManager(debugPrint)
+	}
 	cfg, err := configManager.Load()
 	if err != nil {
 		log.Printf("Error loading configuration: %v", err)
@@ -112,7 +140,17 @@ func main() {
 	// keys on first run. config.json is never written back to; state.json
 	// takes over all cursor memory/navigation history/file filter/sort
 	// persistence from here on.
-	stateManager := config.NewStateManager(debugPrint)
+	var stateManager *config.StateManager
+	if overrideStatePath != "" {
+		if err := os.MkdirAll(filepath.Dir(overrideStatePath), 0755); err != nil {
+			log.Printf("Error creating state directory '%s': %v", filepath.Dir(overrideStatePath), err)
+			showStartupErrorAndExit(nil, "startup error", startupFailureMessage(fmt.Sprintf("Failed to create state directory '%s'", filepath.Dir(overrideStatePath)), err))
+			return
+		}
+		stateManager = config.NewStateManagerWithPath(overrideStatePath, debugPrint)
+	} else {
+		stateManager = config.NewStateManager(debugPrint)
+	}
 	state, err := stateManager.Load(configManager.ConfigPath())
 	if err != nil {
 		log.Printf("Error loading runtime state: %v", err)
@@ -239,4 +277,43 @@ func expandHomePath(path string) (string, error) {
 		return "", fmt.Errorf("getting home directory: %w", err)
 	}
 	return strings.Replace(path, "~", home, 1), nil
+}
+
+// resolveDataDirs expands the -profile/-config-dir/-state-dir CLI overrides
+// into effective config.json and state.json paths. configDir and stateDir
+// each take precedence over profile for their own piece; an empty result
+// means "use the OS-default location" (see getConfigPath/getStatePath).
+// Paths are left relative to CWD when given relative, matching -path's
+// existing behavior; only "~" is expanded.
+func resolveDataDirs(profile, configDir, stateDir string) (configPath, statePath string, err error) {
+	profile, err = expandHomePath(profile)
+	if err != nil {
+		return "", "", fmt.Errorf("resolving -profile: %w", err)
+	}
+	configDir, err = expandHomePath(configDir)
+	if err != nil {
+		return "", "", fmt.Errorf("resolving -config-dir: %w", err)
+	}
+	stateDir, err = expandHomePath(stateDir)
+	if err != nil {
+		return "", "", fmt.Errorf("resolving -state-dir: %w", err)
+	}
+
+	effectiveConfigDir := configDir
+	if effectiveConfigDir == "" {
+		effectiveConfigDir = profile
+	}
+	if effectiveConfigDir != "" {
+		configPath = filepath.Join(effectiveConfigDir, "config.json")
+	}
+
+	effectiveStateDir := stateDir
+	if effectiveStateDir == "" {
+		effectiveStateDir = profile
+	}
+	if effectiveStateDir != "" {
+		statePath = filepath.Join(effectiveStateDir, "state.json")
+	}
+
+	return configPath, statePath, nil
 }

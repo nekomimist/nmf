@@ -15,8 +15,7 @@ import (
 func newTestStateManager(t *testing.T, statePath string) *StateManager {
 	t.Helper()
 	dummyDebugPrint := func(string, ...interface{}) {}
-	sm := NewStateManager(dummyDebugPrint)
-	sm.statePath = statePath
+	sm := NewStateManagerWithPath(statePath, dummyDebugPrint)
 	t.Cleanup(func() {
 		if err := sm.Close(); err != nil {
 			t.Fatalf("StateManager.Close failed: %v", err)
@@ -578,5 +577,31 @@ func TestEffectiveSortFallsBackToConfigDefault(t *testing.T) {
 	got := state.EffectiveSort(configDefault)
 	if got != configDefault {
 		t.Fatalf("EffectiveSort = %+v, want configDefault %+v", got, configDefault)
+	}
+}
+
+func TestNewStateManagerWithPath(t *testing.T) {
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "profile", "state.json")
+	configPath := filepath.Join(dir, "profile", "config.json") // deliberately absent
+
+	dummyDebugPrint := func(string, ...interface{}) {}
+	sm := NewStateManagerWithPath(statePath, dummyDebugPrint)
+	t.Cleanup(func() {
+		if err := sm.Close(); err != nil {
+			t.Fatalf("StateManager.Close failed: %v", err)
+		}
+	})
+
+	if sm.StatePath() != statePath {
+		t.Errorf("StatePath() = %q, want %q", sm.StatePath(), statePath)
+	}
+
+	state, err := sm.Load(configPath)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if state == nil {
+		t.Fatal("expected non-nil default state")
 	}
 }

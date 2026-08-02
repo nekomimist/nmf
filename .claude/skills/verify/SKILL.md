@@ -27,7 +27,7 @@ for i in $(seq 1 20000); do : > "file_$(printf %05d $i).txt"; done
 mkdir -p subdir_{01..50}
 
 # Launch with debug logs (use the harness's run_in_background, not shell '&')
-"$SCRATCH/nmf-bench" -d -debug-log "$SCRATCH/run.log" -path /tmp/nmf-bench/big
+"$SCRATCH/nmf-bench" -d -debug-log "$SCRATCH/run.log" -path /tmp/nmf-bench/big -profile "$SCRATCH/profile"
 
 # Drive (window title is "File Manager", not "nmf")
 uv run "$SKILL/scripts/inject_keys.py" "File Manager" Down 200 5     # hold-down simulation
@@ -48,7 +48,7 @@ on their screen, so keep sessions short and kill the process when done.
 ```bash
 make build-windows && cp dist/nmf.exe /mnt/c/Temp/nmf-verify.exe
 cp .claude/skills/verify/scripts/drive.ps1 /mnt/c/Temp/drive.ps1
-cmd.exe /c "start /D C:\Temp C:\Temp\nmf-verify.exe -d -debug-log C:\Temp\run.log -path C:\Temp\testdir"
+cmd.exe /c "start /D C:\Temp C:\Temp\nmf-verify.exe -d -debug-log C:\Temp\run.log -path C:\Temp\testdir -profile C:\Temp\profile"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\\Temp\\drive.ps1" -Proc nmf-verify -Keys "+." -Shot "C:\\Temp\\out.png"
 powershell.exe -NoProfile -Command "Stop-Process -Name nmf-verify -Force"
 ```
@@ -88,7 +88,10 @@ powershell.exe -NoProfile -Command "Stop-Process -Name nmf-verify -Force"
   ambiguous. On Windows: `Stop-Process -Name <proc> -Force`.
 - Cursor positions persist per directory in the config — saved on
   navigation away, not on quit. Great for building repros; clean up test
-  dirs when done so stale entries don't confuse later sessions.
+  dirs when done so stale entries don't confuse later sessions. Both launch
+  commands above now pass `-profile`, which isolates config.json and
+  state.json (so cursor memory/history) per run — delete the profile dir
+  instead of hunting stale entries in the real config.
 - On Windows at 150% scale, ScrollTo's first jump can land the cursor row
   just below the viewport (Fyne itemMin estimate; pre-existing) — one cursor
   key corrects it; don't mistake it for the blank-list bug.
