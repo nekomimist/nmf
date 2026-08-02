@@ -5,6 +5,7 @@ import (
 	"time"
 
 	fynetest "fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
 )
 
 func waitForTreeTest(t *testing.T, condition func() bool) {
@@ -101,4 +102,58 @@ func TestDirectoryTreeCachesPlatformBranchClassification(t *testing.T) {
 		t.Fatal("platform branch classification did not finish")
 	}
 	waitForTreeTest(t, func() bool { return !dialog.isDirectory("X:\\") })
+}
+
+// TestDirectoryTreeToggleRootModeResetsSelectionForNavigation is a regression
+// test for a bug where ToggleRootMode (and the radio-group mode switch) never
+// reset dtd.selectedPath/dtd.tree selection to the new root. MoveUp/MoveDown
+// locate the cursor by searching getVisibleNodes() (rooted at the new
+// currentRoot) for a node matching dtd.selectedPath; a stale path from the
+// old root's subtree can never appear there, so both became permanent
+// no-ops after a mode toggle.
+func TestDirectoryTreeToggleRootModeResetsSelectionForNavigation(t *testing.T) {
+	app := fynetest.NewApp()
+	defer app.Quit()
+
+	dialog := NewDirectoryTreeDialog("/tmp/project", nil, func(string, ...interface{}) {})
+
+	systemRoot := GetSystemRoot()
+	parentRoot := dialog.parentPath // GetPlatformParent("/tmp/project") == "/tmp" on Unix
+
+	// Seed both subtrees directly, following the pattern used by the other
+	// tests in this file, so no background loader/goroutine is involved.
+	dialog.children[systemRoot] = []string{systemRoot + "root-child"}
+	dialog.branches[systemRoot+"root-child"] = true
+	dialog.children[parentRoot] = []string{parentRoot + "/parent-child"}
+	dialog.branches[parentRoot+"/parent-child"] = true
+
+	// Replicate ShowDialog's selection initialization (see ShowDialog: it
+	// expands the initial level, then selects and records the root).
+	dialog.expandInitialLevel()
+	dialog.tree.Select(widget.TreeNodeID(dialog.currentRoot))
+	dialog.selectedPath = dialog.currentRoot
+
+	if dialog.selectedPath != systemRoot {
+		t.Fatalf("initial selectedPath = %q, want %q", dialog.selectedPath, systemRoot)
+	}
+
+	dialog.ToggleRootMode()
+
+	if dialog.currentRoot != parentRoot {
+		t.Fatalf("currentRoot after toggle = %q, want %q", dialog.currentRoot, parentRoot)
+	}
+	if dialog.selectedPath != parentRoot {
+		t.Fatalf("selectedPath after toggle = %q, want %q (reset to new root)", dialog.selectedPath, parentRoot)
+	}
+
+	staleSelection := dialog.selectedPath
+	dialog.MoveDown()
+
+	if dialog.selectedPath == staleSelection {
+		t.Fatalf("MoveDown() did not move selection; selectedPath stayed at %q", dialog.selectedPath)
+	}
+	wantSelection := parentRoot + "/parent-child"
+	if dialog.selectedPath != wantSelection {
+		t.Fatalf("selectedPath after MoveDown() = %q, want %q (a node under the new root)", dialog.selectedPath, wantSelection)
+	}
 }

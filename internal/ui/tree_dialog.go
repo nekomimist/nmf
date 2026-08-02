@@ -260,6 +260,22 @@ func (dtd *DirectoryTreeDialog) expandInitialLevel() {
 	dtd.tree.OpenBranch(widget.TreeNodeID(dtd.currentRoot))
 }
 
+// reRootAndSelect refreshes the tree for the (already updated) current root,
+// expands its initial level, and resets the selection to the root node —
+// mirroring the selection setup ShowDialog performs at open time. Callers
+// must update dtd.rootMode and dtd.currentRoot before calling this.
+//
+// This reset matters because MoveUp/MoveDown locate the cursor by searching
+// getVisibleNodes() (rooted at dtd.currentRoot) for a node matching
+// dtd.selectedPath; leaving a stale path from the old root's subtree would
+// make both of them permanent no-ops after a mode change.
+func (dtd *DirectoryTreeDialog) reRootAndSelect() {
+	dtd.tree.Refresh()
+	dtd.expandInitialLevel()
+	dtd.tree.Select(widget.TreeNodeID(dtd.currentRoot))
+	dtd.selectedPath = dtd.currentRoot
+}
+
 // ShowDialog shows the directory tree dialog
 func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(string)) {
 	treeWidth := responsiveDialogWidth(parent, treeDialogTreeWidth)
@@ -303,11 +319,9 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 			dtd.rootMode = newRootMode
 			dtd.currentRoot = newCurrentRoot
 
-			// Refresh tree with new root
-			dtd.tree.Refresh()
-
-			// Expand the root level initially
-			dtd.expandInitialLevel()
+			// Refresh tree with new root, expand it, and reset the
+			// selection to the new root (see reRootAndSelect).
+			dtd.reRootAndSelect()
 		}
 		if dtd.parent != nil && dtd.sink != nil {
 			dtd.parent.Canvas().Focus(dtd.sink)
@@ -526,7 +540,10 @@ func (dtd *DirectoryTreeDialog) ToggleRootMode() {
 		dtd.currentRoot = dtd.parentPath
 	}
 
-	// Update RadioGroup selection to match new mode
+	// Update RadioGroup selection to match new mode. dtd.rootMode was already
+	// flipped above, so the resulting OnChanged callback's own
+	// "dtd.rootMode != newRootMode" guard is false and it falls through as a
+	// no-op — it does not re-root a second time.
 	if dtd.radioGroup != nil {
 		if dtd.rootMode {
 			dtd.radioGroup.SetSelected(constants.RootModeOptionText)
@@ -535,9 +552,9 @@ func (dtd *DirectoryTreeDialog) ToggleRootMode() {
 		}
 	}
 
-	// Refresh tree with new root
-	dtd.tree.Refresh()
-	dtd.expandInitialLevel()
+	// Refresh tree with new root, expand it, and reset the selection to the
+	// new root (see reRootAndSelect).
+	dtd.reRootAndSelect()
 	if dtd.parent != nil && dtd.sink != nil {
 		dtd.parent.Canvas().Focus(dtd.sink)
 	}
