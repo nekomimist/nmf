@@ -20,7 +20,7 @@ func Primary(debugPrint func(format string, args ...interface{})) Info {
 		debugPrint = func(string, ...interface{}) {}
 	}
 
-	info, err := primary()
+	info, err := primary(debugPrint)
 	if err != nil {
 		debugPrint("Display: primary unavailable err=%v", err)
 		return Info{}
@@ -38,16 +38,27 @@ func Primary(debugPrint func(format string, args ...interface{})) Info {
 	return info
 }
 
-func primary() (info Info, err error) {
+func primary(debugPrint func(format string, args ...interface{})) (info Info, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			err = fmt.Errorf("glfw display query failed: %v", recovered)
 		}
 	}()
 
+	// Apply the same platform hint Fyne's own initGLFW() would apply, based on
+	// FYNE_PLATFORM. Without this, our early glfw.Init() below would silently
+	// lock in GLFW's auto-detected platform for the whole process (GLFW ignores
+	// InitHint calls made after a successful Init until Terminate is called),
+	// leaving Fyne's later InitHint calls with no effect.
+	applyPlatformHint(debugPrint)
+
 	if err := glfw.Init(); err != nil {
 		return Info{}, err
 	}
+	// Terminate so Fyne can initialize GLFW from a clean slate with its own
+	// platform hint; otherwise the platform choice made above would stick for
+	// the rest of the process even if it disagrees with FYNE_PLATFORM.
+	defer glfw.Terminate()
 
 	monitor := glfw.GetPrimaryMonitor()
 	if monitor == nil {
