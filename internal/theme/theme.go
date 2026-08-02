@@ -149,24 +149,32 @@ func (t *CustomTheme) loadCustomFont() {
 
 // Color methods from default theme
 func (t *CustomTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
-	if t.config.Theme.Dark {
-		return fynetheme.DarkTheme().Color(name, variant)
-	}
-	return fynetheme.LightTheme().Color(name, variant)
+	return t.fyneTheme().Color(name, variant)
 }
 
 // Icon methods from default theme
 func (t *CustomTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
+	return t.fyneTheme().Icon(name)
+}
+
+// fyneTheme returns the base Fyne theme matching the configured dark/light
+// variant, for delegating colors, icons, and font fallbacks.
+func (t *CustomTheme) fyneTheme() fyne.Theme {
 	if t.config.Theme.Dark {
-		return fynetheme.DarkTheme().Icon(name)
+		return fynetheme.DarkTheme()
 	}
-	return fynetheme.LightTheme().Icon(name)
+	return fynetheme.LightTheme()
 }
 
 // Font method with custom font support
 func (t *CustomTheme) Font(style fyne.TextStyle) fyne.Resource {
-	if style.Monospace && t.monospaceFont != nil {
-		return t.monospaceFont
+	if style.Monospace {
+		if t.monospaceFont != nil {
+			return t.monospaceFont
+		}
+		// Do not fall back to the proportional UI font: widget.TextGrid sizes
+		// every cell from "M", so a proportional face renders with uneven gaps.
+		return t.fyneTheme().Font(style)
 	}
 
 	// Return custom font if loaded and available
@@ -174,10 +182,7 @@ func (t *CustomTheme) Font(style fyne.TextStyle) fyne.Resource {
 		return t.customFont
 	}
 
-	if t.config.Theme.Dark {
-		return fynetheme.DarkTheme().Font(style)
-	}
-	return fynetheme.LightTheme().Font(style)
+	return t.fyneTheme().Font(style)
 }
 
 // Size method with custom font size and spacing support

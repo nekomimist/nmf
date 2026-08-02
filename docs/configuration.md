@@ -171,9 +171,14 @@ temp directory), SMB credentials cached in the OS keyring (service
 - `fontName`: preferred system font name. Empty uses the built-in fallback list.
 - `fontPath`: explicit font file path. Empty disables explicit file loading.
 - `monospaceFontName`: preferred system font name for file/path style text.
-  Empty inherits the regular font.
+  Empty or `"auto"` uses the built-in monospace fallback list, which prefers
+  CJK-capable fixed-pitch faces and ends at Fyne's embedded DejaVu Sans Mono.
+  A configured name that cannot be found now falls back to that list too,
+  instead of degrading to the proportional UI font. (Previously, an empty or
+  unresolvable name inherited the regular font; if monospace text looks
+  different after upgrading, this is why.)
 - `monospaceFontPath`: explicit font file path for file/path style text. Empty
-  inherits the regular font.
+  falls back to `monospaceFontName` resolution above.
 - `colors`: optional app-specific color overrides. Values can be RGBA arrays,
   Fyne theme color names, or Fyne primary color names.
 

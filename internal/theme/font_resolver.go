@@ -25,14 +25,16 @@ type fontResolverLogger struct{}
 func (fontResolverLogger) Printf(string, ...interface{}) {}
 
 func resolveThemeFont(themeConfig config.ThemeConfig, debugPrint func(format string, args ...interface{})) fyne.Resource {
-	return resolveConfiguredFont(themeConfig.FontPath, themeConfig.FontName, true, "Font", debugPrint)
+	return resolveConfiguredFont(themeConfig.FontPath, themeConfig.FontName,
+		defaultFontNames(runtime.GOOS), "Font", debugPrint)
 }
 
 func resolveThemeMonospaceFont(themeConfig config.ThemeConfig, debugPrint func(format string, args ...interface{})) fyne.Resource {
-	return resolveConfiguredFont(themeConfig.MonospaceFontPath, themeConfig.MonospaceFontName, false, "MonospaceFont", debugPrint)
+	return resolveConfiguredFont(themeConfig.MonospaceFontPath, themeConfig.MonospaceFontName,
+		defaultMonospaceFontNames(runtime.GOOS), "MonospaceFont", debugPrint)
 }
 
-func resolveConfiguredFont(pathConfig, nameConfig string, useDefaults bool, logPrefix string, debugPrint func(format string, args ...interface{})) fyne.Resource {
+func resolveConfiguredFont(pathConfig, nameConfig string, defaults []string, logPrefix string, debugPrint func(format string, args ...interface{})) fyne.Resource {
 	if debugPrint == nil {
 		debugPrint = func(string, ...interface{}) {}
 	}
@@ -46,7 +48,7 @@ func resolveConfiguredFont(pathConfig, nameConfig string, useDefaults bool, logP
 		debugPrint("Theme: %sPath unavailable path=%s err=%v", logPrefix, path, err)
 	}
 
-	for _, name := range configuredFontNames(nameConfig, useDefaults) {
+	for _, name := range configuredFontNames(nameConfig, defaults) {
 		res, source, err := loadFontResourceByName(name)
 		if err == nil {
 			debugPrint("Theme: Loaded %s name=%s source=%s", logPrefix, name, source)
@@ -58,14 +60,11 @@ func resolveConfiguredFont(pathConfig, nameConfig string, useDefaults bool, logP
 	return nil
 }
 
-func configuredFontNames(configured string, useDefaults bool) []string {
+func configuredFontNames(configured string, defaults []string) []string {
 	name := strings.TrimSpace(configured)
 	if name != "" && !strings.EqualFold(name, "auto") {
 		names := []string{name}
-		if !useDefaults {
-			return names
-		}
-		for _, fallback := range defaultFontNames(runtime.GOOS) {
+		for _, fallback := range defaults {
 			if strings.EqualFold(name, fallback) {
 				continue
 			}
@@ -73,10 +72,7 @@ func configuredFontNames(configured string, useDefaults bool) []string {
 		}
 		return names
 	}
-	if !useDefaults {
-		return nil
-	}
-	return defaultFontNames(runtime.GOOS)
+	return defaults
 }
 
 func defaultFontNames(goos string) []string {
@@ -104,6 +100,26 @@ func defaultFontNames(goos string) []string {
 			"Noto Sans",
 			"DejaVu Sans",
 		}
+	}
+}
+
+// defaultMonospaceFontNames lists the built-in monospace fallback names in
+// preference order. CJK-capable fixed-pitch faces come first so file/path
+// text with Japanese, Chinese, or Korean glyphs still renders monospaced;
+// ASCII-only faces are listed last as a final fallback.
+func defaultMonospaceFontNames(goos string) []string {
+	switch goos {
+	case "windows":
+		return []string{"BIZ UDGothic", "MS Gothic", "Cascadia Mono", "Consolas"}
+	case "linux":
+		return []string{
+			"Noto Sans Mono CJK JP", "Noto Sans Mono CJK SC",
+			"Noto Sans Mono CJK TC", "Noto Sans Mono CJK KR",
+			"Noto Sans Mono", "Noto Mono",
+			"DejaVu Sans Mono", "Liberation Mono", "Ubuntu Mono",
+		}
+	default:
+		return []string{"Noto Sans Mono", "DejaVu Sans Mono", "Liberation Mono"}
 	}
 }
 

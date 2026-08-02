@@ -116,7 +116,7 @@ func TestCustomThemeCopyMoveOpenDestinationColor(t *testing.T) {
 	}
 }
 
-func TestCustomThemeMonospaceFontFallsBackToCustomFont(t *testing.T) {
+func TestCustomThemeMonospaceFontDoesNotFallBackToCustomFont(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
@@ -127,9 +127,18 @@ func TestCustomThemeMonospaceFontFallsBackToCustomFont(t *testing.T) {
 	}
 	customTheme := NewCustomTheme(cfg, func(string, ...interface{}) {})
 	customTheme.customFont = fyne.NewStaticResource("ui.ttf", theme.DefaultTextFont().Content())
+	customTheme.monospaceFont = nil
 
-	if got := customTheme.Font(fyne.TextStyle{Monospace: true}); got == nil || got.Name() != "ui.ttf" {
-		t.Fatalf("monospace font = %v, want custom UI fallback", got)
+	got := customTheme.Font(fyne.TextStyle{Monospace: true})
+	if got == nil {
+		t.Fatal("monospace font = nil, want a Fyne built-in monospace fallback")
+	}
+	if got.Name() == "ui.ttf" {
+		t.Fatalf("monospace font = %v, must not fall back to proportional customFont", got)
+	}
+	want := customTheme.fyneTheme().Font(fyne.TextStyle{Monospace: true})
+	if got.Name() != want.Name() {
+		t.Fatalf("monospace font = %v, want Fyne built-in monospace font %v", got, want)
 	}
 }
 

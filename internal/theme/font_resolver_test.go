@@ -12,24 +12,37 @@ import (
 )
 
 func TestConfiguredFontNames(t *testing.T) {
-	if got := configuredFontNames("Custom Font", true); len(got) < 2 || got[0] != "Custom Font" {
-		t.Fatalf("configuredFontNames returned %#v", got)
+	defaults := []string{"Default A", "foo", "Default B"}
+
+	if got := configuredFontNames("", defaults); len(got) != len(defaults) {
+		t.Fatalf("configuredFontNames(\"\", defaults) = %#v, want %#v", got, defaults)
+	} else {
+		for i := range defaults {
+			if got[i] != defaults[i] {
+				t.Fatalf("configuredFontNames(\"\", defaults) = %#v, want %#v", got, defaults)
+			}
+		}
 	}
 
-	if got := configuredFontNames(" auto ", true); len(got) == 0 {
-		t.Fatal("configuredFontNames should return default names for auto")
+	if got := configuredFontNames(" auto ", defaults); len(got) != len(defaults) {
+		t.Fatalf("configuredFontNames(auto) = %#v, want %#v", got, defaults)
+	} else {
+		for i := range defaults {
+			if got[i] != defaults[i] {
+				t.Fatalf("configuredFontNames(auto) = %#v, want %#v", got, defaults)
+			}
+		}
 	}
 
-	if got := configuredFontNames("", true); len(got) == 0 {
-		t.Fatal("configuredFontNames should return default names for empty input")
+	got := configuredFontNames("Foo", defaults)
+	want := []string{"Foo", "Default A", "Default B"}
+	if len(got) != len(want) {
+		t.Fatalf("configuredFontNames(\"Foo\", defaults) = %#v, want %#v", got, want)
 	}
-
-	if got := configuredFontNames("", false); len(got) != 0 {
-		t.Fatalf("configuredFontNames without defaults returned %#v, want empty", got)
-	}
-
-	if got := configuredFontNames("Custom Mono", false); len(got) != 1 || got[0] != "Custom Mono" {
-		t.Fatalf("configuredFontNames without defaults returned %#v, want only configured name", got)
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("configuredFontNames(\"Foo\", defaults) = %#v, want %#v", got, want)
+		}
 	}
 }
 
@@ -48,6 +61,50 @@ func TestDefaultFontNames(t *testing.T) {
 			got := defaultFontNames(tt.goos)
 			if len(got) == 0 || got[0] != tt.want {
 				t.Fatalf("defaultFontNames(%q) = %#v, want first %q", tt.goos, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDefaultMonospaceFontNames(t *testing.T) {
+	if got := defaultMonospaceFontNames("plan9"); len(got) == 0 {
+		t.Fatal("defaultMonospaceFontNames(unknown GOOS) returned empty")
+	}
+
+	indexOf := func(names []string, name string) int {
+		for i, n := range names {
+			if n == name {
+				return i
+			}
+		}
+		return -1
+	}
+
+	tests := []struct {
+		goos      string
+		cjkFace   string
+		asciiFace string
+	}{
+		{goos: "windows", cjkFace: "BIZ UDGothic", asciiFace: "Consolas"},
+		{goos: "linux", cjkFace: "Noto Sans Mono CJK JP", asciiFace: "DejaVu Sans Mono"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.goos, func(t *testing.T) {
+			got := defaultMonospaceFontNames(tt.goos)
+			if len(got) == 0 {
+				t.Fatalf("defaultMonospaceFontNames(%q) returned empty", tt.goos)
+			}
+			cjkIdx := indexOf(got, tt.cjkFace)
+			asciiIdx := indexOf(got, tt.asciiFace)
+			if cjkIdx < 0 {
+				t.Fatalf("defaultMonospaceFontNames(%q) = %#v, missing CJK face %q", tt.goos, got, tt.cjkFace)
+			}
+			if asciiIdx < 0 {
+				t.Fatalf("defaultMonospaceFontNames(%q) = %#v, missing ASCII-only face %q", tt.goos, got, tt.asciiFace)
+			}
+			if cjkIdx >= asciiIdx {
+				t.Fatalf("defaultMonospaceFontNames(%q) = %#v, want %q before %q", tt.goos, got, tt.cjkFace, tt.asciiFace)
 			}
 		})
 	}
