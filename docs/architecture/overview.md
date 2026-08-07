@@ -11,7 +11,9 @@ This document describes runtime composition, package boundaries, and core state 
    - Load config via `internal/config.Manager`, then load runtime state via
      `internal/config.StateManager` (migrating legacy `config.json` runtime
      keys into `state.json` on first run), set up configured debug logging,
-     then apply optional `init.star` via `internal/configscript`.
+     then, on Windows, set the internal Fyne DPI-detection workaround before
+     probing the primary display and constructing any Fyne windows. Finally,
+     apply optional `init.star` via `internal/configscript`.
    - Create Fyne app and apply custom theme.
    - Install jobs debug hook (`internal/jobs.SetDebug`).
 2. `bootstrap.go` (`NewFileManager`)

@@ -199,6 +199,7 @@ func main() {
 		showStartupErrorAndExit(cfg, "startup error", startupFailureMessage("Failed to open configured debug log", err))
 		return
 	}
+	applyDisplayDPIWorkaround()
 	displayInfo := display.Primary(debugPrint)
 	configScript, err := configscript.Load(configscript.ScriptPath(configManager.ConfigPath()), cfg, configscript.Options{
 		Display:    displayInfo,
