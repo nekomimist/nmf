@@ -24,7 +24,9 @@ v2.8.0 (VFS with local/SMB/archive support, background jobs, multi-window).
 ## Build, Test, and Development Commands
 - Run app: `go run -tags migrated_fynedo .` (flags: `-d` for debug, `-path /some/dir`).
 - Build Linux binary: `make build` or `make build-linux` (outputs `dist/nmf`).
-- Build Windows binary from Linux: `make build-windows` (uses Fyne packaging with `x86_64-w64-mingw32-gcc` and CGO; outputs `dist/nmf.exe`).
+- Development shell: enter the repository after the one-time `direnv allow`; the committed `.envrc` loads the pinned Nix Flake automatically.
+- Build Windows amd64 binary from Linux: `make build-windows` (uses pinned Zig and CGO; outputs `dist/nmf.exe`).
+- Build Windows arm64 binary from Linux: `make build-windows-arm64` (outputs `dist/nmf-arm64.exe`).
 - Unit tests: `make test` (runs `go test -tags migrated_fynedo ./internal/...`). Full repo test pass: `make test-all`.
 - Lint/vet (recommended): `go vet -tags migrated_fynedo ./...`; format: `gofmt -s -w .`.
 - Modules: `go mod tidy` after dependency changes.

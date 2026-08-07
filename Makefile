@@ -2,11 +2,13 @@ APP := nmf
 APP_NAME := NMF
 APP_ID := io.github.nekomimist.nmf
 DIST := dist
-WINDOWS_CC := x86_64-w64-mingw32-gcc
-WINDOWS_OBJCOPY := x86_64-w64-mingw32-objcopy
+WINDOWS_ZIG ?= zig
+WINDOWS_OBJCOPY ?= llvm-objcopy
+WINDOWS_CC_FLAGS := -Wdeprecated-non-prototype -Wl,--subsystem,windows
 FYNE_TAGS := migrated_fynedo
 
-.PHONY: build build-linux build-windows test test-all test-race test-windows-compile test-darwin-compile debug-env clean
+.PHONY: build build-linux build-windows build-windows-arm64 test test-all test-race test-windows-compile test-windows-compile-arm64 test-darwin-compile debug-env clean
+.NOTPARALLEL: build-windows build-windows-arm64
 
 build: build-linux
 
@@ -14,13 +16,21 @@ build-linux:
 	mkdir -p $(DIST)
 	go build -tags $(FYNE_TAGS) -o $(DIST)/$(APP) .
 
-build-windows:
+define build-windows-target
 	mkdir -p $(DIST)
-	CC="$(WINDOWS_CC)" \
-	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
+	CC="$(WINDOWS_ZIG) cc -target $(1)-windows-gnu $(WINDOWS_CC_FLAGS)" \
+	CXX="$(WINDOWS_ZIG) c++ -target $(1)-windows-gnu $(WINDOWS_CC_FLAGS)" \
+	CGO_ENABLED=1 GOOS=windows GOARCH=$(2) \
 	fyne package --target windows --icon nmf-icon.png --app-id $(APP_ID) --name $(APP_NAME) --release
-	mv $(APP_NAME).exe $(DIST)/$(APP).exe
-	$(WINDOWS_OBJCOPY) --subsystem windows:6.0 $(DIST)/$(APP).exe
+	mv $(APP_NAME).exe $(DIST)/$(3).exe
+	$(WINDOWS_OBJCOPY) --subsystem windows:6.0 $(DIST)/$(3).exe
+endef
+
+build-windows:
+	$(call build-windows-target,x86_64,amd64,$(APP))
+
+build-windows-arm64:
+	$(call build-windows-target,aarch64,arm64,$(APP)-arm64)
 
 test:
 	go test -tags $(FYNE_TAGS) ./internal/...
@@ -31,10 +41,18 @@ test-all:
 test-race:
 	go test -race -tags $(FYNE_TAGS) ./...
 
-test-windows-compile:
-	CC="$(WINDOWS_CC)" \
-	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
+define test-windows-target
+	CC="$(WINDOWS_ZIG) cc -target $(1)-windows-gnu $(WINDOWS_CC_FLAGS)" \
+	CXX="$(WINDOWS_ZIG) c++ -target $(1)-windows-gnu $(WINDOWS_CC_FLAGS)" \
+	CGO_ENABLED=1 GOOS=windows GOARCH=$(2) \
 	go test -tags $(FYNE_TAGS) -exec=true ./...
+endef
+
+test-windows-compile:
+	$(call test-windows-target,x86_64,amd64)
+
+test-windows-compile-arm64:
+	$(call test-windows-target,aarch64,arm64)
 
 test-darwin-compile:
 	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 \

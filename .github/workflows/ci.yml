@@ -25,19 +25,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: Install Windows cross compiler
-        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
-      - name: Compile Windows tests
-        env:
-          CC: x86_64-w64-mingw32-gcc
-          CGO_ENABLED: "1"
-          GOOS: windows
-          GOARCH: amd64
-        run: go test -tags migrated_fynedo -exec=true ./...
+      - uses: cachix/install-nix-action@v31
+      - name: Check Nix flake
+        run: nix flake check
+      - name: Compile Windows amd64 tests
+        run: nix develop --command make test-windows-compile
+      - name: Compile Windows arm64 tests
+        run: nix develop --command make test-windows-compile-arm64
 
   macos-smoke:
     # macOS is not a supported release target yet. Keep this diagnostic until

@@ -41,6 +41,7 @@ nmf.exe
 build/
 dist/
 .cache/
+.direnv/
 
 # Config files that might contain sensitive data
 config.local.json
