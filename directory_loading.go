@@ -333,8 +333,7 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 		// Clear selections and restore cursor
 		fm.selectedFiles = make(map[string]bool)
 		if len(fm.files) > 0 {
-			parentPrev := fileinfo.ParentPath(previousPath)
-			if parentPrev == path && previousPath != "" {
+			if isParentDirectoryNavigation(previousPath, path) {
 				dirName := fileinfo.BaseName(previousPath)
 				cursorSet := false
 				for i, f := range fm.files {
@@ -403,6 +402,10 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 		fm.focusFileList("directory-load-success")
 		debugPrint("FileManager: LoadDirectory done path=%s previous=%s files=%d cursor=%s index=%d focused=%s active=%t", path, previousPath, len(fm.files), fm.cursorPath, fm.GetCurrentCursorIndex(), focusedObjectLabel(fm.window), fm.windowActive)
 	})
+}
+
+func isParentDirectoryNavigation(previousPath, path string) bool {
+	return previousPath != "" && previousPath != path && fileinfo.ParentPath(previousPath) == path
 }
 
 // cursorNeighborPaths returns the ordinary files nearest to the cursor in

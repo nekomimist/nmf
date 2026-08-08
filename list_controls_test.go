@@ -325,6 +325,35 @@ func TestCursorScrollTargetCorrectsDirectionForOffscreenCursor(t *testing.T) {
 	if got := fm.cursorScrollTarget(5, 1); got != 2 {
 		t.Fatalf("offscreen cursor target = %d, want upward target 2", got)
 	}
+	if got := fm.cursorScrollTarget(35, 0); got != 38 {
+		t.Fatalf("neutral offscreen cursor target = %d, want downward target 38", got)
+	}
+}
+
+func TestRefreshListAndCursorAppliesMarginToRestoredOffscreenCursor(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	fm := newScrollMarginTestFileManager(40, 3)
+	window := test.NewWindow(fm.fileList)
+	defer window.Close()
+	window.SetPadded(false)
+
+	padding := fm.fileList.Theme().Size(theme.SizeNamePadding)
+	rowStride := fm.fileListItemHeight + padding
+	window.Resize(fyne.NewSize(300, fm.fileListItemHeight+9*rowStride))
+
+	// Parent navigation restores a cursor whose path was the child list's
+	// `..` entry, so SetCursorByIndex cannot infer a movement direction after
+	// the parent list replaces the child list.
+	fm.cursorPath = fm.files[35].Path
+	fm.cursorIndex = 35
+	fm.cursorMoveDirection = 0
+	fm.refreshListAndCursor()
+
+	if got := fm.fileList.GetScrollOffset(); got <= 0 {
+		t.Fatalf("restored cursor scroll offset = %v, want positive offset", got)
+	}
 }
 
 func TestRefreshCursorConsumesMoveDirection(t *testing.T) {

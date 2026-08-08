@@ -85,7 +85,7 @@ func (fm *FileManager) RefreshCursor() {
 // offset lets Fyne account for its own row spacing and keeps the existing
 // single-refresh cursor path.
 func (fm *FileManager) cursorScrollTarget(cursorIdx, moveDirection int) int {
-	if moveDirection == 0 || fm.config == nil || fm.fileList == nil || fm.config.UI.ScrollMargin <= 0 {
+	if fm.config == nil || fm.fileList == nil || fm.config.UI.ScrollMargin <= 0 {
 		return cursorIdx
 	}
 
@@ -102,6 +102,9 @@ func (fm *FileManager) cursorScrollTarget(cursorIdx, moveDirection int) int {
 		moveDirection = -1
 	} else if cursorBottom > viewportBottom {
 		moveDirection = 1
+	}
+	if moveDirection == 0 {
+		return cursorIdx
 	}
 
 	if moveDirection < 0 {
@@ -142,14 +145,17 @@ func (fm *FileManager) effectiveScrollMargin() (margin int, itemHeight, rowStrid
 // first viewport). Costs one extra viewport render per structural change;
 // cursor-only moves must keep using RefreshCursor.
 func (fm *FileManager) refreshListAndCursor() {
-	// A structural refresh has no meaningful movement direction. Preserve the
-	// existing behavior of making the restored cursor visible without applying
-	// a margin, and do not leak the pending direction into a later refresh.
+	// A structural refresh may restore a cursor that is outside the current
+	// viewport, so cursorScrollTarget infers the needed direction from the
+	// viewport when no movement direction was recorded. Do not leak the
+	// pending direction into a later refresh.
+	moveDirection := fm.cursorMoveDirection
 	fm.cursorMoveDirection = 0
 	seq, cursorIdx := fm.beginCursorRefresh("list")
 	fm.fileList.Refresh()
 	if cursorIdx >= 0 {
-		fm.fileList.ScrollTo(widget.ListItemID(cursorIdx))
+		scrollTarget := fm.cursorScrollTarget(cursorIdx, moveDirection)
+		fm.fileList.ScrollTo(widget.ListItemID(scrollTarget))
 	}
 	fm.endCursorRefresh(seq, "list", cursorIdx)
 }

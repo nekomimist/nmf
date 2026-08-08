@@ -18,6 +18,22 @@ import (
 	"nmf/internal/fileinfo"
 )
 
+func TestIsParentDirectoryNavigationDistinguishesReload(t *testing.T) {
+	for _, path := range []string{"/", `C:\`, `D:\`} {
+		t.Run(path, func(t *testing.T) {
+			if isParentDirectoryNavigation(path, path) {
+				t.Fatalf("same path %q was classified as parent navigation", path)
+			}
+		})
+	}
+
+	parent := t.TempDir()
+	child := filepath.Join(parent, "child")
+	if !isParentDirectoryNavigation(child, parent) {
+		t.Fatalf("child-to-parent navigation %q -> %q was not recognized", child, parent)
+	}
+}
+
 func TestReadDirectoryWithParentFallbackFindsNearestAccessibleParent(t *testing.T) {
 	parent := t.TempDir()
 	requested := filepath.Join(parent, "missing", "child")
