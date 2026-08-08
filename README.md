@@ -117,10 +117,9 @@ there. Details and rationale live in
 
 ## Requirements
 
-- Go 1.25 or newer.
+- Go 1.25 or newer for native Linux/macOS development.
 - Fyne build requirements for the target platform.
-- Nix with Flakes enabled, plus `direnv` and `nix-direnv` for automatic
-  activation of the reproducible development environment.
+- Nix with Flakes enabled for reproducible Windows cross-builds.
 
 ## Build and run
 
@@ -131,25 +130,24 @@ go run -tags migrated_fynedo . -path /some/dir    # start in a directory
 ```
 
 ```sh
-direnv allow                                       # first time in this checkout
-make build          # dist/nmf
-make build-windows  # dist/nmf.exe, cross-compiled from Linux
-make build-windows-arm64  # dist/nmf-arm64.exe
+make build          # native Linux/WSLg build: dist/nmf
+make build-windows  # dist/nmf.exe; enters the Nix shell automatically
+make build-windows-arm64  # dist/nmf-arm64.exe; enters the Nix shell automatically
 make test           # go test ./internal/...
 make test-all       # whole repository
 ```
 
-The repository's `.envrc` automatically loads the pinned Flake development
-shell when entering the directory. If `direnv` is not already hooked into
-zsh, add `eval "$(direnv hook zsh)"` to `~/.zshrc` first. Review `.envrc` and
-run `direnv allow` once; `direnv` will unload the environment when leaving the
-repository.
+The repository intentionally does not activate the Flake through `.envrc`.
+Native Linux/WSLg builds must use the host GL/EGL libraries. The Windows
+build and Windows compile-test targets enter the Flake through `nix develop`
+when invoked outside that shell, so `make build-windows` is sufficient.
 
 The Flake pins the Go, Zig, Fyne CLI, and native Fyne build dependencies used
-by the development shell. `flake.lock` is updated deliberately at toolchain
-upgrade points; use `nix flake lock --update-input nixpkgs`, run the build and
-test targets for both Windows architectures, and commit the resulting lock
-file. Go module versions remain pinned by `go.mod` and `go.sum`.
+by the Windows cross-builds. `flake.lock` is updated deliberately at
+toolchain upgrade points; use `nix flake lock --update-input nixpkgs`, run the
+build and test targets for both Windows architectures, and commit the
+resulting lock file. Go module versions remain pinned by `go.mod` and
+`go.sum`.
 
 Formatting and vetting:
 

@@ -6,13 +6,18 @@ WINDOWS_ZIG ?= zig
 WINDOWS_OBJCOPY ?= llvm-objcopy
 WINDOWS_CC_FLAGS := -Wdeprecated-non-prototype -Wl,--subsystem,windows
 FYNE_TAGS := migrated_fynedo
+NIX_DEVELOP ?= nix develop
 
-.PHONY: build build-linux build-windows build-windows-arm64 test test-all test-race test-windows-compile test-windows-compile-arm64 test-darwin-compile debug-env clean
-.NOTPARALLEL: build-windows build-windows-arm64
+.PHONY: build build-linux build-windows build-windows-in-nix build-windows-arm64 build-windows-arm64-in-nix test test-all test-race test-windows-compile test-windows-compile-in-nix test-windows-compile-arm64 test-windows-compile-arm64-in-nix test-darwin-compile debug-env clean
+.NOTPARALLEL: build-windows build-windows-in-nix build-windows-arm64 build-windows-arm64-in-nix
 
 build: build-linux
 
 build-linux:
+	@if [ "$${NMF_NIX_DEV_SHELL:-0}" = 1 ]; then \
+		echo "build-linux must run outside the Nix development shell so WSLg can use the host GL/EGL libraries" >&2; \
+		exit 1; \
+	fi
 	mkdir -p $(DIST)
 	go build -tags $(FYNE_TAGS) -o $(DIST)/$(APP) .
 
@@ -27,9 +32,23 @@ define build-windows-target
 endef
 
 build-windows:
+	@if [ "$${NMF_NIX_DEV_SHELL:-0}" = 1 ]; then \
+		$(MAKE) build-windows-in-nix; \
+	else \
+		$(NIX_DEVELOP) --command env NMF_NIX_DEV_SHELL=1 $(MAKE) build-windows-in-nix; \
+	fi
+
+build-windows-in-nix:
 	$(call build-windows-target,x86_64,amd64,$(APP))
 
 build-windows-arm64:
+	@if [ "$${NMF_NIX_DEV_SHELL:-0}" = 1 ]; then \
+		$(MAKE) build-windows-arm64-in-nix; \
+	else \
+		$(NIX_DEVELOP) --command env NMF_NIX_DEV_SHELL=1 $(MAKE) build-windows-arm64-in-nix; \
+	fi
+
+build-windows-arm64-in-nix:
 	$(call build-windows-target,aarch64,arm64,$(APP)-arm64)
 
 test:
@@ -49,9 +68,23 @@ define test-windows-target
 endef
 
 test-windows-compile:
+	@if [ "$${NMF_NIX_DEV_SHELL:-0}" = 1 ]; then \
+		$(MAKE) test-windows-compile-in-nix; \
+	else \
+		$(NIX_DEVELOP) --command env NMF_NIX_DEV_SHELL=1 $(MAKE) test-windows-compile-in-nix; \
+	fi
+
+test-windows-compile-in-nix:
 	$(call test-windows-target,x86_64,amd64)
 
 test-windows-compile-arm64:
+	@if [ "$${NMF_NIX_DEV_SHELL:-0}" = 1 ]; then \
+		$(MAKE) test-windows-compile-arm64-in-nix; \
+	else \
+		$(NIX_DEVELOP) --command env NMF_NIX_DEV_SHELL=1 $(MAKE) test-windows-compile-arm64-in-nix; \
+	fi
+
+test-windows-compile-arm64-in-nix:
 	$(call test-windows-target,aarch64,arm64)
 
 test-darwin-compile:

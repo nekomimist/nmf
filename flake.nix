@@ -37,6 +37,7 @@
           shellHook = ''
             export GOTOOLCHAIN=local
             export GOFLAGS="-mod=readonly''${GOFLAGS:+ $GOFLAGS}"
+            export NMF_NIX_DEV_SHELL=1
           '';
         };
       });
