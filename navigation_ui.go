@@ -15,7 +15,11 @@ func (fm *FileManager) OpenNewWindow() {
 }
 
 func (fm *FileManager) ReopenClosedWindow() {
-	path, ok := nextReopenPath()
+	var path string
+	var ok bool
+	if registry := fm.windowRegistry(); registry != nil {
+		path, ok = registry.nextReopenPath()
+	}
 	if !ok {
 		debugPrint("FileManager: No closed window path available; opening current path")
 		path = fm.currentPath
@@ -24,9 +28,9 @@ func (fm *FileManager) ReopenClosedWindow() {
 }
 
 func (fm *FileManager) openWindowAtPath(path string) {
-	newFM := NewFileManager(fm.runtime, path, fm.config, fm.configManager, fm.state, fm.stateManager, fm.customTheme, fm.configScript)
+	newFM := NewFileManager(fm.runtime, path)
 	newFM.window.Show()
-	positionWindowNextTo(fm.window, newFM.window)
+	positionWindowNextTo(fm.runtime, fm.window, newFM.window)
 }
 
 // ShowDirectoryTreeDialog shows the directory tree navigation dialog.
@@ -148,7 +152,7 @@ func (fm *FileManager) PinCurrentHistoryPath() {
 		}
 	}
 	debugPrint("FileManager: Pinned history path=%s", path)
-	notifyNavigationHistoryChanged(path)
+	fm.notifyNavigationHistoryChanged(path)
 	fm.ShowMessageDialog("History Jump", "Saved:\n"+path)
 }
 
@@ -168,20 +172,18 @@ func (fm *FileManager) UnpinHistoryPath(path string) bool {
 		}
 	}
 	debugPrint("FileManager: Unpinned history path=%s", path)
-	notifyNavigationHistoryChanged(path)
+	fm.notifyNavigationHistoryChanged(path)
 	return true
 }
 
 func (fm *FileManager) openPathsInWindows() ([]string, map[string]bool) {
 	openPaths := map[string]bool{}
-	windowRegistry.Range(func(k, v any) bool {
-		other, ok := v.(*FileManager)
-		if !ok || other.currentPath == "" {
-			return true
+	for _, other := range fm.registeredWindows() {
+		if other.currentPath == "" {
+			continue
 		}
 		openPaths[other.currentPath] = true
-		return true
-	})
+	}
 	if fm != nil && fm.currentPath != "" {
 		openPaths[fm.currentPath] = true
 	}
@@ -249,7 +251,7 @@ func (fm *FileManager) recordNavigationHistory(path string) {
 			debugPrint("FileManager: Error saving navigation history: %v", err)
 		}
 	}
-	notifyNavigationHistoryChanged(path)
+	fm.notifyNavigationHistoryChanged(path)
 }
 
 func (fm *FileManager) jumpToConfiguredDirectory(inputPath string) {

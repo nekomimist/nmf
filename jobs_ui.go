@@ -186,7 +186,7 @@ func (fm *FileManager) showTransferDestinationDialog(op ui.Operation, targets []
 		openDest = destinationCandidateOpenMap(dest)
 		dlg.SetDestinations(dest, preferredPath)
 	}
-	unsubscribe := subscribeNavigationHistoryChanged(func(path string) {
+	unsubscribe := fm.subscribeNavigationHistoryChanged(func(path string) {
 		fyne.Do(func() {
 			if fm.isWindowClosed() {
 				return
@@ -206,7 +206,7 @@ func (fm *FileManager) showTransferDestinationDialog(op ui.Operation, targets []
 		refreshDestinations(path)
 	})
 	dlg.SetOnClosed(func() {
-		clearFileManagerWindowHighlights()
+		clearFileManagerWindowHighlights(fm)
 		fm.releaseTransferDestinationSubscription(subscriptionID)
 	})
 	dlg.ShowDialog(fm.window, onAccept)
@@ -334,28 +334,20 @@ func (fm *FileManager) buildDestinationCandidates() []ui.DestinationCandidate {
 	// Collect from other windows first.
 	seen := map[string]int{}
 	var candidates []ui.DestinationCandidate
-	windowRegistry.Range(func(k, v any) bool {
-		if other, ok := v.(*FileManager); ok {
-			if other == fm {
-				return true
-			}
-			if other.currentPath != "" {
-				if fileinfo.IsArchivePath(other.currentPath) {
-					return true
-				}
-				if idx, ok := seen[other.currentPath]; ok {
-					candidates[idx].OpenInWindow = true
-				} else {
-					seen[other.currentPath] = len(candidates)
-					candidates = append(candidates, ui.DestinationCandidate{
-						Path:         other.currentPath,
-						OpenInWindow: true,
-					})
-				}
-			}
+	for _, other := range fm.registeredWindows() {
+		if other == fm || other.currentPath == "" || fileinfo.IsArchivePath(other.currentPath) {
+			continue
 		}
-		return true
-	})
+		if idx, ok := seen[other.currentPath]; ok {
+			candidates[idx].OpenInWindow = true
+		} else {
+			seen[other.currentPath] = len(candidates)
+			candidates = append(candidates, ui.DestinationCandidate{
+				Path:         other.currentPath,
+				OpenInWindow: true,
+			})
+		}
+	}
 
 	// Optionally include current path after other windows
 	if fm.currentPath != "" && !fileinfo.IsArchivePath(fm.currentPath) {

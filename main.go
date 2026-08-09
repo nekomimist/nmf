@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"fyne.io/fyne/v2/app"
@@ -25,15 +24,6 @@ import (
 
 // Global debug flag
 var debugMode bool
-
-// Global window registry for managing multiple windows
-var (
-	windowRegistry sync.Map // map[fyne.Window]*FileManager
-	windowCount    int32    // atomic counter for window count
-	windowOrderMu  sync.Mutex
-	windowOrder    []*FileManager
-	reopenPaths    []string
-)
 
 // debugPrint prints debug messages only when debug mode is enabled
 func debugPrint(format string, args ...interface{}) {
@@ -242,8 +232,14 @@ func main() {
 	jobs.SetDebug(debugPrint)
 	shellmenu.Debugf = debugPrint
 
-	runtime := newApplicationRuntime(fyneApp)
-	fm := NewFileManager(runtime, startPath, cfg, configManager, state, stateManager, customTheme, configScript)
+	runtime := newApplicationRuntime(fyneApp, applicationRuntimeOptions{
+		Config:       cfg,
+		State:        state,
+		StateManager: stateManager,
+		CustomTheme:  customTheme,
+		ConfigScript: configScript,
+	})
+	fm := NewFileManager(runtime, startPath)
 	fm.window.Show()
 	applyInitialWindowPosition(fm.window, cfg.Window)
 	fyneApp.Run()

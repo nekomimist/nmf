@@ -28,13 +28,15 @@ func TestResetWindowSizeUsesInitialWindowSize(t *testing.T) {
 func TestResetAllWindowSizesUsesRegisteredFileManagers(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
-	resetFileManagerWindowTestRegistry(t)
+	runtime := newFileManagerWindowTestRuntime(t)
 
 	left := &FileManager{
+		runtime:           runtime,
 		window:            app.NewWindow("left"),
 		initialWindowSize: fyne.NewSize(800, 600),
 	}
 	right := &FileManager{
+		runtime:           runtime,
 		window:            app.NewWindow("right"),
 		initialWindowSize: fyne.NewSize(1000, 720),
 	}

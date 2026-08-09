@@ -96,23 +96,23 @@ func TestSelectWindowByOrderDoesNotWrap(t *testing.T) {
 }
 
 func TestReopenPathStackUsesMostRecentlyClosedPath(t *testing.T) {
-	resetFileManagerWindowTestRegistry(t)
+	registry := newFileManagerWindowRegistry()
 
-	recordReopenPath("/first")
-	recordReopenPath("")
-	recordReopenPath("/second")
+	registry.recordReopenPath("/first")
+	registry.recordReopenPath("")
+	registry.recordReopenPath("/second")
 
-	path, ok := nextReopenPath()
+	path, ok := registry.nextReopenPath()
 	if !ok || path != "/second" {
 		t.Fatalf("first reopen path = %q, %t, want /second, true", path, ok)
 	}
 
-	path, ok = nextReopenPath()
+	path, ok = registry.nextReopenPath()
 	if !ok || path != "/first" {
 		t.Fatalf("second reopen path = %q, %t, want /first, true", path, ok)
 	}
 
-	path, ok = nextReopenPath()
+	path, ok = registry.nextReopenPath()
 	if ok || path != "" {
 		t.Fatalf("empty reopen path = %q, %t, want empty, false", path, ok)
 	}

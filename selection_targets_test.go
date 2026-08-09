@@ -12,15 +12,17 @@ import (
 func TestGetAllSelectedFilesUsesAllOpenWindowsInOrder(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
-	resetFileManagerWindowTestRegistry(t)
+	runtime := newFileManagerWindowTestRuntime(t)
 
 	left := &FileManager{
+		runtime:       runtime,
 		window:        app.NewWindow("left"),
 		files:         []fileinfo.FileInfo{{Name: "a.txt", Path: "/left/a.txt"}, {Name: "skip.txt", Path: "/left/skip.txt"}},
 		selectedFiles: map[string]bool{"/left/a.txt": true, "/left/skip.txt": false},
 	}
 	right := &FileManager{
-		window: app.NewWindow("right"),
+		runtime: runtime,
+		window:  app.NewWindow("right"),
 		files: []fileinfo.FileInfo{
 			{Name: "deleted.txt", Path: "/right/deleted.txt", Status: fileinfo.StatusDeleted},
 			{Name: "b.txt", Path: "/right/b.txt"},
@@ -43,25 +45,10 @@ func TestGetAllSelectedFilesUsesAllOpenWindowsInOrder(t *testing.T) {
 	}
 }
 
-func resetFileManagerWindowTestRegistry(t *testing.T) {
+func newFileManagerWindowTestRuntime(t *testing.T) *ApplicationRuntime {
 	t.Helper()
-
-	windowOrderMu.Lock()
-	windowOrder = nil
-	reopenPaths = nil
-	windowOrderMu.Unlock()
-	windowRegistry.Range(func(key, _ any) bool {
-		windowRegistry.Delete(key)
-		return true
-	})
-	t.Cleanup(func() {
-		windowOrderMu.Lock()
-		windowOrder = nil
-		reopenPaths = nil
-		windowOrderMu.Unlock()
-		windowRegistry.Range(func(key, _ any) bool {
-			windowRegistry.Delete(key)
-			return true
-		})
-	})
+	return &ApplicationRuntime{
+		windows:                 newFileManagerWindowRegistry(),
+		navigationHistoryEvents: newNavigationHistoryEventHub(),
+	}
 }

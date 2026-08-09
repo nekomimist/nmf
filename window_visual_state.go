@@ -61,8 +61,8 @@ func (fm *FileManager) setWindowHighlight(active bool) {
 	}
 }
 
-func clearFileManagerWindowHighlights() {
-	for _, manager := range snapshotFileManagerWindows() {
+func clearFileManagerWindowHighlights(fm *FileManager) {
+	for _, manager := range fm.registeredWindows() {
 		manager.setWindowHighlight(false)
 	}
 }
@@ -74,18 +74,18 @@ func updateOpenPathHighlights(fm *FileManager, path string, openPaths map[string
 		setOwnerHighlighted(ownerHighlighted)
 	}
 	if open {
-		highlightFileManagerWindowForPath(path)
+		highlightFileManagerWindowForPath(fm, path)
 		return
 	}
-	clearFileManagerWindowHighlights()
+	clearFileManagerWindowHighlights(fm)
 }
 
-func highlightFileManagerWindowForPath(path string) {
-	clearFileManagerWindowHighlights()
+func highlightFileManagerWindowForPath(fm *FileManager, path string) {
+	clearFileManagerWindowHighlights(fm)
 	if path == "" {
 		return
 	}
-	for _, manager := range snapshotFileManagerWindows() {
+	for _, manager := range fm.registeredWindows() {
 		if manager.currentPath != path || fileManagerWindowIconified(manager) {
 			continue
 		}

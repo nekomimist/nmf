@@ -19,10 +19,7 @@ func (fm *FileManager) selectedFileInfos() []fileinfo.FileInfo {
 // GetAllSelectedFiles returns marked files from all open file manager windows
 // in window order, then visible list order within each window.
 func (fm *FileManager) GetAllSelectedFiles() []fileinfo.FileInfo {
-	windows := snapshotFileManagerWindows()
-	if len(windows) == 0 {
-		windows = []*FileManager{fm}
-	}
+	windows := fm.registeredWindows()
 
 	var targets []fileinfo.FileInfo
 	for _, windowFM := range windows {

@@ -9,7 +9,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/config"
-	"nmf/internal/configscript"
 	"nmf/internal/fileinfo"
 	"nmf/internal/jobs"
 	"nmf/internal/keymanager"
@@ -43,10 +42,8 @@ type FileManager struct {
 	storageInfo          fileinfo.StorageInfo
 	storageKnown         bool
 	config               *config.Config
-	configManager        *config.Manager
 	state                *config.State
 	stateManager         *config.StateManager
-	configScript         *configscript.Runtime
 	initialWindowSize    fyne.Size
 	activeSort           config.SortConfig
 	customTheme          *customtheme.CustomTheme                // Custom theme for colors

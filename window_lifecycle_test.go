@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"sync/atomic"
 	"testing"
 
 	"fyne.io/fyne/v2/test"
@@ -28,7 +27,7 @@ func TestActiveJobCountCountsOnlyPendingAndRunning(t *testing.T) {
 func TestWindowCloseNeedsConfirmationOnlyForLastWindow(t *testing.T) {
 	tests := []struct {
 		name        string
-		openWindows int32
+		openWindows int
 		want        bool
 	}{
 		{name: "no registered window", openWindows: 0, want: true},
@@ -72,20 +71,20 @@ func TestWindowLifecycleGuardsDuplicateCloseAndConfirmation(t *testing.T) {
 func TestCloseWindowIsIdempotentAndInvalidatesLoad(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
-	resetFileManagerWindowTestRegistry(t)
-	atomic.StoreInt32(&windowCount, 2)
-	t.Cleanup(func() {
-		atomic.StoreInt32(&windowCount, 0)
-	})
+	runtime := newFileManagerWindowTestRuntime(t)
 
 	unsubscribed := 0
 	transferUnsubscribed := 0
 	fm := &FileManager{
-		window: app.NewWindow("closing"),
+		runtime: runtime,
+		window:  app.NewWindow("closing"),
 		jobsUnsub: func() {
 			unsubscribed++
 		},
 	}
+	other := &FileManager{runtime: runtime, window: app.NewWindow("other")}
+	registerFileManagerWindow(fm)
+	registerFileManagerWindow(other)
 	if _, installed := fm.installTransferDestinationSubscription(func() {
 		transferUnsubscribed++
 	}); !installed {
@@ -96,7 +95,7 @@ func TestCloseWindowIsIdempotentAndInvalidatesLoad(t *testing.T) {
 	fm.closeWindow()
 	fm.closeWindow()
 
-	if got := atomic.LoadInt32(&windowCount); got != 1 {
+	if got := runtime.windows.count(); got != 1 {
 		t.Fatalf("window count = %d, want 1 after one effective close", got)
 	}
 	if unsubscribed != 1 {

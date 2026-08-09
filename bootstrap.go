@@ -1,26 +1,25 @@
 package main
 
 import (
-	"sync/atomic"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 
-	"nmf/internal/config"
-	"nmf/internal/configscript"
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 	"nmf/internal/search"
-	customtheme "nmf/internal/theme"
 	"nmf/internal/ui"
 	"nmf/internal/watcher"
 )
 
-func NewFileManager(runtime *ApplicationRuntime, path string, config *config.Config, configManager *config.Manager, state *config.State, stateManager *config.StateManager, customTheme *customtheme.CustomTheme, configScript *configscript.Runtime) *FileManager {
-	if runtime == nil || runtime.app == nil {
+func NewFileManager(runtime *ApplicationRuntime, path string) *FileManager {
+	if runtime == nil || runtime.app == nil || runtime.config == nil || runtime.state == nil {
 		panic("NewFileManager requires an application runtime")
 	}
+	config := runtime.config
+	state := runtime.state
+	customTheme := runtime.customTheme
 	fm := &FileManager{
 		window:            runtime.app.NewWindow("File Manager"),
 		currentPath:       path,
@@ -28,10 +27,8 @@ func NewFileManager(runtime *ApplicationRuntime, path string, config *config.Con
 		cursorIndex:       -1,
 		selectedFiles:     make(map[string]bool),
 		config:            config,
-		configManager:     configManager,
 		state:             state,
-		stateManager:      stateManager,
-		configScript:      configScript,
+		stateManager:      runtime.stateManager,
 		initialWindowSize: fyne.NewSize(float32(config.Window.Width), float32(config.Window.Height)),
 		windowActive:      true,
 		activeSort:        state.EffectiveSort(config.UI.Sort),
@@ -71,8 +68,8 @@ func NewFileManager(runtime *ApplicationRuntime, path string, config *config.Con
 	// Setup KeyManager with main screen handler
 	keymanager.WarnUnknownKeyBindingTargets(config.UI.KeyBindings, debugPrint)
 	var scriptCommands keymanager.CommandRegistry
-	if configScript != nil {
-		scriptCommands = configScript.Commands
+	if runtime.configScript != nil {
+		scriptCommands = runtime.configScript.Commands
 	}
 	mainHandler := keymanager.NewMainScreenKeyHandlerWithCommands(fm, debugPrint, config.UI.KeyBindings, scriptCommands)
 	mainHandler.SetTransitionGate(fm.keyManager.BeginOwnerTransition)
@@ -107,9 +104,8 @@ func NewFileManager(runtime *ApplicationRuntime, path string, config *config.Con
 	runtime.registerWindowPrompts(fm)
 	fm.LoadDirectory(path)
 
-	// Register window in global registry
+	// Register this window with the application runtime.
 	registerFileManagerWindow(fm)
-	atomic.AddInt32(&windowCount, 1)
 
 	// Set window close handler
 	fm.window.SetCloseIntercept(func() {

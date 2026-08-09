@@ -99,7 +99,7 @@ func (fm *FileManager) saveNavigationHistoryMutation(preferredPath string) {
 			debugPrint("FileManager: Error saving navigation history: %v", err)
 		}
 	}
-	notifyNavigationHistoryChanged(canonicalNavigationHistoryPath(preferredPath))
+	fm.notifyNavigationHistoryChanged(canonicalNavigationHistoryPath(preferredPath))
 }
 
 // removeNavigationHistoryTree drops root and every path below it from both
