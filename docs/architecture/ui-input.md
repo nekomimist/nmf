@@ -394,10 +394,19 @@ Delete dialogs:
 
 ## Busy State Behavior
 
-When directory loading enters busy mode:
+`internal/ui.BusyController` owns the busy overlay and its input-handler token
+for one File Manager window. Directory loads, initial viewer reads, and direct
+directory comparisons share this controller.
 
-- Push `BusyKeyHandler` to consume input during critical section.
-- Pop it after load completes.
+- `Begin` pushes `BusyKeyHandler` immediately, before the delayed overlay is
+  visible, so a fast repeated command cannot enter the critical section.
+- Repeated `Begin` while active updates the existing overlay and does not push
+  a second handler.
+- Escape invokes the operation-specific cancel callback when one is supplied.
+- `End` invalidates the delayed-show generation, hides the overlay, and removes
+  exactly the token the controller owns. Repeated `End` is a no-op.
+- Directory-loader cancel restores the watcher/focus for the current path;
+  window-close cancellation deliberately does neither.
 
 ## Invariants
 

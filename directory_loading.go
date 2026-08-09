@@ -11,9 +11,9 @@ import (
 
 	"fyne.io/fyne/v2"
 
+	"nmf/internal/browser"
 	"nmf/internal/config"
 	"nmf/internal/fileinfo"
-	"nmf/internal/keymanager"
 )
 
 // SaveCursorPosition saves the current cursor position for the given directory.
@@ -141,12 +141,13 @@ func (fm *FileManager) FocusFileList() {
 
 func (fm *FileManager) focusFileList(reason string) {
 	currentPath := fm.GetCurrentPath()
+	busy := fm.busy != nil && fm.busy.Active()
 	if fm.fileListView != nil {
 		before := focusedObjectLabel(fm.window)
-		debugPrint("FileManager: FocusFileList start reason=%s focused=%s active=%t busy=%t path=%s", reason, before, fm.windowActive, fm.busyActive, currentPath)
+		debugPrint("FileManager: FocusFileList start reason=%s focused=%s active=%t busy=%t path=%s", reason, before, fm.windowActive, busy, currentPath)
 		fm.window.Canvas().Focus(fm.fileListView)
 		fm.setWindowActive(true)
-		debugPrint("FileManager: FocusFileList done reason=%s focused=%s active=%t busy=%t path=%s", reason, focusedObjectLabel(fm.window), fm.windowActive, fm.busyActive, currentPath)
+		debugPrint("FileManager: FocusFileList done reason=%s focused=%s active=%t busy=%t path=%s", reason, focusedObjectLabel(fm.window), fm.windowActive, busy, currentPath)
 		return
 	}
 	debugPrint("FileManager: FocusFileList skipped reason=%s fileListView=nil path=%s", reason, currentPath)
@@ -195,10 +196,17 @@ func (fm *FileManager) loadDirectory(path string, allowParentFallback bool) {
 	// Store the previous directory for parent navigation logic
 	previousPath := currentPath
 	debugPrint("FileManager: LoadDirectory start path=%s previous=%s fallback=%t focused=%s active=%t", path, previousPath, allowParentFallback, focusedObjectLabel(fm.window), fm.windowActive)
-	ctx, loadID := fm.beginDirectoryLoad()
+	if fm.directoryLoader == nil {
+		fm.directoryLoader = browser.NewDirectoryLoader()
+	}
+	handle := fm.directoryLoader.Begin()
 
 	// Indicate busy and block input while loading
-	fm.beginBusy(fmt.Sprintf("Loading %s...", path), fm.cancelActiveDirectoryLoad)
+	if fm.busy != nil {
+		fm.busy.Begin(fmt.Sprintf("Loading %s...", path), func() {
+			fm.cancelDirectoryLoad(handle.ID)
+		})
+	}
 
 	// Capture the sort config on the UI thread: fm.state is mutated by the
 	// sort dialog on the UI thread, so the background goroutine below must
@@ -206,43 +214,67 @@ func (fm *FileManager) loadDirectory(path string, allowParentFallback bool) {
 	sortCfg := fm.state.EffectiveSort(fm.config.UI.Sort)
 
 	// Load directory asynchronously to avoid blocking UI (applies to both local and remote paths)
-	go fm.loadDirectoryAsync(ctx, loadID, path, previousPath, sortCfg, allowParentFallback, refreshCursorNeighbors)
+	go fm.loadDirectoryAsync(handle, path, previousPath, sortCfg, allowParentFallback, refreshCursorNeighbors)
 }
 
-// loadDirectoryAsync lists a path in a background goroutine and applies UI updates on the main thread.
+// loadDirectoryAsync asks the widget-free loader to read a path in a
+// background goroutine, then applies an accepted result on the main thread.
 // refreshCursorNeighbors is supplied only for a same-directory reload. It is
 // variadic to keep direct test callers concise when no refresh fallback is
 // relevant.
-func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, path string, previousPath string, sortCfg config.SortConfig, allowParentFallback bool, refreshCursorNeighbors ...[]string) {
+func (fm *FileManager) loadDirectoryAsync(handle browser.DirectoryLoadHandle, path string, previousPath string, sortCfg config.SortConfig, allowParentFallback bool, refreshCursorNeighbors ...[]string) {
 	var cursorNeighbors []string
 	if len(refreshCursorNeighbors) > 0 {
 		cursorNeighbors = refreshCursorNeighbors[0]
 	}
-	requestedPath := path
+	discarded := func(err error) bool {
+		if handle.Context != nil && handle.Context.Err() != nil {
+			debugPrint("FileManager: LoadDirectory canceled id=%d err=%v", handle.ID, handle.Context.Err())
+			return true
+		}
+		if err != nil && errors.Is(err, context.Canceled) {
+			debugPrint("FileManager: LoadDirectory canceled id=%d err=%v", handle.ID, err)
+			return true
+		}
+		if fm.directoryLoader == nil || !fm.directoryLoader.Active(handle.ID) {
+			debugPrint("FileManager: LoadDirectory stale id=%d path=%s", handle.ID, fm.GetCurrentPath())
+			return true
+		}
+		return false
+	}
+
 	// Keep the busy overlay naming the ancestor currently being probed as the
 	// fallback walk advances, instead of the (already-rejected) requested
 	// path. This callback runs on the background goroutine, so the overlay
 	// mutation itself must be dispatched through fyne.Do.
 	onCandidate := func(candidate string) {
 		fyne.Do(func() {
-			if fm.ignoreCanceledDirectoryLoad(ctx, loadID, nil) {
+			if discarded(nil) {
 				return
 			}
-			fm.updateBusyText(fmt.Sprintf("Loading %s...", candidate))
+			if fm.busy != nil {
+				fm.busy.UpdateText(fmt.Sprintf("Loading %s...", candidate))
+			}
 		})
 	}
-	entries, loadedPath, usedParentFallback, err := readDirectoryWithParentFallback(ctx, path, allowParentFallback, fileinfo.ReadDirPortableContext, onCandidate)
+	result, err := fm.directoryLoader.Load(handle, browser.DirectoryLoadRequest{
+		Path:                path,
+		AllowParentFallback: allowParentFallback,
+		Sort:                sortCfg,
+	}, onCandidate)
 	if err != nil {
-		if fm.ignoreCanceledDirectoryLoad(ctx, loadID, err) {
+		if discarded(err) {
 			return
 		}
 		log.Printf("Error reading directory: %v", err)
 		fyne.Do(func() {
-			if !fm.finishDirectoryLoad(loadID) {
+			if !fm.directoryLoader.Finish(handle.ID) {
 				return
 			}
 			// Clear busy state on error
-			fm.endBusy()
+			if fm.busy != nil {
+				fm.busy.End()
+			}
 			fm.ShowMessageDialog("フォルダを開けませんでした", err.Error())
 			// Revert to previous path on error and restart watcher
 			if previousPath != "" {
@@ -256,57 +288,18 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 		})
 		return
 	}
-	path = loadedPath
-	if fm.ignoreCanceledDirectoryLoad(ctx, loadID, nil) {
+	if discarded(nil) {
 		return
 	}
 
-	// Build file list off the UI thread
-	files := make([]fileinfo.FileInfo, 0, len(entries)+1)
-	storage, storageErr := fileinfo.StatStoragePortable(path)
-	if fm.ignoreCanceledDirectoryLoad(ctx, loadID, nil) {
-		return
-	}
-	if storageErr != nil {
-		debugPrint("FileManager: Storage info unavailable for %s: %v", path, storageErr)
-	}
-
-	// Add parent directory entry if not at root
-	parent := fileinfo.ParentPath(path)
-	if parent != path {
-		parentInfo := fileinfo.FileInfo{
-			Name:     "..",
-			Path:     parent,
-			IsDir:    true,
-			Size:     0,
-			Modified: time.Time{},
-			FileType: fileinfo.FileTypeDirectory,
-			Status:   fileinfo.StatusNormal,
-		}
-		files = append(files, parentInfo)
-	}
-
-	for _, entry := range entries {
-		if fm.ignoreCanceledDirectoryLoad(ctx, loadID, nil) {
-			return
-		}
-		fi, err := fileinfo.FileInfoFromDirEntry(path, entry)
-		if err != nil {
-			continue
-		}
-		files = append(files, fi)
-	}
-
-	// Sort off the UI thread using the sort config captured before this
-	// goroutine started (see LoadDirectory).
-	files = sortFileInfoSlice(files, sortCfg)
-	if fm.ignoreCanceledDirectoryLoad(ctx, loadID, nil) {
-		return
+	path = result.Path
+	if result.StorageErr != nil {
+		debugPrint("FileManager: Storage info unavailable for %s: %v", path, result.StorageErr)
 	}
 
 	// Apply UI updates on main thread
 	fyne.Do(func() {
-		if !fm.finishDirectoryLoad(loadID) {
+		if !fm.directoryLoader.Finish(handle.ID) {
 			return
 		}
 		// Stop existing watcher (if any) before applying
@@ -319,12 +312,11 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 			fm.recordNavigationHistory(previousPath)
 		}
 
-		fm.browserModel().ReplaceDirectory(path, files, storage, storageErr == nil, sortCfg)
+		fm.browserModel().ReplaceDirectory(path, result.Files, result.Storage, result.StorageErr == nil, sortCfg)
 		fm.setPathDisplay(path)
 		loadedFiles := fm.GetFiles()
 
-		// Files arrive pre-sorted from the background goroutine above; no sort
-		// call is needed here.
+		// The loader returns a pre-sorted listing; no sort call is needed here.
 
 		// Restore cursor for the newly replaced listing.
 		if len(loadedFiles) > 0 {
@@ -380,14 +372,16 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 		// refreshListAndCursor) and re-query the list length even when empty.
 		fm.refreshListAndCursor()
 		fm.updateStatusBar()
-		if usedParentFallback {
-			fm.showStatusNotice(parentFallbackStatusNotice(requestedPath, path))
-			debugPrint("FileManager: LoadDirectory fallback requested=%s opened=%s", requestedPath, path)
+		if result.UsedParentFallback {
+			fm.showStatusNotice(parentFallbackStatusNotice(result.RequestedPath, path))
+			debugPrint("FileManager: LoadDirectory fallback requested=%s opened=%s", result.RequestedPath, path)
 		}
 
 		// Hide busy only now that list state and cursor are rendered-ready,
 		// so input stays blocked until the new listing is actually usable.
-		fm.endBusy()
+		if fm.busy != nil {
+			fm.busy.End()
+		}
 
 		// Restart watcher with appropriate interval when the provider can be watched.
 		if fm.dirWatcher != nil && fm.shouldWatchPath(path) {
@@ -431,119 +425,13 @@ func (fm *FileManager) cursorNeighborPaths() []string {
 	return neighbors
 }
 
-type directoryReadFunc func(context.Context, string) ([]os.DirEntry, error)
-
-// readDirectoryWithParentFallback reads requestedPath. When enabled, only a
-// confirmed not-exist error advances to the next parent; access, authentication,
-// network, archive, and cancellation errors remain ordinary load failures.
-//
-// onCandidate, if provided (only its first value is used), is called with
-// each ancestor path just before it is probed, letting a caller such as
-// loadDirectoryAsync keep a progress indicator in sync with the walk. It is
-// optional and variadic purely so existing callers/tests need not change.
-func readDirectoryWithParentFallback(ctx context.Context, requestedPath string, allowParentFallback bool, readDir directoryReadFunc, onCandidate ...func(string)) ([]os.DirEntry, string, bool, error) {
-	var notify func(string)
-	if len(onCandidate) > 0 {
-		notify = onCandidate[0]
-	}
-
-	path := requestedPath
-	for {
-		if err := ctx.Err(); err != nil {
-			return nil, "", false, err
-		}
-
-		entries, err := readDir(ctx, path)
-		if err == nil {
-			return entries, path, path != requestedPath, nil
-		}
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, "", false, ctxErr
-		}
-		if !allowParentFallback || !fileinfo.IsNotExist(err) {
-			return nil, "", false, err
-		}
-
-		parent := fileinfo.ParentPath(path)
-		if parent == path {
-			return nil, "", false, err
-		}
-		path = parent
-		if notify != nil {
-			notify(path)
-		}
-	}
-}
-
-func (fm *FileManager) beginDirectoryLoad() (context.Context, uint64) {
-	ctx, cancel := context.WithCancel(context.Background())
-	fm.loadMu.Lock()
-	if fm.loadCancel != nil {
-		fm.loadCancel()
-	}
-	fm.nextLoadID++
-	loadID := fm.nextLoadID
-	fm.activeLoadID = loadID
-	fm.loadCancel = cancel
-	fm.loadMu.Unlock()
-	return ctx, loadID
-}
-
-func (fm *FileManager) finishDirectoryLoad(loadID uint64) bool {
-	fm.loadMu.Lock()
-	defer fm.loadMu.Unlock()
-	if fm.activeLoadID != loadID {
-		return false
-	}
-	fm.activeLoadID = 0
-	// Release the context rather than only dropping the reference: anything
-	// still holding it, such as an archives.ArchiveFS built during the load,
-	// keeps observing a live context otherwise.
-	if fm.loadCancel != nil {
-		fm.loadCancel()
-		fm.loadCancel = nil
-	}
-	return true
-}
-
-func (fm *FileManager) directoryLoadActive(loadID uint64) bool {
-	fm.loadMu.Lock()
-	defer fm.loadMu.Unlock()
-	return fm.activeLoadID == loadID
-}
-
-func (fm *FileManager) ignoreCanceledDirectoryLoad(ctx context.Context, loadID uint64, err error) bool {
-	if ctx != nil && ctx.Err() != nil {
-		debugPrint("FileManager: LoadDirectory canceled id=%d err=%v", loadID, ctx.Err())
-		return true
-	}
-	if err != nil && errors.Is(err, context.Canceled) {
-		debugPrint("FileManager: LoadDirectory canceled id=%d err=%v", loadID, err)
-		return true
-	}
-	if !fm.directoryLoadActive(loadID) {
-		debugPrint("FileManager: LoadDirectory stale id=%d path=%s", loadID, fm.GetCurrentPath())
-		return true
-	}
-	return false
-}
-
 func (fm *FileManager) cancelDirectoryLoad(loadID uint64) {
-	var cancel context.CancelFunc
-	fm.loadMu.Lock()
-	if fm.activeLoadID == 0 || fm.activeLoadID != loadID {
-		fm.loadMu.Unlock()
+	if fm.directoryLoader == nil || !fm.directoryLoader.Cancel(loadID) {
 		return
 	}
-	cancel = fm.loadCancel
-	fm.activeLoadID = 0
-	fm.loadCancel = nil
-	fm.loadMu.Unlock()
-
-	if cancel != nil {
-		cancel()
+	if fm.busy != nil {
+		fm.busy.End()
 	}
-	fm.endBusy()
 	currentPath := fm.GetCurrentPath()
 	if fm.dirWatcher != nil && fm.shouldWatchPath(currentPath) {
 		fm.dirWatcher.SetPollInterval(fm.pollIntervalForPath(currentPath))
@@ -551,113 +439,6 @@ func (fm *FileManager) cancelDirectoryLoad(loadID uint64) {
 	}
 	fm.focusFileList("directory-load-cancel")
 	debugPrint("FileManager: LoadDirectory cancel id=%d path=%s", loadID, currentPath)
-}
-
-func (fm *FileManager) cancelActiveDirectoryLoad() {
-	fm.loadMu.Lock()
-	loadID := fm.activeLoadID
-	fm.loadMu.Unlock()
-	if loadID != 0 {
-		fm.cancelDirectoryLoad(loadID)
-	}
-}
-
-// invalidateActiveDirectoryLoad cancels the current load without restarting
-// window-owned UI or watcher state. It is used while the window is closing.
-func (fm *FileManager) invalidateActiveDirectoryLoad() {
-	var cancel context.CancelFunc
-	fm.loadMu.Lock()
-	cancel = fm.loadCancel
-	fm.activeLoadID = 0
-	fm.loadCancel = nil
-	fm.loadMu.Unlock()
-
-	if cancel != nil {
-		cancel()
-	}
-}
-
-// beginBusy shows the busy overlay and pushes a swallowing key handler.
-func (fm *FileManager) beginBusy(text string, onCancel ...func()) {
-	fm.busyMu.Lock()
-	defer fm.busyMu.Unlock()
-
-	if fm.busyActive {
-		// Already busy: update label if visible, and store latest text
-		fm.busyText = text
-		fm.busyOverlay.Show(fm.window, text)
-		debugPrint("FileManager: busy update text=%q focused=%s", text, focusedObjectLabel(fm.window))
-		return
-	}
-
-	fm.busyActive = true
-	fm.busyText = text
-	debugPrint("FileManager: busy begin text=%q focused=%s", text, focusedObjectLabel(fm.window))
-
-	// Block keys immediately to avoid reentrancy
-	var cancel func()
-	if len(onCancel) > 0 {
-		cancel = onCancel[0]
-	}
-	fm.busyToken = fm.keyManager.PushHandler(keymanager.NewBusyKeyHandler(cancel))
-
-	// Delay overlay to prevent flicker on very fast operations
-	if fm.busyTimer != nil {
-		fm.busyTimer.Stop()
-	}
-	d := fm.busyDelay
-	fm.busyTimer = time.AfterFunc(d, func() {
-		fyne.Do(func() {
-			fm.busyMu.Lock()
-			active := fm.busyActive
-			text := fm.busyText
-			fm.busyMu.Unlock()
-			if active {
-				fm.busyOverlay.Show(fm.window, text)
-			}
-		})
-	})
-}
-
-// updateBusyText updates the message on an already-shown busy overlay
-// without altering busy state or the key handler stack. It is a no-op once
-// busy has ended (e.g. a stale ancestor-probe callback arriving after
-// endBusy), so callers do not need to guard against that themselves. Must be
-// called on the UI thread (via fyne.Do) since it touches fm.busyOverlay.
-func (fm *FileManager) updateBusyText(text string) {
-	fm.busyMu.Lock()
-	defer fm.busyMu.Unlock()
-	if !fm.busyActive {
-		return
-	}
-	fm.busyText = text
-	fm.busyOverlay.Show(fm.window, text)
-}
-
-// endBusy hides the busy overlay and pops the swallowing key handler.
-func (fm *FileManager) endBusy() {
-	fm.busyMu.Lock()
-	if !fm.busyActive {
-		fm.busyMu.Unlock()
-		return
-	}
-	fm.busyActive = false
-	if fm.busyTimer != nil {
-		fm.busyTimer.Stop()
-		fm.busyTimer = nil
-	}
-	busyToken := fm.busyToken
-	fm.busyToken = 0
-	fm.busyMu.Unlock()
-
-	// Hide overlay (if visible) and remove guard
-	if fm.busyOverlay != nil {
-		fm.busyOverlay.Hide()
-	}
-	if fm.keyManager != nil && busyToken != 0 {
-		fm.keyManager.RemoveHandler(busyToken)
-	}
-	debugPrint("FileManager: busy end focused=%s active=%t path=%s", focusedObjectLabel(fm.window), fm.windowActive, fm.GetCurrentPath())
 }
 
 // pollIntervalForPath returns the recommended watcher polling interval for a path.

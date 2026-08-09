@@ -21,23 +21,24 @@ func NewFileManager(runtime *ApplicationRuntime, path string) *FileManager {
 	config := runtime.config
 	state := runtime.state
 	customTheme := runtime.customTheme
+	keyManager := keymanager.NewKeyManager(debugPrint)
 	fm := &FileManager{
 		window:            runtime.app.NewWindow("File Manager"),
 		browser:           browser.New(path, state.EffectiveSort(config.UI.Sort)),
+		directoryLoader:   browser.NewDirectoryLoader(),
 		config:            config,
 		state:             state,
 		stateManager:      runtime.stateManager,
 		initialWindowSize: fyne.NewSize(float32(config.Window.Width), float32(config.Window.Height)),
 		windowActive:      true,
 		customTheme:       customTheme,
-		keyManager:        keymanager.NewKeyManager(debugPrint),
+		keyManager:        keyManager,
 		searchMatchers:    search.NewProvider(debugPrint),
 		runtime:           runtime,
 	}
 
-	// Busy overlay (hidden by default)
-	fm.busyOverlay = ui.NewBusyOverlay(customTheme)
-	fm.busyDelay = 150 * time.Millisecond
+	// Busy overlay and its input guard are window-owned.
+	fm.busy = ui.NewBusyController(fm.window, keyManager, customTheme, 150*time.Millisecond, debugPrint)
 
 	// Initialize async icon service and subscribe for updates
 	fm.iconSvc = fileinfo.NewIconService(debugPrint)

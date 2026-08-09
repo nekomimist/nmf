@@ -146,9 +146,11 @@ Completion callback (`Job.OnFinished`, `internal/jobs/types.go`):
   bar use the same confirmation dialog. Active jobs change the affirmative
   action to explicit `Quit Anyway`; dismissing the dialog keeps the window and
   its jobs subscription alive.
-- Confirmed window destruction first cancels and invalidates its active
-  directory-load generation. Queued load completions must fail the generation
-  check and must not restart the watcher or restore focus after close.
+- Confirmed window destruction first calls
+  `internal/browser.DirectoryLoader.CancelActive` and ends the window's
+  `internal/ui.BusyController`. Queued load completions must fail `Finish`'s
+  generation check and must not restart the watcher or restore focus after
+  close.
 - `FileManager.trackNavigationHistoryJob` (`navigation_history_mutation.go`)
   registers an `OnFinished` callback on every enqueued copy/move/delete/extract
   job to update persisted navigation history once the job's outcome is known,

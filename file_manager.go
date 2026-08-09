@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"sync"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/widget"
@@ -55,22 +54,12 @@ type FileManager struct {
 	lifecycleMu          sync.Mutex
 	closed               bool
 	quitConfirmationOpen bool
-	// Busy state while loading directories
-	busyOverlay  *ui.BusyOverlay
-	busyActive   bool
-	busyTimer    *time.Timer
-	busyDelay    time.Duration
-	busyText     string
-	busyToken    keymanager.HandlerToken
-	busyMu       sync.Mutex
-	loadMu       sync.Mutex
-	nextLoadID   uint64
-	activeLoadID uint64
-	loadCancel   context.CancelFunc
-	viewerMu     sync.Mutex
-	nextViewerID uint64
-	activeViewer uint64
-	viewerCancel context.CancelFunc
+	busy                 *ui.BusyController
+	directoryLoader      *browser.DirectoryLoader
+	viewerMu             sync.Mutex
+	nextViewerID         uint64
+	activeViewer         uint64
+	viewerCancel         context.CancelFunc
 
 	// Jobs indicator
 	jobsButton    *widget.Button

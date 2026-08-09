@@ -130,7 +130,7 @@ func (fm *FileManager) setupUI() {
 			nil, nil, nil,
 			nil, // Center is empty, overlay is at top
 		),
-		fm.busyOverlay.GetContainer(), // Highest overlay to block interactions
+		fm.busy.GetContainer(), // Highest overlay to block interactions
 	)
 
 	fm.window.SetContent(content)

@@ -14,9 +14,13 @@ func (fm *FileManager) closeWindow() {
 	}
 
 	// Invalidate background work before releasing window-owned UI resources.
-	fm.invalidateActiveDirectoryLoad()
+	if fm.directoryLoader != nil {
+		fm.directoryLoader.CancelActive()
+	}
 	fm.invalidateViewerLoad(0)
-	fm.endBusy()
+	if fm.busy != nil {
+		fm.busy.End()
+	}
 
 	if registry := fm.windowRegistry(); registry != nil {
 		registry.recordReopenPath(fm.GetCurrentPath())

@@ -61,14 +61,14 @@ func (fm *FileManager) runCompare(sourcePath string, sourceFiles []fileinfo.File
 		return
 	}
 
-	fm.beginBusy(fmt.Sprintf("Comparing %s...", result.Destination))
+	fm.busy.Begin(fmt.Sprintf("Comparing %s...", result.Destination))
 	go func() {
 		compareResult, err := filecompare.CompareDirectFiles(sourceFiles, result.Destination, result.Method)
 		fyne.Do(func() {
 			if fm.isWindowClosed() {
 				return
 			}
-			fm.endBusy()
+			fm.busy.End()
 			if err != nil {
 				debugPrint("FileManager: Compare failed source=%s dest=%s method=%s err=%v", sourcePath, result.Destination, result.Method, err)
 				fm.ShowMessageDialog("Compare Directories", err.Error())

@@ -24,7 +24,8 @@ This document describes runtime composition, package boundaries, and core state 
    - Register the title-bar close intercept through `QuitApplication`, the
      same confirmation path used by the keyboard command.
 3. Runtime method groups are split across focused files:
-   - `directory_loading.go`: loading, busy state, watcher poll policy.
+   - `directory_loading.go`: navigation, directory-result application, and
+     watcher poll policy.
    - `list_controls.go`: sorting/filter/search/list cursor operations.
    - `navigation_ui.go`: navigation dialogs and path edit operations.
    - `viewer_ui.go`: built-in image/text/Markdown/hex preview dialog entrypoint.
@@ -53,11 +54,26 @@ watcher merges, filtering, sorting, create/rename updates, and range selection)
 run behind the model's lock. Widget refreshes always happen after those
 operations return.
 
+`internal/browser.DirectoryLoader` owns directory I/O and its latest-request
+lifecycle. It reads through portable VFS APIs, performs the confirmed-missing
+parent fallback, builds and sorts a widget-free result, and cancels the
+previous context whenever a newer generation begins. `Finish` accepts only the
+active generation, so a stale or close-canceled callback cannot replace newer
+browsing state.
+
+`internal/ui.BusyController` owns the per-window delayed busy overlay and the
+matching `BusyKeyHandler` token. It blocks input immediately, delays visuals to
+avoid flicker, rejects stale timer generations, and releases exactly its own
+handler on every end path.
+
 `FileManager` (`file_manager.go`) is the per-window UI coordinator. It owns the
 Fyne window/widgets, key-handler stack and search overlay, window-local watcher
-and icon service, jobs indicator, and asynchronous busy/load/viewer lifecycle.
-It delegates browsing-state reads and mutations to `browser.Model` and uses
-`ApplicationRuntime` for app-wide services.
+and icon service, jobs indicator, and viewer lifecycle. It delegates browsing
+state to `browser.Model`, directory work to `browser.DirectoryLoader`, busy
+input/visual state to `ui.BusyController`, and uses `ApplicationRuntime` for
+app-wide services. Directory completion code remains here because applying a
+result coordinates Fyne widgets, cursor restoration, history, focus, and the
+window watcher.
 
 Process integration and cross-window behavior:
 
@@ -105,7 +121,8 @@ menus and outbound file dragging, are summarized in `platform-behavior.md`.
 
 ## Package Boundaries
 
-- `internal/browser`: synchronized, widget-free per-window browsing model.
+- `internal/browser`: synchronized, widget-free per-window browsing model plus
+  portable directory loading and latest-request generation control.
 - `internal/config`: read-only `config.json` schema/loading (`Manager`) plus
   `state.json` runtime state and its async persistence (`StateManager`).
 - `internal/configscript`: optional Starlark overlay configuration and custom command registration.
@@ -205,4 +222,6 @@ Full JSON shape and OS-specific paths are documented in
   Fyne coordination belongs to `FileManager` and its split modules.
 - UI code must not retain or mutate browser-model collections. Use model
   operations for writes and value snapshots for rendering or background work.
+- Background directory work must return a `DirectoryLoadResult`; only the
+  active loader generation may apply it on the Fyne thread.
 - New cross-cutting behavior must be documented under `docs/architecture/` in the same change.

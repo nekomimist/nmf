@@ -14,6 +14,7 @@ import (
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 
+	"nmf/internal/browser"
 	"nmf/internal/config"
 	"nmf/internal/fileinfo"
 )
@@ -40,7 +41,7 @@ func TestReadDirectoryWithParentFallbackFindsNearestAccessibleParent(t *testing.
 	missingParent := filepath.Dir(requested)
 	var calls []string
 
-	entries, opened, usedFallback, err := readDirectoryWithParentFallback(
+	entries, opened, usedFallback, err := browser.ReadDirectoryWithParentFallback(
 		context.Background(), requested, true,
 		func(_ context.Context, path string) ([]os.DirEntry, error) {
 			calls = append(calls, path)
@@ -76,7 +77,7 @@ func TestReadDirectoryWithParentFallbackRecognizesPortableMissingPath(t *testing
 	parent := t.TempDir()
 	requested := filepath.Join(parent, "missing", "child")
 
-	entries, opened, usedFallback, err := readDirectoryWithParentFallback(
+	entries, opened, usedFallback, err := browser.ReadDirectoryWithParentFallback(
 		context.Background(), requested, true, fileinfo.ReadDirPortableContext,
 	)
 	if err != nil {
@@ -142,7 +143,7 @@ func TestReadDirectoryWithParentFallbackDoesNotMaskOtherFailures(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var calls []string
-			_, opened, usedFallback, err := readDirectoryWithParentFallback(
+			_, opened, usedFallback, err := browser.ReadDirectoryWithParentFallback(
 				context.Background(), requested, tt.allowFallback,
 				func(_ context.Context, path string) ([]os.DirEntry, error) {
 					calls = append(calls, path)
@@ -168,7 +169,7 @@ func TestReadDirectoryWithParentFallbackDoesNotMaskOtherFailures(t *testing.T) {
 func TestReadDirectoryWithParentFallbackStopsAtSMBShareRoot(t *testing.T) {
 	const shareRoot = "smb://server/share"
 	var calls []string
-	_, opened, usedFallback, err := readDirectoryWithParentFallback(
+	_, opened, usedFallback, err := browser.ReadDirectoryWithParentFallback(
 		context.Background(), shareRoot, true,
 		func(_ context.Context, path string) ([]os.DirEntry, error) {
 			calls = append(calls, path)
@@ -200,7 +201,7 @@ func TestReadDirectoryWithParentFallbackStopsOnENOTDIR(t *testing.T) {
 	}
 	requested := filepath.Join(blocker, "child")
 
-	entries, opened, usedFallback, err := readDirectoryWithParentFallback(
+	entries, opened, usedFallback, err := browser.ReadDirectoryWithParentFallback(
 		context.Background(), requested, true, fileinfo.ReadDirPortableContext,
 	)
 	if err == nil {
@@ -247,7 +248,7 @@ func TestReadDirectoryWithParentFallbackEscapesArchiveBoundaryToFilesystemParent
 	archiveRoot := fileinfo.ArchiveRootPath(archiveFile)
 
 	var calls []string
-	entries, opened, usedFallback, err := readDirectoryWithParentFallback(
+	entries, opened, usedFallback, err := browser.ReadDirectoryWithParentFallback(
 		context.Background(), requested, true,
 		func(_ context.Context, path string) ([]os.DirEntry, error) {
 			calls = append(calls, path)
@@ -283,7 +284,7 @@ func TestReadDirectoryWithParentFallbackHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	called := false
-	_, _, _, err := readDirectoryWithParentFallback(
+	_, _, _, err := browser.ReadDirectoryWithParentFallback(
 		ctx, filepath.Join(t.TempDir(), "missing"), true,
 		func(context.Context, string) ([]os.DirEntry, error) {
 			called = true
@@ -298,66 +299,66 @@ func TestReadDirectoryWithParentFallbackHonorsCancellation(t *testing.T) {
 	}
 }
 
-func TestBeginDirectoryLoadCancelsPreviousLoad(t *testing.T) {
-	fm := &FileManager{browser: newTestBrowser(testBrowserOptions{path: t.TempDir()})}
+func TestDirectoryLoaderBeginCancelsPreviousLoad(t *testing.T) {
+	loader := browser.NewDirectoryLoader()
 
-	firstCtx, firstID := fm.beginDirectoryLoad()
-	secondCtx, secondID := fm.beginDirectoryLoad()
+	first := loader.Begin()
+	second := loader.Begin()
 
-	if firstID == secondID {
+	if first.ID == second.ID {
 		t.Fatal("load IDs should be unique")
 	}
-	if !errors.Is(firstCtx.Err(), context.Canceled) {
-		t.Fatalf("first context error = %v, want context.Canceled", firstCtx.Err())
+	if !errors.Is(first.Context.Err(), context.Canceled) {
+		t.Fatalf("first context error = %v, want context.Canceled", first.Context.Err())
 	}
-	if !fm.directoryLoadActive(secondID) {
+	if !loader.Active(second.ID) {
 		t.Fatal("second load should be active")
 	}
 
-	fm.cancelDirectoryLoad(firstID)
-	if !fm.directoryLoadActive(secondID) {
+	loader.Cancel(first.ID)
+	if !loader.Active(second.ID) {
 		t.Fatal("stale cancel should not cancel the active load")
 	}
 
-	fm.cancelDirectoryLoad(secondID)
-	if !errors.Is(secondCtx.Err(), context.Canceled) {
-		t.Fatalf("second context error = %v, want context.Canceled", secondCtx.Err())
+	loader.Cancel(second.ID)
+	if !errors.Is(second.Context.Err(), context.Canceled) {
+		t.Fatalf("second context error = %v, want context.Canceled", second.Context.Err())
 	}
-	if fm.directoryLoadActive(secondID) {
+	if loader.Active(second.ID) {
 		t.Fatal("active load should be cleared after cancel")
 	}
 }
 
-func TestFinishDirectoryLoadRejectsStaleLoad(t *testing.T) {
-	fm := &FileManager{}
+func TestDirectoryLoaderFinishRejectsStaleLoad(t *testing.T) {
+	loader := browser.NewDirectoryLoader()
 
-	_, firstID := fm.beginDirectoryLoad()
-	_, secondID := fm.beginDirectoryLoad()
+	first := loader.Begin()
+	second := loader.Begin()
 
-	if fm.finishDirectoryLoad(firstID) {
+	if loader.Finish(first.ID) {
 		t.Fatal("stale load should not finish")
 	}
-	if !fm.finishDirectoryLoad(secondID) {
+	if !loader.Finish(second.ID) {
 		t.Fatal("active load should finish")
 	}
-	if fm.directoryLoadActive(secondID) {
+	if loader.Active(second.ID) {
 		t.Fatal("active load should be cleared after finish")
 	}
 }
 
-func TestInvalidateActiveDirectoryLoadCancelsWithoutRestart(t *testing.T) {
-	fm := &FileManager{}
-	ctx, loadID := fm.beginDirectoryLoad()
+func TestDirectoryLoaderCancelActiveInvalidatesResult(t *testing.T) {
+	loader := browser.NewDirectoryLoader()
+	handle := loader.Begin()
 
-	fm.invalidateActiveDirectoryLoad()
+	loader.CancelActive()
 
-	if !errors.Is(ctx.Err(), context.Canceled) {
-		t.Fatalf("load context error = %v, want context.Canceled", ctx.Err())
+	if !errors.Is(handle.Context.Err(), context.Canceled) {
+		t.Fatalf("load context error = %v, want context.Canceled", handle.Context.Err())
 	}
-	if fm.directoryLoadActive(loadID) {
+	if loader.Active(handle.ID) {
 		t.Fatal("invalidated load should no longer be active")
 	}
-	if fm.finishDirectoryLoad(loadID) {
+	if loader.Finish(handle.ID) {
 		t.Fatal("invalidated load should not apply a queued UI callback")
 	}
 }
@@ -371,8 +372,9 @@ func TestInvalidateActiveDirectoryLoadCancelsWithoutRestart(t *testing.T) {
 // (not via `go`) applies its UI-thread callback inline and deterministically.
 func newParentFallbackTestFileManager(state *config.State) *FileManager {
 	return &FileManager{
-		browser: newTestBrowser(testBrowserOptions{}),
-		state:   state,
+		browser:         newTestBrowser(testBrowserOptions{}),
+		directoryLoader: browser.NewDirectoryLoader(),
+		state:           state,
 		config: &config.Config{UI: config.UIConfig{
 			NavigationHistory: config.NavigationHistoryConfig{MaxEntries: 20},
 			CursorMemory:      config.CursorMemoryConfig{MaxEntries: 20},
@@ -415,8 +417,8 @@ func TestLoadDirectoryAsyncFallbackSkipsHistoryWhenReopeningSameDirectory(t *tes
 	}
 	fm := newParentFallbackTestFileManager(state)
 
-	ctx, loadID := fm.beginDirectoryLoad()
-	fm.loadDirectoryAsync(ctx, loadID, requested, opened, config.SortConfig{SortBy: "name", SortOrder: "asc"}, true)
+	handle := fm.directoryLoader.Begin()
+	fm.loadDirectoryAsync(handle, requested, opened, config.SortConfig{SortBy: "name", SortOrder: "asc"}, true)
 
 	if got := fm.GetCurrentPath(); got != opened {
 		t.Fatalf("currentPath = %q, want fallback to have opened %q", got, opened)
@@ -466,8 +468,8 @@ func TestLoadDirectoryAsyncFallbackRestoresCursorForOpenedPathNotRequestedPath(t
 	}
 	fm := newParentFallbackTestFileManager(state)
 
-	ctx, loadID := fm.beginDirectoryLoad()
-	fm.loadDirectoryAsync(ctx, loadID, requested, previousPath, config.SortConfig{SortBy: "name", SortOrder: "asc"}, true)
+	handle := fm.directoryLoader.Begin()
+	fm.loadDirectoryAsync(handle, requested, previousPath, config.SortConfig{SortBy: "name", SortOrder: "asc"}, true)
 
 	if got := fm.GetCurrentPath(); got != opened {
 		t.Fatalf("currentPath = %q, want fallback to have opened %q", got, opened)
@@ -525,8 +527,8 @@ func TestLoadDirectoryAsyncRefreshRestoresNearestSurvivingCursorNeighbor(t *test
 		t.Fatalf("cursorNeighborPaths() = %#v, want %#v", neighbors, want)
 	}
 
-	ctx, loadID := fm.beginDirectoryLoad()
-	fm.loadDirectoryAsync(ctx, loadID, dir, dir, config.SortConfig{SortBy: "name", SortOrder: "asc"}, false, neighbors)
+	handle := fm.directoryLoader.Begin()
+	fm.loadDirectoryAsync(handle, dir, dir, config.SortConfig{SortBy: "name", SortOrder: "asc"}, false, neighbors)
 
 	if got := fm.browserModel().CursorPath(); got != next {
 		t.Fatalf("cursorPath = %q, want following pre-refresh neighbor %q", got, next)

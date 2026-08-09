@@ -7,6 +7,7 @@ import (
 
 	"fyne.io/fyne/v2/test"
 
+	"nmf/internal/browser"
 	"nmf/internal/jobs"
 )
 
@@ -76,8 +77,9 @@ func TestCloseWindowIsIdempotentAndInvalidatesLoad(t *testing.T) {
 	unsubscribed := 0
 	transferUnsubscribed := 0
 	fm := &FileManager{
-		runtime: runtime,
-		window:  app.NewWindow("closing"),
+		runtime:         runtime,
+		window:          app.NewWindow("closing"),
+		directoryLoader: browser.NewDirectoryLoader(),
 		jobsUnsub: func() {
 			unsubscribed++
 		},
@@ -90,7 +92,7 @@ func TestCloseWindowIsIdempotentAndInvalidatesLoad(t *testing.T) {
 	}); !installed {
 		t.Fatal("transfer subscription should install before close")
 	}
-	ctx, loadID := fm.beginDirectoryLoad()
+	handle := fm.directoryLoader.Begin()
 
 	fm.closeWindow()
 	fm.closeWindow()
@@ -104,10 +106,10 @@ func TestCloseWindowIsIdempotentAndInvalidatesLoad(t *testing.T) {
 	if transferUnsubscribed != 1 {
 		t.Fatalf("transfer unsubscribe calls = %d, want 1", transferUnsubscribed)
 	}
-	if !errors.Is(ctx.Err(), context.Canceled) {
-		t.Fatalf("load context error = %v, want context.Canceled", ctx.Err())
+	if !errors.Is(handle.Context.Err(), context.Canceled) {
+		t.Fatalf("load context error = %v, want context.Canceled", handle.Context.Err())
 	}
-	if fm.directoryLoadActive(loadID) {
+	if fm.directoryLoader.Active(handle.ID) {
 		t.Fatal("closing the window should invalidate its directory load")
 	}
 }
