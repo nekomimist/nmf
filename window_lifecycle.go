@@ -19,7 +19,7 @@ func (fm *FileManager) closeWindow() {
 	fm.endBusy()
 
 	if registry := fm.windowRegistry(); registry != nil {
-		registry.recordReopenPath(fm.currentPath)
+		registry.recordReopenPath(fm.GetCurrentPath())
 	}
 	clearFileManagerWindowHighlights(fm)
 

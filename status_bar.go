@@ -26,20 +26,21 @@ func (fm *FileManager) statusBarText() string {
 		return fm.statusNotice
 	}
 
-	markCount := countMarkedFiles(fm.selectedFiles)
-	visibleEntries := countEntriesExcludingParent(fm.files)
-	totalEntries := countEntriesExcludingParent(fm.originalFiles)
-	if totalEntries == 0 && len(fm.originalFiles) == 0 {
+	snapshot := fm.browserModel().Snapshot()
+	markCount := countMarkedFiles(snapshot.Selected)
+	visibleEntries := countEntriesExcludingParent(snapshot.Files)
+	totalEntries := countEntriesExcludingParent(snapshot.OriginalFiles)
+	if totalEntries == 0 && len(snapshot.OriginalFiles) == 0 {
 		totalEntries = visibleEntries
 	}
 
 	free := "-"
 	used := "-"
 	total := "-"
-	if fm.storageKnown {
-		free = fileinfo.FormatFileSize(int64(fm.storageInfo.Free))
-		used = fileinfo.FormatFileSize(int64(fm.storageInfo.Used))
-		total = fileinfo.FormatFileSize(int64(fm.storageInfo.Total))
+	if snapshot.StorageKnown {
+		free = fileinfo.FormatFileSize(int64(snapshot.Storage.Free))
+		used = fileinfo.FormatFileSize(int64(snapshot.Storage.Used))
+		total = fileinfo.FormatFileSize(int64(snapshot.Storage.Total))
 	}
 
 	return fmt.Sprintf("Mark: %d | Entry: %d/%d | Free: %s | Used: %s | Total: %s",

@@ -299,7 +299,7 @@ func TestReadDirectoryWithParentFallbackHonorsCancellation(t *testing.T) {
 }
 
 func TestBeginDirectoryLoadCancelsPreviousLoad(t *testing.T) {
-	fm := &FileManager{currentPath: t.TempDir()}
+	fm := &FileManager{browser: newTestBrowser(testBrowserOptions{path: t.TempDir()})}
 
 	firstCtx, firstID := fm.beginDirectoryLoad()
 	secondCtx, secondID := fm.beginDirectoryLoad()
@@ -371,7 +371,8 @@ func TestInvalidateActiveDirectoryLoadCancelsWithoutRestart(t *testing.T) {
 // (not via `go`) applies its UI-thread callback inline and deterministically.
 func newParentFallbackTestFileManager(state *config.State) *FileManager {
 	return &FileManager{
-		state: state,
+		browser: newTestBrowser(testBrowserOptions{}),
+		state:   state,
 		config: &config.Config{UI: config.UIConfig{
 			NavigationHistory: config.NavigationHistoryConfig{MaxEntries: 20},
 			CursorMemory:      config.CursorMemoryConfig{MaxEntries: 20},
@@ -381,7 +382,6 @@ func newParentFallbackTestFileManager(state *config.State) *FileManager {
 			func() fyne.CanvasObject { return widget.NewLabel("") },
 			func(widget.ListItemID, fyne.CanvasObject) {},
 		),
-		selectedFiles: map[string]bool{},
 	}
 }
 
@@ -418,8 +418,8 @@ func TestLoadDirectoryAsyncFallbackSkipsHistoryWhenReopeningSameDirectory(t *tes
 	ctx, loadID := fm.beginDirectoryLoad()
 	fm.loadDirectoryAsync(ctx, loadID, requested, opened, config.SortConfig{SortBy: "name", SortOrder: "asc"}, true)
 
-	if fm.currentPath != opened {
-		t.Fatalf("currentPath = %q, want fallback to have opened %q", fm.currentPath, opened)
+	if got := fm.GetCurrentPath(); got != opened {
+		t.Fatalf("currentPath = %q, want fallback to have opened %q", got, opened)
 	}
 	if got := state.NavigationHistory.Entries; len(got) != 0 {
 		t.Fatalf("NavigationHistory.Entries = %#v, want empty: reopening the same directory via fallback is not a navigation", got)
@@ -469,12 +469,12 @@ func TestLoadDirectoryAsyncFallbackRestoresCursorForOpenedPathNotRequestedPath(t
 	ctx, loadID := fm.beginDirectoryLoad()
 	fm.loadDirectoryAsync(ctx, loadID, requested, previousPath, config.SortConfig{SortBy: "name", SortOrder: "asc"}, true)
 
-	if fm.currentPath != opened {
-		t.Fatalf("currentPath = %q, want fallback to have opened %q", fm.currentPath, opened)
+	if got := fm.GetCurrentPath(); got != opened {
+		t.Fatalf("currentPath = %q, want fallback to have opened %q", got, opened)
 	}
 	wantCursor := filepath.Join(opened, "zzz_target.txt")
-	if fm.cursorPath != wantCursor {
-		t.Fatalf("cursorPath = %q, want %q (restored from cursor memory keyed by the opened path)", fm.cursorPath, wantCursor)
+	if got := fm.browserModel().CursorPath(); got != wantCursor {
+		t.Fatalf("cursorPath = %q, want %q (restored from cursor memory keyed by the opened path)", got, wantCursor)
 	}
 	if _, ok := state.CursorMemory.LastUsed[opened]; !ok {
 		t.Fatal("restoreCursorPosition should have refreshed LastUsed for the opened path's cursor-memory entry")
@@ -511,13 +511,13 @@ func TestLoadDirectoryAsyncRefreshRestoresNearestSurvivingCursorNeighbor(t *test
 		},
 	}
 	fm := newParentFallbackTestFileManager(state)
-	fm.currentPath = dir
-	fm.files = []fileinfo.FileInfo{
+	files := []fileinfo.FileInfo{
 		{Name: "..", Path: fileinfo.ParentPath(dir), IsDir: true},
 		{Name: "aaa_first.txt", Path: first},
 		{Name: "bbb_deleted.txt", Path: deleted, Status: fileinfo.StatusDeleted},
 		{Name: "ccc_next.txt", Path: next},
 	}
+	fm.browserModel().ReplaceDirectory(dir, files, fileinfo.StorageInfo{}, false, config.SortConfig{SortBy: "name", SortOrder: "asc"})
 	fm.SetCursorByIndex(2)
 
 	neighbors := fm.cursorNeighborPaths()
@@ -528,8 +528,8 @@ func TestLoadDirectoryAsyncRefreshRestoresNearestSurvivingCursorNeighbor(t *test
 	ctx, loadID := fm.beginDirectoryLoad()
 	fm.loadDirectoryAsync(ctx, loadID, dir, dir, config.SortConfig{SortBy: "name", SortOrder: "asc"}, false, neighbors)
 
-	if fm.cursorPath != next {
-		t.Fatalf("cursorPath = %q, want following pre-refresh neighbor %q", fm.cursorPath, next)
+	if got := fm.browserModel().CursorPath(); got != next {
+		t.Fatalf("cursorPath = %q, want following pre-refresh neighbor %q", got, next)
 	}
 }
 

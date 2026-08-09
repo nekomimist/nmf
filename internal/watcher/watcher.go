@@ -293,10 +293,9 @@ func (dw *DirectoryWatcher) detectChanges(currentFiles map[string]fileinfo.FileI
 
 // applyDataChanges applies detected changes to the file manager data. The
 // merge itself (fm.ApplyChanges) runs inside fyne.DoAndWait so changes remain
-// ordered and confined to the Fyne main goroutine, alongside all other
-// fm.files/fm.selectedFiles access; the previous background-goroutine merge
-// (calling GetFiles/RemoveFromSelections here directly) raced with UI-thread
-// code such as SetFileSelected, which mutates fm.selectedFiles without a lock.
+// ordered on the Fyne main goroutine and its widget refresh is safe. Browsing
+// data is synchronized by internal/browser.Model, but Fyne widgets still may
+// only be touched from the call thread.
 func (dw *DirectoryWatcher) applyDataChanges(runID uint64, changes *PendingChanges) {
 	if changes == nil {
 		return

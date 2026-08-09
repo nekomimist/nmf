@@ -27,7 +27,7 @@ func TestCreateClipboardTextFileCreatesFile(t *testing.T) {
 
 	dir := t.TempDir()
 	app.Clipboard().SetContent("from clipboard")
-	fm := &FileManager{currentPath: dir}
+	fm := &FileManager{browser: newTestBrowser(testBrowserOptions{path: dir})}
 
 	if !fm.CreateClipboardTextFile("clip.txt") {
 		t.Fatal("CreateClipboardTextFile returned false")
@@ -40,7 +40,8 @@ func TestCreateClipboardTextFileCreatesFile(t *testing.T) {
 	if string(data) != "from clipboard" {
 		t.Fatalf("content = %q, want clipboard text", string(data))
 	}
-	if len(fm.originalFiles) != 1 || fm.originalFiles[0].Path != path {
-		t.Fatalf("originalFiles = %#v, want created file", fm.originalFiles)
+	originalFiles := fm.browserModel().OriginalFiles()
+	if len(originalFiles) != 1 || originalFiles[0].Path != path {
+		t.Fatalf("originalFiles = %#v, want created file", originalFiles)
 	}
 }

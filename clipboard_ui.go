@@ -48,9 +48,10 @@ func (fm *FileManager) CreateClipboardTextFile(name string) bool {
 		return false
 	}
 
-	newPath, err := fileinfo.CreateTextFilePortable(fm.currentPath, name, text)
+	currentPath := fm.GetCurrentPath()
+	newPath, err := fileinfo.CreateTextFilePortable(currentPath, name, text)
 	if err != nil {
-		debugPrint("FileManager: Create text file failed parent=%s name=%s err=%v", fm.currentPath, name, err)
+		debugPrint("FileManager: Create text file failed parent=%s name=%s err=%v", currentPath, name, err)
 		fm.ShowMessageDialog("Create text file failed", err.Error())
 		return false
 	}

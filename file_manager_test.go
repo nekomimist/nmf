@@ -14,14 +14,12 @@ import (
 
 func newApplyChangesTestFileManager(files []fileinfo.FileInfo, sortCfg config.SortConfig) *FileManager {
 	return &FileManager{
-		files: files,
+		browser: newTestBrowser(testBrowserOptions{files: files, sort: sortCfg}),
 		fileList: widget.NewList(
 			func() int { return 0 },
 			func() fyne.CanvasObject { return widget.NewLabel("") },
 			func(widget.ListItemID, fyne.CanvasObject) {},
 		),
-		activeSort:    sortCfg,
-		selectedFiles: map[string]bool{},
 	}
 }
 
@@ -54,11 +52,12 @@ func TestApplyChangesModifyOnlyUnderNameSortSkipsResort(t *testing.T) {
 	fm.ApplyChanges(nil, nil, []fileinfo.FileInfo{modified})
 
 	wantOrder := []string{"gamma.txt", "alpha.txt", "beta.txt"}
-	if got := namesOf(fm.files); !reflect.DeepEqual(got, wantOrder) {
+	gotFiles := fm.GetFiles()
+	if got := namesOf(gotFiles); !reflect.DeepEqual(got, wantOrder) {
 		t.Fatalf("modify-only ApplyChanges under name sort reordered: got %v, want unchanged order %v", got, wantOrder)
 	}
-	if fm.files[1].Size != 999 {
-		t.Fatalf("modified file content not applied: %+v", fm.files[1])
+	if gotFiles[1].Size != 999 {
+		t.Fatalf("modified file content not applied: %+v", gotFiles[1])
 	}
 }
 
@@ -80,7 +79,7 @@ func TestApplyChangesAddedUnderNameSortResorts(t *testing.T) {
 	fm.ApplyChanges([]fileinfo.FileInfo{added}, nil, nil)
 
 	want := []string{"alpha.txt", "beta.txt", "delta.txt", "gamma.txt"}
-	if got := namesOf(fm.files); !reflect.DeepEqual(got, want) {
+	if got := namesOf(fm.GetFiles()); !reflect.DeepEqual(got, want) {
 		t.Fatalf("added-file ApplyChanges did not resort: got %v, want %v", got, want)
 	}
 }
@@ -102,7 +101,7 @@ func TestApplyChangesModifyOnlyUnderSizeSortResorts(t *testing.T) {
 	fm.ApplyChanges(nil, nil, []fileinfo.FileInfo{modified})
 
 	want := []string{"big.txt", "small.txt"}
-	if got := namesOf(fm.files); !reflect.DeepEqual(got, want) {
+	if got := namesOf(fm.GetFiles()); !reflect.DeepEqual(got, want) {
 		t.Fatalf("modify-only ApplyChanges under size sort did not resort: got %v, want %v", got, want)
 	}
 }
@@ -129,11 +128,12 @@ func TestApplyChangesModifyOnlyIsDirFlipResorts(t *testing.T) {
 	fm.ApplyChanges(nil, nil, []fileinfo.FileInfo{modified})
 
 	want := []string{"beta", "alpha.txt"}
-	if got := namesOf(fm.files); !reflect.DeepEqual(got, want) {
+	gotFiles := fm.GetFiles()
+	if got := namesOf(gotFiles); !reflect.DeepEqual(got, want) {
 		t.Fatalf("modify-only ApplyChanges with IsDir flip did not resort into directory group: got %v, want %v", got, want)
 	}
-	if !fm.files[0].IsDir {
-		t.Fatalf("expected flipped entry to be marked as a directory: %+v", fm.files[0])
+	if !gotFiles[0].IsDir {
+		t.Fatalf("expected flipped entry to be marked as a directory: %+v", gotFiles[0])
 	}
 }
 

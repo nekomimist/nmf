@@ -19,14 +19,14 @@ func TestUpdateFileListRowPreservesCursorAnchorAndDiagnostics(t *testing.T) {
 	cfg := config.Default()
 	theme := customtheme.NewCustomTheme(cfg, nil)
 	fm := &FileManager{
-		files: []fileinfo.FileInfo{
-			{Name: "alpha.txt", Path: "/tmp/alpha.txt"},
-			{Name: "beta.txt", Path: "/tmp/beta.txt"},
-		},
-		cursorPath:       "/tmp/alpha.txt",
-		cursorIndex:      0,
+		browser: newTestBrowser(testBrowserOptions{
+			files: []fileinfo.FileInfo{
+				{Name: "alpha.txt", Path: "/tmp/alpha.txt"},
+				{Name: "beta.txt", Path: "/tmp/beta.txt"},
+			},
+			cursorPath: "/tmp/alpha.txt",
+		}),
 		cursorRefreshSeq: 1,
-		selectedFiles:    map[string]bool{},
 		config:           cfg,
 		customTheme:      theme,
 		windowActive:     true,

@@ -11,7 +11,7 @@ import (
 )
 
 func (fm *FileManager) OpenNewWindow() {
-	fm.openWindowAtPath(fm.currentPath)
+	fm.openWindowAtPath(fm.GetCurrentPath())
 }
 
 func (fm *FileManager) ReopenClosedWindow() {
@@ -22,7 +22,7 @@ func (fm *FileManager) ReopenClosedWindow() {
 	}
 	if !ok {
 		debugPrint("FileManager: No closed window path available; opening current path")
-		path = fm.currentPath
+		path = fm.GetCurrentPath()
 	}
 	fm.openWindowAtPath(path)
 }
@@ -35,7 +35,7 @@ func (fm *FileManager) openWindowAtPath(path string) {
 
 // ShowDirectoryTreeDialog shows the directory tree navigation dialog.
 func (fm *FileManager) ShowDirectoryTreeDialog() {
-	dialog := ui.NewDirectoryTreeDialog(fm.currentPath, fm.keyManager, debugPrint)
+	dialog := ui.NewDirectoryTreeDialog(fm.GetCurrentPath(), fm.keyManager, debugPrint)
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
 		debugPrint("FileManager: tree dialog selected path=%s focused=%s", selectedPath, focusedObjectLabel(fm.window))
 		fm.LoadDirectory(selectedPath)
@@ -50,7 +50,7 @@ func (fm *FileManager) ShowNavigationHistoryDialog() {
 	openPathList, openPaths := fm.openPathsInWindows()
 
 	enhancedPaths, unpinRemovesPath := buildEnhancedNavigationHistoryPaths(
-		fm.currentPath,
+		fm.GetCurrentPath(),
 		openPathList,
 		fm.state.NavigationHistory.Pinned,
 		historyPaths,
@@ -134,7 +134,7 @@ func buildEnhancedNavigationHistoryPaths(currentPath string, openPaths []string,
 }
 
 func (fm *FileManager) PinCurrentHistoryPath() {
-	path := canonicalNavigationHistoryPath(fm.currentPath)
+	path := canonicalNavigationHistoryPath(fm.GetCurrentPath())
 	if path == "" || fm.state == nil {
 		return
 	}
@@ -179,13 +179,14 @@ func (fm *FileManager) UnpinHistoryPath(path string) bool {
 func (fm *FileManager) openPathsInWindows() ([]string, map[string]bool) {
 	openPaths := map[string]bool{}
 	for _, other := range fm.registeredWindows() {
-		if other.currentPath == "" {
+		path := other.GetCurrentPath()
+		if path == "" {
 			continue
 		}
-		openPaths[other.currentPath] = true
+		openPaths[path] = true
 	}
-	if fm != nil && fm.currentPath != "" {
-		openPaths[fm.currentPath] = true
+	if fm != nil && fm.GetCurrentPath() != "" {
+		openPaths[fm.GetCurrentPath()] = true
 	}
 	pathList := make([]string, 0, len(openPaths))
 	for path := range openPaths {

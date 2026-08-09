@@ -33,21 +33,34 @@ This document describes runtime composition, package boundaries, and core state 
 
 ## Core State Ownership
 
-`FileManager` (`file_manager.go`) owns UI/runtime state for a single window:
+`ApplicationRuntime` (`application_runtime.go`) is the application composition
+root. It owns the app-wide config and runtime state, their managers, theme and
+optional config script, the ordered window registry, navigation-history event
+hub, watcher hub, jobs services, credential/archive-password caches, and the
+interactive prompt broker. A new window receives this runtime rather than a
+list of shared dependencies.
 
-- current path + file list snapshot
-- selection and cursor state
-- key manager stack and search overlay
-- watcher instance and jobs indicator state
-- shared watcher hub reference
-- config/config manager handles, plus state/state manager handles (`state.json`)
+`internal/browser.Model` owns mutable browsing state for one window:
 
-Cross-window/global state:
+- current path, visible list, and unfiltered list
+- selection and cursor path/index cache
+- storage information, active sort, and active filter
 
-- window registry and count in `main.go`
-- `ApplicationRuntime` owns the shared `internal/watcher.WatchHub`, jobs
-  manager/controller, credential and archive-password caches, and the
-  interactive prompt broker.
+The model is widget-free and synchronized internally. Callers receive value
+snapshots or cloned slices/maps; they cannot mutate its collections directly.
+Operations that must keep several fields consistent (directory replacement,
+watcher merges, filtering, sorting, create/rename updates, and range selection)
+run behind the model's lock. Widget refreshes always happen after those
+operations return.
+
+`FileManager` (`file_manager.go`) is the per-window UI coordinator. It owns the
+Fyne window/widgets, key-handler stack and search overlay, window-local watcher
+and icon service, jobs indicator, and asynchronous busy/load/viewer lifecycle.
+It delegates browsing-state reads and mutations to `browser.Model` and uses
+`ApplicationRuntime` for app-wide services.
+
+Process integration and cross-window behavior:
+
 - The VFS provider hooks in `internal/fileinfo` are installed once when the
   runtime is created. Opening another window registers a prompt target but
   does not replace the global cache/provider.
@@ -92,6 +105,7 @@ menus and outbound file dragging, are summarized in `platform-behavior.md`.
 
 ## Package Boundaries
 
+- `internal/browser`: synchronized, widget-free per-window browsing model.
 - `internal/config`: read-only `config.json` schema/loading (`Manager`) plus
   `state.json` runtime state and its async persistence (`StateManager`).
 - `internal/configscript`: optional Starlark overlay configuration and custom command registration.
@@ -186,5 +200,9 @@ Full JSON shape and OS-specific paths are documented in
 
 ## Architecture Invariants
 
-- `main.go` remains process-entry focused; runtime orchestration belongs to `FileManager` and split modules.
+- `main.go` remains process-entry focused; app-wide orchestration belongs to
+  `ApplicationRuntime`, browsing data belongs to `internal/browser.Model`, and
+  Fyne coordination belongs to `FileManager` and its split modules.
+- UI code must not retain or mutate browser-model collections. Use model
+  operations for writes and value snapshots for rendering or background work.
 - New cross-cutting behavior must be documented under `docs/architecture/` in the same change.

@@ -41,7 +41,7 @@ func (fm *FileManager) setWindowActive(active bool) {
 	if fm.isWindowClosed() {
 		return
 	}
-	debugPrint("FileManager: window active change active=%t focused=%s path=%s", active, focusedObjectLabel(fm.window), fm.currentPath)
+	debugPrint("FileManager: window active change active=%t focused=%s path=%s", active, focusedObjectLabel(fm.window), fm.GetCurrentPath())
 	fm.windowActive = active
 	if fm.runtime != nil && fm.runtime.promptBroker != nil && fm.promptTargetID != 0 {
 		fm.runtime.promptBroker.SetActive(fm.promptTargetID, active)
@@ -69,7 +69,7 @@ func clearFileManagerWindowHighlights(fm *FileManager) {
 
 func updateOpenPathHighlights(fm *FileManager, path string, openPaths map[string]bool, setOwnerHighlighted func(bool)) {
 	open := openPaths[path]
-	ownerHighlighted := open && fm != nil && sameDirectoryPath(path, fm.currentPath)
+	ownerHighlighted := open && fm != nil && sameDirectoryPath(path, fm.GetCurrentPath())
 	if setOwnerHighlighted != nil {
 		setOwnerHighlighted(ownerHighlighted)
 	}
@@ -86,7 +86,7 @@ func highlightFileManagerWindowForPath(fm *FileManager, path string) {
 		return
 	}
 	for _, manager := range fm.registeredWindows() {
-		if manager.currentPath != path || fileManagerWindowIconified(manager) {
+		if manager.GetCurrentPath() != path || fileManagerWindowIconified(manager) {
 			continue
 		}
 		manager.setWindowHighlight(true)

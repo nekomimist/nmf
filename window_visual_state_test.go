@@ -45,7 +45,7 @@ func TestFocusFileListRestoresWindowActive(t *testing.T) {
 		window:       window,
 		fileListView: fileListView,
 		windowActive: false,
-		currentPath:  "/tmp",
+		browser:      newTestBrowser(testBrowserOptions{path: "/tmp"}),
 	}
 
 	fm.focusFileList("test")
@@ -66,13 +66,13 @@ func TestHighlightFileManagerWindowForPathHighlightsOpenWindow(t *testing.T) {
 	current := &FileManager{
 		runtime:         runtime,
 		window:          app.NewWindow("current"),
-		currentPath:     "/current",
+		browser:         newTestBrowser(testBrowserOptions{path: "/current"}),
 		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	target := &FileManager{
 		runtime:         runtime,
 		window:          app.NewWindow("target"),
-		currentPath:     "/target",
+		browser:         newTestBrowser(testBrowserOptions{path: "/target"}),
 		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	registerFileManagerWindow(current)
@@ -101,19 +101,19 @@ func TestHighlightFileManagerWindowForPathHighlightsEveryMatchingWindow(t *testi
 	first := &FileManager{
 		runtime:         runtime,
 		window:          app.NewWindow("first"),
-		currentPath:     "/shared",
+		browser:         newTestBrowser(testBrowserOptions{path: "/shared"}),
 		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	second := &FileManager{
 		runtime:         runtime,
 		window:          app.NewWindow("second"),
-		currentPath:     "/shared",
+		browser:         newTestBrowser(testBrowserOptions{path: "/shared"}),
 		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	other := &FileManager{
 		runtime:         runtime,
 		window:          app.NewWindow("other"),
-		currentPath:     "/other",
+		browser:         newTestBrowser(testBrowserOptions{path: "/other"}),
 		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	registerFileManagerWindow(first)
@@ -141,13 +141,13 @@ func TestUpdateOpenPathHighlightsMarksDialogOwnerAndClears(t *testing.T) {
 	current := &FileManager{
 		runtime:         runtime,
 		window:          app.NewWindow("current"),
-		currentPath:     "/current",
+		browser:         newTestBrowser(testBrowserOptions{path: "/current"}),
 		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	target := &FileManager{
 		runtime:         runtime,
 		window:          app.NewWindow("target"),
-		currentPath:     "/target",
+		browser:         newTestBrowser(testBrowserOptions{path: "/target"}),
 		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	registerFileManagerWindow(current)
@@ -198,13 +198,13 @@ func TestCloseWindowClearsOtherWindowHighlight(t *testing.T) {
 	current := &FileManager{
 		runtime:         runtime,
 		window:          app.NewWindow("current"),
-		currentPath:     "/current",
+		browser:         newTestBrowser(testBrowserOptions{path: "/current"}),
 		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	target := &FileManager{
 		runtime:         runtime,
 		window:          app.NewWindow("target"),
-		currentPath:     "/target",
+		browser:         newTestBrowser(testBrowserOptions{path: "/target"}),
 		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	registerFileManagerWindow(current)

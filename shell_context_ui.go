@@ -72,7 +72,7 @@ func (fm *FileManager) ShowExplorerContextMenu() {
 
 func (fm *FileManager) cursorMenuClientPosition() (int, int, bool) {
 	anchor := fm.cursorAnchor
-	if anchor.object == nil || anchor.path == "" || anchor.path != fm.cursorPath {
+	if anchor.object == nil || anchor.path == "" || anchor.path != fm.browserModel().CursorPath() {
 		return 0, 0, false
 	}
 
@@ -93,13 +93,13 @@ func (fm *FileManager) cursorMenuClientPosition() (int, int, bool) {
 }
 
 func (fm *FileManager) refreshDirectoryAfterShellMenu() {
-	path := fm.currentPath
+	path := fm.GetCurrentPath()
 	time.AfterFunc(10*time.Millisecond, func() {
 		fyne.Do(func() {
 			if fm.isWindowClosed() {
 				return
 			}
-			if fm.currentPath != path {
+			if fm.GetCurrentPath() != path {
 				return
 			}
 			fm.SaveCursorPosition(path)

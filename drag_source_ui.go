@@ -82,11 +82,11 @@ func (fm *FileManager) collectDragSourcePaths(dragged fileinfo.FileInfo) ([]stri
 
 func (fm *FileManager) selectedDragCandidates() []fileinfo.FileInfo {
 	selected := make([]fileinfo.FileInfo, 0)
-	for p, ok := range fm.selectedFiles {
+	for p, ok := range fm.GetSelectedFiles() {
 		if !ok {
 			continue
 		}
-		for _, fi := range fm.files {
+		for _, fi := range fm.GetFiles() {
 			if fi.Path == p {
 				selected = append(selected, fi)
 				break

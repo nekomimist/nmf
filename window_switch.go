@@ -41,11 +41,11 @@ func (fm *FileManager) focusNeighborWindow(direction windowSwitchDirection) {
 	}
 
 	if windowFocusUnsupported(target.window) {
-		debugPrint("FileManager: window switch target selected direction=%d target=%s focus=unsupported-wayland", direction, target.currentPath)
+		debugPrint("FileManager: window switch target selected direction=%d target=%s focus=unsupported-wayland", direction, target.GetCurrentPath())
 		return
 	}
 
-	debugPrint("FileManager: window switch direction=%d target=%s", direction, target.currentPath)
+	debugPrint("FileManager: window switch direction=%d target=%s", direction, target.GetCurrentPath())
 	restoreWindowBeforeFocus(target.window)
 	target.window.Show()
 	target.window.RequestFocus()

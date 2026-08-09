@@ -11,12 +11,12 @@ import (
 // ShowRenameDialog shows a direct single-item rename dialog.
 func (fm *FileManager) ShowRenameDialog() {
 	idx := fm.GetCurrentCursorIndex()
-	if idx < 0 || idx >= len(fm.files) {
+	target, ok := fm.FileAt(idx)
+	if !ok {
 		debugPrint("FileManager: No valid target for rename")
 		return
 	}
 
-	target := fm.files[idx]
 	if target.Name == ".." || target.Status == fileinfo.StatusDeleted {
 		debugPrint("FileManager: Invalid rename target: %s", target.Name)
 		return
@@ -77,39 +77,11 @@ func (fm *FileManager) renameCurrentFile(target fileinfo.FileInfo, newName strin
 }
 
 func (fm *FileManager) applyRenameToList(oldPath, newName, newPath string) {
-	fm.mu.Lock()
-	updated := false
-	for i := range fm.files {
-		if fm.files[i].Path == oldPath {
-			fm.files[i].Name = newName
-			fm.files[i].Path = newPath
-			fm.files[i].Status = fileinfo.StatusNormal
-			fm.cursorPath = newPath
-			updated = true
-			break
-		}
-	}
-	for i := range fm.originalFiles {
-		if fm.originalFiles[i].Path == oldPath {
-			fm.originalFiles[i].Name = newName
-			fm.originalFiles[i].Path = newPath
-			fm.originalFiles[i].Status = fileinfo.StatusNormal
-			break
-		}
-	}
-
-	if fm.selectedFiles[oldPath] {
-		delete(fm.selectedFiles, oldPath)
-		fm.selectedFiles[newPath] = true
-	}
-
-	if !updated {
-		fm.mu.Unlock()
+	if !fm.browserModel().Rename(oldPath, newName, newPath) {
 		return
 	}
 
 	fm.RefreshCursor()
-	fm.mu.Unlock()
 
 	if fm.dirWatcher != nil {
 		fm.dirWatcher.RefreshSnapshot()

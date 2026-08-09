@@ -48,7 +48,7 @@ func TestBuildEnhancedNavigationHistoryPathsDeduplicatesEarlierSources(t *testin
 }
 
 func TestOpenPathsInWindowsIncludesCurrentWindow(t *testing.T) {
-	fm := &FileManager{currentPath: "/current"}
+	fm := &FileManager{browser: newTestBrowser(testBrowserOptions{path: "/current"})}
 
 	pathList, openPaths := fm.openPathsInWindows()
 

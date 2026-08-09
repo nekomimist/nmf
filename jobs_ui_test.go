@@ -52,8 +52,8 @@ func TestJobsBlinkDropsTicksAfterWindowClose(t *testing.T) {
 
 func TestBuildDestinationCandidatesMarksCurrentWindowPathOpen(t *testing.T) {
 	fm := &FileManager{
-		currentPath: "/current",
-		state:       &config.State{},
+		browser: newTestBrowser(testBrowserOptions{path: "/current"}),
+		state:   &config.State{},
 	}
 
 	candidates := fm.buildDestinationCandidates()

@@ -14,9 +14,9 @@ func TestCreateDirectoryAddsNewPathToNavigationHistory(t *testing.T) {
 	}
 	st := &config.State{}
 	fm := &FileManager{
-		currentPath: tmpDir,
-		config:      cfg,
-		state:       st,
+		browser: newTestBrowser(testBrowserOptions{path: tmpDir}),
+		config:  cfg,
+		state:   st,
 	}
 
 	if !fm.CreateDirectory("created") {

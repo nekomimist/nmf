@@ -19,9 +19,10 @@ func (fm *FileManager) ShowCreateDirectoryDialog() {
 
 // CreateDirectory creates a directory under the current path and selects it.
 func (fm *FileManager) CreateDirectory(name string) bool {
-	newPath, err := fileinfo.CreateDirectoryPortable(fm.currentPath, name)
+	currentPath := fm.GetCurrentPath()
+	newPath, err := fileinfo.CreateDirectoryPortable(currentPath, name)
 	if err != nil {
-		debugPrint("FileManager: Create directory failed parent=%s name=%s err=%v", fm.currentPath, name, err)
+		debugPrint("FileManager: Create directory failed parent=%s name=%s err=%v", currentPath, name, err)
 		fm.ShowMessageDialog("Create directory failed", err.Error())
 		return false
 	}
@@ -38,7 +39,7 @@ func (fm *FileManager) applyCreatedPathToList(path string, isDir bool) {
 	info, err := fileinfo.StatPortable(path)
 	if err != nil {
 		debugPrint("FileManager: Created path stat failed path=%s err=%v", path, err)
-		fm.LoadDirectory(fm.currentPath)
+		fm.LoadDirectory(fm.GetCurrentPath())
 		return
 	}
 
@@ -56,11 +57,10 @@ func (fm *FileManager) applyCreatedPathToList(path string, isDir bool) {
 		created.FileType = fileinfo.FileTypeDirectory
 	}
 
-	fm.mu.Lock()
-	fm.originalFiles = upsertFileInfo(fm.originalFiles, created)
-	fm.sortFilesWithConfig(fm.CurrentSort())
-	fm.cursorPath = path
-	if fm.GetCurrentCursorIndex() < 0 && len(fm.files) > 0 {
+	if err := fm.browserModel().Upsert(created); err != nil {
+		debugPrint("FileManager: Filter error after create: %v", err)
+	}
+	if fm.GetCurrentCursorIndex() < 0 && fm.FileCount() > 0 {
 		fm.SetCursorByIndex(0)
 	}
 	if fm.fileList != nil {
@@ -70,19 +70,8 @@ func (fm *FileManager) applyCreatedPathToList(path string, isDir bool) {
 		fm.RefreshCursor()
 	}
 	fm.updateStatusBar()
-	fm.mu.Unlock()
 
 	if fm.dirWatcher != nil {
 		fm.dirWatcher.RefreshSnapshot()
 	}
-}
-
-func upsertFileInfo(files []fileinfo.FileInfo, created fileinfo.FileInfo) []fileinfo.FileInfo {
-	for i := range files {
-		if files[i].Path == created.Path {
-			files[i] = created
-			return files
-		}
-	}
-	return append(files, created)
 }

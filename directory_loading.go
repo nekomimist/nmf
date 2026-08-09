@@ -19,11 +19,12 @@ import (
 // SaveCursorPosition saves the current cursor position for the given directory.
 func (fm *FileManager) SaveCursorPosition(dirPath string) {
 	currentIdx := fm.GetCurrentCursorIndex()
-	if currentIdx < 0 || currentIdx >= len(fm.files) {
+	file, ok := fm.FileAt(currentIdx)
+	if !ok {
 		return
 	}
 
-	fileName := fm.files[currentIdx].Name
+	fileName := file.Name
 	cursorMemory := &fm.state.CursorMemory
 	maxEntries := fm.config.UI.CursorMemory.MaxEntries
 
@@ -93,7 +94,7 @@ func (fm *FileManager) navigateToPath(inputPath string) bool {
 
 	// Handle empty path - do nothing
 	if path == "" {
-		fm.setPathDisplay(fm.currentPath)
+		fm.setPathDisplay(fm.GetCurrentPath())
 		return false
 	}
 
@@ -102,7 +103,7 @@ func (fm *FileManager) navigateToPath(inputPath string) bool {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			debugPrint("FileManager: Error getting home directory: %v", err)
-			fm.setPathDisplay(fm.currentPath)
+			fm.setPathDisplay(fm.GetCurrentPath())
 			return false
 		}
 		path = strings.Replace(path, "~", home, 1)
@@ -111,7 +112,7 @@ func (fm *FileManager) navigateToPath(inputPath string) bool {
 	resolvedPath, parsed, err := fileinfo.CanonicalDisplayPath(path)
 	if err != nil {
 		debugPrint("FileManager: Invalid path '%s': %v", inputPath, err)
-		fm.setPathDisplay(fm.currentPath)
+		fm.setPathDisplay(fm.GetCurrentPath())
 		return false
 	}
 
@@ -139,15 +140,16 @@ func (fm *FileManager) FocusFileList() {
 }
 
 func (fm *FileManager) focusFileList(reason string) {
+	currentPath := fm.GetCurrentPath()
 	if fm.fileListView != nil {
 		before := focusedObjectLabel(fm.window)
-		debugPrint("FileManager: FocusFileList start reason=%s focused=%s active=%t busy=%t path=%s", reason, before, fm.windowActive, fm.busyActive, fm.currentPath)
+		debugPrint("FileManager: FocusFileList start reason=%s focused=%s active=%t busy=%t path=%s", reason, before, fm.windowActive, fm.busyActive, currentPath)
 		fm.window.Canvas().Focus(fm.fileListView)
 		fm.setWindowActive(true)
-		debugPrint("FileManager: FocusFileList done reason=%s focused=%s active=%t busy=%t path=%s", reason, focusedObjectLabel(fm.window), fm.windowActive, fm.busyActive, fm.currentPath)
+		debugPrint("FileManager: FocusFileList done reason=%s focused=%s active=%t busy=%t path=%s", reason, focusedObjectLabel(fm.window), fm.windowActive, fm.busyActive, currentPath)
 		return
 	}
-	debugPrint("FileManager: FocusFileList skipped reason=%s fileListView=nil path=%s", reason, fm.currentPath)
+	debugPrint("FileManager: FocusFileList skipped reason=%s fileListView=nil path=%s", reason, currentPath)
 }
 
 // LoadDirectory opens path without recovering from a missing destination. Most
@@ -167,6 +169,7 @@ func (fm *FileManager) loadDirectoryWithParentFallback(path string) {
 func (fm *FileManager) loadDirectory(path string, allowParentFallback bool) {
 	path = canonicalNavigationHistoryPath(path)
 	fm.clearStatusNotice()
+	currentPath := fm.GetCurrentPath()
 
 	// A refresh replaces the list wholesale. Keep the surrounding entries as
 	// a transient fallback before starting the asynchronous read, so a cursor
@@ -174,14 +177,14 @@ func (fm *FileManager) loadDirectory(path string, allowParentFallback bool) {
 	// unexpectedly land on the first row. Prefer the following row on a tie:
 	// it occupies the deleted row's former screen position after the refresh.
 	var refreshCursorNeighbors []string
-	if fm.currentPath != "" && fm.currentPath == path {
+	if currentPath != "" && currentPath == path {
 		refreshCursorNeighbors = fm.cursorNeighborPaths()
 	}
 
 	// Save current cursor position before changing directory
 	// Skip saving if already saved manually (e.g., during refresh)
-	if fm.currentPath != "" && fm.currentPath != path {
-		fm.SaveCursorPosition(fm.currentPath)
+	if currentPath != "" && currentPath != path {
+		fm.SaveCursorPosition(currentPath)
 	}
 
 	// Stop current directory watcher if running
@@ -190,7 +193,7 @@ func (fm *FileManager) loadDirectory(path string, allowParentFallback bool) {
 	}
 
 	// Store the previous directory for parent navigation logic
-	previousPath := fm.currentPath
+	previousPath := currentPath
 	debugPrint("FileManager: LoadDirectory start path=%s previous=%s fallback=%t focused=%s active=%t", path, previousPath, allowParentFallback, focusedObjectLabel(fm.window), fm.windowActive)
 	ctx, loadID := fm.beginDirectoryLoad()
 
@@ -243,7 +246,7 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 			fm.ShowMessageDialog("フォルダを開けませんでした", err.Error())
 			// Revert to previous path on error and restart watcher
 			if previousPath != "" {
-				fm.currentPath = previousPath
+				fm.browserModel().SetPath(previousPath)
 				fm.setPathDisplay(previousPath)
 				if fm.dirWatcher != nil && fm.shouldWatchPath(previousPath) {
 					fm.dirWatcher.SetPollInterval(fm.pollIntervalForPath(previousPath))
@@ -301,9 +304,6 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 		return
 	}
 
-	originalFiles := make([]fileinfo.FileInfo, len(files))
-	copy(originalFiles, files)
-
 	// Apply UI updates on main thread
 	fyne.Do(func() {
 		if !fm.finishDirectoryLoad(loadID) {
@@ -319,24 +319,19 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 			fm.recordNavigationHistory(previousPath)
 		}
 
-		fm.currentPath = path
+		fm.browserModel().ReplaceDirectory(path, files, storage, storageErr == nil, sortCfg)
 		fm.setPathDisplay(path)
-		fm.originalFiles = originalFiles
-		fm.files = fm.filesForCurrentFilter(files)
-		fm.storageInfo = storage
-		fm.storageKnown = storageErr == nil
-		fm.activeSort = sortCfg
+		loadedFiles := fm.GetFiles()
 
-		// files/originalFiles arrive pre-sorted from the background goroutine
-		// above; no sort call needed here.
+		// Files arrive pre-sorted from the background goroutine above; no sort
+		// call is needed here.
 
-		// Clear selections and restore cursor
-		fm.selectedFiles = make(map[string]bool)
-		if len(fm.files) > 0 {
+		// Restore cursor for the newly replaced listing.
+		if len(loadedFiles) > 0 {
 			if isParentDirectoryNavigation(previousPath, path) {
 				dirName := fileinfo.BaseName(previousPath)
 				cursorSet := false
-				for i, f := range fm.files {
+				for i, f := range loadedFiles {
 					if f.Name == dirName {
 						fm.SetCursorByIndex(i)
 						cursorSet = true
@@ -350,7 +345,7 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 				saved := fm.restoreCursorPosition(path)
 				cursorSet := false
 				if saved != "" {
-					for i, f := range fm.files {
+					for i, f := range loadedFiles {
 						if f.Name == saved {
 							fm.SetCursorByIndex(i)
 							cursorSet = true
@@ -360,7 +355,7 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 				}
 				if !cursorSet {
 					for _, neighborPath := range cursorNeighbors {
-						for i, f := range fm.files {
+						for i, f := range loadedFiles {
 							if f.Path != neighborPath {
 								continue
 							}
@@ -379,7 +374,7 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 				}
 			}
 		} else {
-			fm.cursorPath = ""
+			fm.browserModel().SetCursorPath("")
 		}
 		// Content was replaced: refresh before the cursor scroll (see
 		// refreshListAndCursor) and re-query the list length even when empty.
@@ -400,7 +395,7 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 			fm.dirWatcher.Start()
 		}
 		fm.focusFileList("directory-load-success")
-		debugPrint("FileManager: LoadDirectory done path=%s previous=%s files=%d cursor=%s index=%d focused=%s active=%t", path, previousPath, len(fm.files), fm.cursorPath, fm.GetCurrentCursorIndex(), focusedObjectLabel(fm.window), fm.windowActive)
+		debugPrint("FileManager: LoadDirectory done path=%s previous=%s files=%d cursor=%s index=%d focused=%s active=%t", path, previousPath, fm.FileCount(), fm.browserModel().CursorPath(), fm.GetCurrentCursorIndex(), focusedObjectLabel(fm.window), fm.windowActive)
 	})
 }
 
@@ -419,13 +414,14 @@ func (fm *FileManager) cursorNeighborPaths() []string {
 		return nil
 	}
 
-	neighbors := make([]string, 0, len(fm.files)-1)
-	for distance := 1; distance < len(fm.files); distance++ {
+	files := fm.GetFiles()
+	neighbors := make([]string, 0, len(files)-1)
+	for distance := 1; distance < len(files); distance++ {
 		for _, index := range []int{cursorIndex + distance, cursorIndex - distance} {
-			if index < 0 || index >= len(fm.files) {
+			if index < 0 || index >= len(files) {
 				continue
 			}
-			file := fm.files[index]
+			file := files[index]
 			if file.Name == ".." || file.Status == fileinfo.StatusDeleted {
 				continue
 			}
@@ -526,7 +522,7 @@ func (fm *FileManager) ignoreCanceledDirectoryLoad(ctx context.Context, loadID u
 		return true
 	}
 	if !fm.directoryLoadActive(loadID) {
-		debugPrint("FileManager: LoadDirectory stale id=%d path=%s", loadID, fm.currentPath)
+		debugPrint("FileManager: LoadDirectory stale id=%d path=%s", loadID, fm.GetCurrentPath())
 		return true
 	}
 	return false
@@ -548,12 +544,13 @@ func (fm *FileManager) cancelDirectoryLoad(loadID uint64) {
 		cancel()
 	}
 	fm.endBusy()
-	if fm.dirWatcher != nil && fm.shouldWatchPath(fm.currentPath) {
-		fm.dirWatcher.SetPollInterval(fm.pollIntervalForPath(fm.currentPath))
+	currentPath := fm.GetCurrentPath()
+	if fm.dirWatcher != nil && fm.shouldWatchPath(currentPath) {
+		fm.dirWatcher.SetPollInterval(fm.pollIntervalForPath(currentPath))
 		fm.dirWatcher.Start()
 	}
 	fm.focusFileList("directory-load-cancel")
-	debugPrint("FileManager: LoadDirectory cancel id=%d path=%s", loadID, fm.currentPath)
+	debugPrint("FileManager: LoadDirectory cancel id=%d path=%s", loadID, currentPath)
 }
 
 func (fm *FileManager) cancelActiveDirectoryLoad() {
@@ -660,7 +657,7 @@ func (fm *FileManager) endBusy() {
 	if fm.keyManager != nil && busyToken != 0 {
 		fm.keyManager.RemoveHandler(busyToken)
 	}
-	debugPrint("FileManager: busy end focused=%s active=%t path=%s", focusedObjectLabel(fm.window), fm.windowActive, fm.currentPath)
+	debugPrint("FileManager: busy end focused=%s active=%t path=%s", focusedObjectLabel(fm.window), fm.windowActive, fm.GetCurrentPath())
 }
 
 // pollIntervalForPath returns the recommended watcher polling interval for a path.

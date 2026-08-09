@@ -7,7 +7,7 @@ import (
 )
 
 func TestCursorMenuClientPositionWithoutAnchorFallsBack(t *testing.T) {
-	fm := &FileManager{cursorPath: "/tmp/a"}
+	fm := &FileManager{browser: newTestBrowser(testBrowserOptions{cursorPath: "/tmp/a"})}
 
 	_, _, ok := fm.cursorMenuClientPosition()
 
@@ -18,7 +18,7 @@ func TestCursorMenuClientPositionWithoutAnchorFallsBack(t *testing.T) {
 
 func TestCursorMenuClientPositionWithStaleAnchorFallsBack(t *testing.T) {
 	fm := &FileManager{
-		cursorPath:   "/tmp/a",
+		browser:      newTestBrowser(testBrowserOptions{cursorPath: "/tmp/a"}),
 		cursorAnchor: cursorRowAnchor{path: "/tmp/b", object: canvas.NewRectangle(nil)},
 	}
 

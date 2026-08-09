@@ -15,19 +15,23 @@ func TestGetAllSelectedFilesUsesAllOpenWindowsInOrder(t *testing.T) {
 	runtime := newFileManagerWindowTestRuntime(t)
 
 	left := &FileManager{
-		runtime:       runtime,
-		window:        app.NewWindow("left"),
-		files:         []fileinfo.FileInfo{{Name: "a.txt", Path: "/left/a.txt"}, {Name: "skip.txt", Path: "/left/skip.txt"}},
-		selectedFiles: map[string]bool{"/left/a.txt": true, "/left/skip.txt": false},
+		runtime: runtime,
+		window:  app.NewWindow("left"),
+		browser: newTestBrowser(testBrowserOptions{
+			files:    []fileinfo.FileInfo{{Name: "a.txt", Path: "/left/a.txt"}, {Name: "skip.txt", Path: "/left/skip.txt"}},
+			selected: map[string]bool{"/left/a.txt": true, "/left/skip.txt": false},
+		}),
 	}
 	right := &FileManager{
 		runtime: runtime,
 		window:  app.NewWindow("right"),
-		files: []fileinfo.FileInfo{
-			{Name: "deleted.txt", Path: "/right/deleted.txt", Status: fileinfo.StatusDeleted},
-			{Name: "b.txt", Path: "/right/b.txt"},
-		},
-		selectedFiles: map[string]bool{"/right/deleted.txt": true, "/right/b.txt": true},
+		browser: newTestBrowser(testBrowserOptions{
+			files: []fileinfo.FileInfo{
+				{Name: "deleted.txt", Path: "/right/deleted.txt", Status: fileinfo.StatusDeleted},
+				{Name: "b.txt", Path: "/right/b.txt"},
+			},
+			selected: map[string]bool{"/right/deleted.txt": true, "/right/b.txt": true},
+		}),
 	}
 
 	registerFileManagerWindow(left)

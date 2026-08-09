@@ -15,7 +15,7 @@ import (
 
 func (fm *FileManager) setupUI() {
 	// Path display. Editing is handled through the line edit dialog.
-	fm.pathDisplay = widget.NewLabel(fm.currentPath)
+	fm.pathDisplay = widget.NewLabel(fm.GetCurrentPath())
 	fm.pathDisplay.TextStyle = fyne.TextStyle{Monospace: true}
 	fm.pathDisplay.Truncation = fyne.TextTruncateClip
 	fm.statusLabel = widget.NewLabel("")
@@ -29,7 +29,7 @@ func (fm *FileManager) setupUI() {
 	// Create file list
 	fm.fileListItemHeight = fm.newFileListRow().MinSize().Height
 	fm.fileList = widget.NewList(
-		func() int { return len(fm.files) },
+		fm.FileCount,
 		fm.newFileListRow,
 		fm.updateFileListRow,
 	)
@@ -50,7 +50,7 @@ func (fm *FileManager) setupUI() {
 	// Handle cursor movement (both mouse and keyboard)
 	fm.fileList.OnSelected = func(id widget.ListItemID) {
 		debugPrint("FileManager: List selected id=%d active=%t focused=%s path=%q",
-			id, fm.windowActive, focusedObjectLabel(fm.window), fm.currentPath)
+			id, fm.windowActive, focusedObjectLabel(fm.window), fm.GetCurrentPath())
 		fm.SetCursorByIndex(id)
 		// Clear list selection to avoid double cursor effect when switching back to keyboard
 		fm.fileList.UnselectAll()
@@ -62,8 +62,9 @@ func (fm *FileManager) setupUI() {
 	// Create toolbar (left side)
 	toolbarItems := []widget.ToolbarItem{
 		widget.NewToolbarAction(theme.NavigateBackIcon(), func() {
-			parent := fileinfo.ParentPath(fm.currentPath)
-			if parent != fm.currentPath {
+			currentPath := fm.GetCurrentPath()
+			parent := fileinfo.ParentPath(currentPath)
+			if parent != currentPath {
 				fm.LoadDirectory(parent)
 			}
 			fm.FocusFileList()
@@ -74,7 +75,7 @@ func (fm *FileManager) setupUI() {
 			fm.FocusFileList()
 		}),
 		widget.NewToolbarAction(theme.ViewRefreshIcon(), func() {
-			fm.LoadDirectory(fm.currentPath)
+			fm.LoadDirectory(fm.GetCurrentPath())
 			fm.FocusFileList()
 		}),
 		widget.NewToolbarAction(theme.FolderIcon(), func() {

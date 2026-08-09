@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 
+	"nmf/internal/browser"
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 	"nmf/internal/search"
@@ -22,16 +23,12 @@ func NewFileManager(runtime *ApplicationRuntime, path string) *FileManager {
 	customTheme := runtime.customTheme
 	fm := &FileManager{
 		window:            runtime.app.NewWindow("File Manager"),
-		currentPath:       path,
-		cursorPath:        "",
-		cursorIndex:       -1,
-		selectedFiles:     make(map[string]bool),
+		browser:           browser.New(path, state.EffectiveSort(config.UI.Sort)),
 		config:            config,
 		state:             state,
 		stateManager:      runtime.stateManager,
 		initialWindowSize: fyne.NewSize(float32(config.Window.Width), float32(config.Window.Height)),
 		windowActive:      true,
-		activeSort:        state.EffectiveSort(config.UI.Sort),
 		customTheme:       customTheme,
 		keyManager:        keymanager.NewKeyManager(debugPrint),
 		searchMatchers:    search.NewProvider(debugPrint),

@@ -14,34 +14,31 @@ import (
 func (fm *FileManager) ShowCompareDialog() {
 	sourceFiles := fm.compareSourceFiles()
 	if len(sourceFiles) == 0 {
-		debugPrint("FileManager: No source files available for compare path=%s", fm.currentPath)
+		debugPrint("FileManager: No source files available for compare path=%s", fm.GetCurrentPath())
 		fm.ShowMessageDialog("Compare Directories", "There are no files to compare in the current directory.")
 		return
 	}
 
 	dest := fm.buildDestinationCandidates()
-	dlg := ui.NewCompareDialog(fm.currentPath, len(sourceFiles), dest, fm.keyManager, debugPrint, fm.searchMatchers)
+	dlg := ui.NewCompareDialog(fm.GetCurrentPath(), len(sourceFiles), dest, fm.keyManager, debugPrint, fm.searchMatchers)
 	openDest := destinationCandidateOpenMap(dest)
 	dlg.SetOnSelectedPathChanged(func(path string) {
 		updateOpenPathHighlights(fm, path, openDest, dlg.SetOwnerHighlighted)
 	})
-	sourcePath := fm.currentPath
+	sourcePath := fm.GetCurrentPath()
 	dlg.ShowDialog(fm.window, func(result ui.CompareResult) {
 		fm.runCompare(sourcePath, sourceFiles, result)
 	})
 }
 
 func (fm *FileManager) compareSourceFiles() []fileinfo.FileInfo {
-	if fm.currentFilter != nil {
+	if fm.browserModel().Filter() != nil {
 		fm.ClearFilter()
 	}
 
-	fm.mu.RLock()
-	defer fm.mu.RUnlock()
-
-	source := fm.originalFiles
+	source := fm.browserModel().OriginalFiles()
 	if len(source) == 0 {
-		source = fm.files
+		source = fm.GetFiles()
 	}
 	files := make([]fileinfo.FileInfo, 0, len(source))
 	for _, fi := range source {
@@ -92,13 +89,7 @@ func (fm *FileManager) runCompare(sourcePath string, sourceFiles []fileinfo.File
 }
 
 func (fm *FileManager) applyCompareMarks(matched []fileinfo.FileInfo) int {
-	fm.mu.Lock()
-	defer fm.mu.Unlock()
-
-	fm.selectedFiles = make(map[string]bool, len(matched))
-	for _, fi := range matched {
-		fm.selectedFiles[fi.Path] = true
-	}
+	fm.browserModel().ReplaceSelection(matched)
 	if fm.fileList != nil {
 		fm.fileList.Refresh()
 	}

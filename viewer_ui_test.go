@@ -129,8 +129,9 @@ func TestFileViewerSessionToggleMarkAdvancesAndRefreshesPreviewState(t *testing.
 
 	session.toggleMark()
 
-	if !fm.selectedFiles[files[0].Path] {
-		t.Fatalf("selected files = %+v, want note.txt marked", fm.selectedFiles)
+	selected := fm.GetSelectedFiles()
+	if !selected[files[0].Path] {
+		t.Fatalf("selected files = %+v, want note.txt marked", selected)
 	}
 	if got := fm.GetCurrentCursorIndex(); got != 1 {
 		t.Fatalf("cursor index = %d, want 1 after mark", got)
@@ -156,8 +157,9 @@ func TestFileViewerSessionSkipsMarkForParentAndDeleted(t *testing.T) {
 		session.toggleMark()
 	}
 
-	if len(fm.selectedFiles) != 0 {
-		t.Fatalf("selected files = %+v, want none", fm.selectedFiles)
+	selected := fm.GetSelectedFiles()
+	if len(selected) != 0 {
+		t.Fatalf("selected files = %+v, want none", selected)
 	}
 }
 
@@ -177,7 +179,11 @@ func TestFileViewerSessionRejectsStaleTargetPath(t *testing.T) {
 	if !session.currentPathMatches(files[1].Path) {
 		t.Fatal("current preview path did not match the current cursor")
 	}
-	fm.files[1].Status = fileinfo.StatusDeleted
+	updated := fm.GetFiles()
+	updated[1].Status = fileinfo.StatusDeleted
+	if err := fm.browserModel().ReplaceFiles(updated, false); err != nil {
+		t.Fatalf("ReplaceFiles returned error: %v", err)
+	}
 	if session.currentPathMatches(files[1].Path) {
 		t.Fatal("deleted current entry should reject an in-flight preview")
 	}
@@ -203,12 +209,10 @@ func TestFileViewerSessionCloseCancelsActiveLoad(t *testing.T) {
 
 func newFileViewerSessionTestManager(files []fileinfo.FileInfo) *FileManager {
 	fm := &FileManager{
-		files:         files,
-		originalFiles: files,
-		selectedFiles: map[string]bool{},
+		browser: newTestBrowser(testBrowserOptions{files: files}),
 	}
 	fm.fileList = widget.NewList(
-		func() int { return len(fm.files) },
+		fm.FileCount,
 		func() fyne.CanvasObject { return widget.NewLabel("") },
 		func(widget.ListItemID, fyne.CanvasObject) {},
 	)

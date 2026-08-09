@@ -39,10 +39,11 @@ Concurrency model:
   - `RemoveFromSelections`
   - `ApplyChanges`
 - Detected changes are merged via `ApplyChanges` only, and the watcher invokes
-  it inside `fyne.DoAndWait`: `fm.files`/`fm.selectedFiles` are otherwise accessed
-  without locks by UI-thread code, so the merge must stay confined to the Fyne
-  main goroutine. Do not call `GetFiles`/`RemoveFromSelections` from watcher
-  background goroutines.
+  it inside `fyne.DoAndWait`. Browsing data is synchronized by
+  `internal/browser.Model`, but `FileManager.ApplyChanges` also refreshes Fyne
+  widgets, so the complete operation must stay on the Fyne main goroutine.
+  Watcher background work may read through snapshot-returning interface methods
+  such as `GetFiles`; it must not touch widgets or retain mutable model state.
 - The watcher run generation is checked again inside the UI callback. A
   callback queued by a stopped/restarted run cannot modify the new run's list.
 - `ApplyChanges` skips the re-sort for modify-only change sets under
