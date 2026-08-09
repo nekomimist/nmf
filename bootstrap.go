@@ -69,7 +69,20 @@ func NewFileManager(runtime *ApplicationRuntime, path string) *FileManager {
 	if runtime.configScript != nil {
 		scriptCommands = runtime.configScript.Commands
 	}
-	mainHandler := keymanager.NewMainScreenKeyHandlerWithCommands(fm, debugPrint, config.UI.KeyBindings, scriptCommands)
+	mainDependencies := keymanager.MainScreenDependencies{
+		CursorList:         fm,
+		Selection:          fm,
+		Directory:          fm,
+		FileOpener:         fm,
+		Windows:            fm,
+		History:            fm,
+		Filters:            fm,
+		Application:        fm,
+		Commands:           fm,
+		RunExternalCommand: fm.RunExternalCommand,
+		SetClipboard:       fm.SetClipboardText,
+	}
+	mainHandler := keymanager.NewMainScreenKeyHandlerWithCommands(mainDependencies, debugPrint, config.UI.KeyBindings, scriptCommands)
 	mainHandler.SetTransitionGate(fm.keyManager.BeginOwnerTransition)
 	mainHandler.SetActions(keymanager.DialogActions{
 		ShowDirectoryTreeDialog:     fm.ShowDirectoryTreeDialog,

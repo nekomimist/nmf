@@ -1525,7 +1525,7 @@ func (rt *Runtime) ensureMenu(name string) *Menu {
 	return menu
 }
 
-func commandContextTargets(fm keymanager.FileManagerInterface) (dir string, file string, name string, files []string) {
+func commandContextTargets(fm keymanager.CommandContextReader) (dir string, file string, name string, files []string) {
 	dir = fileinfo.CommandArgumentPath(fm.GetCurrentPath())
 	targets := commandContextTargetPaths(fm)
 	files = make([]string, len(targets))
@@ -1539,7 +1539,7 @@ func commandContextTargets(fm keymanager.FileManagerInterface) (dir string, file
 	return dir, file, name, files
 }
 
-func commandContextTargetPaths(fm keymanager.FileManagerInterface) []fileinfo.FileInfo {
+func commandContextTargetPaths(fm keymanager.CommandContextReader) []fileinfo.FileInfo {
 	files := fm.GetFiles()
 	selected := fm.GetSelectedFiles()
 	targets := make([]fileinfo.FileInfo, 0, len(selected))
@@ -1560,7 +1560,7 @@ func commandContextTargetPaths(fm keymanager.FileManagerInterface) []fileinfo.Fi
 	return nil
 }
 
-func commandContextAllSelectedFiles(fm keymanager.FileManagerInterface) []string {
+func commandContextAllSelectedFiles(fm keymanager.CommandContextReader) []string {
 	files := fm.GetAllSelectedFiles()
 	paths := make([]string, 0, len(files))
 	for _, fi := range files {

@@ -131,7 +131,10 @@ menus and outbound file dragging, are summarized in `platform-behavior.md`.
 - `internal/watcher`: shared fswatcher-backed path monitor with polling
   fallback and run-generation lifecycle protection.
 - `internal/jobs`: copy/move queue manager and background worker.
-- `internal/keymanager`: stacked key handlers and modifier state.
+- `internal/keymanager`: stacked key handlers and modifier state. The main
+  handler receives responsibility-specific ports through
+  `MainScreenDependencies`; Starlark/custom commands see the separate,
+  narrower `CommandFileManager` port.
 - `internal/ui`: dialogs, wrappers, and visual widgets.
 
 ## Configuration Model
@@ -224,4 +227,7 @@ Full JSON shape and OS-specific paths are documented in
   operations for writes and value snapshots for rendering or background work.
 - Background directory work must return a `DirectoryLoadResult`; only the
   active loader generation may apply it on the Fyne thread.
+- Do not grow a catch-all keymanager-facing FileManager interface. Add a method
+  to the smallest existing main-screen port, or create a separate consumer
+  port when command-context and UI-handler needs differ.
 - New cross-cutting behavior must be documented under `docs/architecture/` in the same change.

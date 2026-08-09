@@ -26,7 +26,7 @@ type CommandContext struct {
 	Key       fyne.KeyName
 	Event     string
 
-	FileManager FileManagerInterface
+	FileManager CommandFileManager
 	RunCommand  func(command string) bool
 
 	RunExternalCommand func(command string, args []string, edit bool, cwd string) bool

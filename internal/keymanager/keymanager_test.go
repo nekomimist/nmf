@@ -432,6 +432,46 @@ type mainScreenFakeFileManager struct {
 	refreshFileListCount     int
 }
 
+type cursorListPortFake struct {
+	files        []fileinfo.FileInfo
+	cursorIndex  int
+	setIndex     int
+	refreshCount int
+}
+
+func (f *cursorListPortFake) GetCurrentCursorIndex() int { return f.cursorIndex }
+func (f *cursorListPortFake) SetCursorByIndex(index int) { f.setIndex = index }
+func (f *cursorListPortFake) RefreshCursor()             { f.refreshCount++ }
+func (f *cursorListPortFake) GetFiles() []fileinfo.FileInfo {
+	return f.files
+}
+func (f *cursorListPortFake) FileCount() int { return len(f.files) }
+func (f *cursorListPortFake) FileAt(index int) (fileinfo.FileInfo, bool) {
+	if index < 0 || index >= len(f.files) {
+		return fileinfo.FileInfo{}, false
+	}
+	return f.files[index], true
+}
+
+func TestMainScreenCursorCommandNeedsOnlyCursorListPort(t *testing.T) {
+	cursor := &cursorListPortFake{
+		files:       []fileinfo.FileInfo{{Name: "a.txt"}, {Name: "b.txt"}},
+		cursorIndex: 0,
+		setIndex:    -1,
+	}
+	handler := NewMainScreenKeyHandler(
+		MainScreenDependencies{CursorList: cursor},
+		func(string, ...interface{}) {},
+	)
+
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyDown}, ModifierState{}) {
+		t.Fatal("Down should be handled")
+	}
+	if cursor.setIndex != 1 || cursor.refreshCount != 1 {
+		t.Fatalf("cursor port calls = set %d refresh %d, want 1/1", cursor.setIndex, cursor.refreshCount)
+	}
+}
+
 func (f *mainScreenFakeFileManager) GetCurrentCursorIndex() int    { return f.cursorIndex }
 func (f *mainScreenFakeFileManager) SetCursorByIndex(index int)    { f.setCursorIndex = index }
 func (f *mainScreenFakeFileManager) RefreshCursor()                {}
@@ -506,8 +546,23 @@ func (f *mainScreenFakeFileManager) OpenFileDefaultApp(file *fileinfo.FileInfo) 
 	}
 }
 
+func mainScreenDependenciesForTest(f *mainScreenFakeFileManager) MainScreenDependencies {
+	return MainScreenDependencies{
+		CursorList:   f,
+		Selection:    f,
+		Directory:    f,
+		FileOpener:   f,
+		Windows:      f,
+		History:      f,
+		Filters:      f,
+		Application:  f,
+		Commands:     f,
+		SetClipboard: f.SetClipboardText,
+	}
+}
+
 // fakeDialogActions builds the DialogActions closures MainScreenKeyHandler
-// now calls instead of FileManagerInterface Show* methods, wired to the same
+// now calls instead of data-port Show* methods, wired to the same
 // counters/fields the removed mock methods used to set. Tests that need to
 // assert a Show* outcome call handler.SetActions(fakeDialogActions(fm)).
 func fakeDialogActions(f *mainScreenFakeFileManager) DialogActions {
@@ -549,7 +604,7 @@ func fakeDialogActions(f *mainScreenFakeFileManager) DialogActions {
 // that MainScreenKeyHandler no longer calls FileManager Show* methods
 // directly; it drives the same commands NewMainScreenKeyHandler would.
 func newMainScreenKeyHandlerForTest(fm *mainScreenFakeFileManager, debugPrint func(string, ...interface{}), configuredBindings ...[]config.KeyBindingEntry) *MainScreenKeyHandler {
-	h := NewMainScreenKeyHandler(fm, debugPrint, configuredBindings...)
+	h := NewMainScreenKeyHandler(mainScreenDependenciesForTest(fm), debugPrint, configuredBindings...)
 	h.SetActions(fakeDialogActions(fm))
 	return h
 }
@@ -1254,7 +1309,7 @@ func TestMainScreenConfiguredBindingCanUseExtraCommand(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	var got CommandContext
 	handler := NewMainScreenKeyHandlerWithCommands(
-		fm,
+		mainScreenDependenciesForTest(fm),
 		func(string, ...interface{}) {},
 		[]config.KeyBindingEntry{{Key: "S-X", Command: "user.test"}},
 		CommandRegistry{
@@ -1334,7 +1389,7 @@ func TestMainScreenDefersRunCommandTransition(t *testing.T) {
 	km, q := newGatedKeyManager()
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandlerWithCommands(
-		fm,
+		mainScreenDependenciesForTest(fm),
 		func(string, ...interface{}) {},
 		[]config.KeyBindingEntry{{Key: "X", Command: "user.history"}},
 		CommandRegistry{
@@ -1363,12 +1418,12 @@ func TestMainScreenDefersRunCommandTransition(t *testing.T) {
 func TestMainScreenProvidesTransitionGateToExtraCommand(t *testing.T) {
 	// Extra (Starlark) commands only see CommandContext, not
 	// MainScreenKeyHandler's DialogActions, so they reach FileManager
-	// behavior through kept FileManagerInterface methods like LoadDirectory
+	// behavior through CommandFileManager methods like LoadDirectory
 	// rather than the removed Show* methods.
 	km, q := newGatedKeyManager()
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandlerWithCommands(
-		fm,
+		mainScreenDependenciesForTest(fm),
 		func(string, ...interface{}) {},
 		[]config.KeyBindingEntry{{Key: "X", Command: "user.dialog"}},
 		CommandRegistry{
@@ -1398,7 +1453,7 @@ func TestMainScreenProvidesTransitionGateToExtraCommand(t *testing.T) {
 func TestMainScreenProvidesClipboardWriterToExtraCommand(t *testing.T) {
 	fm := &mainScreenFakeFileManager{clipboardResult: true}
 	handler := NewMainScreenKeyHandlerWithCommands(
-		fm,
+		mainScreenDependenciesForTest(fm),
 		func(string, ...interface{}) {},
 		[]config.KeyBindingEntry{{Key: "X", Command: "user.copy"}},
 		CommandRegistry{
@@ -1443,7 +1498,7 @@ func TestMainScreenDoesNotDeferNonTransitionCommand(t *testing.T) {
 func TestMainScreenExtraCommandCanRunInternalCommand(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandlerWithCommands(
-		fm,
+		mainScreenDependenciesForTest(fm),
 		func(string, ...interface{}) {},
 		[]config.KeyBindingEntry{{Key: "X", Command: "user.jobs"}},
 		CommandRegistry{

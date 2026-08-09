@@ -26,6 +26,16 @@ Core model:
 - The main-screen handler maps activations to stable internal command IDs
   before executing file-manager behavior. Each command definition carries a
   `transition` attribute marking it as an input-owner change.
+- It does not depend on one catch-all FileManager interface. `bootstrap.go`
+  wires `MainScreenDependencies` from responsibility-specific ports:
+  cursor/list, selection, directory navigation, file opening, window actions,
+  history, filters, and application lifecycle. A command that only moves the
+  cursor can therefore be tested with only the cursor/list port.
+- Custom and Starlark commands receive the separate `CommandFileManager`
+  boundary through `CommandContext`. That boundary contains command-context
+  reads and explicitly supported mutations, but no focus, window, filter, or
+  dialog-launch methods. External process and clipboard functions are injected
+  separately rather than discovered through type assertions.
 
 Driver facts this design relies on (verified in Fyne v2.8.0; re-verify these
 on Fyne upgrades at the named locations in the Fyne source):
@@ -185,6 +195,10 @@ Main file list:
 - Enable tab capture (`WithTabCapture(true)`) to suppress default focus traversal.
 - When debug logging is enabled, the toolbar includes a mouse action that writes
   `KeyManager.DumpState()` to the debug log without opening another input owner.
+- Keep new main-screen dependencies consumer-oriented. Extend the smallest
+  matching `MainScreen*` port; do not recreate a monolithic FileManager
+  interface merely because the composition root currently supplies the same
+  object for several ports.
 
 Text entries that must not steal Tab:
 
