@@ -359,6 +359,8 @@ Filter-style text input:
   expansion per token.
 - Apply Filter stores comments after `;;` with the filter history entry. The
   comment is searchable, while the applied glob is only the text before `;;`.
+- Apply Filter prepends a fixed `Clear Filter` action to its history list. It
+  clears the active filter without becoming history and `Ctrl+D` cannot delete it.
 - Navigation History and Apply Filter use `Ctrl+Enter` to apply the current
   input directly. Apply Filter uses `Ctrl+D` to delete the selected history
   entry; Navigation History uses `Ctrl+D` to unpin a saved path.

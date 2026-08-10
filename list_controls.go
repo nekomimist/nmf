@@ -645,7 +645,17 @@ func (fm *FileManager) sortFilesWithConfig(sortConfig config.SortConfig) {
 	debugPrint("FileManager: Sorting files: sortBy=%s, order=%s, dirFirst=%t",
 		sortConfig.SortBy, sortConfig.SortOrder, sortConfig.DirectoriesFirst)
 
-	fm.files = sortFileInfoSlice(fm.files, sortConfig)
+	if fm.originalFiles == nil {
+		fm.files = sortFileInfoSlice(fm.files, sortConfig)
+		return
+	}
+
+	// Keep the complete listing sorted as the source of truth, then derive the
+	// visible view. This preserves the active filter and keeps later watcher
+	// merges ordered even when they start from originalFiles.
+	files := sortFileInfoSlice(fm.originalFiles, sortConfig)
+	fm.originalFiles = cloneFileInfoSlice(files)
+	fm.files = fm.filesForCurrentFilter(files)
 }
 
 // sortFileInfoSlice returns files reordered per sortConfig. It pins ".." at

@@ -78,6 +78,45 @@ func TestApplyFilterUsesEffectivePatternBeforeComment(t *testing.T) {
 	}
 }
 
+func TestApplyFilterClearActionClearsActiveFilter(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	entry := &config.FilterEntry{Pattern: "*.go"}
+	allFiles := []fileinfo.FileInfo{
+		{Name: "main.go", Path: "/tmp/main.go"},
+		{Name: "notes.md", Path: "/tmp/notes.md"},
+	}
+	fm := &FileManager{
+		fileList: widget.NewList(
+			func() int { return 0 },
+			func() fyne.CanvasObject { return widget.NewLabel("") },
+			func(widget.ListItemID, fyne.CanvasObject) {},
+		),
+		config: &config.Config{
+			UI: config.UIConfig{
+				Sort: config.SortConfig{SortBy: "name", SortOrder: "asc"},
+			},
+		},
+		state: &config.State{
+			FileFilter: config.FileFilterState{Current: entry, Enabled: true},
+		},
+		currentFilter: entry,
+		originalFiles: cloneFileInfoSlice(allFiles),
+		files:         []fileinfo.FileInfo{allFiles[0]},
+		selectedFiles: map[string]bool{},
+	}
+
+	fm.ApplyFilter(&config.FilterEntry{})
+
+	if fm.currentFilter != nil || fm.state.FileFilter.Current != nil || fm.state.FileFilter.Enabled {
+		t.Fatalf("filter state not cleared: current=%#v state=%#v", fm.currentFilter, fm.state.FileFilter)
+	}
+	if got, want := namesOf(fm.files), []string{"main.go", "notes.md"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("files after clear action = %v, want %v", got, want)
+	}
+}
+
 func TestGetCurrentCursorIndexCacheHitAndSelfHeal(t *testing.T) {
 	fm := &FileManager{
 		files: []fileinfo.FileInfo{

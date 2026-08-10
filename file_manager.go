@@ -157,9 +157,51 @@ func (fm *FileManager) GetFiles() []fileinfo.FileInfo {
 	fm.mu.RLock()
 	defer fm.mu.RUnlock()
 	// Return a copy to prevent external modifications
-	result := make([]fileinfo.FileInfo, len(fm.files))
-	copy(result, fm.files)
+	return cloneFileInfoSlice(fm.files)
+}
+
+// GetUnfilteredFiles returns the complete current directory listing. The
+// watcher uses this as its baseline so entries hidden by an active filter are
+// not mistaken for newly added files.
+func (fm *FileManager) GetUnfilteredFiles() []fileinfo.FileInfo {
+	fm.mu.RLock()
+	defer fm.mu.RUnlock()
+
+	files := fm.originalFiles
+	if files == nil {
+		// Keep partially wired tests and startup callers useful before the first
+		// directory load has established originalFiles.
+		files = fm.files
+	}
+	return cloneFileInfoSlice(files)
+}
+
+func cloneFileInfoSlice(files []fileinfo.FileInfo) []fileinfo.FileInfo {
+	if files == nil {
+		return nil
+	}
+	result := make([]fileinfo.FileInfo, len(files))
+	copy(result, files)
 	return result
+}
+
+// filesForCurrentFilter derives the visible list from a complete directory
+// listing. Callers retain the complete input in originalFiles.
+func (fm *FileManager) filesForCurrentFilter(files []fileinfo.FileInfo) []fileinfo.FileInfo {
+	if fm.currentFilter == nil {
+		return files
+	}
+	pattern := config.EffectiveFilterPattern(fm.currentFilter.Pattern)
+	if pattern == "" {
+		return files
+	}
+
+	filtered, err := fileinfo.FilterFiles(files, pattern)
+	if err != nil {
+		debugPrint("FileManager: Filter error: %v", err)
+		return files
+	}
+	return filtered
 }
 
 // UpdateFiles replaces the current listing with files and always re-sorts.
@@ -178,25 +220,11 @@ func (fm *FileManager) updateFiles(files []fileinfo.FileInfo, resort bool) {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
 
-	fm.originalFiles = make([]fileinfo.FileInfo, len(files))
-	copy(fm.originalFiles, files)
-
-	// Apply filter if one is active
-	if fm.currentFilter != nil && config.EffectiveFilterPattern(fm.currentFilter.Pattern) != "" {
-		filtered, err := fileinfo.FilterFiles(files, config.EffectiveFilterPattern(fm.currentFilter.Pattern))
-		if err != nil {
-			debugPrint("FileManager: Filter error: %v", err)
-			fm.files = files // Fall back to showing all files
-		} else {
-			fm.files = filtered
-		}
-	} else {
-		fm.files = files
-	}
-
 	if resort {
-		fm.sortFilesWithConfig(fm.CurrentSort())
+		files = sortFileInfoSlice(files, fm.CurrentSort())
 	}
+	fm.originalFiles = cloneFileInfoSlice(files)
+	fm.files = fm.filesForCurrentFilter(files)
 
 	// widget.List is not data-bound, so it never redraws on its own; refresh
 	// explicitly to reflect additions, deletions, and modifications.
@@ -225,7 +253,9 @@ func indexOfFilePath(files []fileinfo.FileInfo, path string) int {
 }
 
 func (fm *FileManager) ApplyChanges(added, deleted, modified []fileinfo.FileInfo) {
-	files := fm.GetFiles()
+	// Merge against the complete directory listing. fm.files may be only a
+	// filtered view and must never become the watcher's source of truth.
+	files := fm.GetUnfilteredFiles()
 
 	// Handle deleted files - mark as deleted but keep in list
 	for _, deletedFile := range deleted {

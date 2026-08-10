@@ -157,3 +157,39 @@ func TestApplyChangesReplacesRecreatedPathInsteadOfDuplicating(t *testing.T) {
 		t.Fatalf("status = %v, want the recreated entry to replace the deleted one", got[0].Status)
 	}
 }
+
+func TestApplyChangesPreservesUnfilteredListingWhileFilterActive(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	entry := &config.FilterEntry{Pattern: "*.png"}
+	allFiles := []fileinfo.FileInfo{
+		{Name: "image.png", Path: "/tmp/image.png"},
+		{Name: "notes.txt", Path: "/tmp/notes.txt"},
+	}
+	fm := newApplyChangesTestFileManager(nil,
+		config.SortConfig{SortBy: "name", SortOrder: "asc"})
+	fm.originalFiles = cloneFileInfoSlice(allFiles)
+	fm.currentFilter = entry
+	fm.files = fm.filesForCurrentFilter(allFiles)
+	fm.state = &config.State{
+		FileFilter: config.FileFilterState{Current: entry, Enabled: true},
+	}
+
+	fm.ApplyChanges([]fileinfo.FileInfo{
+		{Name: "cover.png", Path: "/tmp/cover.png", Status: fileinfo.StatusAdded},
+		{Name: "readme.md", Path: "/tmp/readme.md", Status: fileinfo.StatusAdded},
+	}, nil, nil)
+
+	if got, want := namesOf(fm.files), []string{"cover.png", "image.png"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("visible files = %v, want filtered view %v", got, want)
+	}
+	if got, want := namesOf(fm.originalFiles), []string{"cover.png", "image.png", "notes.txt", "readme.md"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("complete files = %v, want all entries retained as %v", got, want)
+	}
+
+	fm.DisableFilter()
+	if got, want := namesOf(fm.files), []string{"cover.png", "image.png", "notes.txt", "readme.md"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("files after disabling filter = %v, want retained complete list %v", got, want)
+	}
+}

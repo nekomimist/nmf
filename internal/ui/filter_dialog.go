@@ -16,6 +16,8 @@ import (
 	"nmf/internal/search"
 )
 
+const clearFilterLabel = "Clear Filter"
+
 // FilterDialog represents a file filter dialog with pattern search
 type FilterDialog struct {
 	searchEntry     *CustomSearchEntry
@@ -47,8 +49,12 @@ func NewFilterDialog(
 	debugPrint func(format string, args ...interface{}),
 	matchers ...*search.Provider,
 ) *FilterDialog {
+	// The zero-value entry is a fixed action, not filter history. Applying its
+	// empty pattern routes through FileManager.ApplyFilter to ClearFilter.
+	allEntries := make([]config.FilterEntry, 1, len(entries)+1)
+	allEntries = append(allEntries, entries...)
 	dialog := &FilterDialog{
-		allEntries:   entries,
+		allEntries:   allEntries,
 		currentFiles: currentFiles,
 		debugPrint:   debugPrint,
 		keyManager:   keyManager,
@@ -62,7 +68,19 @@ func NewFilterDialog(
 
 	dialog.createWidgets()
 	dialog.updateFilteredEntries("")
+	dialog.updatePreview(dialog.previewPattern())
 	return dialog
+}
+
+func isClearFilterEntry(entry config.FilterEntry) bool {
+	return entry.Pattern == ""
+}
+
+func filterEntryDisplayText(entry config.FilterEntry) string {
+	if isClearFilterEntry(entry) {
+		return clearFilterLabel
+	}
+	return entry.Pattern
 }
 
 // createWidgets creates the UI widgets
@@ -133,7 +151,7 @@ func (fd *FilterDialog) updateFilteredEntries(query string) {
 		fd.filteredEntries = []config.FilterEntry{}
 
 		for _, entry := range fd.allEntries {
-			if matcher.Match(entry.Pattern) {
+			if matcher.Match(filterEntryDisplayText(entry)) {
 				fd.filteredEntries = append(fd.filteredEntries, entry)
 			}
 		}
@@ -142,7 +160,7 @@ func (fd *FilterDialog) updateFilteredEntries(query string) {
 	// Format entries for display.
 	displayEntries := make([]string, len(fd.filteredEntries))
 	for i, entry := range fd.filteredEntries {
-		displayEntries[i] = entry.Pattern
+		displayEntries[i] = filterEntryDisplayText(entry)
 	}
 
 	// Update data binding with the formatted entries
@@ -164,7 +182,7 @@ func (fd *FilterDialog) updateFilteredEntries(query string) {
 func (fd *FilterDialog) updatePreview(pattern string) {
 	effectivePattern := config.EffectiveFilterPattern(pattern)
 	if effectivePattern == "" {
-		fd.previewLabel.SetText("")
+		fd.previewLabel.SetText("Shows all files")
 		return
 	}
 
@@ -418,7 +436,12 @@ func (fd *FilterDialog) DeleteSelectedEntry() {
 	if fd.selectedIndex < 0 || fd.selectedIndex >= len(fd.filteredEntries) {
 		return
 	}
-	pattern := fd.filteredEntries[fd.selectedIndex].Pattern
+	entry := fd.filteredEntries[fd.selectedIndex]
+	if isClearFilterEntry(entry) {
+		fd.debugPrint("FilterDialog: Delete ignored for clear action")
+		return
+	}
+	pattern := entry.Pattern
 	fd.debugPrint("FilterDialog: Delete selected entry: %s", pattern)
 
 	for i := range fd.allEntries {

@@ -24,11 +24,58 @@ func TestFilterDialogDisplayOmitsUseCount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("data binding get failed: %v", err)
 	}
-	if len(items) != 1 || items[0] != "*.go ;; Go files" {
-		t.Fatalf("display items = %#v, want raw pattern without usage suffix", items)
+	if len(items) != 2 || items[0] != clearFilterLabel || items[1] != "*.go ;; Go files" {
+		t.Fatalf("display items = %#v, want clear action followed by raw pattern without usage suffix", items)
 	}
-	if strings.Contains(items[0], "used") {
-		t.Fatalf("display item %q should not include usage text", items[0])
+	if strings.Contains(items[1], "used") {
+		t.Fatalf("display item %q should not include usage text", items[1])
+	}
+}
+
+func TestFilterDialogClearActionAcceptsEmptyPattern(t *testing.T) {
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	dialog := NewFilterDialog(
+		[]config.FilterEntry{{Pattern: "*.go"}},
+		nil,
+		km,
+		func(string, ...interface{}) {},
+		search.NewPlainProvider(),
+	)
+
+	var selected *config.FilterEntry
+	dialog.callback = func(entry *config.FilterEntry) { selected = entry }
+	dialog.AcceptSelection()
+
+	if selected == nil || !isClearFilterEntry(*selected) {
+		t.Fatalf("selected entry = %#v, want fixed clear action", selected)
+	}
+}
+
+func TestFilterDialogClearActionIsSearchableAndCannotBeDeleted(t *testing.T) {
+	dialog := NewFilterDialog(
+		[]config.FilterEntry{{Pattern: "*.go"}},
+		nil,
+		nil,
+		func(string, ...interface{}) {},
+		search.NewPlainProvider(),
+	)
+	dialog.searchEntry.SetText("clear")
+
+	if len(dialog.filteredEntries) != 1 || !isClearFilterEntry(dialog.filteredEntries[0]) {
+		t.Fatalf("filtered entries = %#v, want only clear action", dialog.filteredEntries)
+	}
+	if got := dialog.previewLabel.Text; got != "Shows all files" {
+		t.Fatalf("preview = %q, want clear-action explanation", got)
+	}
+
+	deleted := false
+	dialog.deleteCallback = func(string) { deleted = true }
+	dialog.DeleteSelectedEntry()
+	if deleted {
+		t.Fatal("clear action invoked history deletion callback")
+	}
+	if len(dialog.allEntries) != 2 || !isClearFilterEntry(dialog.allEntries[0]) {
+		t.Fatalf("all entries = %#v, want fixed clear action retained", dialog.allEntries)
 	}
 }
 
@@ -125,12 +172,13 @@ func TestFilterDialogDeleteSelectedEntry(t *testing.T) {
 
 	var deleted string
 	dialog.deleteCallback = func(pattern string) { deleted = pattern }
+	dialog.selectedIndex = 1 // Skip the fixed Clear Filter action.
 	dialog.DeleteSelectedEntry()
 
 	if deleted != "*.go ;; Go files" {
 		t.Fatalf("deleted = %q, want selected pattern", deleted)
 	}
-	if len(dialog.allEntries) != 1 || dialog.allEntries[0].Pattern != "*.md ;; Markdown" {
-		t.Fatalf("all entries = %#v, want selected entry removed", dialog.allEntries)
+	if len(dialog.allEntries) != 2 || !isClearFilterEntry(dialog.allEntries[0]) || dialog.allEntries[1].Pattern != "*.md ;; Markdown" {
+		t.Fatalf("all entries = %#v, want clear action retained and selected history removed", dialog.allEntries)
 	}
 }

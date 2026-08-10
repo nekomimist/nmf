@@ -532,3 +532,67 @@ func TestLoadDirectoryAsyncRefreshRestoresNearestSurvivingCursorNeighbor(t *test
 		t.Fatalf("cursorPath = %q, want following pre-refresh neighbor %q", fm.cursorPath, next)
 	}
 }
+
+func TestLoadDirectoryAsyncKeepsActiveFilterOnReloadAndNavigation(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "child")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "assets"), 0o755); err != nil {
+		t.Fatalf("Mkdir assets: %v", err)
+	}
+	for name, contents := range map[string]string{
+		"image.png": "png",
+		"notes.txt": "text",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(contents), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q): %v", name, err)
+		}
+	}
+
+	for _, tt := range []struct {
+		name         string
+		previousPath string
+	}{
+		{name: "same-directory reload", previousPath: dir},
+		{name: "subdirectory navigation", previousPath: parent},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			entry := &config.FilterEntry{Pattern: "*.png"}
+			state := &config.State{
+				CursorMemory: config.CursorMemoryState{
+					Entries:  map[string]string{},
+					LastUsed: map[string]time.Time{},
+				},
+				NavigationHistory: config.NavigationHistoryState{
+					Entries:  []string{},
+					LastUsed: map[string]time.Time{},
+					UseCount: map[string]int{},
+					Pinned:   []string{},
+				},
+				FileFilter: config.FileFilterState{Current: entry, Enabled: true},
+			}
+			fm := newParentFallbackTestFileManager(state)
+			fm.currentPath = tt.previousPath
+			fm.currentFilter = entry
+
+			ctx, loadID := fm.beginDirectoryLoad()
+			fm.loadDirectoryAsync(ctx, loadID, dir, tt.previousPath,
+				config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}, false)
+
+			if got, want := namesOf(fm.files), []string{"..", "assets", "image.png"}; !reflect.DeepEqual(got, want) {
+				t.Fatalf("visible files = %v, want active filter preserved as %v", got, want)
+			}
+			if got, want := namesOf(fm.originalFiles), []string{"..", "assets", "image.png", "notes.txt"}; !reflect.DeepEqual(got, want) {
+				t.Fatalf("complete files = %v, want unfiltered source %v", got, want)
+			}
+			if fm.currentFilter != entry || !fm.state.FileFilter.Enabled {
+				t.Fatal("active filter state changed during directory load")
+			}
+		})
+	}
+}

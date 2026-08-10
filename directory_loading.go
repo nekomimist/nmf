@@ -321,8 +321,8 @@ func (fm *FileManager) loadDirectoryAsync(ctx context.Context, loadID uint64, pa
 
 		fm.currentPath = path
 		fm.setPathDisplay(path)
-		fm.files = files
 		fm.originalFiles = originalFiles
+		fm.files = fm.filesForCurrentFilter(files)
 		fm.storageInfo = storage
 		fm.storageKnown = storageErr == nil
 		fm.activeSort = sortCfg

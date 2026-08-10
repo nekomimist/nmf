@@ -11,15 +11,25 @@ import (
 
 // mockFM is a minimal FileManager implementation for tests
 type mockFM struct {
-	path          string
-	files         []fileinfo.FileInfo
-	selectedFiles map[string]bool
+	path            string
+	files           []fileinfo.FileInfo
+	unfilteredFiles []fileinfo.FileInfo
+	selectedFiles   map[string]bool
 }
 
 func (m *mockFM) GetCurrentPath() string { return m.path }
 func (m *mockFM) GetFiles() []fileinfo.FileInfo {
 	cp := make([]fileinfo.FileInfo, len(m.files))
 	copy(cp, m.files)
+	return cp
+}
+func (m *mockFM) GetUnfilteredFiles() []fileinfo.FileInfo {
+	files := m.unfilteredFiles
+	if files == nil {
+		files = m.files
+	}
+	cp := make([]fileinfo.FileInfo, len(files))
+	copy(cp, files)
 	return cp
 }
 func (m *mockFM) UpdateFiles(files []fileinfo.FileInfo) {
@@ -81,6 +91,26 @@ func fi(path string, name string, size int64, mod time.Time) fileinfo.FileInfo {
 		Modified: mod,
 		FileType: fileinfo.FileTypeRegular,
 		Status:   fileinfo.StatusNormal,
+	}
+}
+
+func TestUpdateSnapshotUsesUnfilteredFiles(t *testing.T) {
+	visible := fi("/tmp/image.png", "image.png", 10, time.Now())
+	hidden := fi("/tmp/notes.txt", "notes.txt", 20, time.Now())
+	m := &mockFM{
+		path:            "/tmp",
+		files:           []fileinfo.FileInfo{visible},
+		unfilteredFiles: []fileinfo.FileInfo{visible, hidden},
+	}
+	dw := NewDirectoryWatcher(m, nil, dummyDebug)
+
+	dw.updateSnapshot()
+
+	if len(dw.previousFiles) != 2 {
+		t.Fatalf("snapshot contains %d files, want complete unfiltered listing", len(dw.previousFiles))
+	}
+	if _, ok := dw.previousFiles[hidden.Path]; !ok {
+		t.Fatalf("snapshot omitted filtered-out path %q", hidden.Path)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 type FileManager interface {
 	GetCurrentPath() string
 	GetFiles() []fileinfo.FileInfo
+	GetUnfilteredFiles() []fileinfo.FileInfo
 	UpdateFiles(files []fileinfo.FileInfo)
 	RemoveFromSelections(path string)
 	// ApplyChanges merges watcher-detected added/deleted/modified files into
@@ -147,8 +148,10 @@ func (dw *DirectoryWatcher) updateSnapshot() {
 	dw.previousFiles = make(map[string]fileinfo.FileInfo)
 	dw.baselineGen++
 
-	// Take snapshot of current files (excluding ".." entry and deleted files)
-	for _, file := range dw.fm.GetFiles() {
+	// Take a snapshot of the complete directory listing (excluding ".." and
+	// deleted entries). A visible list may be filtered and would make every
+	// hidden file look newly added on the next directory read.
+	for _, file := range dw.fm.GetUnfilteredFiles() {
 		if file.Name != ".." && file.Status != fileinfo.StatusDeleted {
 			dw.previousFiles[file.Path] = file
 		}
