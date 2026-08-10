@@ -419,6 +419,9 @@ Delete dialogs:
 for one File Manager window. Directory loads, initial viewer reads, and direct
 directory comparisons share this controller.
 
+- `BusyController` and `BusyOverlay` are confined to the Fyne UI thread and
+  must not be called concurrently. Timer and worker callbacks marshal through
+  `fyne.Do` before touching their state or widgets.
 - `Begin` pushes `BusyKeyHandler` immediately, before the delayed overlay is
   visible, so a fast repeated command cannot enter the critical section.
 - Repeated `Begin` while active updates the existing overlay and does not push

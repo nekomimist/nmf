@@ -67,9 +67,7 @@ func TestBusyControllerRejectsStaleDelayedShow(t *testing.T) {
 
 	controller := NewBusyController(nil, nil, busyOverlayTheme{}, time.Hour, nil)
 	controller.Begin("Loading...", nil)
-	controller.mu.Lock()
 	generation := controller.generation
-	controller.mu.Unlock()
 	controller.End()
 
 	controller.showIfCurrent(generation)
@@ -86,15 +84,24 @@ func TestBusyControllerShowsAfterConfiguredDelay(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
+	scheduled := make(chan func(), 1)
 	controller := NewBusyController(nil, nil, busyOverlayTheme{}, 5*time.Millisecond, nil)
+	controller.runOnMain = func(fn func()) {
+		scheduled <- fn
+	}
 	controller.Begin("Loading...", nil)
 	defer controller.End()
 
-	deadline := time.Now().Add(time.Second)
-	for !controller.overlay.IsVisible() && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
-	}
-	if !controller.overlay.IsVisible() {
+	select {
+	case show := <-scheduled:
+		if controller.overlay.IsVisible() {
+			t.Fatal("overlay became visible before scheduled UI work ran")
+		}
+		show()
+		if !controller.overlay.IsVisible() {
+			t.Fatal("scheduled UI work did not reveal the overlay")
+		}
+	case <-time.After(time.Second):
 		t.Fatal("delayed overlay did not become visible")
 	}
 }

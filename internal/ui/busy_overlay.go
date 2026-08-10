@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"sync"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
@@ -41,10 +39,9 @@ func (b *busyBlocker) TappedSecondary(_ *fyne.PointEvent) {}
 // across older Fyne versions. The overlay visuals are sufficient.
 // func (b *busyBlocker) Cursor() desktop.Cursor { return desktop.DefaultCursor }
 
-// BusyOverlay provides an indeterminate progress indication overlay.
-// It's intentionally lightweight and non-interactive while visible.
+// BusyOverlay provides an indeterminate progress indication overlay. It is
+// confined to the Fyne UI thread and must not be called concurrently.
 type BusyOverlay struct {
-	mu      sync.RWMutex
 	blocker *busyBlocker
 	spinner *widget.ProgressBarInfinite
 	label   *shrinkingTextLabel
@@ -89,40 +86,26 @@ func (bo *BusyOverlay) Show(parent fyne.Window, text string) {
 	}
 	bo.spinner.Start()
 	bo.spinner.Refresh()
-	bo.mu.RLock()
-	visible := bo.visible
-	bo.mu.RUnlock()
-	if visible {
+	if bo.visible {
 		bo.refresh(parent)
 		return
 	}
+	bo.visible = true
 	bo.root.Show()
 	bo.refresh(parent)
-	bo.mu.Lock()
-	bo.visible = true
-	bo.mu.Unlock()
 }
 
 func (bo *BusyOverlay) Hide() {
-	bo.mu.RLock()
-	visible := bo.visible
-	bo.mu.RUnlock()
-	if !visible {
+	if !bo.visible {
 		return
 	}
+	bo.visible = false
 	bo.spinner.Stop()
 	bo.root.Hide()
 	canvas.Refresh(bo.root)
-	bo.mu.Lock()
-	bo.visible = false
-	bo.mu.Unlock()
 }
 
-func (bo *BusyOverlay) IsVisible() bool {
-	bo.mu.RLock()
-	defer bo.mu.RUnlock()
-	return bo.visible
-}
+func (bo *BusyOverlay) IsVisible() bool { return bo.visible }
 
 func (bo *BusyOverlay) refresh(parent fyne.Window) {
 	canvas.Refresh(bo.root)

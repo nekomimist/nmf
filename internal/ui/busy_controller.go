@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -9,17 +8,17 @@ import (
 	"nmf/internal/keymanager"
 )
 
-// BusyController owns the delayed overlay and input guard for one window.
-// Begin, UpdateText, and End are UI-thread operations; only the delay timer
-// callback crosses goroutines, and it marshals visual work through fyne.Do.
+// BusyController owns the delayed overlay and input guard for one window. It is
+// confined to the Fyne UI thread and is not safe for concurrent use. Only the
+// delay timer crosses goroutines, and it marshals state and visual work back to
+// the UI thread before calling showIfCurrent.
 type BusyController struct {
-	mu sync.Mutex
-
 	window     fyne.Window
 	overlay    *BusyOverlay
 	keyManager *keymanager.KeyManager
 	delay      time.Duration
 	debugPrint func(format string, args ...interface{})
+	runOnMain  func(func())
 
 	active     bool
 	text       string
@@ -41,6 +40,7 @@ func NewBusyController(
 		keyManager: keyManager,
 		delay:      max(delay, 0),
 		debugPrint: debugPrint,
+		runOnMain:  fyne.Do,
 	}
 }
 
@@ -55,8 +55,6 @@ func (c *BusyController) Active() bool {
 	if c == nil {
 		return false
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	return c.active
 }
 
@@ -67,14 +65,10 @@ func (c *BusyController) Begin(text string, onCancel func()) {
 	if c == nil {
 		return
 	}
-	c.mu.Lock()
 	if c.active {
 		c.text = text
-		overlay := c.overlay
-		window := c.window
-		c.mu.Unlock()
-		if overlay != nil {
-			overlay.Show(window, text)
+		if c.overlay != nil {
+			c.overlay.Show(c.window, text)
 		}
 		c.debugf("BusyController: update text=%q", text)
 		return
@@ -84,55 +78,27 @@ func (c *BusyController) Begin(text string, onCancel func()) {
 	c.text = text
 	c.generation++
 	generation := c.generation
-	keyManager := c.keyManager
-	previousTimer := c.timer
-	c.timer = nil
-	c.token = 0
-	delay := c.delay
-	c.mu.Unlock()
-
 	c.debugf("BusyController: begin text=%q", text)
-	if previousTimer != nil {
-		previousTimer.Stop()
+
+	if c.keyManager != nil {
+		c.token = c.keyManager.PushHandler(keymanager.NewBusyKeyHandler(onCancel))
 	}
-	var token keymanager.HandlerToken
-	if keyManager != nil {
-		token = keyManager.PushHandler(keymanager.NewBusyKeyHandler(onCancel))
+	if c.timer != nil {
+		c.timer.Stop()
 	}
-	timer := time.AfterFunc(delay, func() {
-		fyne.Do(func() {
+	c.timer = time.AfterFunc(c.delay, func() {
+		c.runOnMain(func() {
 			c.showIfCurrent(generation)
 		})
 	})
-
-	c.mu.Lock()
-	if c.active && c.generation == generation {
-		c.token = token
-		c.timer = timer
-		c.mu.Unlock()
-		return
-	}
-	c.mu.Unlock()
-
-	timer.Stop()
-	if keyManager != nil && token != 0 {
-		keyManager.RemoveHandler(token)
-	}
 }
 
 func (c *BusyController) showIfCurrent(generation uint64) {
-	c.mu.Lock()
 	if !c.active || c.generation != generation || c.overlay == nil {
-		c.mu.Unlock()
 		return
 	}
-	overlay := c.overlay
-	window := c.window
-	text := c.text
-	c.mu.Unlock()
-
-	overlay.Show(window, text)
-	c.debugf("BusyController: show text=%q", text)
+	c.overlay.Show(c.window, c.text)
+	c.debugf("BusyController: show text=%q", c.text)
 }
 
 // UpdateText updates an active overlay without changing the input handler.
@@ -140,18 +106,12 @@ func (c *BusyController) UpdateText(text string) {
 	if c == nil {
 		return
 	}
-	c.mu.Lock()
 	if !c.active {
-		c.mu.Unlock()
 		return
 	}
 	c.text = text
-	overlay := c.overlay
-	window := c.window
-	c.mu.Unlock()
-
-	if overlay != nil {
-		overlay.Show(window, text)
+	if c.overlay != nil {
+		c.overlay.Show(c.window, text)
 	}
 }
 
@@ -161,9 +121,7 @@ func (c *BusyController) End() {
 	if c == nil {
 		return
 	}
-	c.mu.Lock()
 	if !c.active {
-		c.mu.Unlock()
 		return
 	}
 	c.active = false
@@ -174,15 +132,12 @@ func (c *BusyController) End() {
 	}
 	token := c.token
 	c.token = 0
-	overlay := c.overlay
-	keyManager := c.keyManager
-	c.mu.Unlock()
 
-	if overlay != nil {
-		overlay.Hide()
+	if c.overlay != nil {
+		c.overlay.Hide()
 	}
-	if keyManager != nil && token != 0 {
-		keyManager.RemoveHandler(token)
+	if c.keyManager != nil && token != 0 {
+		c.keyManager.RemoveHandler(token)
 	}
 	c.debugf("BusyController: end")
 }
