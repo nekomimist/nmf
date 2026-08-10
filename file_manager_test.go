@@ -110,10 +110,9 @@ func TestApplyChangesModifyOnlyUnderSizeSortResorts(t *testing.T) {
 // merge still resorts when a modified entry's IsDir flips (e.g. "beta" is
 // removed and replaced by a same-named directory between watcher polls),
 // even under a "name" sort that would otherwise skip the resort. With
-// DirectoriesFirst enabled, sortFileInfoSlice groups entries by IsDir before
-// sorting each group by name, so skipping the resort would leave the flipped
-// entry stranded in the file group instead of moving it into the directory
-// group.
+// DirectoriesFirst enabled, browser sorting groups entries by IsDir before
+// sorting each group by name. Skipping the resort would leave the flipped entry
+// stranded in the file group instead of moving it into the directory group.
 func TestApplyChangesModifyOnlyIsDirFlipResorts(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()

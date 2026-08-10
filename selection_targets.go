@@ -29,7 +29,3 @@ func (fm *FileManager) collectAllSelectedTargetPaths() []string {
 	}
 	return paths
 }
-
-func isTargetFileInfo(fi fileinfo.FileInfo) bool {
-	return fi.Name != ".." && fi.Status != fileinfo.StatusDeleted
-}

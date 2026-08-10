@@ -299,7 +299,7 @@ func (fm *FileManager) collectArchiveTargets() ([]string, []string) {
 	}
 	idx := fm.GetCurrentCursorIndex()
 	if fi, ok := fm.FileAt(idx); ok {
-		if isTargetFileInfo(fi) {
+		if fileinfo.IsFileOperationTarget(fi) {
 			return archiveTargetNamesAndPaths([]fileinfo.FileInfo{fi})
 		}
 	}

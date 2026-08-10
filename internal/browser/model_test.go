@@ -22,22 +22,18 @@ func TestModelReturnsDefensiveCopies(t *testing.T) {
 	files[0].Name = "changed-input.txt"
 	visible := model.Files()
 	visible[0].Name = "changed-result.txt"
-	original := model.OriginalFiles()
-	original[0].Name = "changed-original-result.txt"
+	source := model.SourceFiles()
+	source[0].Name = "changed-source-result.txt"
 	selected := model.Selection()
 	selected[files[0].Path] = false
 	activeFilter := model.Filter()
 	activeFilter.Pattern = "*.log"
-	snapshot := model.Snapshot()
-	snapshot.Files[0].Name = "changed-snapshot.txt"
-	snapshot.Selected[files[0].Path] = false
-	snapshot.Filter.Pattern = "*.md"
 
 	if got := model.Files()[0].Name; got != "note.txt" {
 		t.Fatalf("visible name = %q, want defensive copy to retain note.txt", got)
 	}
-	if got := model.OriginalFiles()[0].Name; got != "note.txt" {
-		t.Fatalf("original name = %q, want defensive copy to retain note.txt", got)
+	if got := model.SourceFiles()[0].Name; got != "note.txt" {
+		t.Fatalf("source name = %q, want defensive copy to retain note.txt", got)
 	}
 	if !model.IsSelected(files[0].Path) {
 		t.Fatal("selection changed through a returned map")
@@ -79,6 +75,24 @@ func TestModelFilterLifecycleRestoresUnfilteredListing(t *testing.T) {
 	}
 }
 
+func TestModelSourceFilesReturnsUnfilteredBaseline(t *testing.T) {
+	model := New("/tmp", nameSort())
+	model.ReplaceDirectory("/tmp", []fileinfo.FileInfo{
+		{Name: "main.go", Path: "/tmp/main.go"},
+		{Name: "notes.md", Path: "/tmp/notes.md"},
+	}, fileinfo.StorageInfo{}, false, nameSort())
+	if _, _, err := model.ApplyFilter(&config.FilterEntry{Pattern: "*.go"}); err != nil {
+		t.Fatalf("ApplyFilter returned error: %v", err)
+	}
+
+	if got, want := fileNames(model.Files()), []string{"main.go"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("visible files = %v, want %v", got, want)
+	}
+	if got, want := fileNames(model.SourceFiles()), []string{"main.go", "notes.md"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("source files = %v, want %v", got, want)
+	}
+}
+
 func TestModelCursorFollowsPathAcrossSort(t *testing.T) {
 	model := New("/tmp", nameSort())
 	model.ReplaceDirectory("/tmp", []fileinfo.FileInfo{
@@ -95,11 +109,39 @@ func TestModelCursorFollowsPathAcrossSort(t *testing.T) {
 	if model.cursorIndex != -1 {
 		t.Fatalf("cursor cache after sort = %d, want invalidated", model.cursorIndex)
 	}
-	if got := model.CursorIndex(); got != 0 {
-		t.Fatalf("cursor index after sort = %d, want banana at 0", got)
+	index, file, ok := model.CursorFile()
+	if !ok || index != 0 || file.Path != "/tmp/banana.txt" {
+		t.Fatalf("CursorFile after sort = (%d, %+v, %t), want banana at 0", index, file, ok)
 	}
 	if model.cursorIndex != 0 || model.CursorPath() != "/tmp/banana.txt" {
 		t.Fatalf("healed cursor = (%d, %q), want (0, banana path)", model.cursorIndex, model.CursorPath())
+	}
+}
+
+func TestModelSetCursorByNameReportsAtomicChange(t *testing.T) {
+	model := New("/tmp", nameSort())
+	model.ReplaceDirectory("/tmp", []fileinfo.FileInfo{
+		{Name: "alpha.txt", Path: "/tmp/alpha.txt"},
+		{Name: "beta.txt", Path: "/tmp/beta.txt"},
+	}, fileinfo.StorageInfo{}, false, nameSort())
+	model.SetCursorIndex(0)
+
+	change, found := model.SetCursorByName("beta.txt")
+	if !found {
+		t.Fatal("SetCursorByName did not find beta.txt")
+	}
+	if change.BeforeIndex != 0 || change.BeforePath != "/tmp/alpha.txt" ||
+		change.AfterIndex != 1 || change.AfterPath != "/tmp/beta.txt" {
+		t.Fatalf("SetCursorByName change = %+v, want alpha 0 to beta 1", change)
+	}
+
+	unchanged, found := model.SetCursorByName("missing.txt")
+	if found {
+		t.Fatal("SetCursorByName found a missing entry")
+	}
+	if unchanged.BeforeIndex != 1 || unchanged.AfterIndex != 1 ||
+		unchanged.BeforePath != "/tmp/beta.txt" || unchanged.AfterPath != "/tmp/beta.txt" {
+		t.Fatalf("missing-name change = %+v, want cursor unchanged at beta", unchanged)
 	}
 }
 
@@ -342,7 +384,7 @@ func TestModelRenamePreservesRowOrderAndUpdatesReferences(t *testing.T) {
 	if model.CursorPath() != "/tmp/zeta.txt" || !model.IsSelected("/tmp/zeta.txt") || model.IsSelected("/tmp/alpha.txt") {
 		t.Fatalf("rename references = cursor %q selection %#v", model.CursorPath(), model.Selection())
 	}
-	if got := model.OriginalFiles()[0].Path; got != "/tmp/zeta.txt" {
+	if got := model.SourceFiles()[0].Path; got != "/tmp/zeta.txt" {
 		t.Fatalf("original listing path = %q, want renamed path", got)
 	}
 }

@@ -44,6 +44,13 @@ type FileInfo struct {
 	Status   FileStatus // ファイルの現在のステータス
 }
 
+// IsFileOperationTarget reports whether an entry can participate in list
+// selection, commands, and file operations. The synthetic parent entry and a
+// watcher tombstone are display-only rows.
+func IsFileOperationTarget(info FileInfo) bool {
+	return info.Name != ".." && info.Status != StatusDeleted
+}
+
 // DetermineFileType determines the file type based on file attributes
 func DetermineFileType(path string, name string, isDir bool) FileType {
 	metadata, err := InspectPath(path, name, nil)

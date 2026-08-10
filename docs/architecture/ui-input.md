@@ -32,13 +32,15 @@ Core model:
   history, filters, and application lifecycle. A command that only moves the
   cursor can therefore be tested with only the cursor/list port.
 - Production wiring uses `NewMainScreenDependencies`, whose opaque result and
-  constructor validation prevent an omitted required port from surviving into
-  command execution as a nil-interface panic.
+  constructor validation prevent an omitted required responsibility port from
+  surviving into command execution as a nil-interface panic.
 - Custom and Starlark commands receive the separate `CommandFileManager`
   boundary through `CommandContext`. That boundary contains command-context
   reads and explicitly supported mutations, but no focus, window, filter, or
-  dialog-launch methods. External process and clipboard functions are injected
-  separately rather than discovered through type assertions.
+  dialog-launch methods. External process and clipboard functions are optional
+  integrations injected separately rather than discovered through type
+  assertions; a nil integration makes the corresponding configscript command
+  return false.
 
 Driver facts this design relies on (verified in Fyne v2.8.0; re-verify these
 on Fyne upgrades at the named locations in the Fyne source):

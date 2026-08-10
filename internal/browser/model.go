@@ -13,7 +13,7 @@ import (
 
 // Model owns the mutable state of one file-manager browsing session. Widget
 // state and rendering remain with the window controller; background callers
-// interact with this model only through snapshots and value-returning methods.
+// interact with this model only through value-returning methods.
 // Locking makes each method call internally consistent, but a sequence of
 // separate calls is not one transaction; prefer the compound operations below
 // when values must be observed or changed together.
@@ -30,19 +30,6 @@ type Model struct {
 	storageKnown  bool
 	sort          config.SortConfig
 	filter        *config.FilterEntry
-}
-
-type Snapshot struct {
-	Path          string
-	Files         []fileinfo.FileInfo
-	OriginalFiles []fileinfo.FileInfo
-	Selected      map[string]bool
-	CursorPath    string
-	CursorIndex   int
-	Storage       fileinfo.StorageInfo
-	StorageKnown  bool
-	Sort          config.SortConfig
-	Filter        *config.FilterEntry
 }
 
 type CursorChange struct {
@@ -71,28 +58,6 @@ func New(path string, sortConfig config.SortConfig) *Model {
 	}
 }
 
-func (m *Model) Snapshot() Snapshot {
-	if m == nil {
-		return Snapshot{CursorIndex: -1}
-	}
-	// cursorIndexLocked may heal the cursor cache, so a complete snapshot is
-	// one of the few read-shaped operations that deliberately takes mu.Lock.
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return Snapshot{
-		Path:          m.path,
-		Files:         cloneFiles(m.files),
-		OriginalFiles: cloneFiles(m.originalFiles),
-		Selected:      cloneSelection(m.selected),
-		CursorPath:    m.cursorPath,
-		CursorIndex:   m.cursorIndexLocked(),
-		Storage:       m.storage,
-		StorageKnown:  m.storageKnown,
-		Sort:          m.sort,
-		Filter:        cloneFilter(m.filter),
-	}
-}
-
 func (m *Model) Path() string {
 	if m == nil {
 		return ""
@@ -118,15 +83,6 @@ func (m *Model) Files() []fileinfo.FileInfo {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return cloneFiles(m.files)
-}
-
-func (m *Model) OriginalFiles() []fileinfo.FileInfo {
-	if m == nil {
-		return nil
-	}
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return cloneFiles(m.originalFiles)
 }
 
 func (m *Model) FileCount() int {
@@ -185,7 +141,7 @@ func (m *Model) CursorNeighborPaths() []string {
 				continue
 			}
 			file := m.files[index]
-			if !isTargetFileInfo(file) {
+			if !fileinfo.IsFileOperationTarget(file) {
 				continue
 			}
 			neighbors = append(neighbors, file.Path)
@@ -633,7 +589,7 @@ func (m *Model) SelectAll() bool {
 	}
 	found := false
 	for _, file := range m.files {
-		if !isTargetFileInfo(file) {
+		if !fileinfo.IsFileOperationTarget(file) {
 			continue
 		}
 		m.selected[file.Path] = true
@@ -655,7 +611,7 @@ func (m *Model) InvertSelection(includeDirectories bool) bool {
 	}
 	changed := false
 	for _, file := range m.files {
-		if !isTargetFileInfo(file) {
+		if !fileinfo.IsFileOperationTarget(file) {
 			continue
 		}
 		if file.IsDir && !includeDirectories {
@@ -702,7 +658,7 @@ func (m *Model) MarkRange(anchor, target int) bool {
 	changed := false
 	for i := start; i <= end; i++ {
 		file := m.files[i]
-		if !isTargetFileInfo(file) || m.selected[file.Path] {
+		if !fileinfo.IsFileOperationTarget(file) || m.selected[file.Path] {
 			continue
 		}
 		m.selected[file.Path] = true
@@ -719,7 +675,7 @@ func (m *Model) SelectedFiles() []fileinfo.FileInfo {
 	defer m.mu.RUnlock()
 	files := make([]fileinfo.FileInfo, 0, len(m.selected))
 	for _, file := range m.files {
-		if m.selected[file.Path] && isTargetFileInfo(file) {
+		if m.selected[file.Path] && fileinfo.IsFileOperationTarget(file) {
 			files = append(files, file)
 		}
 	}
@@ -876,10 +832,6 @@ func upsertFileInfo(files []fileinfo.FileInfo, created fileinfo.FileInfo) []file
 		}
 	}
 	return append(files, created)
-}
-
-func isTargetFileInfo(file fileinfo.FileInfo) bool {
-	return file.Name != ".." && file.Status != fileinfo.StatusDeleted
 }
 
 func entryCount(files []fileinfo.FileInfo) int {

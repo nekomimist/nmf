@@ -67,7 +67,7 @@ func (fm *FileManager) dumpCanvasMappings(windowCanvas fyne.Canvas) {
 		fm.cursorAnchor.path,
 		canvasMappingState(lookup, fm.statusLabel, windowCanvas),
 		canvasMappingState(lookup, fm.windowHighlight, windowCanvas),
-			fm.GetCurrentPath())
+		fm.GetCurrentPath())
 }
 
 func canvasMappingState(lookup canvasObjectLookup, object fyne.CanvasObject, windowCanvas fyne.Canvas) string {

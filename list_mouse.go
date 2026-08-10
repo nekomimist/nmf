@@ -12,7 +12,7 @@ func (fm *FileManager) handleFileNameClick(index int, clicked fileinfo.FileInfo,
 
 	if modifier&fyne.KeyModifierShift != 0 {
 		fm.markFileRange(anchor, index)
-	} else if isTargetFileInfo(clicked) {
+	} else if fileinfo.IsFileOperationTarget(clicked) {
 		fm.browserModel().ToggleSelected(clicked.Path)
 		fm.updateStatusBar()
 	}

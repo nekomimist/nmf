@@ -110,8 +110,7 @@ func (s *fileViewerSession) toggleMark() {
 		return
 	}
 
-	selected := s.fm.GetSelectedFiles()
-	s.fm.SetFileSelected(file.Path, !selected[file.Path])
+	s.fm.ToggleFileSelection(file.Path)
 	s.fm.RefreshFileList()
 
 	if current >= s.fm.FileCount()-1 {

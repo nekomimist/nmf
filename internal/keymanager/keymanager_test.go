@@ -508,6 +508,25 @@ func TestMainScreenDependenciesRejectTypedNilPort(t *testing.T) {
 	}, nil, nil)
 }
 
+func TestMainScreenDependenciesAllowOptionalCommandIntegrations(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	dependencies := NewMainScreenDependencies(MainScreenPorts{
+		CursorList:  fm,
+		Selection:   fm,
+		Directory:   fm,
+		FileOpener:  fm,
+		Windows:     fm,
+		History:     fm,
+		Filters:     fm,
+		Application: fm,
+		Commands:    fm,
+	}, nil, nil)
+
+	if dependencies.runExternalCommand != nil || dependencies.setClipboard != nil {
+		t.Fatal("nil optional command integrations were replaced unexpectedly")
+	}
+}
+
 func (f *mainScreenFakeFileManager) GetCurrentCursorIndex() int    { return f.cursorIndex }
 func (f *mainScreenFakeFileManager) SetCursorByIndex(index int)    { f.setCursorIndex = index }
 func (f *mainScreenFakeFileManager) RefreshCursor()                {}
@@ -544,12 +563,6 @@ func (f *mainScreenFakeFileManager) GetAllSelectedFiles() []fileinfo.FileInfo {
 		}
 	}
 	return targets
-}
-func (f *mainScreenFakeFileManager) SetFileSelected(path string, selected bool) {
-	if f.selectedFiles == nil {
-		f.selectedFiles = make(map[string]bool)
-	}
-	f.selectedFiles[path] = selected
 }
 func (f *mainScreenFakeFileManager) ToggleFileSelection(path string) {
 	if f.selectedFiles == nil {

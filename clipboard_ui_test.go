@@ -42,6 +42,6 @@ func TestCreateClipboardTextFileCreatesFile(t *testing.T) {
 	}
 	sourceFiles := fm.browserModel().SourceFiles()
 	if len(sourceFiles) != 1 || sourceFiles[0].Path != path {
-		t.Fatalf("sourceFiles = %#v, want created file", sourceFiles)
+		t.Fatalf("source files = %#v, want created file", sourceFiles)
 	}
 }

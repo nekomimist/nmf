@@ -86,21 +86,15 @@ func TestBusyControllerShowsAfterConfiguredDelay(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
-	shown := make(chan struct{}, 1)
-	controller := NewBusyController(nil, nil, busyOverlayTheme{}, 5*time.Millisecond, func(format string, _ ...interface{}) {
-		if format == "BusyController: show text=%q" {
-			shown <- struct{}{}
-		}
-	})
+	controller := NewBusyController(nil, nil, busyOverlayTheme{}, 5*time.Millisecond, nil)
 	controller.Begin("Loading...", nil)
 	defer controller.End()
 
-	select {
-	case <-shown:
-		if !controller.overlay.IsVisible() {
-			t.Fatal("show callback ran before the delayed overlay became visible")
-		}
-	case <-time.After(time.Second):
+	deadline := time.Now().Add(time.Second)
+	for !controller.overlay.IsVisible() && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if !controller.overlay.IsVisible() {
 		t.Fatal("delayed overlay did not become visible")
 	}
 }

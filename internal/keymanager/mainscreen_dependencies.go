@@ -64,7 +64,8 @@ type MainScreenApplication interface {
 }
 
 // MainScreenPorts names every required responsibility supplied by the
-// composition root. NewMainScreenDependencies validates the complete set.
+// composition root. NewMainScreenDependencies validates the complete set of
+// ports; optional command integrations are separate constructor arguments.
 type MainScreenPorts struct {
 	CursorList  MainScreenCursorList
 	Selection   MainScreenSelection
@@ -118,13 +119,18 @@ type MainScreenDependencies struct {
 	application MainScreenApplication
 	commands    CommandFileManager
 
+	// These command integrations are optional. A nil function means the host
+	// does not provide that operation, and the configscript command returns
+	// false instead of invoking it.
 	runExternalCommand func(command string, args []string, edit bool, cwd string) bool
 	setClipboard       func(text string) bool
 }
 
-// NewMainScreenDependencies constructs a complete production dependency set.
-// The opaque result prevents callers outside keymanager from omitting a port;
+// NewMainScreenDependencies constructs a complete dependency set. The opaque
+// result prevents callers outside keymanager from omitting a required port;
 // handler constructors validate the zero value as a second line of defense.
+// External-command and clipboard integrations remain optional so hosts that do
+// not support them can fail those configscript operations closed.
 func NewMainScreenDependencies(
 	ports MainScreenPorts,
 	runExternalCommand func(command string, args []string, edit bool, cwd string) bool,

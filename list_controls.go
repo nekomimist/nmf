@@ -193,11 +193,6 @@ func (fm *FileManager) GetSelectedFiles() map[string]bool {
 	return fm.browserModel().Selection()
 }
 
-// SetFileSelected sets the selection state of a file.
-func (fm *FileManager) SetFileSelected(path string, selected bool) {
-	fm.browserModel().SetSelected(path, selected)
-}
-
 func (fm *FileManager) ToggleFileSelection(path string) {
 	fm.browserModel().ToggleSelected(path)
 }
@@ -220,14 +215,7 @@ func (fm *FileManager) RefreshFileList() {
 
 // CurrentSort returns the sort configuration currently used for the visible list.
 func (fm *FileManager) CurrentSort() config.SortConfig {
-	activeSort := fm.browserModel().Sort()
-	if activeSort.SortBy == "" || activeSort.SortOrder == "" {
-		if fm.config == nil {
-			return config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}
-		}
-		return fm.state.EffectiveSort(fm.config.UI.Sort)
-	}
-	return activeSort
+	return fm.browserModel().Sort()
 }
 
 // ApplyTemporarySort applies a sort configuration without changing persisted settings.
@@ -241,7 +229,7 @@ func (fm *FileManager) ShowFilterDialog() {
 	// Get current filter entries from state
 	entries := fm.state.GetFileFilterEntries()
 
-	// Use originalFiles if available, otherwise use current files
+	// Use the unfiltered source listing when a filter is active.
 	currentFiles := fm.browserModel().SourceFiles()
 
 	filterDialog := ui.NewFilterDialog(entries, currentFiles, fm.keyManager, debugPrint, fm.searchMatchers)

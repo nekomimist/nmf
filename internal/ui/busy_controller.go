@@ -70,11 +70,13 @@ func (c *BusyController) Begin(text string, onCancel func()) {
 	c.mu.Lock()
 	if c.active {
 		c.text = text
-		if c.overlay != nil {
-			c.overlay.Show(c.window, text)
+		overlay := c.overlay
+		window := c.window
+		c.mu.Unlock()
+		if overlay != nil {
+			overlay.Show(window, text)
 		}
 		c.debugf("BusyController: update text=%q", text)
-		c.mu.Unlock()
 		return
 	}
 
@@ -82,30 +84,55 @@ func (c *BusyController) Begin(text string, onCancel func()) {
 	c.text = text
 	c.generation++
 	generation := c.generation
-	c.debugf("BusyController: begin text=%q", text)
+	keyManager := c.keyManager
+	previousTimer := c.timer
+	c.timer = nil
+	c.token = 0
+	delay := c.delay
+	c.mu.Unlock()
 
-	if c.keyManager != nil {
-		c.token = c.keyManager.PushHandler(keymanager.NewBusyKeyHandler(onCancel))
+	c.debugf("BusyController: begin text=%q", text)
+	if previousTimer != nil {
+		previousTimer.Stop()
 	}
-	if c.timer != nil {
-		c.timer.Stop()
+	var token keymanager.HandlerToken
+	if keyManager != nil {
+		token = keyManager.PushHandler(keymanager.NewBusyKeyHandler(onCancel))
 	}
-	c.timer = time.AfterFunc(c.delay, func() {
+	timer := time.AfterFunc(delay, func() {
 		fyne.Do(func() {
 			c.showIfCurrent(generation)
 		})
 	})
+
+	c.mu.Lock()
+	if c.active && c.generation == generation {
+		c.token = token
+		c.timer = timer
+		c.mu.Unlock()
+		return
+	}
 	c.mu.Unlock()
+
+	timer.Stop()
+	if keyManager != nil && token != 0 {
+		keyManager.RemoveHandler(token)
+	}
 }
 
 func (c *BusyController) showIfCurrent(generation uint64) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if !c.active || c.generation != generation || c.overlay == nil {
+		c.mu.Unlock()
 		return
 	}
-	c.overlay.Show(c.window, c.text)
-	c.debugf("BusyController: show text=%q", c.text)
+	overlay := c.overlay
+	window := c.window
+	text := c.text
+	c.mu.Unlock()
+
+	overlay.Show(window, text)
+	c.debugf("BusyController: show text=%q", text)
 }
 
 // UpdateText updates an active overlay without changing the input handler.
@@ -114,13 +141,17 @@ func (c *BusyController) UpdateText(text string) {
 		return
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if !c.active {
+		c.mu.Unlock()
 		return
 	}
 	c.text = text
-	if c.overlay != nil {
-		c.overlay.Show(c.window, text)
+	overlay := c.overlay
+	window := c.window
+	c.mu.Unlock()
+
+	if overlay != nil {
+		overlay.Show(window, text)
 	}
 }
 
