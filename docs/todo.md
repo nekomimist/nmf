@@ -2,11 +2,12 @@
 
 # 優先度高いの
 
-- github actionsで生成可能にする。
 - File ManagerのタイトルをNekomimist Filerにする。
   (テスト用スクリプト等で"File Manager"を期待しているものはいっしょに修正する
 - semantic versioningで、バージョンは0.1.0にする
-- 以降はユーザーから見える変更はdocs/CHANGELOG.mdに記載する。
+  - tagが打たれたタイミングでgithub actionsでリリースバイナリを作る。
+  - 取り急ぎはWindows amd64とarm64のみでOK。
+- semantic versioning化以降はユーザーから見える変更はdocs/CHANGELOG.mdに記載する。
 
 # 優先度低めのもの
 ## Windows以外の対応強化
