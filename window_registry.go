@@ -102,15 +102,20 @@ func (fm *FileManager) windowRegistry() *fileManagerWindowRegistry {
 }
 
 func (fm *FileManager) registeredWindows() []*FileManager {
-	if registry := fm.windowRegistry(); registry != nil {
-		if windows := registry.snapshot(); len(windows) > 0 {
-			return windows
-		}
-	}
 	if fm == nil {
 		return nil
 	}
-	return []*FileManager{fm}
+	// Isolated FileManager values in unit tests intentionally have no runtime;
+	// treat only that explicit case as a one-window registry. A production
+	// runtime with a missing/empty registry must remain visible as an invariant
+	// violation instead of being silently replaced with fm.
+	if fm.runtime == nil {
+		return []*FileManager{fm}
+	}
+	if registry := fm.windowRegistry(); registry != nil {
+		return registry.snapshot()
+	}
+	return nil
 }
 
 func registerFileManagerWindow(fm *FileManager) int {

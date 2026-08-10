@@ -1,6 +1,8 @@
 package keymanager
 
 import (
+	"reflect"
+
 	"nmf/internal/config"
 	"nmf/internal/fileinfo"
 )
@@ -10,28 +12,32 @@ type MainScreenCursorList interface {
 	GetCurrentCursorIndex() int
 	SetCursorByIndex(index int)
 	RefreshCursor()
-	GetFiles() []fileinfo.FileInfo
 	FileCount() int
-	FileAt(index int) (fileinfo.FileInfo, bool)
+	CurrentFile() (index int, file fileinfo.FileInfo, ok bool)
 }
 
+// MainScreenSelection provides transactional list-mark operations.
 type MainScreenSelection interface {
-	GetSelectedFiles() map[string]bool
-	SetFileSelected(path string, selected bool)
+	ToggleFileSelection(path string)
+	SelectAllFiles() bool
+	InvertFileSelection(includeDirectories bool) bool
 	RefreshFileList()
 }
 
+// MainScreenDirectory provides directory navigation and cursor persistence.
 type MainScreenDirectory interface {
 	LoadDirectory(path string)
 	GetCurrentPath() string
 	SaveCursorPosition(dirPath string)
 }
 
+// MainScreenFileOpener handles the two main-list open modes.
 type MainScreenFileOpener interface {
 	OpenFile(file *fileinfo.FileInfo)
 	OpenFileDefaultApp(file *fileinfo.FileInfo)
 }
 
+// MainScreenWindows contains cross-window commands.
 type MainScreenWindows interface {
 	OpenNewWindow()
 	ReopenClosedWindow()
@@ -41,17 +47,34 @@ type MainScreenWindows interface {
 	ResetAllWindowSizes()
 }
 
+// MainScreenHistory contains navigation-history commands.
 type MainScreenHistory interface {
 	PinCurrentHistoryPath()
 }
 
+// MainScreenFilters contains filter state commands.
 type MainScreenFilters interface {
 	ClearFilter()
 	ToggleFilter()
 }
 
+// MainScreenApplication contains application lifecycle commands.
 type MainScreenApplication interface {
 	QuitApplication()
+}
+
+// MainScreenPorts names every required responsibility supplied by the
+// composition root. NewMainScreenDependencies validates the complete set.
+type MainScreenPorts struct {
+	CursorList  MainScreenCursorList
+	Selection   MainScreenSelection
+	Directory   MainScreenDirectory
+	FileOpener  MainScreenFileOpener
+	Windows     MainScreenWindows
+	History     MainScreenHistory
+	Filters     MainScreenFilters
+	Application MainScreenApplication
+	Commands    CommandFileManager
 }
 
 // CommandContextReader supplies the immutable context exposed to custom
@@ -85,16 +108,69 @@ type CommandFileManager interface {
 // ports, but tests and future controllers do not need to implement unrelated
 // methods.
 type MainScreenDependencies struct {
-	CursorList  MainScreenCursorList
-	Selection   MainScreenSelection
-	Directory   MainScreenDirectory
-	FileOpener  MainScreenFileOpener
-	Windows     MainScreenWindows
-	History     MainScreenHistory
-	Filters     MainScreenFilters
-	Application MainScreenApplication
-	Commands    CommandFileManager
+	cursorList  MainScreenCursorList
+	selection   MainScreenSelection
+	directory   MainScreenDirectory
+	fileOpener  MainScreenFileOpener
+	windows     MainScreenWindows
+	history     MainScreenHistory
+	filters     MainScreenFilters
+	application MainScreenApplication
+	commands    CommandFileManager
 
-	RunExternalCommand func(command string, args []string, edit bool, cwd string) bool
-	SetClipboard       func(text string) bool
+	runExternalCommand func(command string, args []string, edit bool, cwd string) bool
+	setClipboard       func(text string) bool
+}
+
+// NewMainScreenDependencies constructs a complete production dependency set.
+// The opaque result prevents callers outside keymanager from omitting a port;
+// handler constructors validate the zero value as a second line of defense.
+func NewMainScreenDependencies(
+	ports MainScreenPorts,
+	runExternalCommand func(command string, args []string, edit bool, cwd string) bool,
+	setClipboard func(text string) bool,
+) MainScreenDependencies {
+	dependencies := MainScreenDependencies{
+		cursorList:         ports.CursorList,
+		selection:          ports.Selection,
+		directory:          ports.Directory,
+		fileOpener:         ports.FileOpener,
+		windows:            ports.Windows,
+		history:            ports.History,
+		filters:            ports.Filters,
+		application:        ports.Application,
+		commands:           ports.Commands,
+		runExternalCommand: runExternalCommand,
+		setClipboard:       setClipboard,
+	}
+	dependencies.validate()
+	return dependencies
+}
+
+func (d MainScreenDependencies) validate() {
+	requireMainScreenDependency("CursorList", d.cursorList)
+	requireMainScreenDependency("Selection", d.selection)
+	requireMainScreenDependency("Directory", d.directory)
+	requireMainScreenDependency("FileOpener", d.fileOpener)
+	requireMainScreenDependency("Windows", d.windows)
+	requireMainScreenDependency("History", d.history)
+	requireMainScreenDependency("Filters", d.filters)
+	requireMainScreenDependency("Application", d.application)
+	requireMainScreenDependency("Commands", d.commands)
+}
+
+func requireMainScreenDependency(name string, dependency any) {
+	if dependency == nil || isNilMainScreenDependency(dependency) {
+		panic("keymanager: MainScreenDependencies requires " + name)
+	}
+}
+
+func isNilMainScreenDependency(dependency any) bool {
+	value := reflect.ValueOf(dependency)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }

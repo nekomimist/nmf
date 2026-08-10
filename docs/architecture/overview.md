@@ -54,6 +54,12 @@ watcher merges, filtering, sorting, create/rename updates, and range selection)
 run behind the model's lock. Widget refreshes always happen after those
 operations return.
 
+Synchronization is guaranteed per model method call, not across a sequence of
+independent getters. Code that needs a consistent compound observation or
+mutation must add/use a transactional model operation (for example,
+`CursorFile`, `ListingStats`, `SelectAll`, or `ApplyFilter`) rather than compose
+fine-grained getters and assume the lock spans them.
+
 `internal/browser.DirectoryLoader` owns directory I/O and its latest-request
 lifecycle. It reads through portable VFS APIs, performs the confirmed-missing
 parent fallback, builds and sorts a widget-free result, and cancels the
@@ -106,6 +112,9 @@ Window shutdown:
 - External commands and OS opener processes are started asynchronously, but a
   lightweight waiter goroutine always calls `Wait` so completed children do
   not remain unreaped.
+- Cross-window enumeration uses registry insertion order. Destination choices
+  and multi-window operations therefore remain stable instead of inheriting
+  the nondeterministic iteration order of the former `sync.Map` registry.
 
 Window placement:
 
@@ -225,6 +234,8 @@ Full JSON shape and OS-specific paths are documented in
   Fyne coordination belongs to `FileManager` and its split modules.
 - UI code must not retain or mutate browser-model collections. Use model
   operations for writes and value snapshots for rendering or background work.
+- Model locking covers one API call at a time. Prefer compound model methods
+  whenever a read/modify/write sequence must remain atomic.
 - Background directory work must return a `DirectoryLoadResult`; only the
   active loader generation may apply it on the Fyne thread.
 - Do not grow a catch-all keymanager-facing FileManager interface. Add a method

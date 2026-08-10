@@ -31,6 +31,9 @@ Core model:
   cursor/list, selection, directory navigation, file opening, window actions,
   history, filters, and application lifecycle. A command that only moves the
   cursor can therefore be tested with only the cursor/list port.
+- Production wiring uses `NewMainScreenDependencies`, whose opaque result and
+  constructor validation prevent an omitted required port from surviving into
+  command execution as a nil-interface panic.
 - Custom and Starlark commands receive the separate `CommandFileManager`
   boundary through `CommandContext`. That boundary contains command-context
   reads and explicitly supported mutations, but no focus, window, filter, or
@@ -199,6 +202,8 @@ Main file list:
   matching `MainScreen*` port; do not recreate a monolithic FileManager
   interface merely because the composition root currently supplies the same
   object for several ports.
+- Selection-wide commands use transactional selection-port methods; do not
+  rebuild per-entry loops in keymanager from copied file and selection data.
 
 Text entries that must not steal Tab:
 
@@ -415,7 +420,9 @@ directory comparisons share this controller.
 - `Begin` pushes `BusyKeyHandler` immediately, before the delayed overlay is
   visible, so a fast repeated command cannot enter the critical section.
 - Repeated `Begin` while active updates the existing overlay and does not push
-  a second handler.
+  a second handler. It preserves the one busy-session cancel callback, so a
+  caller whose operation can replace generations must make that callback
+  resolve the currently active generation rather than capture the first ID.
 - Escape invokes the operation-specific cancel callback when one is supplied.
 - `End` invalidates the delayed-show generation, hides the overlay, and removes
   exactly the token the controller owns. Repeated `End` is a no-op.

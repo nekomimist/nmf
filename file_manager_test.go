@@ -167,11 +167,11 @@ func TestApplyChangesPreservesUnfilteredListingWhileFilterActive(t *testing.T) {
 		{Name: "image.png", Path: "/tmp/image.png"},
 		{Name: "notes.txt", Path: "/tmp/notes.txt"},
 	}
-	fm := newApplyChangesTestFileManager(nil,
+	fm := newApplyChangesTestFileManager(allFiles,
 		config.SortConfig{SortBy: "name", SortOrder: "asc"})
-	fm.originalFiles = cloneFileInfoSlice(allFiles)
-	fm.currentFilter = entry
-	fm.files = fm.filesForCurrentFilter(allFiles)
+	if _, _, err := fm.browserModel().ApplyFilter(entry); err != nil {
+		t.Fatalf("ApplyFilter: %v", err)
+	}
 	fm.state = &config.State{
 		FileFilter: config.FileFilterState{Current: entry, Enabled: true},
 	}
@@ -181,15 +181,15 @@ func TestApplyChangesPreservesUnfilteredListingWhileFilterActive(t *testing.T) {
 		{Name: "readme.md", Path: "/tmp/readme.md", Status: fileinfo.StatusAdded},
 	}, nil, nil)
 
-	if got, want := namesOf(fm.files), []string{"cover.png", "image.png"}; !reflect.DeepEqual(got, want) {
+	if got, want := namesOf(fm.GetFiles()), []string{"cover.png", "image.png"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("visible files = %v, want filtered view %v", got, want)
 	}
-	if got, want := namesOf(fm.originalFiles), []string{"cover.png", "image.png", "notes.txt", "readme.md"}; !reflect.DeepEqual(got, want) {
+	if got, want := namesOf(fm.browserModel().SourceFiles()), []string{"cover.png", "image.png", "notes.txt", "readme.md"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("complete files = %v, want all entries retained as %v", got, want)
 	}
 
 	fm.DisableFilter()
-	if got, want := namesOf(fm.files), []string{"cover.png", "image.png", "notes.txt", "readme.md"}; !reflect.DeepEqual(got, want) {
+	if got, want := namesOf(fm.GetFiles()), []string{"cover.png", "image.png", "notes.txt", "readme.md"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("files after disabling filter = %v, want retained complete list %v", got, want)
 	}
 }

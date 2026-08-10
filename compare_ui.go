@@ -36,10 +36,7 @@ func (fm *FileManager) compareSourceFiles() []fileinfo.FileInfo {
 		fm.ClearFilter()
 	}
 
-	source := fm.browserModel().OriginalFiles()
-	if len(source) == 0 {
-		source = fm.GetFiles()
-	}
+	source := fm.browserModel().SourceFiles()
 	files := make([]fileinfo.FileInfo, 0, len(source))
 	for _, fi := range source {
 		if fi.Name == ".." || fi.IsDir || fi.Status == fileinfo.StatusDeleted {
@@ -61,7 +58,7 @@ func (fm *FileManager) runCompare(sourcePath string, sourceFiles []fileinfo.File
 		return
 	}
 
-	fm.busy.Begin(fmt.Sprintf("Comparing %s...", result.Destination))
+	fm.busy.Begin(fmt.Sprintf("Comparing %s...", result.Destination), nil)
 	go func() {
 		compareResult, err := filecompare.CompareDirectFiles(sourceFiles, result.Destination, result.Method)
 		fyne.Do(func() {

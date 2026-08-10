@@ -29,7 +29,7 @@ func TestBusyControllerOwnsOneInputGuard(t *testing.T) {
 		t.Fatal("delayed overlay became visible immediately")
 	}
 
-	controller.Begin("Loading parent...")
+	controller.Begin("Loading parent...", nil)
 	if got := km.GetStackSize(); got != 1 {
 		t.Fatalf("key handler stack after update = %d, want the same busy guard", got)
 	}
@@ -66,7 +66,7 @@ func TestBusyControllerRejectsStaleDelayedShow(t *testing.T) {
 	defer app.Quit()
 
 	controller := NewBusyController(nil, nil, busyOverlayTheme{}, time.Hour, nil)
-	controller.Begin("Loading...")
+	controller.Begin("Loading...", nil)
 	controller.mu.Lock()
 	generation := controller.generation
 	controller.mu.Unlock()
@@ -79,5 +79,28 @@ func TestBusyControllerRejectsStaleDelayedShow(t *testing.T) {
 	controller.UpdateText("stale")
 	if controller.overlay.IsVisible() {
 		t.Fatal("UpdateText revived an inactive overlay")
+	}
+}
+
+func TestBusyControllerShowsAfterConfiguredDelay(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	shown := make(chan struct{}, 1)
+	controller := NewBusyController(nil, nil, busyOverlayTheme{}, 5*time.Millisecond, func(format string, _ ...interface{}) {
+		if format == "BusyController: show text=%q" {
+			shown <- struct{}{}
+		}
+	})
+	controller.Begin("Loading...", nil)
+	defer controller.End()
+
+	select {
+	case <-shown:
+		if !controller.overlay.IsVisible() {
+			t.Fatal("show callback ran before the delayed overlay became visible")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("delayed overlay did not become visible")
 	}
 }

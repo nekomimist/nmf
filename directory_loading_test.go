@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"image/color"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -17,7 +18,15 @@ import (
 	"nmf/internal/browser"
 	"nmf/internal/config"
 	"nmf/internal/fileinfo"
+	"nmf/internal/keymanager"
+	"nmf/internal/ui"
 )
+
+type directoryLoadingTheme struct{}
+
+func (directoryLoadingTheme) GetCustomColor(string) color.RGBA {
+	return color.RGBA{A: 255}
+}
 
 func TestIsParentDirectoryNavigationDistinguishesReload(t *testing.T) {
 	for _, path := range []string{"/", `C:\`, `D:\`} {
@@ -55,6 +64,7 @@ func TestReadDirectoryWithParentFallbackFindsNearestAccessibleParent(t *testing.
 				return nil, nil
 			}
 		},
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("readDirectoryWithParentFallback returned error: %v", err)
@@ -79,6 +89,7 @@ func TestReadDirectoryWithParentFallbackRecognizesPortableMissingPath(t *testing
 
 	entries, opened, usedFallback, err := browser.ReadDirectoryWithParentFallback(
 		context.Background(), requested, true, fileinfo.ReadDirPortableContext,
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("readDirectoryWithParentFallback returned error: %v", err)
@@ -149,6 +160,7 @@ func TestReadDirectoryWithParentFallbackDoesNotMaskOtherFailures(t *testing.T) {
 					calls = append(calls, path)
 					return nil, tt.read(path)
 				},
+				nil,
 			)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("error = %v, want %v", err, tt.wantErr)
@@ -175,6 +187,7 @@ func TestReadDirectoryWithParentFallbackStopsAtSMBShareRoot(t *testing.T) {
 			calls = append(calls, path)
 			return nil, fs.ErrNotExist
 		},
+		nil,
 	)
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("error = %v, want fs.ErrNotExist", err)
@@ -203,6 +216,7 @@ func TestReadDirectoryWithParentFallbackStopsOnENOTDIR(t *testing.T) {
 
 	entries, opened, usedFallback, err := browser.ReadDirectoryWithParentFallback(
 		context.Background(), requested, true, fileinfo.ReadDirPortableContext,
+		nil,
 	)
 	if err == nil {
 		t.Fatal("readDirectoryWithParentFallback succeeded, want ENOTDIR surfaced")
@@ -262,6 +276,7 @@ func TestReadDirectoryWithParentFallbackEscapesArchiveBoundaryToFilesystemParent
 				return nil, nil
 			}
 		},
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("readDirectoryWithParentFallback returned error: %v", err)
@@ -290,6 +305,7 @@ func TestReadDirectoryWithParentFallbackHonorsCancellation(t *testing.T) {
 			called = true
 			return nil, nil
 		},
+		nil,
 	)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v, want context.Canceled", err)
@@ -363,6 +379,42 @@ func TestDirectoryLoaderCancelActiveInvalidatesResult(t *testing.T) {
 	}
 }
 
+func TestBusyEscapeCancelsLatestDirectoryLoad(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	loader := browser.NewDirectoryLoader()
+	fm := &FileManager{
+		browser:         browser.New("/tmp", config.SortConfig{SortBy: "name", SortOrder: "asc"}),
+		directoryLoader: loader,
+		keyManager:      km,
+	}
+	fm.busy = ui.NewBusyController(nil, km, directoryLoadingTheme{}, time.Hour, nil)
+
+	first := loader.Begin()
+	fm.busy.Begin("Loading first...", fm.cancelActiveDirectoryLoad)
+	second := loader.Begin()
+	fm.busy.Begin("Loading second...", fm.cancelActiveDirectoryLoad)
+
+	if !errors.Is(first.Context.Err(), context.Canceled) {
+		t.Fatalf("first load context error = %v, want context.Canceled", first.Context.Err())
+	}
+	handler := km.GetCurrentHandler()
+	if handler == nil || !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyEscape}, keymanager.ModifierState{}) {
+		t.Fatal("busy handler did not handle Escape")
+	}
+	if !errors.Is(second.Context.Err(), context.Canceled) {
+		t.Fatalf("latest load context error = %v, want context.Canceled", second.Context.Err())
+	}
+	if loader.Active(second.ID) {
+		t.Fatal("latest load remained active after Escape")
+	}
+	if fm.busy.Active() || km.GetStackSize() != 0 {
+		t.Fatalf("busy state after Escape = active %t stack %d, want inactive/empty", fm.busy.Active(), km.GetStackSize())
+	}
+}
+
 // newParentFallbackTestFileManager builds a minimally-wired FileManager
 // suitable for driving loadDirectoryAsync directly. fileListView and window
 // are deliberately left nil: with fileListView nil, focusFileList takes its
@@ -418,7 +470,7 @@ func TestLoadDirectoryAsyncFallbackSkipsHistoryWhenReopeningSameDirectory(t *tes
 	fm := newParentFallbackTestFileManager(state)
 
 	handle := fm.directoryLoader.Begin()
-	fm.loadDirectoryAsync(handle, requested, opened, config.SortConfig{SortBy: "name", SortOrder: "asc"}, true)
+	fm.loadDirectoryAsync(handle, requested, opened, config.SortConfig{SortBy: "name", SortOrder: "asc"}, true, nil)
 
 	if got := fm.GetCurrentPath(); got != opened {
 		t.Fatalf("currentPath = %q, want fallback to have opened %q", got, opened)
@@ -469,7 +521,7 @@ func TestLoadDirectoryAsyncFallbackRestoresCursorForOpenedPathNotRequestedPath(t
 	fm := newParentFallbackTestFileManager(state)
 
 	handle := fm.directoryLoader.Begin()
-	fm.loadDirectoryAsync(handle, requested, previousPath, config.SortConfig{SortBy: "name", SortOrder: "asc"}, true)
+	fm.loadDirectoryAsync(handle, requested, previousPath, config.SortConfig{SortBy: "name", SortOrder: "asc"}, true, nil)
 
 	if got := fm.GetCurrentPath(); got != opened {
 		t.Fatalf("currentPath = %q, want fallback to have opened %q", got, opened)
@@ -579,20 +631,23 @@ func TestLoadDirectoryAsyncKeepsActiveFilterOnReloadAndNavigation(t *testing.T) 
 				FileFilter: config.FileFilterState{Current: entry, Enabled: true},
 			}
 			fm := newParentFallbackTestFileManager(state)
-			fm.currentPath = tt.previousPath
-			fm.currentFilter = entry
+			fm.browserModel().SetPath(tt.previousPath)
+			if _, _, err := fm.browserModel().ApplyFilter(entry); err != nil {
+				t.Fatalf("ApplyFilter: %v", err)
+			}
 
-			ctx, loadID := fm.beginDirectoryLoad()
-			fm.loadDirectoryAsync(ctx, loadID, dir, tt.previousPath,
-				config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}, false)
+			handle := fm.directoryLoader.Begin()
+			fm.loadDirectoryAsync(handle, dir, tt.previousPath,
+				config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}, false, nil)
 
-			if got, want := namesOf(fm.files), []string{"..", "assets", "image.png"}; !reflect.DeepEqual(got, want) {
+			if got, want := namesOf(fm.GetFiles()), []string{"..", "assets", "image.png"}; !reflect.DeepEqual(got, want) {
 				t.Fatalf("visible files = %v, want active filter preserved as %v", got, want)
 			}
-			if got, want := namesOf(fm.originalFiles), []string{"..", "assets", "image.png", "notes.txt"}; !reflect.DeepEqual(got, want) {
+			if got, want := namesOf(fm.browserModel().SourceFiles()), []string{"..", "assets", "image.png", "notes.txt"}; !reflect.DeepEqual(got, want) {
 				t.Fatalf("complete files = %v, want unfiltered source %v", got, want)
 			}
-			if fm.currentFilter != entry || !fm.state.FileFilter.Enabled {
+			active := fm.browserModel().Filter()
+			if active == nil || active.Pattern != entry.Pattern || fm.state.FileFilter.Current != entry || !fm.state.FileFilter.Enabled {
 				t.Fatal("active filter state changed during directory load")
 			}
 		})

@@ -14,6 +14,9 @@ import (
 // Model owns the mutable state of one file-manager browsing session. Widget
 // state and rendering remain with the window controller; background callers
 // interact with this model only through snapshots and value-returning methods.
+// Locking makes each method call internally consistent, but a sequence of
+// separate calls is not one transaction; prefer the compound operations below
+// when values must be observed or changed together.
 type Model struct {
 	mu sync.RWMutex
 
@@ -49,12 +52,22 @@ type CursorChange struct {
 	AfterPath   string
 }
 
+// ListingStats is the allocation-free summary needed by list/status UI.
+// Counts and storage data are captured under one model read lock.
+type ListingStats struct {
+	VisibleEntries int
+	TotalEntries   int
+	MarkedEntries  int
+	Storage        fileinfo.StorageInfo
+	StorageKnown   bool
+}
+
 func New(path string, sortConfig config.SortConfig) *Model {
 	return &Model{
 		path:        path,
 		selected:    make(map[string]bool),
 		cursorIndex: -1,
-		sort:        sortConfig,
+		sort:        normalizeSortConfig(sortConfig),
 	}
 }
 
@@ -62,6 +75,8 @@ func (m *Model) Snapshot() Snapshot {
 	if m == nil {
 		return Snapshot{CursorIndex: -1}
 	}
+	// cursorIndexLocked may heal the cursor cache, so a complete snapshot is
+	// one of the few read-shaped operations that deliberately takes mu.Lock.
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return Snapshot{
@@ -135,6 +150,88 @@ func (m *Model) FileAt(index int) (fileinfo.FileInfo, bool) {
 	return m.files[index], true
 }
 
+// CursorFile returns the cursor index and file from one model transaction.
+// It takes the write lock because healing the cursor index updates its cache.
+func (m *Model) CursorFile() (int, fileinfo.FileInfo, bool) {
+	if m == nil {
+		return -1, fileinfo.FileInfo{}, false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	index := m.cursorIndexLocked()
+	if index < 0 || index >= len(m.files) {
+		return -1, fileinfo.FileInfo{}, false
+	}
+	return index, m.files[index], true
+}
+
+// CursorNeighborPaths returns viable refresh fallbacks in nearest-first order
+// without cloning the complete listing.
+func (m *Model) CursorNeighborPaths() []string {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cursorIndex := m.cursorIndexLocked()
+	if cursorIndex < 0 {
+		return nil
+	}
+
+	neighbors := make([]string, 0, max(len(m.files)-1, 0))
+	for distance := 1; distance < len(m.files); distance++ {
+		for _, index := range []int{cursorIndex + distance, cursorIndex - distance} {
+			if index < 0 || index >= len(m.files) {
+				continue
+			}
+			file := m.files[index]
+			if !isTargetFileInfo(file) {
+				continue
+			}
+			neighbors = append(neighbors, file.Path)
+		}
+	}
+	return neighbors
+}
+
+// SourceFiles returns the unfiltered baseline when present, otherwise the
+// visible listing. It performs at most one full-list copy.
+func (m *Model) SourceFiles() []fileinfo.FileInfo {
+	if m == nil {
+		return nil
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if len(m.originalFiles) > 0 {
+		return cloneFiles(m.originalFiles)
+	}
+	return cloneFiles(m.files)
+}
+
+func (m *Model) ListingStats() ListingStats {
+	if m == nil {
+		return ListingStats{}
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	stats := ListingStats{
+		VisibleEntries: entryCount(m.files),
+		TotalEntries:   entryCount(m.originalFiles),
+		Storage:        m.storage,
+		StorageKnown:   m.storageKnown,
+	}
+	if len(m.originalFiles) == 0 {
+		stats.TotalEntries = stats.VisibleEntries
+	}
+	for _, marked := range m.selected {
+		if marked {
+			stats.MarkedEntries++
+		}
+	}
+	return stats
+}
+
 // ReplaceFiles replaces the listing used by watcher updates. The input becomes
 // the unfiltered baseline, matching the previous FileManager update behavior.
 // UI refreshes must happen after this method returns, never while the model lock
@@ -168,8 +265,9 @@ func (m *Model) replaceFilesLocked(files []fileinfo.FileInfo, resort bool) error
 	return filterErr
 }
 
-// ApplyChanges merges watcher changes into the visible listing and reports a
-// filter error if the configured pattern can no longer be applied.
+// ApplyChanges merges watcher changes into the unfiltered baseline and then
+// re-derives the visible listing. Basing the merge on m.files would discard
+// entries hidden by an active filter when the next watcher snapshot arrives.
 func (m *Model) ApplyChanges(added, deleted, modified []fileinfo.FileInfo) error {
 	if m == nil {
 		return nil
@@ -177,7 +275,11 @@ func (m *Model) ApplyChanges(added, deleted, modified []fileinfo.FileInfo) error
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	files := cloneFiles(m.files)
+	baseline := m.originalFiles
+	if baseline == nil {
+		baseline = m.files
+	}
+	files := cloneFiles(baseline)
 	for _, deletedFile := range deleted {
 		for i, file := range files {
 			if file.Path == deletedFile.Path {
@@ -227,21 +329,12 @@ func (m *Model) ReplaceDirectory(path string, files []fileinfo.FileInfo, storage
 	m.path = path
 	m.storage = storage
 	m.storageKnown = storageKnown
-	m.sort = sortConfig
+	m.sort = normalizeSortConfig(sortConfig)
 	m.selected = make(map[string]bool)
 	// Keep an active filter across reloads and directory navigation. The loader
 	// already sorted files with sortConfig, so no additional sort is needed.
 	_ = m.replaceFilesLocked(files, false)
 	m.mu.Unlock()
-}
-
-func (m *Model) Storage() (fileinfo.StorageInfo, bool) {
-	if m == nil {
-		return fileinfo.StorageInfo{}, false
-	}
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.storage, m.storageKnown
 }
 
 func (m *Model) Sort() config.SortConfig {
@@ -258,14 +351,14 @@ func (m *Model) ApplySort(sortConfig config.SortConfig) {
 		return
 	}
 	m.mu.Lock()
-	m.sort = sortConfig
+	m.sort = normalizeSortConfig(sortConfig)
 	if m.originalFiles == nil {
-		m.files = SortFiles(m.files, sortConfig)
+		m.files = SortFiles(m.files, m.sort)
 		m.cursorIndex = -1
 		m.mu.Unlock()
 		return
 	}
-	m.originalFiles = SortFiles(m.originalFiles, sortConfig)
+	m.originalFiles = SortFiles(m.originalFiles, m.sort)
 	m.files = cloneFiles(m.originalFiles)
 	if pattern := effectiveFilterPattern(m.filter); pattern != "" {
 		if filtered, err := fileinfo.FilterFiles(m.files, pattern); err == nil {
@@ -449,6 +542,32 @@ func (m *Model) SetCursorIndex(index int) CursorChange {
 	return change
 }
 
+// SetCursorByName moves the cursor to the first matching visible name in one
+// transaction. A missing name leaves the cursor unchanged.
+func (m *Model) SetCursorByName(name string) (CursorChange, bool) {
+	change := CursorChange{BeforeIndex: -1, AfterIndex: -1}
+	if m == nil {
+		return change, false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	change.BeforeIndex = m.cursorIndexLocked()
+	change.BeforePath = m.cursorPath
+	for index, file := range m.files {
+		if file.Name != name {
+			continue
+		}
+		m.cursorPath = file.Path
+		m.cursorIndex = index
+		change.AfterIndex = index
+		change.AfterPath = file.Path
+		return change, true
+	}
+	change.AfterIndex = change.BeforeIndex
+	change.AfterPath = change.BeforePath
+	return change, false
+}
+
 func (m *Model) Selection() map[string]bool {
 	if m == nil {
 		return map[string]bool{}
@@ -501,13 +620,55 @@ func (m *Model) ToggleSelected(path string) bool {
 	return m.selected[path]
 }
 
-func (m *Model) ClearSelection() {
+// SelectAll marks every visible ordinary entry in one model transaction. It
+// reports whether the listing contained at least one selectable entry.
+func (m *Model) SelectAll() bool {
 	if m == nil {
-		return
+		return false
 	}
 	m.mu.Lock()
-	m.selected = make(map[string]bool)
-	m.mu.Unlock()
+	defer m.mu.Unlock()
+	if m.selected == nil {
+		m.selected = make(map[string]bool)
+	}
+	found := false
+	for _, file := range m.files {
+		if !isTargetFileInfo(file) {
+			continue
+		}
+		m.selected[file.Path] = true
+		found = true
+	}
+	return found
+}
+
+// InvertSelection flips visible ordinary entries in one model transaction.
+// When directories are excluded, any existing directory mark is cleared.
+func (m *Model) InvertSelection(includeDirectories bool) bool {
+	if m == nil {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.selected == nil {
+		m.selected = make(map[string]bool)
+	}
+	changed := false
+	for _, file := range m.files {
+		if !isTargetFileInfo(file) {
+			continue
+		}
+		if file.IsDir && !includeDirectories {
+			if m.selected[file.Path] {
+				m.selected[file.Path] = false
+				changed = true
+			}
+			continue
+		}
+		m.selected[file.Path] = !m.selected[file.Path]
+		changed = true
+	}
+	return changed
 }
 
 func (m *Model) ReplaceSelection(files []fileinfo.FileInfo) {
@@ -569,6 +730,7 @@ func SortFiles(files []fileinfo.FileInfo, sortConfig config.SortConfig) []filein
 	if len(files) <= 1 {
 		return files
 	}
+	sortConfig = normalizeSortConfig(sortConfig)
 	if sortConfig.DirectoriesFirst {
 		var dirs []fileinfo.FileInfo
 		var regularFiles []fileinfo.FileInfo
@@ -623,6 +785,7 @@ func SortSlice(files []fileinfo.FileInfo, sortConfig config.SortConfig) {
 	if len(files) <= 1 {
 		return
 	}
+	sortConfig = normalizeSortConfig(sortConfig)
 	keys := make([]sortKey, len(files))
 	for i, file := range files {
 		key := sortKey{file: file, lowerName: strings.ToLower(file.Name)}
@@ -717,4 +880,26 @@ func upsertFileInfo(files []fileinfo.FileInfo, created fileinfo.FileInfo) []file
 
 func isTargetFileInfo(file fileinfo.FileInfo) bool {
 	return file.Name != ".." && file.Status != fileinfo.StatusDeleted
+}
+
+func entryCount(files []fileinfo.FileInfo) int {
+	count := len(files)
+	if count > 0 && files[0].Name == ".." {
+		count--
+	}
+	return count
+}
+
+func normalizeSortConfig(sortConfig config.SortConfig) config.SortConfig {
+	zeroValue := sortConfig.SortBy == "" && sortConfig.SortOrder == ""
+	if sortConfig.SortBy == "" {
+		sortConfig.SortBy = "name"
+	}
+	if sortConfig.SortOrder == "" {
+		sortConfig.SortOrder = "asc"
+	}
+	if zeroValue {
+		sortConfig.DirectoriesFirst = true
+	}
+	return sortConfig
 }

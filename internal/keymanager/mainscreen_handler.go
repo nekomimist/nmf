@@ -95,6 +95,11 @@ func NewMainScreenKeyHandler(dependencies MainScreenDependencies, debugPrint fun
 
 // NewMainScreenKeyHandlerWithCommands creates a handler with additional commands.
 func NewMainScreenKeyHandlerWithCommands(dependencies MainScreenDependencies, debugPrint func(format string, args ...interface{}), configuredBindings []config.KeyBindingEntry, extraCommands CommandRegistry) *MainScreenKeyHandler {
+	dependencies.validate()
+	return newMainScreenKeyHandlerWithCommands(dependencies, debugPrint, configuredBindings, extraCommands)
+}
+
+func newMainScreenKeyHandlerWithCommands(dependencies MainScreenDependencies, debugPrint func(format string, args ...interface{}), configuredBindings []config.KeyBindingEntry, extraCommands CommandRegistry) *MainScreenKeyHandler {
 	mh := &MainScreenKeyHandler{
 		dependencies:    dependencies,
 		debugPrint:      debugPrint,
@@ -193,10 +198,10 @@ func (mh *MainScreenKeyHandler) executeBinding(ev *fyne.KeyEvent, modifiers Modi
 			Modifiers:          modifiers,
 			Key:                key,
 			Event:              keyEventTyped,
-			FileManager:        mh.dependencies.Commands,
+			FileManager:        mh.dependencies.commands,
 			DeferTransition:    mh.deferTransition,
-			RunExternalCommand: mh.dependencies.RunExternalCommand,
-			SetClipboard:       mh.dependencies.SetClipboard,
+			RunExternalCommand: mh.dependencies.runExternalCommand,
+			SetClipboard:       mh.dependencies.setClipboard,
 
 			ShowCommandMenu:             mh.actions.ShowCommandMenu,
 			ShowMessageDialog:           mh.actions.ShowMessageDialog,
@@ -331,25 +336,25 @@ func (mh *MainScreenKeyHandler) defaultCommands() map[string]commandSpec {
 		CommandParentDirectory:     {fn: mh.parentDirectory},
 		CommandRefresh:             {fn: mh.refreshDirectory},
 		CommandHome:                {fn: mh.homeDirectory},
-		CommandWindowNew:           {fn: func(CommandContext) { mh.dependencies.Windows.OpenNewWindow() }, transition: true},
-		CommandWindowReopen:        {fn: func(CommandContext) { mh.dependencies.Windows.ReopenClosedWindow() }, transition: true},
-		CommandWindowFocusLeft:     {fn: func(CommandContext) { mh.dependencies.Windows.FocusWindowLeft() }, transition: true},
-		CommandWindowFocusRight:    {fn: func(CommandContext) { mh.dependencies.Windows.FocusWindowRight() }, transition: true},
-		CommandWindowResetSize:     {fn: func(CommandContext) { mh.dependencies.Windows.ResetWindowSize() }},
-		CommandWindowResetAllSizes: {fn: func(CommandContext) { mh.dependencies.Windows.ResetAllWindowSizes() }},
+		CommandWindowNew:           {fn: func(CommandContext) { mh.dependencies.windows.OpenNewWindow() }, transition: true},
+		CommandWindowReopen:        {fn: func(CommandContext) { mh.dependencies.windows.ReopenClosedWindow() }, transition: true},
+		CommandWindowFocusLeft:     {fn: func(CommandContext) { mh.dependencies.windows.FocusWindowLeft() }, transition: true},
+		CommandWindowFocusRight:    {fn: func(CommandContext) { mh.dependencies.windows.FocusWindowRight() }, transition: true},
+		CommandWindowResetSize:     {fn: func(CommandContext) { mh.dependencies.windows.ResetWindowSize() }},
+		CommandWindowResetAllSizes: {fn: func(CommandContext) { mh.dependencies.windows.ResetAllWindowSizes() }},
 		CommandTreeShow: {fn: func(CommandContext) {
 			mh.showDialogAction("ShowDirectoryTreeDialog", mh.actions.ShowDirectoryTreeDialog)
 		}, transition: true},
 		CommandHistoryShow: {fn: func(CommandContext) {
 			mh.showDialogAction("ShowNavigationHistoryDialog", mh.actions.ShowNavigationHistoryDialog)
 		}, transition: true},
-		CommandHistoryPinCurrent: {fn: func(CommandContext) { mh.dependencies.History.PinCurrentHistoryPath() }, transition: true},
+		CommandHistoryPinCurrent: {fn: func(CommandContext) { mh.dependencies.history.PinCurrentHistoryPath() }, transition: true},
 		CommandDirectoryJumpShow: {fn: func(CommandContext) {
 			mh.showDialogAction("ShowDirectoryJumpDialog", mh.actions.ShowDirectoryJumpDialog)
 		}, transition: true},
 		CommandFilterShow:   {fn: func(CommandContext) { mh.showDialogAction("ShowFilterDialog", mh.actions.ShowFilterDialog) }, transition: true},
-		CommandFilterClear:  {fn: func(CommandContext) { mh.dependencies.Filters.ClearFilter() }},
-		CommandFilterToggle: {fn: func(CommandContext) { mh.dependencies.Filters.ToggleFilter() }},
+		CommandFilterClear:  {fn: func(CommandContext) { mh.dependencies.filters.ClearFilter() }},
+		CommandFilterToggle: {fn: func(CommandContext) { mh.dependencies.filters.ToggleFilter() }},
 		CommandSearchShow: {fn: func(CommandContext) {
 			mh.showDialogAction("ShowIncrementalSearchDialog", mh.actions.ShowIncrementalSearchDialog)
 		}, transition: true},
@@ -362,7 +367,7 @@ func (mh *MainScreenKeyHandler) defaultCommands() map[string]commandSpec {
 		CommandClipboardTextFile: {fn: func(CommandContext) {
 			mh.showDialogAction("ShowClipboardTextFileDialog", mh.actions.ShowClipboardTextFileDialog)
 		}, transition: true},
-		CommandQuit:     {fn: func(CommandContext) { mh.dependencies.Application.QuitApplication() }, transition: true},
+		CommandQuit:     {fn: func(CommandContext) { mh.dependencies.application.QuitApplication() }, transition: true},
 		CommandCopyShow: {fn: func(CommandContext) { mh.showDialogAction("ShowCopyDialog", mh.actions.ShowCopyDialog) }, transition: true},
 		CommandMoveShow: {fn: func(CommandContext) { mh.showDialogAction("ShowMoveDialog", mh.actions.ShowMoveDialog) }, transition: true},
 		// transition was missing from the old shouldDeferCommand switch; the
@@ -407,37 +412,37 @@ func (mh *MainScreenKeyHandler) showDeleteDialog(permanent bool) {
 }
 
 func (mh *MainScreenKeyHandler) cursorUp(CommandContext) {
-	currentIdx := mh.dependencies.CursorList.GetCurrentCursorIndex()
+	currentIdx := mh.dependencies.cursorList.GetCurrentCursorIndex()
 	if currentIdx > 0 {
-		mh.dependencies.CursorList.SetCursorByIndex(currentIdx - 1)
-		mh.dependencies.CursorList.RefreshCursor()
+		mh.dependencies.cursorList.SetCursorByIndex(currentIdx - 1)
+		mh.dependencies.cursorList.RefreshCursor()
 	}
 }
 
 func (mh *MainScreenKeyHandler) cursorDown(CommandContext) {
-	currentIdx := mh.dependencies.CursorList.GetCurrentCursorIndex()
-	if currentIdx < mh.dependencies.CursorList.FileCount()-1 {
-		mh.dependencies.CursorList.SetCursorByIndex(currentIdx + 1)
-		mh.dependencies.CursorList.RefreshCursor()
+	currentIdx := mh.dependencies.cursorList.GetCurrentCursorIndex()
+	if currentIdx < mh.dependencies.cursorList.FileCount()-1 {
+		mh.dependencies.cursorList.SetCursorByIndex(currentIdx + 1)
+		mh.dependencies.cursorList.RefreshCursor()
 	}
 }
 
 func (mh *MainScreenKeyHandler) cursorPageUp(CommandContext) {
-	currentIdx := mh.dependencies.CursorList.GetCurrentCursorIndex()
-	if mh.dependencies.CursorList.FileCount() == 0 {
+	currentIdx := mh.dependencies.cursorList.GetCurrentCursorIndex()
+	if mh.dependencies.cursorList.FileCount() == 0 {
 		return
 	}
 	newIdx := currentIdx - 20
 	if newIdx < 0 {
 		newIdx = 0
 	}
-	mh.dependencies.CursorList.SetCursorByIndex(newIdx)
-	mh.dependencies.CursorList.RefreshCursor()
+	mh.dependencies.cursorList.SetCursorByIndex(newIdx)
+	mh.dependencies.cursorList.RefreshCursor()
 }
 
 func (mh *MainScreenKeyHandler) cursorPageDown(CommandContext) {
-	currentIdx := mh.dependencies.CursorList.GetCurrentCursorIndex()
-	count := mh.dependencies.CursorList.FileCount()
+	currentIdx := mh.dependencies.cursorList.GetCurrentCursorIndex()
+	count := mh.dependencies.cursorList.FileCount()
 	if count == 0 {
 		return
 	}
@@ -445,42 +450,39 @@ func (mh *MainScreenKeyHandler) cursorPageDown(CommandContext) {
 	if newIdx >= count {
 		newIdx = count - 1
 	}
-	mh.dependencies.CursorList.SetCursorByIndex(newIdx)
-	mh.dependencies.CursorList.RefreshCursor()
+	mh.dependencies.cursorList.SetCursorByIndex(newIdx)
+	mh.dependencies.cursorList.RefreshCursor()
 }
 
 func (mh *MainScreenKeyHandler) cursorFirst(CommandContext) {
-	if mh.dependencies.CursorList.FileCount() > 0 {
-		mh.dependencies.CursorList.SetCursorByIndex(0)
-		mh.dependencies.CursorList.RefreshCursor()
+	if mh.dependencies.cursorList.FileCount() > 0 {
+		mh.dependencies.cursorList.SetCursorByIndex(0)
+		mh.dependencies.cursorList.RefreshCursor()
 	}
 }
 
 func (mh *MainScreenKeyHandler) cursorLast(CommandContext) {
-	count := mh.dependencies.CursorList.FileCount()
+	count := mh.dependencies.cursorList.FileCount()
 	if count > 0 {
-		mh.dependencies.CursorList.SetCursorByIndex(count - 1)
-		mh.dependencies.CursorList.RefreshCursor()
+		mh.dependencies.cursorList.SetCursorByIndex(count - 1)
+		mh.dependencies.cursorList.RefreshCursor()
 	}
 }
 
 func (mh *MainScreenKeyHandler) openCurrent(CommandContext) {
-	currentIdx := mh.dependencies.CursorList.GetCurrentCursorIndex()
-	if fileInfo, ok := mh.dependencies.CursorList.FileAt(currentIdx); ok {
-		mh.dependencies.FileOpener.OpenFile(&fileInfo)
+	if _, fileInfo, ok := mh.dependencies.cursorList.CurrentFile(); ok {
+		mh.dependencies.fileOpener.OpenFile(&fileInfo)
 	}
 }
 
 func (mh *MainScreenKeyHandler) openCurrentDefaultApp(CommandContext) {
-	currentIdx := mh.dependencies.CursorList.GetCurrentCursorIndex()
-	if fileInfo, ok := mh.dependencies.CursorList.FileAt(currentIdx); ok {
-		mh.dependencies.FileOpener.OpenFileDefaultApp(&fileInfo)
+	if _, fileInfo, ok := mh.dependencies.cursorList.CurrentFile(); ok {
+		mh.dependencies.fileOpener.OpenFileDefaultApp(&fileInfo)
 	}
 }
 
 func (mh *MainScreenKeyHandler) toggleSelection(CommandContext) {
-	currentIdx := mh.dependencies.CursorList.GetCurrentCursorIndex()
-	fileInfo, ok := mh.dependencies.CursorList.FileAt(currentIdx)
+	currentIdx, fileInfo, ok := mh.dependencies.cursorList.CurrentFile()
 	if !ok {
 		return
 	}
@@ -488,64 +490,39 @@ func (mh *MainScreenKeyHandler) toggleSelection(CommandContext) {
 		return
 	}
 
-	selectedFiles := mh.dependencies.Selection.GetSelectedFiles()
-	mh.dependencies.Selection.SetFileSelected(fileInfo.Path, !selectedFiles[fileInfo.Path])
-	mh.dependencies.Selection.RefreshFileList()
+	mh.dependencies.selection.ToggleFileSelection(fileInfo.Path)
+	mh.dependencies.selection.RefreshFileList()
 
-	if currentIdx < mh.dependencies.CursorList.FileCount()-1 {
-		mh.dependencies.CursorList.SetCursorByIndex(currentIdx + 1)
-		mh.dependencies.CursorList.RefreshCursor()
+	if currentIdx < mh.dependencies.cursorList.FileCount()-1 {
+		mh.dependencies.cursorList.SetCursorByIndex(currentIdx + 1)
+		mh.dependencies.cursorList.RefreshCursor()
 	}
 }
 
 func (mh *MainScreenKeyHandler) selectAll(CommandContext) {
-	selected := 0
-	for _, fileInfo := range mh.dependencies.CursorList.GetFiles() {
-		if fileInfo.Name == ".." || fileInfo.Status == fileinfo.StatusDeleted {
-			continue
-		}
-		mh.dependencies.Selection.SetFileSelected(fileInfo.Path, true)
-		selected++
-	}
-	if selected > 0 {
-		mh.dependencies.Selection.RefreshFileList()
+	if mh.dependencies.selection.SelectAllFiles() {
+		mh.dependencies.selection.RefreshFileList()
 	}
 }
 
 func (mh *MainScreenKeyHandler) invertSelection(includeDirectories bool) {
-	changed := false
-	selectedFiles := mh.dependencies.Selection.GetSelectedFiles()
-	for _, fileInfo := range mh.dependencies.CursorList.GetFiles() {
-		if fileInfo.Name == ".." || fileInfo.Status == fileinfo.StatusDeleted {
-			continue
-		}
-		if fileInfo.IsDir && !includeDirectories {
-			if selectedFiles[fileInfo.Path] {
-				mh.dependencies.Selection.SetFileSelected(fileInfo.Path, false)
-				changed = true
-			}
-			continue
-		}
-		mh.dependencies.Selection.SetFileSelected(fileInfo.Path, !selectedFiles[fileInfo.Path])
-		changed = true
-	}
-	if changed {
-		mh.dependencies.Selection.RefreshFileList()
+	if mh.dependencies.selection.InvertFileSelection(includeDirectories) {
+		mh.dependencies.selection.RefreshFileList()
 	}
 }
 
 func (mh *MainScreenKeyHandler) parentDirectory(CommandContext) {
-	currentPath := mh.dependencies.Directory.GetCurrentPath()
+	currentPath := mh.dependencies.directory.GetCurrentPath()
 	parent := fileinfo.ParentPath(currentPath)
 	if parent != currentPath {
-		mh.dependencies.Directory.LoadDirectory(parent)
+		mh.dependencies.directory.LoadDirectory(parent)
 	}
 }
 
 func (mh *MainScreenKeyHandler) refreshDirectory(CommandContext) {
-	currentPath := mh.dependencies.Directory.GetCurrentPath()
-	mh.dependencies.Directory.SaveCursorPosition(currentPath)
-	mh.dependencies.Directory.LoadDirectory(currentPath)
+	currentPath := mh.dependencies.directory.GetCurrentPath()
+	mh.dependencies.directory.SaveCursorPosition(currentPath)
+	mh.dependencies.directory.LoadDirectory(currentPath)
 }
 
 func (mh *MainScreenKeyHandler) homeDirectory(CommandContext) {
@@ -554,7 +531,7 @@ func (mh *MainScreenKeyHandler) homeDirectory(CommandContext) {
 		mh.debugPrint("MainScreen: Failed to get home directory: %v", err)
 		return
 	}
-	mh.dependencies.Directory.LoadDirectory(homeDir)
+	mh.dependencies.directory.LoadDirectory(homeDir)
 }
 
 func (mh *MainScreenKeyHandler) rename(ctx CommandContext) {

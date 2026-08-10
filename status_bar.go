@@ -26,25 +26,19 @@ func (fm *FileManager) statusBarText() string {
 		return fm.statusNotice
 	}
 
-	snapshot := fm.browserModel().Snapshot()
-	markCount := countMarkedFiles(snapshot.Selected)
-	visibleEntries := countEntriesExcludingParent(snapshot.Files)
-	totalEntries := countEntriesExcludingParent(snapshot.OriginalFiles)
-	if totalEntries == 0 && len(snapshot.OriginalFiles) == 0 {
-		totalEntries = visibleEntries
-	}
+	stats := fm.browserModel().ListingStats()
 
 	free := "-"
 	used := "-"
 	total := "-"
-	if snapshot.StorageKnown {
-		free = fileinfo.FormatFileSize(int64(snapshot.Storage.Free))
-		used = fileinfo.FormatFileSize(int64(snapshot.Storage.Used))
-		total = fileinfo.FormatFileSize(int64(snapshot.Storage.Total))
+	if stats.StorageKnown {
+		free = fileinfo.FormatFileSize(int64(stats.Storage.Free))
+		used = fileinfo.FormatFileSize(int64(stats.Storage.Used))
+		total = fileinfo.FormatFileSize(int64(stats.Storage.Total))
 	}
 
 	return fmt.Sprintf("Mark: %d | Entry: %d/%d | Free: %s | Used: %s | Total: %s",
-		markCount, visibleEntries, totalEntries, free, used, total)
+		stats.MarkedEntries, stats.VisibleEntries, stats.TotalEntries, free, used, total)
 }
 
 func parentFallbackStatusNotice(requestedPath, openedPath string) string {
@@ -94,24 +88,4 @@ func (fm *FileManager) clearStatusNotice() {
 	}
 	fm.statusNotice = ""
 	fm.updateStatusBar()
-}
-
-func countMarkedFiles(selected map[string]bool) int {
-	count := 0
-	for _, marked := range selected {
-		if marked {
-			count++
-		}
-	}
-	return count
-}
-
-// countEntriesExcludingParent relies on the sort invariant that
-// sortFilesWithConfig always pins ".." at index 0.
-func countEntriesExcludingParent(files []fileinfo.FileInfo) int {
-	n := len(files)
-	if n > 0 && files[0].Name == ".." {
-		n--
-	}
-	return n
 }

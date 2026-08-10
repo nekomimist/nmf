@@ -25,15 +25,20 @@ func (fm *FileManager) GetCurrentCursorIndex() int {
 // SetCursorByIndex sets the cursor to the specified index.
 func (fm *FileManager) SetCursorByIndex(index int) {
 	change := fm.browserModel().SetCursorIndex(index)
+	fm.recordCursorChange(change)
+
+	debugPrint("FileManager: cursor set requested=%d before=%d after=%d changed=%t count=%d active=%t focused=%s path=%q cursor=%q",
+		index, change.BeforeIndex, change.AfterIndex,
+		change.BeforeIndex != change.AfterIndex || change.BeforePath != change.AfterPath,
+		fm.FileCount(), fm.windowActive, focusedObjectLabel(fm.window), fm.GetCurrentPath(), change.AfterPath)
+}
+
+func (fm *FileManager) recordCursorChange(change browser.CursorChange) {
 	if change.BeforeIndex >= 0 && change.AfterIndex >= 0 {
 		fm.cursorMoveDirection = cmp.Compare(change.AfterIndex, change.BeforeIndex)
 	} else {
 		fm.cursorMoveDirection = 0
 	}
-	debugPrint("FileManager: cursor set requested=%d before=%d after=%d changed=%t count=%d active=%t focused=%s path=%q cursor=%q",
-		index, change.BeforeIndex, change.AfterIndex,
-		change.BeforeIndex != change.AfterIndex || change.BeforePath != change.AfterPath,
-		fm.FileCount(), fm.windowActive, focusedObjectLabel(fm.window), fm.GetCurrentPath(), change.AfterPath)
 }
 
 // RefreshCursor updates only the cursor display without affecting selection.
@@ -179,6 +184,10 @@ func (fm *FileManager) FileAt(index int) (fileinfo.FileInfo, bool) {
 	return fm.browserModel().FileAt(index)
 }
 
+func (fm *FileManager) CurrentFile() (int, fileinfo.FileInfo, bool) {
+	return fm.browserModel().CursorFile()
+}
+
 // GetSelectedFiles returns the map of selected files.
 func (fm *FileManager) GetSelectedFiles() map[string]bool {
 	return fm.browserModel().Selection()
@@ -187,7 +196,18 @@ func (fm *FileManager) GetSelectedFiles() map[string]bool {
 // SetFileSelected sets the selection state of a file.
 func (fm *FileManager) SetFileSelected(path string, selected bool) {
 	fm.browserModel().SetSelected(path, selected)
-	fm.updateStatusBar()
+}
+
+func (fm *FileManager) ToggleFileSelection(path string) {
+	fm.browserModel().ToggleSelected(path)
+}
+
+func (fm *FileManager) SelectAllFiles() bool {
+	return fm.browserModel().SelectAll()
+}
+
+func (fm *FileManager) InvertFileSelection(includeDirectories bool) bool {
+	return fm.browserModel().InvertSelection(includeDirectories)
 }
 
 // RefreshFileList refreshes the file list display.
@@ -222,10 +242,7 @@ func (fm *FileManager) ShowFilterDialog() {
 	entries := fm.state.GetFileFilterEntries()
 
 	// Use originalFiles if available, otherwise use current files
-	currentFiles := fm.browserModel().OriginalFiles()
-	if len(currentFiles) == 0 {
-		currentFiles = fm.GetFiles()
-	}
+	currentFiles := fm.browserModel().SourceFiles()
 
 	filterDialog := ui.NewFilterDialog(entries, currentFiles, fm.keyManager, debugPrint, fm.searchMatchers)
 	filterDialog.ShowDialog(fm.window, func(selectedEntry *config.FilterEntry) {
@@ -592,33 +609,22 @@ func (fm *FileManager) resetKeyStateAfterExternalOpen(label string) {
 
 // SetCursorToFile sets the cursor to the specified file.
 func (fm *FileManager) SetCursorToFile(file *fileinfo.FileInfo) {
-	for i, f := range fm.GetFiles() {
-		if f.Name == file.Name {
-			fm.SetCursorByIndex(i)
-			fm.RefreshCursor()
-			break
-		}
+	if file == nil {
+		return
 	}
-}
-
-func (fm *FileManager) sortFilesWithConfig(sortConfig config.SortConfig) {
-	debugPrint("FileManager: Sorting files: sortBy=%s, order=%s, dirFirst=%t",
-		sortConfig.SortBy, sortConfig.SortOrder, sortConfig.DirectoriesFirst)
-	fm.browserModel().ApplySort(sortConfig)
-}
-
-// sortFileInfoSlice returns files reordered per sortConfig. It pins ".." at
-// index 0 (if present) and, when DirectoriesFirst is set, sorts directories
-// and regular files as separate groups; otherwise sorts everything but the
-// parent entry together. It touches no FileManager state, so it is safe to
-// call from a background goroutine (see loadDirectoryAsync).
-func sortFileInfoSlice(files []fileinfo.FileInfo, sortConfig config.SortConfig) []fileinfo.FileInfo {
-	return browser.SortFiles(files, sortConfig)
+	change, found := fm.browserModel().SetCursorByName(file.Name)
+	if found {
+		fm.recordCursorChange(change)
+		debugPrint("FileManager: cursor set name=%q before=%d after=%d", file.Name, change.BeforeIndex, change.AfterIndex)
+		fm.RefreshCursor()
+	}
 }
 
 func (fm *FileManager) applySort(sortConfig config.SortConfig) {
 	currentPath := fm.browserModel().CursorPath()
-	fm.sortFilesWithConfig(sortConfig)
+	debugPrint("FileManager: Sorting files: sortBy=%s, order=%s, dirFirst=%t",
+		sortConfig.SortBy, sortConfig.SortOrder, sortConfig.DirectoriesFirst)
+	fm.browserModel().ApplySort(sortConfig)
 
 	if currentPath != "" {
 		if fm.GetCurrentCursorIndex() >= 0 {
@@ -631,9 +637,4 @@ func (fm *FileManager) applySort(sortConfig config.SortConfig) {
 	}
 
 	fm.RefreshCursor()
-}
-
-// sortSlice sorts a slice of FileInfo according to the sort configuration.
-func sortSlice(files []fileinfo.FileInfo, sortConfig config.SortConfig) {
-	browser.SortSlice(files, sortConfig)
 }

@@ -63,7 +63,7 @@ func (c *BusyController) Active() bool {
 // Begin blocks keyboard input immediately and shows the overlay after the
 // configured delay. Beginning again while active only updates the text,
 // preserving the existing input owner.
-func (c *BusyController) Begin(text string, onCancel ...func()) {
+func (c *BusyController) Begin(text string, onCancel func()) {
 	if c == nil {
 		return
 	}
@@ -84,12 +84,8 @@ func (c *BusyController) Begin(text string, onCancel ...func()) {
 	generation := c.generation
 	c.debugf("BusyController: begin text=%q", text)
 
-	var cancel func()
-	if len(onCancel) > 0 {
-		cancel = onCancel[0]
-	}
 	if c.keyManager != nil {
-		c.token = c.keyManager.PushHandler(keymanager.NewBusyKeyHandler(cancel))
+		c.token = c.keyManager.PushHandler(keymanager.NewBusyKeyHandler(onCancel))
 	}
 	if c.timer != nil {
 		c.timer.Stop()
@@ -109,6 +105,7 @@ func (c *BusyController) showIfCurrent(generation uint64) {
 		return
 	}
 	c.overlay.Show(c.window, c.text)
+	c.debugf("BusyController: show text=%q", c.text)
 }
 
 // UpdateText updates an active overlay without changing the input handler.

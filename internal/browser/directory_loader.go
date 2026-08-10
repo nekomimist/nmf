@@ -210,9 +210,19 @@ func (l *DirectoryLoader) CancelActive() bool {
 		return false
 	}
 	l.mu.Lock()
-	id := l.activeID
+	if l.activeID == 0 {
+		l.mu.Unlock()
+		return false
+	}
+	cancel := l.cancel
+	l.activeID = 0
+	l.cancel = nil
 	l.mu.Unlock()
-	return l.Cancel(id)
+
+	if cancel != nil {
+		cancel()
+	}
+	return true
 }
 
 // ReadDirectoryWithParentFallback reads requestedPath and walks through
@@ -223,12 +233,8 @@ func ReadDirectoryWithParentFallback(
 	requestedPath string,
 	allowParentFallback bool,
 	readDir DirectoryReadFunc,
-	onCandidate ...func(string),
+	onCandidate func(string),
 ) ([]os.DirEntry, string, bool, error) {
-	var notify func(string)
-	if len(onCandidate) > 0 {
-		notify = onCandidate[0]
-	}
 	path := requestedPath
 	for {
 		if err := ctx.Err(); err != nil {
@@ -251,8 +257,8 @@ func ReadDirectoryWithParentFallback(
 			return nil, "", false, err
 		}
 		path = parent
-		if notify != nil {
-			notify(path)
+		if onCandidate != nil {
+			onCandidate(path)
 		}
 	}
 }

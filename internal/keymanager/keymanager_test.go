@@ -442,15 +442,12 @@ type cursorListPortFake struct {
 func (f *cursorListPortFake) GetCurrentCursorIndex() int { return f.cursorIndex }
 func (f *cursorListPortFake) SetCursorByIndex(index int) { f.setIndex = index }
 func (f *cursorListPortFake) RefreshCursor()             { f.refreshCount++ }
-func (f *cursorListPortFake) GetFiles() []fileinfo.FileInfo {
-	return f.files
-}
-func (f *cursorListPortFake) FileCount() int { return len(f.files) }
-func (f *cursorListPortFake) FileAt(index int) (fileinfo.FileInfo, bool) {
-	if index < 0 || index >= len(f.files) {
-		return fileinfo.FileInfo{}, false
+func (f *cursorListPortFake) FileCount() int             { return len(f.files) }
+func (f *cursorListPortFake) CurrentFile() (int, fileinfo.FileInfo, bool) {
+	if f.cursorIndex < 0 || f.cursorIndex >= len(f.files) {
+		return -1, fileinfo.FileInfo{}, false
 	}
-	return f.files[index], true
+	return f.cursorIndex, f.files[f.cursorIndex], true
 }
 
 func TestMainScreenCursorCommandNeedsOnlyCursorListPort(t *testing.T) {
@@ -459,9 +456,14 @@ func TestMainScreenCursorCommandNeedsOnlyCursorListPort(t *testing.T) {
 		cursorIndex: 0,
 		setIndex:    -1,
 	}
-	handler := NewMainScreenKeyHandler(
-		MainScreenDependencies{CursorList: cursor},
+	// Use the package-private builder deliberately: production construction
+	// requires every port, while this test proves the command itself consumes
+	// only the cursor/list responsibility.
+	handler := newMainScreenKeyHandlerWithCommands(
+		MainScreenDependencies{cursorList: cursor},
 		func(string, ...interface{}) {},
+		nil,
+		nil,
 	)
 
 	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyDown}, ModifierState{}) {
@@ -470,6 +472,40 @@ func TestMainScreenCursorCommandNeedsOnlyCursorListPort(t *testing.T) {
 	if cursor.setIndex != 1 || cursor.refreshCount != 1 {
 		t.Fatalf("cursor port calls = set %d refresh %d, want 1/1", cursor.setIndex, cursor.refreshCount)
 	}
+}
+
+func TestMainScreenHandlerRejectsIncompleteDependencies(t *testing.T) {
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			t.Fatal("NewMainScreenKeyHandler accepted an incomplete dependency set")
+		}
+		if message := fmt.Sprint(recovered); !strings.Contains(message, "CursorList") {
+			t.Fatalf("dependency panic = %q, want missing CursorList identified", message)
+		}
+	}()
+	NewMainScreenKeyHandler(MainScreenDependencies{}, func(string, ...interface{}) {})
+}
+
+func TestMainScreenDependenciesRejectTypedNilPort(t *testing.T) {
+	var fm *mainScreenFakeFileManager
+	defer func() {
+		recovered := recover()
+		if recovered == nil || !strings.Contains(fmt.Sprint(recovered), "CursorList") {
+			t.Fatalf("typed-nil dependency panic = %v, want missing CursorList identified", recovered)
+		}
+	}()
+	NewMainScreenDependencies(MainScreenPorts{
+		CursorList:  fm,
+		Selection:   fm,
+		Directory:   fm,
+		FileOpener:  fm,
+		Windows:     fm,
+		History:     fm,
+		Filters:     fm,
+		Application: fm,
+		Commands:    fm,
+	}, nil, nil)
 }
 
 func (f *mainScreenFakeFileManager) GetCurrentCursorIndex() int    { return f.cursorIndex }
@@ -484,6 +520,10 @@ func (f *mainScreenFakeFileManager) FileAt(index int) (fileinfo.FileInfo, bool) 
 		return fileinfo.FileInfo{}, false
 	}
 	return f.files[index], true
+}
+func (f *mainScreenFakeFileManager) CurrentFile() (int, fileinfo.FileInfo, bool) {
+	file, ok := f.FileAt(f.cursorIndex)
+	return f.cursorIndex, file, ok
 }
 func (f *mainScreenFakeFileManager) CurrentSort() config.SortConfig {
 	return config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}
@@ -510,6 +550,47 @@ func (f *mainScreenFakeFileManager) SetFileSelected(path string, selected bool) 
 		f.selectedFiles = make(map[string]bool)
 	}
 	f.selectedFiles[path] = selected
+}
+func (f *mainScreenFakeFileManager) ToggleFileSelection(path string) {
+	if f.selectedFiles == nil {
+		f.selectedFiles = make(map[string]bool)
+	}
+	f.selectedFiles[path] = !f.selectedFiles[path]
+}
+func (f *mainScreenFakeFileManager) SelectAllFiles() bool {
+	if f.selectedFiles == nil {
+		f.selectedFiles = make(map[string]bool)
+	}
+	found := false
+	for _, file := range f.files {
+		if file.Name == ".." || file.Status == fileinfo.StatusDeleted {
+			continue
+		}
+		f.selectedFiles[file.Path] = true
+		found = true
+	}
+	return found
+}
+func (f *mainScreenFakeFileManager) InvertFileSelection(includeDirectories bool) bool {
+	if f.selectedFiles == nil {
+		f.selectedFiles = make(map[string]bool)
+	}
+	changed := false
+	for _, file := range f.files {
+		if file.Name == ".." || file.Status == fileinfo.StatusDeleted {
+			continue
+		}
+		if file.IsDir && !includeDirectories {
+			if f.selectedFiles[file.Path] {
+				f.selectedFiles[file.Path] = false
+				changed = true
+			}
+			continue
+		}
+		f.selectedFiles[file.Path] = !f.selectedFiles[file.Path]
+		changed = true
+	}
+	return changed
 }
 func (f *mainScreenFakeFileManager) RefreshFileList()                  { f.refreshFileListCount++ }
 func (f *mainScreenFakeFileManager) SaveCursorPosition(dirPath string) { f.saveCursorPath = dirPath }
@@ -547,18 +628,21 @@ func (f *mainScreenFakeFileManager) OpenFileDefaultApp(file *fileinfo.FileInfo) 
 }
 
 func mainScreenDependenciesForTest(f *mainScreenFakeFileManager) MainScreenDependencies {
-	return MainScreenDependencies{
-		CursorList:   f,
-		Selection:    f,
-		Directory:    f,
-		FileOpener:   f,
-		Windows:      f,
-		History:      f,
-		Filters:      f,
-		Application:  f,
-		Commands:     f,
-		SetClipboard: f.SetClipboardText,
-	}
+	return NewMainScreenDependencies(
+		MainScreenPorts{
+			CursorList:  f,
+			Selection:   f,
+			Directory:   f,
+			FileOpener:  f,
+			Windows:     f,
+			History:     f,
+			Filters:     f,
+			Application: f,
+			Commands:    f,
+		},
+		nil,
+		f.SetClipboardText,
+	)
 }
 
 // fakeDialogActions builds the DialogActions closures MainScreenKeyHandler

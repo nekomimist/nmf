@@ -32,6 +32,9 @@ Concurrency model:
 - `ApplyChanges` replaces an added path that is already in the list instead of
   appending it, since the baseline excludes entries marked deleted and a
   recreated file therefore arrives as an add.
+- When a file filter is active, `browser.Model.ApplyChanges` merges against the
+  unfiltered baseline and re-derives the visible list. Merging against the
+  filtered list would permanently discard entries hidden at update time.
 - FileManager access happens through watcher-facing interface methods:
   - `GetCurrentPath`
   - `GetFiles`

@@ -69,19 +69,7 @@ func NewFileManager(runtime *ApplicationRuntime, path string) *FileManager {
 	if runtime.configScript != nil {
 		scriptCommands = runtime.configScript.Commands
 	}
-	mainDependencies := keymanager.MainScreenDependencies{
-		CursorList:         fm,
-		Selection:          fm,
-		Directory:          fm,
-		FileOpener:         fm,
-		Windows:            fm,
-		History:            fm,
-		Filters:            fm,
-		Application:        fm,
-		Commands:           fm,
-		RunExternalCommand: fm.RunExternalCommand,
-		SetClipboard:       fm.SetClipboardText,
-	}
+	mainDependencies := newMainScreenDependencies(fm)
 	mainHandler := keymanager.NewMainScreenKeyHandlerWithCommands(mainDependencies, debugPrint, config.UI.KeyBindings, scriptCommands)
 	mainHandler.SetTransitionGate(fm.keyManager.BeginOwnerTransition)
 	mainHandler.SetActions(keymanager.DialogActions{
@@ -124,4 +112,22 @@ func NewFileManager(runtime *ApplicationRuntime, path string) *FileManager {
 	})
 
 	return fm
+}
+
+func newMainScreenDependencies(fm *FileManager) keymanager.MainScreenDependencies {
+	return keymanager.NewMainScreenDependencies(
+		keymanager.MainScreenPorts{
+			CursorList:  fm,
+			Selection:   fm,
+			Directory:   fm,
+			FileOpener:  fm,
+			Windows:     fm,
+			History:     fm,
+			Filters:     fm,
+			Application: fm,
+			Commands:    fm,
+		},
+		fm.RunExternalCommand,
+		fm.SetClipboardText,
+	)
 }

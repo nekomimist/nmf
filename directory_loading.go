@@ -18,8 +18,7 @@ import (
 
 // SaveCursorPosition saves the current cursor position for the given directory.
 func (fm *FileManager) SaveCursorPosition(dirPath string) {
-	currentIdx := fm.GetCurrentCursorIndex()
-	file, ok := fm.FileAt(currentIdx)
+	_, file, ok := fm.browserModel().CursorFile()
 	if !ok {
 		return
 	}
@@ -203,9 +202,10 @@ func (fm *FileManager) loadDirectory(path string, allowParentFallback bool) {
 
 	// Indicate busy and block input while loading
 	if fm.busy != nil {
-		fm.busy.Begin(fmt.Sprintf("Loading %s...", path), func() {
-			fm.cancelDirectoryLoad(handle.ID)
-		})
+		// A repeated navigation reuses the existing busy input guard. Keep its
+		// cancel callback generation-independent so Escape always cancels the
+		// newest load rather than the handle that first created the guard.
+		fm.busy.Begin(fmt.Sprintf("Loading %s...", path), fm.cancelActiveDirectoryLoad)
 	}
 
 	// Capture the sort config on the UI thread: fm.state is mutated by the
@@ -219,14 +219,8 @@ func (fm *FileManager) loadDirectory(path string, allowParentFallback bool) {
 
 // loadDirectoryAsync asks the widget-free loader to read a path in a
 // background goroutine, then applies an accepted result on the main thread.
-// refreshCursorNeighbors is supplied only for a same-directory reload. It is
-// variadic to keep direct test callers concise when no refresh fallback is
-// relevant.
-func (fm *FileManager) loadDirectoryAsync(handle browser.DirectoryLoadHandle, path string, previousPath string, sortCfg config.SortConfig, allowParentFallback bool, refreshCursorNeighbors ...[]string) {
-	var cursorNeighbors []string
-	if len(refreshCursorNeighbors) > 0 {
-		cursorNeighbors = refreshCursorNeighbors[0]
-	}
+// refreshCursorNeighbors is supplied only for a same-directory reload.
+func (fm *FileManager) loadDirectoryAsync(handle browser.DirectoryLoadHandle, path string, previousPath string, sortCfg config.SortConfig, allowParentFallback bool, cursorNeighbors []string) {
 	discarded := func(err error) bool {
 		if handle.Context != nil && handle.Context.Err() != nil {
 			debugPrint("FileManager: LoadDirectory canceled id=%d err=%v", handle.ID, handle.Context.Err())
@@ -403,30 +397,11 @@ func isParentDirectoryNavigation(previousPath, path string) bool {
 // when the cursor's row is removed by a refresh. Deleted rows and the parent
 // entry cannot be useful cursor restoration targets after a reload.
 func (fm *FileManager) cursorNeighborPaths() []string {
-	cursorIndex := fm.GetCurrentCursorIndex()
-	if cursorIndex < 0 {
-		return nil
-	}
-
-	files := fm.GetFiles()
-	neighbors := make([]string, 0, len(files)-1)
-	for distance := 1; distance < len(files); distance++ {
-		for _, index := range []int{cursorIndex + distance, cursorIndex - distance} {
-			if index < 0 || index >= len(files) {
-				continue
-			}
-			file := files[index]
-			if file.Name == ".." || file.Status == fileinfo.StatusDeleted {
-				continue
-			}
-			neighbors = append(neighbors, file.Path)
-		}
-	}
-	return neighbors
+	return fm.browserModel().CursorNeighborPaths()
 }
 
-func (fm *FileManager) cancelDirectoryLoad(loadID uint64) {
-	if fm.directoryLoader == nil || !fm.directoryLoader.Cancel(loadID) {
+func (fm *FileManager) cancelActiveDirectoryLoad() {
+	if fm.directoryLoader == nil || !fm.directoryLoader.CancelActive() {
 		return
 	}
 	if fm.busy != nil {
@@ -438,7 +413,7 @@ func (fm *FileManager) cancelDirectoryLoad(loadID uint64) {
 		fm.dirWatcher.Start()
 	}
 	fm.focusFileList("directory-load-cancel")
-	debugPrint("FileManager: LoadDirectory cancel id=%d path=%s", loadID, currentPath)
+	debugPrint("FileManager: LoadDirectory cancel path=%s", currentPath)
 }
 
 // pollIntervalForPath returns the recommended watcher polling interval for a path.

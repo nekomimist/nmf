@@ -136,47 +136,6 @@ func TestExpireStatusNoticeIgnoresStaleGeneration(t *testing.T) {
 	}
 }
 
-func TestCountEntriesExcludingParent(t *testing.T) {
-	files := []fileinfo.FileInfo{
-		{Name: ".."},
-		{Name: "alpha.txt"},
-		{Name: "docs", IsDir: true},
-	}
-
-	if got := countEntriesExcludingParent(files); got != 2 {
-		t.Fatalf("countEntriesExcludingParent got %d, want 2", got)
-	}
-}
-
-func TestCountEntriesExcludingParentWithoutParent(t *testing.T) {
-	files := []fileinfo.FileInfo{
-		{Name: "alpha.txt"},
-		{Name: "docs", IsDir: true},
-	}
-
-	if got := countEntriesExcludingParent(files); got != 2 {
-		t.Fatalf("countEntriesExcludingParent got %d, want 2", got)
-	}
-}
-
-func TestCountEntriesExcludingParentEmpty(t *testing.T) {
-	if got := countEntriesExcludingParent(nil); got != 0 {
-		t.Fatalf("countEntriesExcludingParent got %d, want 0", got)
-	}
-}
-
-func TestCountMarkedFilesCountsOnlyTrueValues(t *testing.T) {
-	selected := map[string]bool{
-		"/tmp/a": true,
-		"/tmp/b": false,
-		"/tmp/c": true,
-	}
-
-	if got := countMarkedFiles(selected); got != 2 {
-		t.Fatalf("countMarkedFiles got %d, want 2", got)
-	}
-}
-
 func TestStatusBarTextShowsVisibleAndTotalEntries(t *testing.T) {
 	fm := &FileManager{
 		browser: newTestBrowser(testBrowserOptions{
