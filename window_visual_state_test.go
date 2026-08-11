@@ -58,6 +58,35 @@ func TestFocusFileListRestoresWindowActive(t *testing.T) {
 	}
 }
 
+func TestMainScreenPointerActionRestoresFocusBeforeAction(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	window := app.NewWindow("pointer action")
+	fm := &FileManager{
+		window:       window,
+		windowActive: true,
+		browser:      newTestBrowser(testBrowserOptions{path: "/tmp"}),
+	}
+	button := widget.NewButton("Action", fm.mainScreenPointerAction(func() {
+		if window.Canvas().Focused() != fm.fileListView {
+			t.Fatalf("action started with focus on %T, want fileListView", window.Canvas().Focused())
+		}
+		if !fm.windowActive {
+			t.Fatal("action started with inactive File Manager window")
+		}
+	}))
+	fm.fileListView = ui.NewKeySink(button, nil, ui.WithFocusChanged(fm.setWindowActive))
+	window.SetContent(fm.fileListView)
+	window.Canvas().Focus(fm.fileListView)
+
+	test.Tap(button)
+
+	if got := window.Canvas().Focused(); got != fm.fileListView {
+		t.Fatalf("focused object after action = %T, want fileListView", got)
+	}
+}
+
 func TestHighlightFileManagerWindowForPathHighlightsOpenWindow(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()

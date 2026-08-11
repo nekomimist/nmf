@@ -39,14 +39,6 @@ func (fm *FileManager) setupUI() {
 		fm.fileList.HideSeparators = true
 	}
 
-	// Wrap list with a generic focusable KeySink to suppress Tab traversal
-	fm.fileListView = ui.NewKeySink(
-		fm.fileList,
-		fm.keyManager,
-		ui.WithTabCapture(true),
-		ui.WithFocusChanged(fm.setWindowActive),
-	)
-
 	// Handle cursor movement (both mouse and keyboard)
 	fm.fileList.OnSelected = func(id widget.ListItemID) {
 		debugPrint("FileManager: List selected id=%d active=%t focused=%s path=%q",
@@ -59,51 +51,50 @@ func (fm *FileManager) setupUI() {
 		fm.RefreshCursor()
 	}
 
+	// Fyne buttons clear canvas focus before running their callback. Restore
+	// the persistent main-screen owner before the action starts so a dialog or
+	// another window can return to the same KeySink instead of a nil owner.
+	toolbarAction := func(icon fyne.Resource, action func()) widget.ToolbarItem {
+		return widget.NewToolbarAction(icon, fm.mainScreenPointerAction(action))
+	}
+
 	// Create toolbar (left side)
 	toolbarItems := []widget.ToolbarItem{
-		widget.NewToolbarAction(theme.NavigateBackIcon(), func() {
+		toolbarAction(theme.NavigateBackIcon(), func() {
 			currentPath := fm.GetCurrentPath()
 			parent := fileinfo.ParentPath(currentPath)
 			if parent != currentPath {
 				fm.LoadDirectory(parent)
 			}
-			fm.FocusFileList()
 		}),
-		widget.NewToolbarAction(theme.HomeIcon(), func() {
+		toolbarAction(theme.HomeIcon(), func() {
 			home, _ := os.UserHomeDir()
 			fm.LoadDirectory(home)
-			fm.FocusFileList()
 		}),
-		widget.NewToolbarAction(theme.ViewRefreshIcon(), func() {
+		toolbarAction(theme.ViewRefreshIcon(), func() {
 			fm.LoadDirectory(fm.GetCurrentPath())
-			fm.FocusFileList()
 		}),
-		widget.NewToolbarAction(theme.FolderIcon(), func() {
+		toolbarAction(theme.FolderIcon(), func() {
 			fm.ShowDirectoryTreeDialog()
-			// focus returns after dialog closes in callback
 		}),
-		widget.NewToolbarAction(theme.FolderNewIcon(), func() {
+		toolbarAction(theme.FolderNewIcon(), func() {
 			fm.OpenNewWindow()
-			fm.FocusFileList()
 		}),
 	}
 	if debugMode {
-		toolbarItems = append(toolbarItems, widget.NewToolbarAction(theme.SettingsIcon(), func() {
+		toolbarItems = append(toolbarItems, toolbarAction(theme.SettingsIcon(), func() {
 			fm.DumpKeyManagerState()
 		}))
 	}
 	toolbarItems = append(toolbarItems,
-		widget.NewToolbarAction(theme.InfoIcon(), func() {
+		toolbarAction(theme.InfoIcon(), func() {
 			fm.ShowVersionDialog()
-			fm.FocusFileList()
 		}),
 	)
 	toolbar := widget.NewToolbar(toolbarItems...)
 
 	// Jobs button on the right
-	fm.jobsButton = widget.NewButton("Jobs", func() {
-		fm.ShowJobsDialog()
-	})
+	fm.jobsButton = widget.NewButton("Jobs", fm.mainScreenPointerAction(fm.ShowJobsDialog))
 	fm.jobsButton.Importance = widget.MediumImportance
 
 	// Layout with search overlay
@@ -114,7 +105,7 @@ func (fm *FileManager) setupUI() {
 	mainContent := container.NewBorder(
 		container.NewVBox(toolbarRow, fm.pathDisplay, fm.statusLabel),
 		nil, nil, nil,
-		fm.fileListView,
+		fm.fileList,
 	)
 	fm.windowHighlight = ui.NewHighlightFrame(fm.customTheme)
 
@@ -133,14 +124,24 @@ func (fm *FileManager) setupUI() {
 		fm.busy.GetContainer(), // Highest overlay to block interactions
 	)
 
-	fm.window.SetContent(content)
+	// The whole main surface belongs to one focusable KeySink. Keeping the
+	// toolbar, passive labels, padding, and overlays inside it prevents a mouse
+	// press outside the list from dropping into Fyne's no-focus fallback.
+	fm.fileListView = ui.NewKeySink(
+		content,
+		fm.keyManager,
+		ui.WithTabCapture(true),
+		ui.WithTapFocus(true),
+		ui.WithFocusChanged(fm.setWindowActive),
+	)
+	fm.window.SetContent(fm.fileListView)
 	fm.setupDropHandler()
 	fm.window.Resize(fm.initialWindowSize)
 
 	// Initialize jobs indicator state
 	fm.onJobsUpdated()
 
-	// Ensure initial focus sits on the tabbable list view
+	// Ensure initial focus sits on the main-screen KeySink.
 	fm.FocusFileList()
 
 	// Setup keyboard handling via KeyManager.
@@ -193,6 +194,19 @@ func (fm *FileManager) setupUI() {
 				}
 				fm.keyManager.HandleShortcut(s)
 			})
+		}
+	}
+}
+
+// mainScreenPointerAction restores the persistent keyboard owner before a
+// pointer-triggered action. This ordering matters for actions that open an
+// overlay or another window: Fyne can then reactivate the retained KeySink
+// when that temporary owner closes.
+func (fm *FileManager) mainScreenPointerAction(action func()) func() {
+	return func() {
+		fm.focusFileList("main-screen-pointer-action")
+		if action != nil {
+			action()
 		}
 	}
 }

@@ -193,11 +193,17 @@ Long-running UI actions:
   Copy/move/extract jobs require the destination root to be an existing
   directory; they never create a mistyped destination tree implicitly.
 
-Main file list:
+Main File Manager surface:
 
-- Wrap list with `ui.KeySink`.
+- Wrap the complete main content stack with one `ui.KeySink`, including the
+  toolbar, path/status labels, list, highlight frame, and search/busy overlays.
 - Keep focus on sink to ensure all keyboard events route through `KeyManager`.
 - Enable tab capture (`WithTabCapture(true)`) to suppress default focus traversal.
+- Enable passive-area tap focus (`WithTapFocus(true)`) so labels, padding, and
+  overlay surfaces restore the same owner when clicked.
+- Wrap toolbar and Jobs callbacks with the main-screen pointer-action helper.
+  Fyne buttons clear canvas focus before invoking their callback, so the helper
+  restores the persistent sink before an overlay or another window takes over.
 - When debug logging is enabled, the toolbar includes a mouse action that writes
   `KeyManager.DumpState()` to the debug log without opening another input owner.
 - Keep new main-screen dependencies consumer-oriented. Extend the smallest

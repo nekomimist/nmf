@@ -9,13 +9,14 @@ import (
 
 // KeySink is a generic, focusable wrapper around any CanvasObject.
 // When focused, it forwards all key events to the provided KeyManager
-// and optionally captures Tab to prevent Fyne's default focus traversal.
+// and can capture Tab or reclaim taps on passive content.
 type KeySink struct {
 	widget.BaseWidget
-	Content   fyne.CanvasObject
-	km        *keymanager.KeyManager
-	acceptTab bool
-	onFocus   func(bool)
+	Content    fyne.CanvasObject
+	km         *keymanager.KeyManager
+	acceptTab  bool
+	focusOnTap bool
+	onFocus    func(bool)
 }
 
 // KeySinkOption customizes KeySink behavior.
@@ -23,6 +24,11 @@ type KeySinkOption func(*KeySink)
 
 // WithTabCapture toggles Tab key capture for focus traversal suppression.
 func WithTabCapture(on bool) KeySinkOption { return func(k *KeySink) { k.acceptTab = on } }
+
+// WithTapFocus makes taps on otherwise passive content focus the sink. Child
+// controls keep receiving their own taps because Fyne dispatches to the
+// deepest matching object.
+func WithTapFocus(on bool) KeySinkOption { return func(k *KeySink) { k.focusOnTap = on } }
 
 // WithFocusChanged sets a callback invoked when the sink gains or loses focus.
 func WithFocusChanged(callback func(bool)) KeySinkOption {
@@ -105,6 +111,21 @@ func (k *KeySink) KeyDown(ev *fyne.KeyEvent) {
 func (k *KeySink) KeyUp(ev *fyne.KeyEvent) {
 	if k.km != nil {
 		k.km.HandleKeyUp(ev)
+	}
+}
+
+// Tapped optionally restores focus when a tap lands on passive content owned
+// by the sink, such as a label or layout padding.
+func (k *KeySink) Tapped(_ *fyne.PointEvent) {
+	if !k.focusOnTap {
+		return
+	}
+	app := fyne.CurrentApp()
+	if app == nil || app.Driver() == nil {
+		return
+	}
+	if c := app.Driver().CanvasForObject(k); c != nil {
+		c.Focus(k)
 	}
 }
 

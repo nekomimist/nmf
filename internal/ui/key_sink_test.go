@@ -5,6 +5,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver/desktop"
+	fynetest "fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/keymanager"
@@ -73,5 +74,22 @@ func TestKeySinkReportsFocusChanges(t *testing.T) {
 
 	if len(got) != 2 || !got[0] || got[1] {
 		t.Fatalf("focus changes = %v, want [true false]", got)
+	}
+}
+
+func TestKeySinkTapFocusRestoresSinkOnPassiveContent(t *testing.T) {
+	app := fynetest.NewApp()
+	defer app.Quit()
+
+	sink := NewKeySink(widget.NewLabel("passive"), nil, WithTapFocus(true))
+	window := app.NewWindow("tap focus")
+	window.SetContent(sink)
+	window.Resize(fyne.NewSize(200, 100))
+	window.Canvas().Unfocus()
+
+	fynetest.Tap(sink)
+
+	if got := window.Canvas().Focused(); got != sink {
+		t.Fatalf("focused object = %T, want KeySink", got)
 	}
 }
