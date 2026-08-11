@@ -41,7 +41,7 @@ func (fm *FileManager) setWindowActive(active bool) {
 	if fm.isWindowClosed() {
 		return
 	}
-	debugPrint("FileManager: window active change active=%t focused=%s path=%s", active, focusedObjectLabel(fm.window), fm.currentPath)
+	debugPrint("FileManager: window active change active=%t focused=%s path=%s", active, focusedObjectLabel(fm.window), fm.GetCurrentPath())
 	fm.windowActive = active
 	if fm.runtime != nil && fm.runtime.promptBroker != nil && fm.promptTargetID != 0 {
 		fm.runtime.promptBroker.SetActive(fm.promptTargetID, active)
@@ -61,32 +61,32 @@ func (fm *FileManager) setWindowHighlight(active bool) {
 	}
 }
 
-func clearFileManagerWindowHighlights() {
-	for _, manager := range snapshotFileManagerWindows() {
+func clearFileManagerWindowHighlights(fm *FileManager) {
+	for _, manager := range fm.registeredWindows() {
 		manager.setWindowHighlight(false)
 	}
 }
 
 func updateOpenPathHighlights(fm *FileManager, path string, openPaths map[string]bool, setOwnerHighlighted func(bool)) {
 	open := openPaths[path]
-	ownerHighlighted := open && fm != nil && sameDirectoryPath(path, fm.currentPath)
+	ownerHighlighted := open && fm != nil && sameDirectoryPath(path, fm.GetCurrentPath())
 	if setOwnerHighlighted != nil {
 		setOwnerHighlighted(ownerHighlighted)
 	}
 	if open {
-		highlightFileManagerWindowForPath(path)
+		highlightFileManagerWindowForPath(fm, path)
 		return
 	}
-	clearFileManagerWindowHighlights()
+	clearFileManagerWindowHighlights(fm)
 }
 
-func highlightFileManagerWindowForPath(path string) {
-	clearFileManagerWindowHighlights()
+func highlightFileManagerWindowForPath(fm *FileManager, path string) {
+	clearFileManagerWindowHighlights(fm)
 	if path == "" {
 		return
 	}
-	for _, manager := range snapshotFileManagerWindows() {
-		if manager.currentPath != path || fileManagerWindowIconified(manager) {
+	for _, manager := range fm.registeredWindows() {
+		if manager.GetCurrentPath() != path || fileManagerWindowIconified(manager) {
 			continue
 		}
 		manager.setWindowHighlight(true)

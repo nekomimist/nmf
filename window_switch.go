@@ -25,71 +25,6 @@ type windowSwitchCandidate struct {
 	hasRect bool
 }
 
-func registerFileManagerWindow(fm *FileManager) {
-	if fm == nil || fm.window == nil {
-		return
-	}
-	windowRegistry.Store(fm.window, fm)
-
-	windowOrderMu.Lock()
-	defer windowOrderMu.Unlock()
-	windowOrder = append(windowOrder, fm)
-}
-
-func unregisterFileManagerWindow(fm *FileManager) {
-	if fm == nil {
-		return
-	}
-	if fm.window != nil {
-		windowRegistry.Delete(fm.window)
-	}
-
-	windowOrderMu.Lock()
-	defer windowOrderMu.Unlock()
-	for i, candidate := range windowOrder {
-		if candidate == fm {
-			windowOrder = append(windowOrder[:i], windowOrder[i+1:]...)
-			return
-		}
-	}
-}
-
-func recordReopenPath(path string) {
-	if path == "" {
-		return
-	}
-
-	windowOrderMu.Lock()
-	defer windowOrderMu.Unlock()
-	reopenPaths = append(reopenPaths, path)
-}
-
-func nextReopenPath() (string, bool) {
-	windowOrderMu.Lock()
-	defer windowOrderMu.Unlock()
-	if len(reopenPaths) == 0 {
-		return "", false
-	}
-
-	last := len(reopenPaths) - 1
-	path := reopenPaths[last]
-	reopenPaths = reopenPaths[:last]
-	return path, true
-}
-
-func snapshotFileManagerWindows() []*FileManager {
-	windowOrderMu.Lock()
-	defer windowOrderMu.Unlock()
-
-	snapshot := make([]*FileManager, 0, len(windowOrder))
-	for _, fm := range windowOrder {
-		if fm != nil && fm.window != nil {
-			snapshot = append(snapshot, fm)
-		}
-	}
-	return snapshot
-}
-
 func (fm *FileManager) FocusWindowLeft() {
 	fm.focusNeighborWindow(windowSwitchLeft)
 }
@@ -106,11 +41,11 @@ func (fm *FileManager) focusNeighborWindow(direction windowSwitchDirection) {
 	}
 
 	if windowFocusUnsupported(target.window) {
-		debugPrint("FileManager: window switch target selected direction=%d target=%s focus=unsupported-wayland", direction, target.currentPath)
+		debugPrint("FileManager: window switch target selected direction=%d target=%s focus=unsupported-wayland", direction, target.GetCurrentPath())
 		return
 	}
 
-	debugPrint("FileManager: window switch direction=%d target=%s", direction, target.currentPath)
+	debugPrint("FileManager: window switch direction=%d target=%s", direction, target.GetCurrentPath())
 	restoreWindowBeforeFocus(target.window)
 	target.window.Show()
 	target.window.RequestFocus()
@@ -118,7 +53,7 @@ func (fm *FileManager) focusNeighborWindow(direction windowSwitchDirection) {
 }
 
 func (fm *FileManager) neighborWindow(direction windowSwitchDirection) *FileManager {
-	windows := snapshotFileManagerWindows()
+	windows := fm.registeredWindows()
 	if len(windows) < 2 {
 		return nil
 	}

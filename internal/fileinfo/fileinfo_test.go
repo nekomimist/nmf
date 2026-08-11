@@ -187,6 +187,26 @@ func TestGetStatusBackgroundColor(t *testing.T) {
 	}
 }
 
+func TestIsFileOperationTarget(t *testing.T) {
+	tests := []struct {
+		name string
+		info FileInfo
+		want bool
+	}{
+		{name: "regular entry", info: FileInfo{Name: "note.txt"}, want: true},
+		{name: "parent entry", info: FileInfo{Name: "..", IsDir: true}, want: false},
+		{name: "deleted entry", info: FileInfo{Name: "gone.txt", Status: StatusDeleted}, want: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := IsFileOperationTarget(test.info); got != test.want {
+				t.Fatalf("IsFileOperationTarget(%+v) = %t, want %t", test.info, got, test.want)
+			}
+		})
+	}
+}
+
 func TestFormatFileSize(t *testing.T) {
 	testCases := []struct {
 		size     int64

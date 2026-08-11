@@ -432,6 +432,101 @@ type mainScreenFakeFileManager struct {
 	refreshFileListCount     int
 }
 
+type cursorListPortFake struct {
+	files        []fileinfo.FileInfo
+	cursorIndex  int
+	setIndex     int
+	refreshCount int
+}
+
+func (f *cursorListPortFake) GetCurrentCursorIndex() int { return f.cursorIndex }
+func (f *cursorListPortFake) SetCursorByIndex(index int) { f.setIndex = index }
+func (f *cursorListPortFake) RefreshCursor()             { f.refreshCount++ }
+func (f *cursorListPortFake) FileCount() int             { return len(f.files) }
+func (f *cursorListPortFake) CurrentFile() (int, fileinfo.FileInfo, bool) {
+	if f.cursorIndex < 0 || f.cursorIndex >= len(f.files) {
+		return -1, fileinfo.FileInfo{}, false
+	}
+	return f.cursorIndex, f.files[f.cursorIndex], true
+}
+
+func TestMainScreenCursorCommandNeedsOnlyCursorListPort(t *testing.T) {
+	cursor := &cursorListPortFake{
+		files:       []fileinfo.FileInfo{{Name: "a.txt"}, {Name: "b.txt"}},
+		cursorIndex: 0,
+		setIndex:    -1,
+	}
+	// Use the package-private builder deliberately: production construction
+	// requires every port, while this test proves the command itself consumes
+	// only the cursor/list responsibility.
+	handler := newMainScreenKeyHandlerWithCommands(
+		MainScreenDependencies{cursorList: cursor},
+		func(string, ...interface{}) {},
+		nil,
+		nil,
+	)
+
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyDown}, ModifierState{}) {
+		t.Fatal("Down should be handled")
+	}
+	if cursor.setIndex != 1 || cursor.refreshCount != 1 {
+		t.Fatalf("cursor port calls = set %d refresh %d, want 1/1", cursor.setIndex, cursor.refreshCount)
+	}
+}
+
+func TestMainScreenHandlerRejectsIncompleteDependencies(t *testing.T) {
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			t.Fatal("NewMainScreenKeyHandler accepted an incomplete dependency set")
+		}
+		if message := fmt.Sprint(recovered); !strings.Contains(message, "CursorList") {
+			t.Fatalf("dependency panic = %q, want missing CursorList identified", message)
+		}
+	}()
+	NewMainScreenKeyHandler(MainScreenDependencies{}, func(string, ...interface{}) {})
+}
+
+func TestMainScreenDependenciesRejectTypedNilPort(t *testing.T) {
+	var fm *mainScreenFakeFileManager
+	defer func() {
+		recovered := recover()
+		if recovered == nil || !strings.Contains(fmt.Sprint(recovered), "CursorList") {
+			t.Fatalf("typed-nil dependency panic = %v, want missing CursorList identified", recovered)
+		}
+	}()
+	NewMainScreenDependencies(MainScreenPorts{
+		CursorList:  fm,
+		Selection:   fm,
+		Directory:   fm,
+		FileOpener:  fm,
+		Windows:     fm,
+		History:     fm,
+		Filters:     fm,
+		Application: fm,
+		Commands:    fm,
+	}, nil, nil)
+}
+
+func TestMainScreenDependenciesAllowOptionalCommandIntegrations(t *testing.T) {
+	fm := &mainScreenFakeFileManager{}
+	dependencies := NewMainScreenDependencies(MainScreenPorts{
+		CursorList:  fm,
+		Selection:   fm,
+		Directory:   fm,
+		FileOpener:  fm,
+		Windows:     fm,
+		History:     fm,
+		Filters:     fm,
+		Application: fm,
+		Commands:    fm,
+	}, nil, nil)
+
+	if dependencies.runExternalCommand != nil || dependencies.setClipboard != nil {
+		t.Fatal("nil optional command integrations were replaced unexpectedly")
+	}
+}
+
 func (f *mainScreenFakeFileManager) GetCurrentCursorIndex() int    { return f.cursorIndex }
 func (f *mainScreenFakeFileManager) SetCursorByIndex(index int)    { f.setCursorIndex = index }
 func (f *mainScreenFakeFileManager) RefreshCursor()                {}
@@ -444,6 +539,10 @@ func (f *mainScreenFakeFileManager) FileAt(index int) (fileinfo.FileInfo, bool) 
 		return fileinfo.FileInfo{}, false
 	}
 	return f.files[index], true
+}
+func (f *mainScreenFakeFileManager) CurrentFile() (int, fileinfo.FileInfo, bool) {
+	file, ok := f.FileAt(f.cursorIndex)
+	return f.cursorIndex, file, ok
 }
 func (f *mainScreenFakeFileManager) CurrentSort() config.SortConfig {
 	return config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}
@@ -465,11 +564,46 @@ func (f *mainScreenFakeFileManager) GetAllSelectedFiles() []fileinfo.FileInfo {
 	}
 	return targets
 }
-func (f *mainScreenFakeFileManager) SetFileSelected(path string, selected bool) {
+func (f *mainScreenFakeFileManager) ToggleFileSelection(path string) {
 	if f.selectedFiles == nil {
 		f.selectedFiles = make(map[string]bool)
 	}
-	f.selectedFiles[path] = selected
+	f.selectedFiles[path] = !f.selectedFiles[path]
+}
+func (f *mainScreenFakeFileManager) SelectAllFiles() bool {
+	if f.selectedFiles == nil {
+		f.selectedFiles = make(map[string]bool)
+	}
+	found := false
+	for _, file := range f.files {
+		if file.Name == ".." || file.Status == fileinfo.StatusDeleted {
+			continue
+		}
+		f.selectedFiles[file.Path] = true
+		found = true
+	}
+	return found
+}
+func (f *mainScreenFakeFileManager) InvertFileSelection(includeDirectories bool) bool {
+	if f.selectedFiles == nil {
+		f.selectedFiles = make(map[string]bool)
+	}
+	changed := false
+	for _, file := range f.files {
+		if file.Name == ".." || file.Status == fileinfo.StatusDeleted {
+			continue
+		}
+		if file.IsDir && !includeDirectories {
+			if f.selectedFiles[file.Path] {
+				f.selectedFiles[file.Path] = false
+				changed = true
+			}
+			continue
+		}
+		f.selectedFiles[file.Path] = !f.selectedFiles[file.Path]
+		changed = true
+	}
+	return changed
 }
 func (f *mainScreenFakeFileManager) RefreshFileList()                  { f.refreshFileListCount++ }
 func (f *mainScreenFakeFileManager) SaveCursorPosition(dirPath string) { f.saveCursorPath = dirPath }
@@ -506,8 +640,26 @@ func (f *mainScreenFakeFileManager) OpenFileDefaultApp(file *fileinfo.FileInfo) 
 	}
 }
 
+func mainScreenDependenciesForTest(f *mainScreenFakeFileManager) MainScreenDependencies {
+	return NewMainScreenDependencies(
+		MainScreenPorts{
+			CursorList:  f,
+			Selection:   f,
+			Directory:   f,
+			FileOpener:  f,
+			Windows:     f,
+			History:     f,
+			Filters:     f,
+			Application: f,
+			Commands:    f,
+		},
+		nil,
+		f.SetClipboardText,
+	)
+}
+
 // fakeDialogActions builds the DialogActions closures MainScreenKeyHandler
-// now calls instead of FileManagerInterface Show* methods, wired to the same
+// now calls instead of data-port Show* methods, wired to the same
 // counters/fields the removed mock methods used to set. Tests that need to
 // assert a Show* outcome call handler.SetActions(fakeDialogActions(fm)).
 func fakeDialogActions(f *mainScreenFakeFileManager) DialogActions {
@@ -549,7 +701,7 @@ func fakeDialogActions(f *mainScreenFakeFileManager) DialogActions {
 // that MainScreenKeyHandler no longer calls FileManager Show* methods
 // directly; it drives the same commands NewMainScreenKeyHandler would.
 func newMainScreenKeyHandlerForTest(fm *mainScreenFakeFileManager, debugPrint func(string, ...interface{}), configuredBindings ...[]config.KeyBindingEntry) *MainScreenKeyHandler {
-	h := NewMainScreenKeyHandler(fm, debugPrint, configuredBindings...)
+	h := NewMainScreenKeyHandler(mainScreenDependenciesForTest(fm), debugPrint, configuredBindings...)
 	h.SetActions(fakeDialogActions(fm))
 	return h
 }
@@ -1254,7 +1406,7 @@ func TestMainScreenConfiguredBindingCanUseExtraCommand(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	var got CommandContext
 	handler := NewMainScreenKeyHandlerWithCommands(
-		fm,
+		mainScreenDependenciesForTest(fm),
 		func(string, ...interface{}) {},
 		[]config.KeyBindingEntry{{Key: "S-X", Command: "user.test"}},
 		CommandRegistry{
@@ -1334,7 +1486,7 @@ func TestMainScreenDefersRunCommandTransition(t *testing.T) {
 	km, q := newGatedKeyManager()
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandlerWithCommands(
-		fm,
+		mainScreenDependenciesForTest(fm),
 		func(string, ...interface{}) {},
 		[]config.KeyBindingEntry{{Key: "X", Command: "user.history"}},
 		CommandRegistry{
@@ -1363,12 +1515,12 @@ func TestMainScreenDefersRunCommandTransition(t *testing.T) {
 func TestMainScreenProvidesTransitionGateToExtraCommand(t *testing.T) {
 	// Extra (Starlark) commands only see CommandContext, not
 	// MainScreenKeyHandler's DialogActions, so they reach FileManager
-	// behavior through kept FileManagerInterface methods like LoadDirectory
+	// behavior through CommandFileManager methods like LoadDirectory
 	// rather than the removed Show* methods.
 	km, q := newGatedKeyManager()
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandlerWithCommands(
-		fm,
+		mainScreenDependenciesForTest(fm),
 		func(string, ...interface{}) {},
 		[]config.KeyBindingEntry{{Key: "X", Command: "user.dialog"}},
 		CommandRegistry{
@@ -1398,7 +1550,7 @@ func TestMainScreenProvidesTransitionGateToExtraCommand(t *testing.T) {
 func TestMainScreenProvidesClipboardWriterToExtraCommand(t *testing.T) {
 	fm := &mainScreenFakeFileManager{clipboardResult: true}
 	handler := NewMainScreenKeyHandlerWithCommands(
-		fm,
+		mainScreenDependenciesForTest(fm),
 		func(string, ...interface{}) {},
 		[]config.KeyBindingEntry{{Key: "X", Command: "user.copy"}},
 		CommandRegistry{
@@ -1443,7 +1595,7 @@ func TestMainScreenDoesNotDeferNonTransitionCommand(t *testing.T) {
 func TestMainScreenExtraCommandCanRunInternalCommand(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := NewMainScreenKeyHandlerWithCommands(
-		fm,
+		mainScreenDependenciesForTest(fm),
 		func(string, ...interface{}) {},
 		[]config.KeyBindingEntry{{Key: "X", Command: "user.jobs"}},
 		CommandRegistry{

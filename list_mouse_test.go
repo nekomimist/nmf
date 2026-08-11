@@ -21,14 +21,12 @@ func newMouseListTestFileManager(t *testing.T) *FileManager {
 		{Name: "docs", Path: "/tmp/docs", IsDir: true},
 	}
 	return &FileManager{
-		files:         files,
-		originalFiles: files,
+		browser: newTestBrowser(testBrowserOptions{files: files}),
 		fileList: widget.NewList(
 			func() int { return len(files) },
 			func() fyne.CanvasObject { return widget.NewLabel("") },
 			func(widget.ListItemID, fyne.CanvasObject) {},
 		),
-		selectedFiles: map[string]bool{},
 	}
 }
 
@@ -38,19 +36,22 @@ func TestHandleFileNameClickTogglesMarkAndMovesCursor(t *testing.T) {
 
 	fm := newMouseListTestFileManager(t)
 
-	fm.handleFileNameClick(1, fm.files[1], 0)
+	file, _ := fm.FileAt(1)
+	fm.handleFileNameClick(1, file, 0)
 
 	if got := fm.GetCurrentCursorIndex(); got != 1 {
 		t.Fatalf("cursor index = %d, want 1", got)
 	}
-	if !fm.selectedFiles["/tmp/a.txt"] {
-		t.Fatalf("selectedFiles = %+v, want a.txt marked", fm.selectedFiles)
+	selected := fm.GetSelectedFiles()
+	if !selected["/tmp/a.txt"] {
+		t.Fatalf("selectedFiles = %+v, want a.txt marked", selected)
 	}
 
-	fm.handleFileNameClick(1, fm.files[1], 0)
+	fm.handleFileNameClick(1, file, 0)
 
-	if fm.selectedFiles["/tmp/a.txt"] {
-		t.Fatalf("selectedFiles = %+v, want a.txt unmarked", fm.selectedFiles)
+	selected = fm.GetSelectedFiles()
+	if selected["/tmp/a.txt"] {
+		t.Fatalf("selectedFiles = %+v, want a.txt unmarked", selected)
 	}
 }
 
@@ -61,18 +62,20 @@ func TestHandleFileNameClickShiftMarksRangeFromPreviousCursor(t *testing.T) {
 	fm := newMouseListTestFileManager(t)
 	fm.SetCursorByIndex(1)
 
-	fm.handleFileNameClick(4, fm.files[4], fyne.KeyModifierShift)
+	file, _ := fm.FileAt(4)
+	fm.handleFileNameClick(4, file, fyne.KeyModifierShift)
 
 	if got := fm.GetCurrentCursorIndex(); got != 4 {
 		t.Fatalf("cursor index = %d, want 4", got)
 	}
+	selected := fm.GetSelectedFiles()
 	for _, path := range []string{"/tmp/a.txt", "/tmp/b.txt", "/tmp/docs"} {
-		if !fm.selectedFiles[path] {
-			t.Fatalf("selectedFiles = %+v, want %s marked", fm.selectedFiles, path)
+		if !selected[path] {
+			t.Fatalf("selectedFiles = %+v, want %s marked", selected, path)
 		}
 	}
-	if fm.selectedFiles["/tmp/gone.txt"] {
-		t.Fatalf("selectedFiles = %+v, deleted item should not be marked", fm.selectedFiles)
+	if selected["/tmp/gone.txt"] {
+		t.Fatalf("selectedFiles = %+v, deleted item should not be marked", selected)
 	}
 }
 
@@ -82,13 +85,16 @@ func TestHandleFileNameClickSkipsParentAndDeletedEntries(t *testing.T) {
 
 	fm := newMouseListTestFileManager(t)
 
-	fm.handleFileNameClick(0, fm.files[0], 0)
-	fm.handleFileNameClick(3, fm.files[3], 0)
+	parent, _ := fm.FileAt(0)
+	deleted, _ := fm.FileAt(3)
+	fm.handleFileNameClick(0, parent, 0)
+	fm.handleFileNameClick(3, deleted, 0)
 
 	if got := fm.GetCurrentCursorIndex(); got != 3 {
 		t.Fatalf("cursor index = %d, want 3", got)
 	}
-	if len(fm.selectedFiles) != 0 {
-		t.Fatalf("selectedFiles = %+v, want no marks", fm.selectedFiles)
+	selected := fm.GetSelectedFiles()
+	if len(selected) != 0 {
+		t.Fatalf("selectedFiles = %+v, want no marks", selected)
 	}
 }

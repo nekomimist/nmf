@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"errors"
-	"sync/atomic"
 	"testing"
 
 	"fyne.io/fyne/v2/test"
 
+	"nmf/internal/browser"
 	"nmf/internal/jobs"
 )
 
@@ -28,7 +28,7 @@ func TestActiveJobCountCountsOnlyPendingAndRunning(t *testing.T) {
 func TestWindowCloseNeedsConfirmationOnlyForLastWindow(t *testing.T) {
 	tests := []struct {
 		name        string
-		openWindows int32
+		openWindows int
 		want        bool
 	}{
 		{name: "no registered window", openWindows: 0, want: true},
@@ -72,31 +72,32 @@ func TestWindowLifecycleGuardsDuplicateCloseAndConfirmation(t *testing.T) {
 func TestCloseWindowIsIdempotentAndInvalidatesLoad(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
-	resetFileManagerWindowTestRegistry(t)
-	atomic.StoreInt32(&windowCount, 2)
-	t.Cleanup(func() {
-		atomic.StoreInt32(&windowCount, 0)
-	})
+	runtime := newFileManagerWindowTestRuntime(t)
 
 	unsubscribed := 0
 	transferUnsubscribed := 0
 	fm := &FileManager{
-		window: app.NewWindow("closing"),
+		runtime:         runtime,
+		window:          app.NewWindow("closing"),
+		directoryLoader: browser.NewDirectoryLoader(),
 		jobsUnsub: func() {
 			unsubscribed++
 		},
 	}
+	other := &FileManager{runtime: runtime, window: app.NewWindow("other")}
+	registerFileManagerWindow(fm)
+	registerFileManagerWindow(other)
 	if _, installed := fm.installTransferDestinationSubscription(func() {
 		transferUnsubscribed++
 	}); !installed {
 		t.Fatal("transfer subscription should install before close")
 	}
-	ctx, loadID := fm.beginDirectoryLoad()
+	handle := fm.directoryLoader.Begin()
 
 	fm.closeWindow()
 	fm.closeWindow()
 
-	if got := atomic.LoadInt32(&windowCount); got != 1 {
+	if got := runtime.windows.count(); got != 1 {
 		t.Fatalf("window count = %d, want 1 after one effective close", got)
 	}
 	if unsubscribed != 1 {
@@ -105,10 +106,10 @@ func TestCloseWindowIsIdempotentAndInvalidatesLoad(t *testing.T) {
 	if transferUnsubscribed != 1 {
 		t.Fatalf("transfer unsubscribe calls = %d, want 1", transferUnsubscribed)
 	}
-	if !errors.Is(ctx.Err(), context.Canceled) {
-		t.Fatalf("load context error = %v, want context.Canceled", ctx.Err())
+	if !errors.Is(handle.Context.Err(), context.Canceled) {
+		t.Fatalf("load context error = %v, want context.Canceled", handle.Context.Err())
 	}
-	if fm.directoryLoadActive(loadID) {
+	if fm.directoryLoader.Active(handle.ID) {
 		t.Fatal("closing the window should invalidate its directory load")
 	}
 }

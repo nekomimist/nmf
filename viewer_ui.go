@@ -26,9 +26,9 @@ func (fm *FileManager) ShowFileViewer() {
 
 	debugPrint("FileViewer: open-start path=%s", file.Path)
 	viewerID, viewerCtx := fm.beginViewerLoad()
-	fm.beginBusy("Opening preview...", func() {
+	fm.busy.Begin("Opening preview...", func() {
 		if fm.invalidateViewerLoad(viewerID) {
-			fm.endBusy()
+			fm.busy.End()
 			fm.FocusFileList()
 		}
 	})
@@ -40,7 +40,7 @@ func (fm *FileManager) ShowFileViewer() {
 			if fm.isWindowClosed() || !fm.finishViewerLoad(viewerID) {
 				return
 			}
-			fm.endBusy()
+			fm.busy.End()
 			if err != nil {
 				debugPrint("FileViewer: open failed path=%s err=%v", file.Path, err)
 				fm.ShowMessageDialog("Viewer failed", err.Error())
@@ -110,8 +110,7 @@ func (s *fileViewerSession) toggleMark() {
 		return
 	}
 
-	selected := s.fm.GetSelectedFiles()
-	s.fm.SetFileSelected(file.Path, !selected[file.Path])
+	s.fm.ToggleFileSelection(file.Path)
 	s.fm.RefreshFileList()
 
 	if current >= s.fm.FileCount()-1 {

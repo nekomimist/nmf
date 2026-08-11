@@ -39,8 +39,8 @@ func (b *busyBlocker) TappedSecondary(_ *fyne.PointEvent) {}
 // across older Fyne versions. The overlay visuals are sufficient.
 // func (b *busyBlocker) Cursor() desktop.Cursor { return desktop.DefaultCursor }
 
-// BusyOverlay provides an indeterminate progress indication overlay.
-// It's intentionally lightweight and non-interactive while visible.
+// BusyOverlay provides an indeterminate progress indication overlay. It is
+// confined to the Fyne UI thread and must not be called concurrently.
 type BusyOverlay struct {
 	blocker *busyBlocker
 	spinner *widget.ProgressBarInfinite

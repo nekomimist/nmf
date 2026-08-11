@@ -9,10 +9,12 @@ import (
 	"fyne.io/fyne/v2"
 
 	"nmf/internal/config"
+	"nmf/internal/configscript"
 	"nmf/internal/fileinfo"
 	"nmf/internal/jobs"
 	"nmf/internal/keymanager"
 	"nmf/internal/secret"
+	customtheme "nmf/internal/theme"
 	"nmf/internal/ui"
 	"nmf/internal/watcher"
 )
@@ -21,24 +23,46 @@ var errNoInteractiveWindow = errors.New("no open window is available for an inte
 
 // ApplicationRuntime owns services shared by every FileManager window.
 type ApplicationRuntime struct {
-	app                   fyne.App
-	watchHub              *watcher.WatchHub
-	jobManager            *jobs.Manager
-	jobsWindowController  *JobsWindowController
-	promptBroker          *applicationPromptBroker
-	viewerSearchText      string
-	viewerSearchMatchCase bool
-	closeOnce             sync.Once
+	app                     fyne.App
+	config                  *config.Config
+	state                   *config.State
+	stateManager            *config.StateManager
+	customTheme             *customtheme.CustomTheme
+	configScript            *configscript.Runtime
+	watchHub                *watcher.WatchHub
+	jobManager              *jobs.Manager
+	jobsWindowController    *JobsWindowController
+	promptBroker            *applicationPromptBroker
+	windows                 *fileManagerWindowRegistry
+	navigationHistoryEvents *navigationHistoryEventHub
+	viewerSearchText        string
+	viewerSearchMatchCase   bool
+	closeOnce               sync.Once
 }
 
-func newApplicationRuntime(app fyne.App) *ApplicationRuntime {
+type applicationRuntimeOptions struct {
+	Config       *config.Config
+	State        *config.State
+	StateManager *config.StateManager
+	CustomTheme  *customtheme.CustomTheme
+	ConfigScript *configscript.Runtime
+}
+
+func newApplicationRuntime(app fyne.App, options applicationRuntimeOptions) *ApplicationRuntime {
 	broker := newApplicationPromptBroker()
 	runtime := &ApplicationRuntime{
-		app:                  app,
-		watchHub:             watcher.NewWatchHub(debugPrint),
-		jobManager:           jobs.GetManager(),
-		jobsWindowController: NewJobsWindowController(app, debugPrint),
-		promptBroker:         broker,
+		app:                     app,
+		config:                  options.Config,
+		state:                   options.State,
+		stateManager:            options.StateManager,
+		customTheme:             options.CustomTheme,
+		configScript:            options.ConfigScript,
+		watchHub:                watcher.NewWatchHub(debugPrint),
+		jobManager:              jobs.GetManager(),
+		jobsWindowController:    NewJobsWindowController(app, debugPrint),
+		promptBroker:            broker,
+		windows:                 newFileManagerWindowRegistry(),
+		navigationHistoryEvents: newNavigationHistoryEventHub(),
 	}
 
 	// These package-level hooks bridge VFS code to the one application-scoped

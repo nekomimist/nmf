@@ -95,7 +95,7 @@ func applyInitialWindowPosition(window fyne.Window, cfg config.WindowConfig) {
 	debugPrint("FileManager: applied configured window position requested_x=%d requested_y=%d x=%d y=%d", *cfg.X, *cfg.Y, x, y)
 }
 
-func positionWindowNextTo(parent, child fyne.Window) {
+func positionWindowNextTo(runtime *ApplicationRuntime, parent, child fyne.Window) {
 	parentHWND, ok := windowHWND(parent)
 	if !ok {
 		debugPrint("FileManager: Parent HWND unavailable for window placement")
@@ -121,7 +121,7 @@ func positionWindowNextTo(parent, child fyne.Window) {
 	workRect := monitorWorkRect(parentHWND)
 	childWidth := childRect.Right - childRect.Left
 	childHeight := childRect.Bottom - childRect.Top
-	occupied := fileManagerWindowPlacementRects(parent, child)
+	occupied := fileManagerWindowPlacementRects(runtime, parent, child)
 	x, y, side := selectWindowPlacement(
 		windowSwitchRectFromWinRect(parentRect),
 		childWidth,
@@ -146,8 +146,11 @@ func positionWindowNextTo(parent, child fyne.Window) {
 	debugPrint("FileManager: Positioned new window x=%d y=%d side=%s", x, y, side)
 }
 
-func fileManagerWindowPlacementRects(parent, child fyne.Window) []windowSwitchRect {
-	managers := snapshotFileManagerWindows()
+func fileManagerWindowPlacementRects(runtime *ApplicationRuntime, parent, child fyne.Window) []windowSwitchRect {
+	var managers []*FileManager
+	if runtime != nil && runtime.windows != nil {
+		managers = runtime.windows.snapshot()
+	}
 	rects := make([]windowSwitchRect, 0, len(managers))
 	for _, manager := range managers {
 		if manager == nil || manager.window == nil || manager.window == parent || manager.window == child {

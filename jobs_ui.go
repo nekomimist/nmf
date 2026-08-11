@@ -155,7 +155,7 @@ func (fm *FileManager) showCopyMoveDialog(op ui.Operation) {
 	srcPaths := fm.collectTargetPaths()
 	fm.showTransferDestinationDialog(op, targets, func(result ui.CopyMoveResult) {
 		selectedDest := result.Destination
-		if op == ui.OpMove && sameDirectoryPath(selectedDest, fm.currentPath) {
+		if op == ui.OpMove && sameDirectoryPath(selectedDest, fm.GetCurrentPath()) {
 			debugPrint("FileManager: %s destination is current directory; no-op dest=%s", strings.Title(string(op)), selectedDest)
 			fm.FocusFileList()
 			return
@@ -186,7 +186,7 @@ func (fm *FileManager) showTransferDestinationDialog(op ui.Operation, targets []
 		openDest = destinationCandidateOpenMap(dest)
 		dlg.SetDestinations(dest, preferredPath)
 	}
-	unsubscribe := subscribeNavigationHistoryChanged(func(path string) {
+	unsubscribe := fm.subscribeNavigationHistoryChanged(func(path string) {
 		fyne.Do(func() {
 			if fm.isWindowClosed() {
 				return
@@ -206,7 +206,7 @@ func (fm *FileManager) showTransferDestinationDialog(op ui.Operation, targets []
 		refreshDestinations(path)
 	})
 	dlg.SetOnClosed(func() {
-		clearFileManagerWindowHighlights()
+		clearFileManagerWindowHighlights(fm)
 		fm.releaseTransferDestinationSubscription(subscriptionID)
 	})
 	dlg.ShowDialog(fm.window, onAccept)
@@ -265,8 +265,7 @@ func (fm *FileManager) collectTargets() []string {
 	}
 	// Fall back to cursor
 	idx := fm.GetCurrentCursorIndex()
-	if idx >= 0 && idx < len(fm.files) {
-		fi := fm.files[idx]
+	if fi, ok := fm.FileAt(idx); ok {
 		if fi.Name != ".." && fi.Status != fileinfo.StatusDeleted {
 			return []string{fi.Name}
 		}
@@ -285,8 +284,7 @@ func (fm *FileManager) collectTargetPaths() []string {
 		return selected
 	}
 	idx := fm.GetCurrentCursorIndex()
-	if idx >= 0 && idx < len(fm.files) {
-		fi := fm.files[idx]
+	if fi, ok := fm.FileAt(idx); ok {
 		if fi.Name != ".." && fi.Status != fileinfo.StatusDeleted {
 			return []string{fi.Path}
 		}
@@ -300,9 +298,8 @@ func (fm *FileManager) collectArchiveTargets() ([]string, []string) {
 		return archiveTargetNamesAndPaths(selectedFiles)
 	}
 	idx := fm.GetCurrentCursorIndex()
-	if idx >= 0 && idx < len(fm.files) {
-		fi := fm.files[idx]
-		if isTargetFileInfo(fi) {
+	if fi, ok := fm.FileAt(idx); ok {
+		if fileinfo.IsFileOperationTarget(fi) {
 			return archiveTargetNamesAndPaths([]fileinfo.FileInfo{fi})
 		}
 	}
@@ -334,37 +331,31 @@ func (fm *FileManager) buildDestinationCandidates() []ui.DestinationCandidate {
 	// Collect from other windows first.
 	seen := map[string]int{}
 	var candidates []ui.DestinationCandidate
-	windowRegistry.Range(func(k, v any) bool {
-		if other, ok := v.(*FileManager); ok {
-			if other == fm {
-				return true
-			}
-			if other.currentPath != "" {
-				if fileinfo.IsArchivePath(other.currentPath) {
-					return true
-				}
-				if idx, ok := seen[other.currentPath]; ok {
-					candidates[idx].OpenInWindow = true
-				} else {
-					seen[other.currentPath] = len(candidates)
-					candidates = append(candidates, ui.DestinationCandidate{
-						Path:         other.currentPath,
-						OpenInWindow: true,
-					})
-				}
-			}
+	for _, other := range fm.registeredWindows() {
+		path := other.GetCurrentPath()
+		if other == fm || path == "" || fileinfo.IsArchivePath(path) {
+			continue
 		}
-		return true
-	})
-
-	// Optionally include current path after other windows
-	if fm.currentPath != "" && !fileinfo.IsArchivePath(fm.currentPath) {
-		if idx, ok := seen[fm.currentPath]; ok {
+		if idx, ok := seen[path]; ok {
 			candidates[idx].OpenInWindow = true
 		} else {
-			seen[fm.currentPath] = len(candidates)
+			seen[path] = len(candidates)
 			candidates = append(candidates, ui.DestinationCandidate{
-				Path:         fm.currentPath,
+				Path:         path,
+				OpenInWindow: true,
+			})
+		}
+	}
+
+	// Optionally include current path after other windows
+	currentPath := fm.GetCurrentPath()
+	if currentPath != "" && !fileinfo.IsArchivePath(currentPath) {
+		if idx, ok := seen[currentPath]; ok {
+			candidates[idx].OpenInWindow = true
+		} else {
+			seen[currentPath] = len(candidates)
+			candidates = append(candidates, ui.DestinationCandidate{
+				Path:         currentPath,
 				OpenInWindow: true,
 			})
 		}

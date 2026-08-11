@@ -2,7 +2,6 @@ package main
 
 import (
 	"image/color"
-	"sync/atomic"
 	"testing"
 
 	"fyne.io/fyne/v2/test"
@@ -46,7 +45,7 @@ func TestFocusFileListRestoresWindowActive(t *testing.T) {
 		window:       window,
 		fileListView: fileListView,
 		windowActive: false,
-		currentPath:  "/tmp",
+		browser:      newTestBrowser(testBrowserOptions{path: "/tmp"}),
 	}
 
 	fm.focusFileList("test")
@@ -62,22 +61,24 @@ func TestFocusFileListRestoresWindowActive(t *testing.T) {
 func TestHighlightFileManagerWindowForPathHighlightsOpenWindow(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
-	resetFileManagerWindowTestRegistry(t)
+	runtime := newFileManagerWindowTestRuntime(t)
 
 	current := &FileManager{
+		runtime:         runtime,
 		window:          app.NewWindow("current"),
-		currentPath:     "/current",
+		browser:         newTestBrowser(testBrowserOptions{path: "/current"}),
 		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	target := &FileManager{
+		runtime:         runtime,
 		window:          app.NewWindow("target"),
-		currentPath:     "/target",
+		browser:         newTestBrowser(testBrowserOptions{path: "/target"}),
 		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	registerFileManagerWindow(current)
 	registerFileManagerWindow(target)
 
-	highlightFileManagerWindowForPath("/target")
+	highlightFileManagerWindowForPath(current, "/target")
 
 	if current.windowHighlight.IsHighlighted() {
 		t.Fatal("current window highlight should stay inactive")
@@ -86,7 +87,7 @@ func TestHighlightFileManagerWindowForPathHighlightsOpenWindow(t *testing.T) {
 		t.Fatal("target window highlight should be active")
 	}
 
-	clearFileManagerWindowHighlights()
+	clearFileManagerWindowHighlights(current)
 	if target.windowHighlight.IsHighlighted() {
 		t.Fatal("target window highlight should be cleared")
 	}
@@ -95,28 +96,31 @@ func TestHighlightFileManagerWindowForPathHighlightsOpenWindow(t *testing.T) {
 func TestHighlightFileManagerWindowForPathHighlightsEveryMatchingWindow(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
-	resetFileManagerWindowTestRegistry(t)
+	runtime := newFileManagerWindowTestRuntime(t)
 
 	first := &FileManager{
+		runtime:         runtime,
 		window:          app.NewWindow("first"),
-		currentPath:     "/shared",
+		browser:         newTestBrowser(testBrowserOptions{path: "/shared"}),
 		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	second := &FileManager{
+		runtime:         runtime,
 		window:          app.NewWindow("second"),
-		currentPath:     "/shared",
+		browser:         newTestBrowser(testBrowserOptions{path: "/shared"}),
 		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	other := &FileManager{
+		runtime:         runtime,
 		window:          app.NewWindow("other"),
-		currentPath:     "/other",
+		browser:         newTestBrowser(testBrowserOptions{path: "/other"}),
 		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	registerFileManagerWindow(first)
 	registerFileManagerWindow(second)
 	registerFileManagerWindow(other)
 
-	highlightFileManagerWindowForPath("/shared")
+	highlightFileManagerWindowForPath(first, "/shared")
 
 	if !first.windowHighlight.IsHighlighted() {
 		t.Fatal("first matching window highlight should be active")
@@ -132,16 +136,18 @@ func TestHighlightFileManagerWindowForPathHighlightsEveryMatchingWindow(t *testi
 func TestUpdateOpenPathHighlightsMarksDialogOwnerAndClears(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
-	resetFileManagerWindowTestRegistry(t)
+	runtime := newFileManagerWindowTestRuntime(t)
 
 	current := &FileManager{
+		runtime:         runtime,
 		window:          app.NewWindow("current"),
-		currentPath:     "/current",
+		browser:         newTestBrowser(testBrowserOptions{path: "/current"}),
 		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	target := &FileManager{
+		runtime:         runtime,
 		window:          app.NewWindow("target"),
-		currentPath:     "/target",
+		browser:         newTestBrowser(testBrowserOptions{path: "/target"}),
 		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	registerFileManagerWindow(current)
@@ -187,25 +193,23 @@ func TestUpdateOpenPathHighlightsMarksDialogOwnerAndClears(t *testing.T) {
 func TestCloseWindowClearsOtherWindowHighlight(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
-	resetFileManagerWindowTestRegistry(t)
-	atomic.StoreInt32(&windowCount, 2)
-	t.Cleanup(func() {
-		atomic.StoreInt32(&windowCount, 0)
-	})
+	runtime := newFileManagerWindowTestRuntime(t)
 
 	current := &FileManager{
+		runtime:         runtime,
 		window:          app.NewWindow("current"),
-		currentPath:     "/current",
+		browser:         newTestBrowser(testBrowserOptions{path: "/current"}),
 		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	target := &FileManager{
+		runtime:         runtime,
 		window:          app.NewWindow("target"),
-		currentPath:     "/target",
+		browser:         newTestBrowser(testBrowserOptions{path: "/target"}),
 		windowHighlight: ui.NewHighlightFrame(nil),
 	}
 	registerFileManagerWindow(current)
 	registerFileManagerWindow(target)
-	highlightFileManagerWindowForPath("/target")
+	highlightFileManagerWindowForPath(current, "/target")
 
 	if !target.windowHighlight.IsHighlighted() {
 		t.Fatal("target window highlight should be active before close")

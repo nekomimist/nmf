@@ -32,6 +32,9 @@ Concurrency model:
 - `ApplyChanges` replaces an added path that is already in the list instead of
   appending it, since the baseline excludes entries marked deleted and a
   recreated file therefore arrives as an add.
+- When a file filter is active, `browser.Model.ApplyChanges` merges against the
+  unfiltered baseline and re-derives the visible list. Merging against the
+  filtered list would permanently discard entries hidden at update time.
 - FileManager access happens through watcher-facing interface methods:
   - `GetCurrentPath`
   - `GetFiles`
@@ -39,10 +42,11 @@ Concurrency model:
   - `RemoveFromSelections`
   - `ApplyChanges`
 - Detected changes are merged via `ApplyChanges` only, and the watcher invokes
-  it inside `fyne.DoAndWait`: `fm.files`/`fm.selectedFiles` are otherwise accessed
-  without locks by UI-thread code, so the merge must stay confined to the Fyne
-  main goroutine. Do not call `GetFiles`/`RemoveFromSelections` from watcher
-  background goroutines.
+  it inside `fyne.DoAndWait`. Browsing data is synchronized by
+  `internal/browser.Model`, but `FileManager.ApplyChanges` also refreshes Fyne
+  widgets, so the complete operation must stay on the Fyne main goroutine.
+  Watcher background work may read through snapshot-returning interface methods
+  such as `GetFiles`; it must not touch widgets or retain mutable model state.
 - The watcher run generation is checked again inside the UI callback. A
   callback queued by a stopped/restarted run cannot modify the new run's list.
 - `ApplyChanges` skips the re-sort for modify-only change sets under
@@ -145,9 +149,11 @@ Completion callback (`Job.OnFinished`, `internal/jobs/types.go`):
   bar use the same confirmation dialog. Active jobs change the affirmative
   action to explicit `Quit Anyway`; dismissing the dialog keeps the window and
   its jobs subscription alive.
-- Confirmed window destruction first cancels and invalidates its active
-  directory-load generation. Queued load completions must fail the generation
-  check and must not restart the watcher or restore focus after close.
+- Confirmed window destruction first calls
+  `internal/browser.DirectoryLoader.CancelActive` and ends the window's
+  `internal/ui.BusyController`. Queued load completions must fail `Finish`'s
+  generation check and must not restart the watcher or restore focus after
+  close.
 - `FileManager.trackNavigationHistoryJob` (`navigation_history_mutation.go`)
   registers an `OnFinished` callback on every enqueued copy/move/delete/extract
   job to update persisted navigation history once the job's outcome is known,

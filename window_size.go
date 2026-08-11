@@ -11,7 +11,7 @@ func (fm *FileManager) ResetWindowSize() {
 }
 
 func (fm *FileManager) ResetAllWindowSizes() {
-	for _, manager := range snapshotFileManagerWindows() {
+	for _, manager := range fm.registeredWindows() {
 		manager.ResetWindowSize()
 	}
 }

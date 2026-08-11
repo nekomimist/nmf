@@ -3,7 +3,7 @@ package keymanager
 // DialogActions holds the UI-launcher closures MainScreenKeyHandler invokes
 // for commands that open a dialog, menu, or the file viewer. Bootstrap wires
 // this once from FileManager method values (see SetActions), so keymanager
-// no longer needs FileManagerInterface to declare every Show* method itself.
+// no longer needs its data/action ports to declare every Show* method.
 //
 // A nil field means no action is registered for that command; the command
 // logs a debug warning and no-ops instead of panicking, the same spirit as

@@ -62,8 +62,9 @@ func (fm *FileManager) setupDropHandler() {
 }
 
 func (fm *FileManager) handleDroppedURIs(uris []fyne.URI) {
-	debugPrint("FileManager: Drop handling start current=%s uri_count=%d", fm.currentPath, len(uris))
-	dest, err := dropDestination(fm.currentPath)
+	currentPath := fm.GetCurrentPath()
+	debugPrint("FileManager: Drop handling start current=%s uri_count=%d", currentPath, len(uris))
+	dest, err := dropDestination(currentPath)
 	if err != nil {
 		debugPrint("FileManager: Drop rejected: %v", err)
 		fm.ShowMessageDialog("Drop", err.Error())

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"nmf/internal/config"
 	"nmf/internal/fileinfo"
 )
 
@@ -20,9 +21,8 @@ func TestParentFallbackStatusNoticeNamesRequestedAndOpenedPaths(t *testing.T) {
 
 func TestStatusBarTextIncludesAndClearsNotice(t *testing.T) {
 	fm := &FileManager{
-		files:         []fileinfo.FileInfo{{Name: "entry"}},
-		originalFiles: []fileinfo.FileInfo{{Name: "entry"}},
-		statusNotice:  "opened parent",
+		browser:      newTestBrowser(testBrowserOptions{files: []fileinfo.FileInfo{{Name: "entry"}}}),
+		statusNotice: "opened parent",
 	}
 	if got := fm.statusBarText(); !strings.Contains(got, "opened parent") {
 		t.Fatalf("statusBarText %q does not include notice", got)
@@ -47,12 +47,13 @@ func TestStatusBarTextIncludesAndClearsNotice(t *testing.T) {
 // not visibly shift.
 func TestStatusBarTextNoticeReplacesNormalLine(t *testing.T) {
 	fm := &FileManager{
-		files:         []fileinfo.FileInfo{{Name: "entry"}},
-		originalFiles: []fileinfo.FileInfo{{Name: "entry"}},
-		selectedFiles: map[string]bool{"/tmp/entry": true},
-		storageInfo:   fileinfo.StorageInfo{Free: 1024, Used: 2048, Total: 3072},
-		storageKnown:  true,
-		statusNotice:  parentFallbackStatusNotice("/removed/child", "/removed"),
+		browser: newTestBrowser(testBrowserOptions{
+			files:        []fileinfo.FileInfo{{Name: "entry", Path: "/tmp/entry"}},
+			selected:     map[string]bool{"/tmp/entry": true},
+			storage:      fileinfo.StorageInfo{Free: 1024, Used: 2048, Total: 3072},
+			storageKnown: true,
+		}),
+		statusNotice: parentFallbackStatusNotice("/removed/child", "/removed"),
 	}
 
 	got := fm.statusBarText()
@@ -72,8 +73,7 @@ func TestStatusBarTextNoticeReplacesNormalLine(t *testing.T) {
 // TestStatusBarTextIncludesAndClearsNotice).
 func TestStatusBarTextEmptyNoticeShowsNormalLine(t *testing.T) {
 	fm := &FileManager{
-		files:         []fileinfo.FileInfo{{Name: "entry"}},
-		originalFiles: []fileinfo.FileInfo{{Name: "entry"}},
+		browser: newTestBrowser(testBrowserOptions{files: []fileinfo.FileInfo{{Name: "entry"}}}),
 	}
 
 	got := fm.statusBarText()
@@ -91,8 +91,7 @@ func TestStatusBarTextEmptyNoticeShowsNormalLine(t *testing.T) {
 // without depending on a running Fyne app for fyne.Do/CurrentApp).
 func TestExpireStatusNoticeRestoresNormalLine(t *testing.T) {
 	fm := &FileManager{
-		files:         []fileinfo.FileInfo{{Name: "entry"}},
-		originalFiles: []fileinfo.FileInfo{{Name: "entry"}},
+		browser: newTestBrowser(testBrowserOptions{files: []fileinfo.FileInfo{{Name: "entry"}}}),
 	}
 	fm.statusNoticeGeneration = 1
 	fm.statusNotice = "opened parent"
@@ -113,8 +112,7 @@ func TestExpireStatusNoticeRestoresNormalLine(t *testing.T) {
 // (generation bumped, notice replaced) without involving real timers.
 func TestExpireStatusNoticeIgnoresStaleGeneration(t *testing.T) {
 	fm := &FileManager{
-		files:         []fileinfo.FileInfo{{Name: "entry"}},
-		originalFiles: []fileinfo.FileInfo{{Name: "entry"}},
+		browser: newTestBrowser(testBrowserOptions{files: []fileinfo.FileInfo{{Name: "entry"}}}),
 	}
 
 	// First notice shown at generation 1; its expiry timer would later fire
@@ -138,67 +136,25 @@ func TestExpireStatusNoticeIgnoresStaleGeneration(t *testing.T) {
 	}
 }
 
-func TestCountEntriesExcludingParent(t *testing.T) {
-	files := []fileinfo.FileInfo{
-		{Name: ".."},
-		{Name: "alpha.txt"},
-		{Name: "docs", IsDir: true},
-	}
-
-	if got := countEntriesExcludingParent(files); got != 2 {
-		t.Fatalf("countEntriesExcludingParent got %d, want 2", got)
-	}
-}
-
-func TestCountEntriesExcludingParentWithoutParent(t *testing.T) {
-	files := []fileinfo.FileInfo{
-		{Name: "alpha.txt"},
-		{Name: "docs", IsDir: true},
-	}
-
-	if got := countEntriesExcludingParent(files); got != 2 {
-		t.Fatalf("countEntriesExcludingParent got %d, want 2", got)
-	}
-}
-
-func TestCountEntriesExcludingParentEmpty(t *testing.T) {
-	if got := countEntriesExcludingParent(nil); got != 0 {
-		t.Fatalf("countEntriesExcludingParent got %d, want 0", got)
-	}
-}
-
-func TestCountMarkedFilesCountsOnlyTrueValues(t *testing.T) {
-	selected := map[string]bool{
-		"/tmp/a": true,
-		"/tmp/b": false,
-		"/tmp/c": true,
-	}
-
-	if got := countMarkedFiles(selected); got != 2 {
-		t.Fatalf("countMarkedFiles got %d, want 2", got)
-	}
-}
-
 func TestStatusBarTextShowsVisibleAndTotalEntries(t *testing.T) {
 	fm := &FileManager{
-		files: []fileinfo.FileInfo{
-			{Name: ".."},
-			{Name: "visible.txt"},
-		},
-		originalFiles: []fileinfo.FileInfo{
-			{Name: ".."},
-			{Name: "visible.txt"},
-			{Name: "filtered.log"},
-		},
-		selectedFiles: map[string]bool{
-			"/tmp/visible.txt": true,
-		},
-		storageInfo: fileinfo.StorageInfo{
-			Free:  1024,
-			Used:  2048,
-			Total: 3072,
-		},
-		storageKnown: true,
+		browser: newTestBrowser(testBrowserOptions{
+			files: []fileinfo.FileInfo{
+				{Name: "..", Path: "/tmp", IsDir: true},
+				{Name: "visible.txt", Path: "/tmp/visible.txt"},
+				{Name: "filtered.log", Path: "/tmp/filtered.log"},
+			},
+			selected: map[string]bool{"/tmp/visible.txt": true},
+			storage: fileinfo.StorageInfo{
+				Free:  1024,
+				Used:  2048,
+				Total: 3072,
+			},
+			storageKnown: true,
+		}),
+	}
+	if _, _, err := fm.browserModel().ApplyFilter(&config.FilterEntry{Pattern: "*.txt"}); err != nil {
+		t.Fatalf("ApplyFilter returned error: %v", err)
 	}
 
 	text := fm.statusBarText()
@@ -217,9 +173,7 @@ func TestStatusBarTextShowsVisibleAndTotalEntries(t *testing.T) {
 
 func TestStatusBarTextUsesDashForUnknownStorage(t *testing.T) {
 	fm := &FileManager{
-		files:         []fileinfo.FileInfo{{Name: "a.txt"}},
-		originalFiles: []fileinfo.FileInfo{{Name: "a.txt"}},
-		selectedFiles: map[string]bool{},
+		browser: newTestBrowser(testBrowserOptions{files: []fileinfo.FileInfo{{Name: "a.txt"}}}),
 	}
 
 	text := fm.statusBarText()

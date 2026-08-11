@@ -20,6 +20,9 @@ func TestUpdateFilesUsesActiveTemporarySort(t *testing.T) {
 	defer app.Quit()
 
 	fm := &FileManager{
+		browser: newTestBrowser(testBrowserOptions{
+			sort: config.SortConfig{SortBy: "modified", SortOrder: "desc", DirectoriesFirst: true},
+		}),
 		fileList: widget.NewList(
 			func() int { return 0 },
 			func() fyne.CanvasObject { return widget.NewLabel("") },
@@ -30,16 +33,15 @@ func TestUpdateFilesUsesActiveTemporarySort(t *testing.T) {
 				Sort: config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true},
 			},
 		},
-		activeSort:    config.SortConfig{SortBy: "modified", SortOrder: "desc", DirectoriesFirst: true},
-		selectedFiles: map[string]bool{},
 	}
 	newer := fileinfo.FileInfo{Name: "a.txt", Path: "/tmp/a.txt", Modified: time.Unix(2, 0)}
 	older := fileinfo.FileInfo{Name: "z.txt", Path: "/tmp/z.txt", Modified: time.Unix(1, 0)}
 
 	fm.UpdateFiles([]fileinfo.FileInfo{older, newer})
 
-	if len(fm.files) != 2 || fm.files[0].Name != "a.txt" || fm.files[1].Name != "z.txt" {
-		t.Fatalf("files sorted by active sort = %+v, want newer first", fm.files)
+	got := fm.GetFiles()
+	if len(got) != 2 || got[0].Name != "a.txt" || got[1].Name != "z.txt" {
+		t.Fatalf("files sorted by active sort = %+v, want newer first", got)
 	}
 }
 
@@ -48,6 +50,11 @@ func TestApplyFilterUsesEffectivePatternBeforeComment(t *testing.T) {
 	defer app.Quit()
 
 	fm := &FileManager{
+		browser: newTestBrowser(testBrowserOptions{files: []fileinfo.FileInfo{
+			{Name: "main.go", Path: "/tmp/main.go"},
+			{Name: "notes.md", Path: "/tmp/notes.md"},
+			{Name: "docs", Path: "/tmp/docs", IsDir: true},
+		}}),
 		fileList: widget.NewList(
 			func() int { return 0 },
 			func() fyne.CanvasObject { return widget.NewLabel("") },
@@ -60,21 +67,16 @@ func TestApplyFilterUsesEffectivePatternBeforeComment(t *testing.T) {
 			},
 		},
 		state: &config.State{},
-		files: []fileinfo.FileInfo{
-			{Name: "main.go", Path: "/tmp/main.go"},
-			{Name: "notes.md", Path: "/tmp/notes.md"},
-			{Name: "docs", Path: "/tmp/docs", IsDir: true},
-		},
-		selectedFiles: map[string]bool{},
 	}
 
 	fm.ApplyFilter(&config.FilterEntry{Pattern: "*.go ;; 日本語"})
 
-	if len(fm.files) != 2 {
-		t.Fatalf("filtered files = %+v, want go file plus directory", fm.files)
+	got := fm.GetFiles()
+	if len(got) != 2 {
+		t.Fatalf("filtered files = %+v, want go file plus directory", got)
 	}
-	if fm.files[0].Name != "docs" || fm.files[1].Name != "main.go" {
-		t.Fatalf("filtered files = %+v, want directory and go file sorted by name", fm.files)
+	if got[0].Name != "docs" || got[1].Name != "main.go" {
+		t.Fatalf("filtered files = %+v, want directory and go file sorted by name", got)
 	}
 }
 
@@ -88,62 +90,89 @@ func TestApplyFilterClearActionClearsActiveFilter(t *testing.T) {
 		{Name: "notes.md", Path: "/tmp/notes.md"},
 	}
 	fm := &FileManager{
+		browser: newTestBrowser(testBrowserOptions{files: allFiles}),
 		fileList: widget.NewList(
 			func() int { return 0 },
 			func() fyne.CanvasObject { return widget.NewLabel("") },
 			func(widget.ListItemID, fyne.CanvasObject) {},
 		),
-		config: &config.Config{
-			UI: config.UIConfig{
-				Sort: config.SortConfig{SortBy: "name", SortOrder: "asc"},
-			},
-		},
-		state: &config.State{
-			FileFilter: config.FileFilterState{Current: entry, Enabled: true},
-		},
-		currentFilter: entry,
-		originalFiles: cloneFileInfoSlice(allFiles),
-		files:         []fileinfo.FileInfo{allFiles[0]},
-		selectedFiles: map[string]bool{},
+		config: &config.Config{UI: config.UIConfig{
+			Sort: config.SortConfig{SortBy: "name", SortOrder: "asc"},
+		}},
+		state: &config.State{},
 	}
 
+	fm.ApplyFilter(entry)
 	fm.ApplyFilter(&config.FilterEntry{})
 
-	if fm.currentFilter != nil || fm.state.FileFilter.Current != nil || fm.state.FileFilter.Enabled {
-		t.Fatalf("filter state not cleared: current=%#v state=%#v", fm.currentFilter, fm.state.FileFilter)
+	if fm.browserModel().Filter() != nil || fm.state.FileFilter.Current != nil || fm.state.FileFilter.Enabled {
+		t.Fatalf("filter state not cleared: model=%#v state=%#v", fm.browserModel().Filter(), fm.state.FileFilter)
 	}
-	if got, want := namesOf(fm.files), []string{"main.go", "notes.md"}; !reflect.DeepEqual(got, want) {
+	if got, want := namesOf(fm.GetFiles()), []string{"main.go", "notes.md"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("files after clear action = %v, want %v", got, want)
+	}
+}
+
+func TestApplyFilterRejectsInvalidPatternWithoutChangingState(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	fm := &FileManager{
+		browser: newTestBrowser(testBrowserOptions{files: []fileinfo.FileInfo{
+			{Name: "main.go", Path: "/tmp/main.go"},
+			{Name: "notes.md", Path: "/tmp/notes.md"},
+		}}),
+		fileList: widget.NewList(
+			func() int { return 0 },
+			func() fyne.CanvasObject { return widget.NewLabel("") },
+			func(widget.ListItemID, fyne.CanvasObject) {},
+		),
+		config: &config.Config{UI: config.UIConfig{
+			Sort: config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true},
+		}},
+		state: &config.State{},
+	}
+	valid := &config.FilterEntry{Pattern: "*.go"}
+	fm.ApplyFilter(valid)
+	fm.ApplyFilter(&config.FilterEntry{Pattern: "["})
+
+	if fm.state.FileFilter.Current != valid || !fm.state.FileFilter.Enabled {
+		t.Fatalf("filter state after invalid pattern = %+v enabled=%t, want previous valid filter", fm.state.FileFilter.Current, fm.state.FileFilter.Enabled)
+	}
+	if active := fm.browserModel().Filter(); active == nil || active.Pattern != "*.go" {
+		t.Fatalf("model filter after invalid pattern = %+v, want previous valid filter", active)
+	}
+	if got := fm.GetFiles(); len(got) != 1 || got[0].Name != "main.go" {
+		t.Fatalf("visible files after invalid pattern = %+v, want prior filtered listing", got)
 	}
 }
 
 func TestGetCurrentCursorIndexCacheHitAndSelfHeal(t *testing.T) {
 	fm := &FileManager{
-		files: []fileinfo.FileInfo{
+		browser: newTestBrowser(testBrowserOptions{files: []fileinfo.FileInfo{
 			{Name: "apple.txt", Path: "/tmp/apple.txt", Size: 30},
 			{Name: "banana.txt", Path: "/tmp/banana.txt", Size: 10},
 			{Name: "cherry.txt", Path: "/tmp/cherry.txt", Size: 20},
-		},
+		}}),
 	}
-	fm.sortFilesWithConfig(config.SortConfig{SortBy: "name", SortOrder: "asc"})
+	fm.browserModel().ApplySort(config.SortConfig{SortBy: "name", SortOrder: "asc"})
 	fm.SetCursorByIndex(1)
-	if fm.files[1].Name != "banana.txt" {
-		t.Fatalf("setup: expected banana.txt at index 1, got %+v", fm.files)
+	files := fm.GetFiles()
+	if files[1].Name != "banana.txt" {
+		t.Fatalf("setup: expected banana.txt at index 1, got %+v", files)
 	}
-	if fm.cursorIndex != 1 {
-		t.Fatalf("SetCursorByIndex should cache index 1, got %d", fm.cursorIndex)
+	if got := fm.GetCurrentCursorIndex(); got != 1 {
+		t.Fatalf("SetCursorByIndex index = %d, want 1", got)
 	}
 
 	// Re-sort by size: banana.txt (smallest) moves to index 0, so the cached
 	// cursorIndex (still 1) no longer matches cursorPath ("banana.txt").
-	fm.sortFilesWithConfig(config.SortConfig{SortBy: "size", SortOrder: "asc"})
+	fm.browserModel().ApplySort(config.SortConfig{SortBy: "size", SortOrder: "asc"})
 
 	got := fm.GetCurrentCursorIndex()
-	if got != 0 || fm.files[got].Name != "banana.txt" {
-		t.Fatalf("GetCurrentCursorIndex self-heal = %d (%+v), want 0 (banana.txt)", got, fm.files)
-	}
-	if fm.cursorIndex != 0 {
-		t.Fatalf("cursorIndex cache not updated after self-heal, got %d", fm.cursorIndex)
+	files = fm.GetFiles()
+	if got != 0 || files[got].Name != "banana.txt" {
+		t.Fatalf("GetCurrentCursorIndex self-heal = %d (%+v), want 0 (banana.txt)", got, files)
 	}
 
 	// Second call should now hit the cache directly and return the same value.
@@ -157,12 +186,12 @@ func TestRefreshCursorEmptyFileListDoesNotPanic(t *testing.T) {
 	defer app.Quit()
 
 	fm := &FileManager{
+		browser: newTestBrowser(testBrowserOptions{}),
 		fileList: widget.NewList(
 			func() int { return 0 },
 			func() fyne.CanvasObject { return widget.NewLabel("") },
 			func(widget.ListItemID, fyne.CanvasObject) {},
 		),
-		cursorIndex: -1,
 	}
 
 	fm.RefreshCursor()
@@ -176,12 +205,13 @@ func TestRefreshCursorEmptyFileListDoesNotPanic(t *testing.T) {
 
 func TestCursorRefreshDiagnosticsTrackCurrentItemUpdate(t *testing.T) {
 	fm := &FileManager{
-		files: []fileinfo.FileInfo{
-			{Name: "alpha.txt", Path: "/tmp/alpha.txt"},
-			{Name: "beta.txt", Path: "/tmp/beta.txt"},
-		},
-		cursorPath:  "/tmp/alpha.txt",
-		cursorIndex: 0,
+		browser: newTestBrowser(testBrowserOptions{
+			files: []fileinfo.FileInfo{
+				{Name: "alpha.txt", Path: "/tmp/alpha.txt"},
+				{Name: "beta.txt", Path: "/tmp/beta.txt"},
+			},
+			cursorPath: "/tmp/alpha.txt",
+		}),
 	}
 
 	seq, cursorIdx := fm.beginCursorRefresh("test")
@@ -219,15 +249,14 @@ func newScrollMarginTestFileManager(count, margin int) *FileManager {
 
 	item := widget.NewLabel("row")
 	fm := &FileManager{
-		files:              files,
+		browser:            newTestBrowser(testBrowserOptions{files: files}),
 		fileListItemHeight: item.MinSize().Height,
 		config: &config.Config{
 			UI: config.UIConfig{ScrollMargin: margin},
 		},
-		cursorIndex: -1,
 	}
 	fm.fileList = widget.NewList(
-		func() int { return len(fm.files) },
+		fm.FileCount,
 		func() fyne.CanvasObject { return widget.NewLabel("row") },
 		func(widget.ListItemID, fyne.CanvasObject) {},
 	)
@@ -327,8 +356,7 @@ func TestRefreshCursorStartsScrollingAtConfiguredMargin(t *testing.T) {
 	startRow := 10
 	fm.fileList.ScrollToOffset(float32(startRow) * rowStride)
 	beforeUp := fm.fileList.GetScrollOffset()
-	fm.cursorPath = fm.files[startRow+4].Path
-	fm.cursorIndex = startRow + 4
+	fm.browserModel().SetCursorIndex(startRow + 4)
 
 	// Three complete rows remain above index startRow+3, so reaching it must
 	// not scroll yet. The next upward move enters the margin and scrolls.
@@ -385,8 +413,7 @@ func TestRefreshListAndCursorAppliesMarginToRestoredOffscreenCursor(t *testing.T
 	// Parent navigation restores a cursor whose path was the child list's
 	// `..` entry, so SetCursorByIndex cannot infer a movement direction after
 	// the parent list replaces the child list.
-	fm.cursorPath = fm.files[35].Path
-	fm.cursorIndex = 35
+	fm.browserModel().SetCursorIndex(35)
 	fm.cursorMoveDirection = 0
 	fm.refreshListAndCursor()
 
@@ -415,124 +442,4 @@ func TestRefreshCursorConsumesMoveDirection(t *testing.T) {
 	if fm.cursorMoveDirection != 0 {
 		t.Fatalf("move direction after structural refresh = %d, want none", fm.cursorMoveDirection)
 	}
-}
-
-func TestSortSliceEquivalence(t *testing.T) {
-	t0 := time.Unix(1000, 0)
-	t1 := time.Unix(2000, 0)
-	t2 := time.Unix(3000, 0)
-	t3 := time.Unix(4000, 0)
-	t4 := time.Unix(5000, 0)
-
-	newFiles := func() []fileinfo.FileInfo {
-		return []fileinfo.FileInfo{
-			{Name: "Banana.txt", Size: 100, Modified: t3},
-			{Name: "apple.TXT", Size: 50, Modified: t1},
-			{Name: "README", Size: 10, Modified: t4},
-			{Name: "notes", Size: 20, Modified: t0},
-			{Name: "zeta.md", Size: 5, Modified: t2},
-		}
-	}
-
-	tests := []struct {
-		sortBy    string
-		sortOrder string
-		want      []string
-	}{
-		{"name", "asc", []string{"apple.TXT", "Banana.txt", "notes", "README", "zeta.md"}},
-		{"name", "desc", []string{"zeta.md", "README", "notes", "Banana.txt", "apple.TXT"}},
-		{"size", "asc", []string{"zeta.md", "README", "notes", "apple.TXT", "Banana.txt"}},
-		{"size", "desc", []string{"Banana.txt", "apple.TXT", "notes", "README", "zeta.md"}},
-		{"modified", "asc", []string{"notes", "apple.TXT", "zeta.md", "Banana.txt", "README"}},
-		{"modified", "desc", []string{"README", "Banana.txt", "zeta.md", "apple.TXT", "notes"}},
-		{"extension", "asc", []string{"notes", "README", "zeta.md", "apple.TXT", "Banana.txt"}},
-		{"extension", "desc", []string{"Banana.txt", "apple.TXT", "zeta.md", "README", "notes"}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.sortBy+"_"+tt.sortOrder, func(t *testing.T) {
-			files := newFiles()
-			sortSlice(files, config.SortConfig{SortBy: tt.sortBy, SortOrder: tt.sortOrder})
-			got := make([]string, len(files))
-			for i, f := range files {
-				got[i] = f.Name
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Fatalf("sortSlice(SortBy=%s,SortOrder=%s) = %v, want %v", tt.sortBy, tt.sortOrder, got, tt.want)
-			}
-		})
-	}
-}
-
-// TestSortFileInfoSlicePure exercises sortFileInfoSlice as a pure function
-// (no *FileManager involved), verifying it neither mutates the input slice
-// header's backing semantics unexpectedly nor touches any FileManager state,
-// and that it keeps the ".."-pinning invariant under both DirectoriesFirst
-// settings.
-func TestSortFileInfoSlicePure(t *testing.T) {
-	input := func() []fileinfo.FileInfo {
-		return []fileinfo.FileInfo{
-			{Name: "..", IsDir: true},
-			{Name: "zeta", IsDir: true},
-			{Name: "banana.txt"},
-			{Name: "apple", IsDir: true},
-			{Name: "cherry.txt"},
-		}
-	}
-
-	t.Run("DirectoriesFirst", func(t *testing.T) {
-		got := sortFileInfoSlice(input(), config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true})
-		names := make([]string, len(got))
-		for i, f := range got {
-			names[i] = f.Name
-		}
-		want := []string{"..", "apple", "zeta", "banana.txt", "cherry.txt"}
-		if !reflect.DeepEqual(names, want) {
-			t.Fatalf("sortFileInfoSlice(DirectoriesFirst=true) = %v, want %v", names, want)
-		}
-		if !got[0].IsDir || got[0].Name != ".." {
-			t.Fatalf("expected \"..\" pinned at index 0, got %+v", got[0])
-		}
-	})
-
-	t.Run("FlatSort", func(t *testing.T) {
-		got := sortFileInfoSlice(input(), config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: false})
-		names := make([]string, len(got))
-		for i, f := range got {
-			names[i] = f.Name
-		}
-		want := []string{"..", "apple", "banana.txt", "cherry.txt", "zeta"}
-		if !reflect.DeepEqual(names, want) {
-			t.Fatalf("sortFileInfoSlice(DirectoriesFirst=false) = %v, want %v", names, want)
-		}
-		if got[0].Name != ".." {
-			t.Fatalf("expected \"..\" pinned at index 0, got %+v", got[0])
-		}
-	})
-
-	t.Run("NoParentEntry", func(t *testing.T) {
-		files := []fileinfo.FileInfo{
-			{Name: "b", IsDir: true},
-			{Name: "a.txt"},
-		}
-		got := sortFileInfoSlice(files, config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true})
-		names := make([]string, len(got))
-		for i, f := range got {
-			names[i] = f.Name
-		}
-		want := []string{"b", "a.txt"}
-		if !reflect.DeepEqual(names, want) {
-			t.Fatalf("sortFileInfoSlice(no parent) = %v, want %v", names, want)
-		}
-	})
-
-	t.Run("ShortCircuitsBelowTwoEntries", func(t *testing.T) {
-		if got := sortFileInfoSlice(nil, config.SortConfig{SortBy: "name"}); got != nil {
-			t.Fatalf("sortFileInfoSlice(nil) = %v, want nil", got)
-		}
-		single := []fileinfo.FileInfo{{Name: "only"}}
-		if got := sortFileInfoSlice(single, config.SortConfig{SortBy: "name"}); len(got) != 1 || got[0].Name != "only" {
-			t.Fatalf("sortFileInfoSlice(single) = %v, want unchanged single-element slice", got)
-		}
-	})
 }

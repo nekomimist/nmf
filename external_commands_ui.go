@@ -89,7 +89,7 @@ func (fm *FileManager) showCommandMenu(items []keymanager.CommandMenuItem) {
 
 func (fm *FileManager) externalCommandMenuPosition() fyne.Position {
 	anchor := fm.cursorAnchor
-	if anchor.object != nil && anchor.path != "" && anchor.path == fm.cursorPath {
+	if anchor.object != nil && anchor.path != "" && anchor.path == fm.browserModel().CursorPath() {
 		canvas := fyne.CurrentApp().Driver().CanvasForObject(anchor.object)
 		if canvas != nil {
 			pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(anchor.object)
@@ -139,9 +139,9 @@ func (fm *FileManager) RunExternalCommand(command string, args []string, edit bo
 func (fm *FileManager) runExternalCommandTemplate(command string, argTemplates []string, cwdTemplate string, targets []string, edit bool) bool {
 	return fm.runExternalCommandMaybeEdit(
 		command,
-		expandExternalCommandArgs(argTemplates, targets, fm.collectAllSelectedTargetPaths(), fm.currentPath),
+		expandExternalCommandArgs(argTemplates, targets, fm.collectAllSelectedTargetPaths(), fm.GetCurrentPath()),
 		edit,
-		expandExternalCommandCwd(cwdTemplate, targets, fm.currentPath),
+		expandExternalCommandCwd(cwdTemplate, targets, fm.GetCurrentPath()),
 	)
 }
 

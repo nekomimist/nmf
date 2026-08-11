@@ -11,7 +11,7 @@ func (fm *FileManager) DumpKeyManagerState() {
 		debugPrint("FileManager: keymanager dump skipped keyManager=nil")
 		return
 	}
-	debugPrint("FileManager: keymanager dump requested path=%s focused=%s", fm.currentPath, focusedObjectLabel(fm.window))
+	debugPrint("FileManager: keymanager dump requested path=%s focused=%s", fm.GetCurrentPath(), focusedObjectLabel(fm.window))
 	debugPrint("KeyManager: dump\n%s", fm.keyManager.DumpState())
 	canvasWidth, canvasHeight := float32(0), float32(0)
 	var windowCanvas fyne.Canvas
@@ -26,9 +26,9 @@ func (fm *FileManager) DumpKeyManagerState() {
 		listHeight = fm.fileList.Size().Height
 	}
 	debugPrint("FileManager: cursor dump index=%d count=%d refreshSeq=%d itemUpdateSeq=%d active=%t focused=%s canvas=%.0fx%.0f list=%.0fx%.0f path=%q cursor=%q",
-		fm.GetCurrentCursorIndex(), len(fm.files), fm.cursorRefreshSeq, fm.cursorItemUpdateSeq,
+		fm.GetCurrentCursorIndex(), fm.FileCount(), fm.cursorRefreshSeq, fm.cursorItemUpdateSeq,
 		fm.windowActive, focusedObjectLabel(fm.window), canvasWidth, canvasHeight, listWidth, listHeight,
-		fm.currentPath, fm.cursorPath)
+		fm.GetCurrentPath(), fm.browserModel().CursorPath())
 	fm.dumpCanvasMappings(windowCanvas)
 	if fm.statusLabel != nil {
 		fm.statusLabel.SetText("KeyManager state dumped to debug log")
@@ -38,12 +38,12 @@ func (fm *FileManager) DumpKeyManagerState() {
 
 func (fm *FileManager) dumpCanvasMappings(windowCanvas fyne.Canvas) {
 	if windowCanvas == nil {
-		debugPrint("FileManager: canvas map skipped windowCanvas=nil path=%q", fm.currentPath)
+		debugPrint("FileManager: canvas map skipped windowCanvas=nil path=%q", fm.GetCurrentPath())
 		return
 	}
 	app := fyne.CurrentApp()
 	if app == nil || app.Driver() == nil {
-		debugPrint("FileManager: canvas map skipped driver=nil path=%q", fm.currentPath)
+		debugPrint("FileManager: canvas map skipped driver=nil path=%q", fm.GetCurrentPath())
 		return
 	}
 
@@ -67,7 +67,7 @@ func (fm *FileManager) dumpCanvasMappings(windowCanvas fyne.Canvas) {
 		fm.cursorAnchor.path,
 		canvasMappingState(lookup, fm.statusLabel, windowCanvas),
 		canvasMappingState(lookup, fm.windowHighlight, windowCanvas),
-		fm.currentPath)
+		fm.GetCurrentPath())
 }
 
 func canvasMappingState(lookup canvasObjectLookup, object fyne.CanvasObject, windowCanvas fyne.Canvas) string {

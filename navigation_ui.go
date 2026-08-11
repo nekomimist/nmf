@@ -11,27 +11,31 @@ import (
 )
 
 func (fm *FileManager) OpenNewWindow() {
-	fm.openWindowAtPath(fm.currentPath)
+	fm.openWindowAtPath(fm.GetCurrentPath())
 }
 
 func (fm *FileManager) ReopenClosedWindow() {
-	path, ok := nextReopenPath()
+	var path string
+	var ok bool
+	if registry := fm.windowRegistry(); registry != nil {
+		path, ok = registry.nextReopenPath()
+	}
 	if !ok {
 		debugPrint("FileManager: No closed window path available; opening current path")
-		path = fm.currentPath
+		path = fm.GetCurrentPath()
 	}
 	fm.openWindowAtPath(path)
 }
 
 func (fm *FileManager) openWindowAtPath(path string) {
-	newFM := NewFileManager(fm.runtime, path, fm.config, fm.configManager, fm.state, fm.stateManager, fm.customTheme, fm.configScript)
+	newFM := NewFileManager(fm.runtime, path)
 	newFM.window.Show()
-	positionWindowNextTo(fm.window, newFM.window)
+	positionWindowNextTo(fm.runtime, fm.window, newFM.window)
 }
 
 // ShowDirectoryTreeDialog shows the directory tree navigation dialog.
 func (fm *FileManager) ShowDirectoryTreeDialog() {
-	dialog := ui.NewDirectoryTreeDialog(fm.currentPath, fm.keyManager, debugPrint)
+	dialog := ui.NewDirectoryTreeDialog(fm.GetCurrentPath(), fm.keyManager, debugPrint)
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
 		debugPrint("FileManager: tree dialog selected path=%s focused=%s", selectedPath, focusedObjectLabel(fm.window))
 		fm.LoadDirectory(selectedPath)
@@ -46,7 +50,7 @@ func (fm *FileManager) ShowNavigationHistoryDialog() {
 	openPathList, openPaths := fm.openPathsInWindows()
 
 	enhancedPaths, unpinRemovesPath := buildEnhancedNavigationHistoryPaths(
-		fm.currentPath,
+		fm.GetCurrentPath(),
 		openPathList,
 		fm.state.NavigationHistory.Pinned,
 		historyPaths,
@@ -130,7 +134,7 @@ func buildEnhancedNavigationHistoryPaths(currentPath string, openPaths []string,
 }
 
 func (fm *FileManager) PinCurrentHistoryPath() {
-	path := canonicalNavigationHistoryPath(fm.currentPath)
+	path := canonicalNavigationHistoryPath(fm.GetCurrentPath())
 	if path == "" || fm.state == nil {
 		return
 	}
@@ -148,7 +152,7 @@ func (fm *FileManager) PinCurrentHistoryPath() {
 		}
 	}
 	debugPrint("FileManager: Pinned history path=%s", path)
-	notifyNavigationHistoryChanged(path)
+	fm.notifyNavigationHistoryChanged(path)
 	fm.ShowMessageDialog("History Jump", "Saved:\n"+path)
 }
 
@@ -168,22 +172,21 @@ func (fm *FileManager) UnpinHistoryPath(path string) bool {
 		}
 	}
 	debugPrint("FileManager: Unpinned history path=%s", path)
-	notifyNavigationHistoryChanged(path)
+	fm.notifyNavigationHistoryChanged(path)
 	return true
 }
 
 func (fm *FileManager) openPathsInWindows() ([]string, map[string]bool) {
 	openPaths := map[string]bool{}
-	windowRegistry.Range(func(k, v any) bool {
-		other, ok := v.(*FileManager)
-		if !ok || other.currentPath == "" {
-			return true
+	for _, other := range fm.registeredWindows() {
+		path := other.GetCurrentPath()
+		if path == "" {
+			continue
 		}
-		openPaths[other.currentPath] = true
-		return true
-	})
-	if fm != nil && fm.currentPath != "" {
-		openPaths[fm.currentPath] = true
+		openPaths[path] = true
+	}
+	if fm != nil && fm.GetCurrentPath() != "" {
+		openPaths[fm.GetCurrentPath()] = true
 	}
 	pathList := make([]string, 0, len(openPaths))
 	for path := range openPaths {
@@ -249,7 +252,7 @@ func (fm *FileManager) recordNavigationHistory(path string) {
 			debugPrint("FileManager: Error saving navigation history: %v", err)
 		}
 	}
-	notifyNavigationHistoryChanged(path)
+	fm.notifyNavigationHistoryChanged(path)
 }
 
 func (fm *FileManager) jumpToConfiguredDirectory(inputPath string) {

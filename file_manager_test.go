@@ -14,14 +14,12 @@ import (
 
 func newApplyChangesTestFileManager(files []fileinfo.FileInfo, sortCfg config.SortConfig) *FileManager {
 	return &FileManager{
-		files: files,
+		browser: newTestBrowser(testBrowserOptions{files: files, sort: sortCfg}),
 		fileList: widget.NewList(
 			func() int { return 0 },
 			func() fyne.CanvasObject { return widget.NewLabel("") },
 			func(widget.ListItemID, fyne.CanvasObject) {},
 		),
-		activeSort:    sortCfg,
-		selectedFiles: map[string]bool{},
 	}
 }
 
@@ -54,11 +52,12 @@ func TestApplyChangesModifyOnlyUnderNameSortSkipsResort(t *testing.T) {
 	fm.ApplyChanges(nil, nil, []fileinfo.FileInfo{modified})
 
 	wantOrder := []string{"gamma.txt", "alpha.txt", "beta.txt"}
-	if got := namesOf(fm.files); !reflect.DeepEqual(got, wantOrder) {
+	gotFiles := fm.GetFiles()
+	if got := namesOf(gotFiles); !reflect.DeepEqual(got, wantOrder) {
 		t.Fatalf("modify-only ApplyChanges under name sort reordered: got %v, want unchanged order %v", got, wantOrder)
 	}
-	if fm.files[1].Size != 999 {
-		t.Fatalf("modified file content not applied: %+v", fm.files[1])
+	if gotFiles[1].Size != 999 {
+		t.Fatalf("modified file content not applied: %+v", gotFiles[1])
 	}
 }
 
@@ -80,7 +79,7 @@ func TestApplyChangesAddedUnderNameSortResorts(t *testing.T) {
 	fm.ApplyChanges([]fileinfo.FileInfo{added}, nil, nil)
 
 	want := []string{"alpha.txt", "beta.txt", "delta.txt", "gamma.txt"}
-	if got := namesOf(fm.files); !reflect.DeepEqual(got, want) {
+	if got := namesOf(fm.GetFiles()); !reflect.DeepEqual(got, want) {
 		t.Fatalf("added-file ApplyChanges did not resort: got %v, want %v", got, want)
 	}
 }
@@ -102,7 +101,7 @@ func TestApplyChangesModifyOnlyUnderSizeSortResorts(t *testing.T) {
 	fm.ApplyChanges(nil, nil, []fileinfo.FileInfo{modified})
 
 	want := []string{"big.txt", "small.txt"}
-	if got := namesOf(fm.files); !reflect.DeepEqual(got, want) {
+	if got := namesOf(fm.GetFiles()); !reflect.DeepEqual(got, want) {
 		t.Fatalf("modify-only ApplyChanges under size sort did not resort: got %v, want %v", got, want)
 	}
 }
@@ -111,10 +110,9 @@ func TestApplyChangesModifyOnlyUnderSizeSortResorts(t *testing.T) {
 // merge still resorts when a modified entry's IsDir flips (e.g. "beta" is
 // removed and replaced by a same-named directory between watcher polls),
 // even under a "name" sort that would otherwise skip the resort. With
-// DirectoriesFirst enabled, sortFileInfoSlice groups entries by IsDir before
-// sorting each group by name, so skipping the resort would leave the flipped
-// entry stranded in the file group instead of moving it into the directory
-// group.
+// DirectoriesFirst enabled, browser sorting groups entries by IsDir before
+// sorting each group by name. Skipping the resort would leave the flipped entry
+// stranded in the file group instead of moving it into the directory group.
 func TestApplyChangesModifyOnlyIsDirFlipResorts(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
@@ -129,11 +127,12 @@ func TestApplyChangesModifyOnlyIsDirFlipResorts(t *testing.T) {
 	fm.ApplyChanges(nil, nil, []fileinfo.FileInfo{modified})
 
 	want := []string{"beta", "alpha.txt"}
-	if got := namesOf(fm.files); !reflect.DeepEqual(got, want) {
+	gotFiles := fm.GetFiles()
+	if got := namesOf(gotFiles); !reflect.DeepEqual(got, want) {
 		t.Fatalf("modify-only ApplyChanges with IsDir flip did not resort into directory group: got %v, want %v", got, want)
 	}
-	if !fm.files[0].IsDir {
-		t.Fatalf("expected flipped entry to be marked as a directory: %+v", fm.files[0])
+	if !gotFiles[0].IsDir {
+		t.Fatalf("expected flipped entry to be marked as a directory: %+v", gotFiles[0])
 	}
 }
 
@@ -167,11 +166,11 @@ func TestApplyChangesPreservesUnfilteredListingWhileFilterActive(t *testing.T) {
 		{Name: "image.png", Path: "/tmp/image.png"},
 		{Name: "notes.txt", Path: "/tmp/notes.txt"},
 	}
-	fm := newApplyChangesTestFileManager(nil,
+	fm := newApplyChangesTestFileManager(allFiles,
 		config.SortConfig{SortBy: "name", SortOrder: "asc"})
-	fm.originalFiles = cloneFileInfoSlice(allFiles)
-	fm.currentFilter = entry
-	fm.files = fm.filesForCurrentFilter(allFiles)
+	if _, _, err := fm.browserModel().ApplyFilter(entry); err != nil {
+		t.Fatalf("ApplyFilter: %v", err)
+	}
 	fm.state = &config.State{
 		FileFilter: config.FileFilterState{Current: entry, Enabled: true},
 	}
@@ -181,15 +180,15 @@ func TestApplyChangesPreservesUnfilteredListingWhileFilterActive(t *testing.T) {
 		{Name: "readme.md", Path: "/tmp/readme.md", Status: fileinfo.StatusAdded},
 	}, nil, nil)
 
-	if got, want := namesOf(fm.files), []string{"cover.png", "image.png"}; !reflect.DeepEqual(got, want) {
+	if got, want := namesOf(fm.GetFiles()), []string{"cover.png", "image.png"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("visible files = %v, want filtered view %v", got, want)
 	}
-	if got, want := namesOf(fm.originalFiles), []string{"cover.png", "image.png", "notes.txt", "readme.md"}; !reflect.DeepEqual(got, want) {
+	if got, want := namesOf(fm.browserModel().SourceFiles()), []string{"cover.png", "image.png", "notes.txt", "readme.md"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("complete files = %v, want all entries retained as %v", got, want)
 	}
 
 	fm.DisableFilter()
-	if got, want := namesOf(fm.files), []string{"cover.png", "image.png", "notes.txt", "readme.md"}; !reflect.DeepEqual(got, want) {
+	if got, want := namesOf(fm.GetFiles()), []string{"cover.png", "image.png", "notes.txt", "readme.md"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("files after disabling filter = %v, want retained complete list %v", got, want)
 	}
 }

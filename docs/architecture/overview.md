@@ -24,7 +24,8 @@ This document describes runtime composition, package boundaries, and core state 
    - Register the title-bar close intercept through `QuitApplication`, the
      same confirmation path used by the keyboard command.
 3. Runtime method groups are split across focused files:
-   - `directory_loading.go`: loading, busy state, watcher poll policy.
+   - `directory_loading.go`: navigation, directory-result application, and
+     watcher poll policy.
    - `list_controls.go`: sorting/filter/search/list cursor operations.
    - `navigation_ui.go`: navigation dialogs and path edit operations.
    - `viewer_ui.go`: built-in image/text/Markdown/hex preview dialog entrypoint.
@@ -33,21 +34,55 @@ This document describes runtime composition, package boundaries, and core state 
 
 ## Core State Ownership
 
-`FileManager` (`file_manager.go`) owns UI/runtime state for a single window:
+`ApplicationRuntime` (`application_runtime.go`) is the application composition
+root. It owns the app-wide config and runtime state, their managers, theme and
+optional config script, the ordered window registry, navigation-history event
+hub, watcher hub, jobs services, credential/archive-password caches, and the
+interactive prompt broker. A new window receives this runtime rather than a
+list of shared dependencies.
 
-- current path + file list snapshot
-- selection and cursor state
-- key manager stack and search overlay
-- watcher instance and jobs indicator state
-- shared watcher hub reference
-- config/config manager handles, plus state/state manager handles (`state.json`)
+`internal/browser.Model` owns mutable browsing state for one window:
 
-Cross-window/global state:
+- current path, visible list, and unfiltered list
+- selection and cursor path/index cache
+- storage information, active sort, and active filter
 
-- window registry and count in `main.go`
-- `ApplicationRuntime` owns the shared `internal/watcher.WatchHub`, jobs
-  manager/controller, credential and archive-password caches, and the
-  interactive prompt broker.
+The model is widget-free and synchronized internally. Callers receive value
+snapshots or cloned slices/maps; they cannot mutate its collections directly.
+Operations that must keep several fields consistent (directory replacement,
+watcher merges, filtering, sorting, create/rename updates, and range selection)
+run behind the model's lock. Widget refreshes always happen after those
+operations return.
+
+Synchronization is guaranteed per model method call, not across a sequence of
+independent getters. Code that needs a consistent compound observation or
+mutation must add/use a transactional model operation (for example,
+`CursorFile`, `ListingStats`, `SelectAll`, or `ApplyFilter`) rather than compose
+fine-grained getters and assume the lock spans them.
+
+`internal/browser.DirectoryLoader` owns directory I/O and its latest-request
+lifecycle. It reads through portable VFS APIs, performs the confirmed-missing
+parent fallback, builds and sorts a widget-free result, and cancels the
+previous context whenever a newer generation begins. `Finish` accepts only the
+active generation, so a stale or close-canceled callback cannot replace newer
+browsing state.
+
+`internal/ui.BusyController` owns the per-window delayed busy overlay and the
+matching `BusyKeyHandler` token. It blocks input immediately, delays visuals to
+avoid flicker, rejects stale timer generations, and releases exactly its own
+handler on every end path.
+
+`FileManager` (`file_manager.go`) is the per-window UI coordinator. It owns the
+Fyne window/widgets, key-handler stack and search overlay, window-local watcher
+and icon service, jobs indicator, and viewer lifecycle. It delegates browsing
+state to `browser.Model`, directory work to `browser.DirectoryLoader`, busy
+input/visual state to `ui.BusyController`, and uses `ApplicationRuntime` for
+app-wide services. Directory completion code remains here because applying a
+result coordinates Fyne widgets, cursor restoration, history, focus, and the
+window watcher.
+
+Process integration and cross-window behavior:
+
 - The VFS provider hooks in `internal/fileinfo` are installed once when the
   runtime is created. Opening another window registers a prompt target but
   does not replace the global cache/provider.
@@ -77,6 +112,9 @@ Window shutdown:
 - External commands and OS opener processes are started asynchronously, but a
   lightweight waiter goroutine always calls `Wait` so completed children do
   not remain unreaped.
+- Cross-window enumeration uses registry insertion order. Destination choices
+  and multi-window operations therefore remain stable instead of inheriting
+  the nondeterministic iteration order of the former `sync.Map` registry.
 
 Window placement:
 
@@ -92,6 +130,8 @@ menus and outbound file dragging, are summarized in `platform-behavior.md`.
 
 ## Package Boundaries
 
+- `internal/browser`: synchronized, widget-free per-window browsing model plus
+  portable directory loading and latest-request generation control.
 - `internal/config`: read-only `config.json` schema/loading (`Manager`) plus
   `state.json` runtime state and its async persistence (`StateManager`).
 - `internal/configscript`: optional Starlark overlay configuration and custom command registration.
@@ -100,7 +140,10 @@ menus and outbound file dragging, are summarized in `platform-behavior.md`.
 - `internal/watcher`: shared fswatcher-backed path monitor with polling
   fallback and run-generation lifecycle protection.
 - `internal/jobs`: copy/move queue manager and background worker.
-- `internal/keymanager`: stacked key handlers and modifier state.
+- `internal/keymanager`: stacked key handlers and modifier state. The main
+  handler receives responsibility-specific ports through
+  `MainScreenDependencies`; Starlark/custom commands see the separate,
+  narrower `CommandFileManager` port.
 - `internal/ui`: dialogs, wrappers, and visual widgets.
 
 ## Configuration Model
@@ -186,5 +229,16 @@ Full JSON shape and OS-specific paths are documented in
 
 ## Architecture Invariants
 
-- `main.go` remains process-entry focused; runtime orchestration belongs to `FileManager` and split modules.
+- `main.go` remains process-entry focused; app-wide orchestration belongs to
+  `ApplicationRuntime`, browsing data belongs to `internal/browser.Model`, and
+  Fyne coordination belongs to `FileManager` and its split modules.
+- UI code must not retain or mutate browser-model collections. Use model
+  operations for writes and value snapshots for rendering or background work.
+- Model locking covers one API call at a time. Prefer compound model methods
+  whenever a read/modify/write sequence must remain atomic.
+- Background directory work must return a `DirectoryLoadResult`; only the
+  active loader generation may apply it on the Fyne thread.
+- Do not grow a catch-all keymanager-facing FileManager interface. Add a method
+  to the smallest existing main-screen port, or create a separate consumer
+  port when command-context and UI-handler needs differ.
 - New cross-cutting behavior must be documented under `docs/architecture/` in the same change.

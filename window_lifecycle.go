@@ -1,8 +1,6 @@
 package main
 
 import (
-	"sync/atomic"
-
 	"fyne.io/fyne/v2"
 
 	"nmf/internal/jobs"
@@ -16,16 +14,21 @@ func (fm *FileManager) closeWindow() {
 	}
 
 	// Invalidate background work before releasing window-owned UI resources.
-	fm.invalidateActiveDirectoryLoad()
+	if fm.directoryLoader != nil {
+		fm.directoryLoader.CancelActive()
+	}
 	fm.invalidateViewerLoad(0)
-	fm.endBusy()
+	if fm.busy != nil {
+		fm.busy.End()
+	}
 
-	recordReopenPath(fm.currentPath)
-	clearFileManagerWindowHighlights()
+	if registry := fm.windowRegistry(); registry != nil {
+		registry.recordReopenPath(fm.GetCurrentPath())
+	}
+	clearFileManagerWindowHighlights(fm)
 
 	// Remove from registry
-	unregisterFileManagerWindow(fm)
-	remaining := atomic.AddInt32(&windowCount, -1)
+	remaining := unregisterFileManagerWindow(fm)
 
 	debugPrint("WindowLifecycle: Window closed, remaining windows: %d", remaining)
 
@@ -144,13 +147,16 @@ func (fm *FileManager) endQuitConfirmation() {
 	fm.lifecycleMu.Unlock()
 }
 
-func windowCloseNeedsConfirmation(openWindows int32) bool {
+func windowCloseNeedsConfirmation(openWindows int) bool {
 	return openWindows <= 1
 }
 
 // QuitApplication handles application quit logic with confirmation dialog.
 func (fm *FileManager) QuitApplication() {
-	currentCount := atomic.LoadInt32(&windowCount)
+	currentCount := 1
+	if registry := fm.windowRegistry(); registry != nil {
+		currentCount = registry.count()
+	}
 	debugPrint("WindowLifecycle: QuitApplication called, current window count: %d", currentCount)
 
 	if !windowCloseNeedsConfirmation(currentCount) {

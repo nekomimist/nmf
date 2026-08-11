@@ -4,41 +4,63 @@ import "sync"
 
 type navigationHistoryListener func(string)
 
-var navigationHistoryEvents = struct {
+type navigationHistoryEventHub struct {
 	sync.Mutex
 	nextID    int
 	listeners map[int]navigationHistoryListener
-}{
-	listeners: make(map[int]navigationHistoryListener),
 }
 
-func subscribeNavigationHistoryChanged(listener navigationHistoryListener) func() {
+func newNavigationHistoryEventHub() *navigationHistoryEventHub {
+	return &navigationHistoryEventHub{listeners: make(map[int]navigationHistoryListener)}
+}
+
+func (h *navigationHistoryEventHub) subscribe(listener navigationHistoryListener) func() {
 	if listener == nil {
 		return func() {}
 	}
+	if h == nil {
+		return func() {}
+	}
 
-	navigationHistoryEvents.Lock()
-	id := navigationHistoryEvents.nextID
-	navigationHistoryEvents.nextID++
-	navigationHistoryEvents.listeners[id] = listener
-	navigationHistoryEvents.Unlock()
+	h.Lock()
+	id := h.nextID
+	h.nextID++
+	h.listeners[id] = listener
+	h.Unlock()
 
 	return func() {
-		navigationHistoryEvents.Lock()
-		delete(navigationHistoryEvents.listeners, id)
-		navigationHistoryEvents.Unlock()
+		h.Lock()
+		delete(h.listeners, id)
+		h.Unlock()
 	}
 }
 
-func notifyNavigationHistoryChanged(path string) {
-	navigationHistoryEvents.Lock()
-	listeners := make([]navigationHistoryListener, 0, len(navigationHistoryEvents.listeners))
-	for _, listener := range navigationHistoryEvents.listeners {
+func (h *navigationHistoryEventHub) notify(path string) {
+	if h == nil {
+		return
+	}
+	h.Lock()
+	listeners := make([]navigationHistoryListener, 0, len(h.listeners))
+	for _, listener := range h.listeners {
 		listeners = append(listeners, listener)
 	}
-	navigationHistoryEvents.Unlock()
+	h.Unlock()
 
 	for _, listener := range listeners {
 		listener(path)
 	}
+}
+
+func (fm *FileManager) subscribeNavigationHistoryChanged(listener navigationHistoryListener) func() {
+	if fm == nil || fm.runtime == nil {
+		return func() {}
+	}
+	return fm.runtime.navigationHistoryEvents.subscribe(listener)
+}
+
+func (fm *FileManager) notifyNavigationHistoryChanged(path string) {
+	if fm == nil || fm.runtime == nil {
+		return
+	}
+	fm.runtime.navigationHistoryEvents.notify(path)
 }

@@ -1,49 +1,44 @@
 package main
 
 import (
-	"sync/atomic"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 
-	"nmf/internal/config"
-	"nmf/internal/configscript"
+	"nmf/internal/browser"
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 	"nmf/internal/search"
-	customtheme "nmf/internal/theme"
 	"nmf/internal/ui"
 	"nmf/internal/watcher"
 )
 
-func NewFileManager(runtime *ApplicationRuntime, path string, config *config.Config, configManager *config.Manager, state *config.State, stateManager *config.StateManager, customTheme *customtheme.CustomTheme, configScript *configscript.Runtime) *FileManager {
-	if runtime == nil || runtime.app == nil {
+func NewFileManager(runtime *ApplicationRuntime, path string) *FileManager {
+	if runtime == nil || runtime.app == nil || runtime.config == nil || runtime.state == nil {
 		panic("NewFileManager requires an application runtime")
 	}
+	config := runtime.config
+	state := runtime.state
+	customTheme := runtime.customTheme
+	keyManager := keymanager.NewKeyManager(debugPrint)
 	fm := &FileManager{
 		window:            runtime.app.NewWindow("File Manager"),
-		currentPath:       path,
-		cursorPath:        "",
-		cursorIndex:       -1,
-		selectedFiles:     make(map[string]bool),
+		browser:           browser.New(path, state.EffectiveSort(config.UI.Sort)),
+		directoryLoader:   browser.NewDirectoryLoader(),
 		config:            config,
-		configManager:     configManager,
 		state:             state,
-		stateManager:      stateManager,
-		configScript:      configScript,
+		stateManager:      runtime.stateManager,
 		initialWindowSize: fyne.NewSize(float32(config.Window.Width), float32(config.Window.Height)),
 		windowActive:      true,
-		activeSort:        state.EffectiveSort(config.UI.Sort),
 		customTheme:       customTheme,
-		keyManager:        keymanager.NewKeyManager(debugPrint),
+		keyManager:        keyManager,
 		searchMatchers:    search.NewProvider(debugPrint),
 		runtime:           runtime,
 	}
 
-	// Busy overlay (hidden by default)
-	fm.busyOverlay = ui.NewBusyOverlay(customTheme)
-	fm.busyDelay = 150 * time.Millisecond
+	// Busy overlay and its input guard are window-owned.
+	fm.busy = ui.NewBusyController(fm.window, keyManager, customTheme, 150*time.Millisecond, debugPrint)
 
 	// Initialize async icon service and subscribe for updates
 	fm.iconSvc = fileinfo.NewIconService(debugPrint)
@@ -71,10 +66,11 @@ func NewFileManager(runtime *ApplicationRuntime, path string, config *config.Con
 	// Setup KeyManager with main screen handler
 	keymanager.WarnUnknownKeyBindingTargets(config.UI.KeyBindings, debugPrint)
 	var scriptCommands keymanager.CommandRegistry
-	if configScript != nil {
-		scriptCommands = configScript.Commands
+	if runtime.configScript != nil {
+		scriptCommands = runtime.configScript.Commands
 	}
-	mainHandler := keymanager.NewMainScreenKeyHandlerWithCommands(fm, debugPrint, config.UI.KeyBindings, scriptCommands)
+	mainDependencies := newMainScreenDependencies(fm)
+	mainHandler := keymanager.NewMainScreenKeyHandlerWithCommands(mainDependencies, debugPrint, config.UI.KeyBindings, scriptCommands)
 	mainHandler.SetTransitionGate(fm.keyManager.BeginOwnerTransition)
 	mainHandler.SetActions(keymanager.DialogActions{
 		ShowDirectoryTreeDialog:     fm.ShowDirectoryTreeDialog,
@@ -107,9 +103,8 @@ func NewFileManager(runtime *ApplicationRuntime, path string, config *config.Con
 	runtime.registerWindowPrompts(fm)
 	fm.LoadDirectory(path)
 
-	// Register window in global registry
+	// Register this window with the application runtime.
 	registerFileManagerWindow(fm)
-	atomic.AddInt32(&windowCount, 1)
 
 	// Set window close handler
 	fm.window.SetCloseIntercept(func() {
@@ -117,4 +112,22 @@ func NewFileManager(runtime *ApplicationRuntime, path string, config *config.Con
 	})
 
 	return fm
+}
+
+func newMainScreenDependencies(fm *FileManager) keymanager.MainScreenDependencies {
+	return keymanager.NewMainScreenDependencies(
+		keymanager.MainScreenPorts{
+			CursorList:  fm,
+			Selection:   fm,
+			Directory:   fm,
+			FileOpener:  fm,
+			Windows:     fm,
+			History:     fm,
+			Filters:     fm,
+			Application: fm,
+			Commands:    fm,
+		},
+		fm.RunExternalCommand,
+		fm.SetClipboardText,
+	)
 }

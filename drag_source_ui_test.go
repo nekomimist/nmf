@@ -20,11 +20,13 @@ func TestCollectDragSourcePathsUsesSelectionBeforeDraggedItem(t *testing.T) {
 	}
 
 	fm := &FileManager{
-		files: []fileinfo.FileInfo{
-			{Name: "selected.txt", Path: selectedPath},
-			{Name: "dragged.txt", Path: draggedPath},
-		},
-		selectedFiles: map[string]bool{selectedPath: true},
+		browser: newTestBrowser(testBrowserOptions{
+			files: []fileinfo.FileInfo{
+				{Name: "selected.txt", Path: selectedPath},
+				{Name: "dragged.txt", Path: draggedPath},
+			},
+			selected: map[string]bool{selectedPath: true},
+		}),
 	}
 
 	paths, err := fm.collectDragSourcePaths(fileinfo.FileInfo{Name: "dragged.txt", Path: draggedPath})
@@ -43,7 +45,7 @@ func TestCollectDragSourcePathsFallsBackToDraggedItem(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fm := &FileManager{selectedFiles: map[string]bool{}}
+	fm := &FileManager{browser: newTestBrowser(testBrowserOptions{})}
 	paths, err := fm.collectDragSourcePaths(fileinfo.FileInfo{Name: "dragged.txt", Path: draggedPath})
 	if err != nil {
 		t.Fatalf("collectDragSourcePaths returned error: %v", err)

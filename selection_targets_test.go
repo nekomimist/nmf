@@ -12,20 +12,26 @@ import (
 func TestGetAllSelectedFilesUsesAllOpenWindowsInOrder(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
-	resetFileManagerWindowTestRegistry(t)
+	runtime := newFileManagerWindowTestRuntime(t)
 
 	left := &FileManager{
-		window:        app.NewWindow("left"),
-		files:         []fileinfo.FileInfo{{Name: "a.txt", Path: "/left/a.txt"}, {Name: "skip.txt", Path: "/left/skip.txt"}},
-		selectedFiles: map[string]bool{"/left/a.txt": true, "/left/skip.txt": false},
+		runtime: runtime,
+		window:  app.NewWindow("left"),
+		browser: newTestBrowser(testBrowserOptions{
+			files:    []fileinfo.FileInfo{{Name: "a.txt", Path: "/left/a.txt"}, {Name: "skip.txt", Path: "/left/skip.txt"}},
+			selected: map[string]bool{"/left/a.txt": true, "/left/skip.txt": false},
+		}),
 	}
 	right := &FileManager{
-		window: app.NewWindow("right"),
-		files: []fileinfo.FileInfo{
-			{Name: "deleted.txt", Path: "/right/deleted.txt", Status: fileinfo.StatusDeleted},
-			{Name: "b.txt", Path: "/right/b.txt"},
-		},
-		selectedFiles: map[string]bool{"/right/deleted.txt": true, "/right/b.txt": true},
+		runtime: runtime,
+		window:  app.NewWindow("right"),
+		browser: newTestBrowser(testBrowserOptions{
+			files: []fileinfo.FileInfo{
+				{Name: "deleted.txt", Path: "/right/deleted.txt", Status: fileinfo.StatusDeleted},
+				{Name: "b.txt", Path: "/right/b.txt"},
+			},
+			selected: map[string]bool{"/right/deleted.txt": true, "/right/b.txt": true},
+		}),
 	}
 
 	registerFileManagerWindow(left)
@@ -43,25 +49,10 @@ func TestGetAllSelectedFilesUsesAllOpenWindowsInOrder(t *testing.T) {
 	}
 }
 
-func resetFileManagerWindowTestRegistry(t *testing.T) {
+func newFileManagerWindowTestRuntime(t *testing.T) *ApplicationRuntime {
 	t.Helper()
-
-	windowOrderMu.Lock()
-	windowOrder = nil
-	reopenPaths = nil
-	windowOrderMu.Unlock()
-	windowRegistry.Range(func(key, _ any) bool {
-		windowRegistry.Delete(key)
-		return true
-	})
-	t.Cleanup(func() {
-		windowOrderMu.Lock()
-		windowOrder = nil
-		reopenPaths = nil
-		windowOrderMu.Unlock()
-		windowRegistry.Range(func(key, _ any) bool {
-			windowRegistry.Delete(key)
-			return true
-		})
-	})
+	return &ApplicationRuntime{
+		windows:                 newFileManagerWindowRegistry(),
+		navigationHistoryEvents: newNavigationHistoryEventHub(),
+	}
 }

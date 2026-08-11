@@ -26,6 +26,21 @@ Core model:
 - The main-screen handler maps activations to stable internal command IDs
   before executing file-manager behavior. Each command definition carries a
   `transition` attribute marking it as an input-owner change.
+- It does not depend on one catch-all FileManager interface. `bootstrap.go`
+  wires `MainScreenDependencies` from responsibility-specific ports:
+  cursor/list, selection, directory navigation, file opening, window actions,
+  history, filters, and application lifecycle. A command that only moves the
+  cursor can therefore be tested with only the cursor/list port.
+- Production wiring uses `NewMainScreenDependencies`, whose opaque result and
+  constructor validation prevent an omitted required responsibility port from
+  surviving into command execution as a nil-interface panic.
+- Custom and Starlark commands receive the separate `CommandFileManager`
+  boundary through `CommandContext`. That boundary contains command-context
+  reads and explicitly supported mutations, but no focus, window, filter, or
+  dialog-launch methods. External process and clipboard functions are optional
+  integrations injected separately rather than discovered through type
+  assertions; a nil integration makes the corresponding configscript command
+  return false.
 
 Driver facts this design relies on (verified in Fyne v2.8.0; re-verify these
 on Fyne upgrades at the named locations in the Fyne source):
@@ -185,6 +200,12 @@ Main file list:
 - Enable tab capture (`WithTabCapture(true)`) to suppress default focus traversal.
 - When debug logging is enabled, the toolbar includes a mouse action that writes
   `KeyManager.DumpState()` to the debug log without opening another input owner.
+- Keep new main-screen dependencies consumer-oriented. Extend the smallest
+  matching `MainScreen*` port; do not recreate a monolithic FileManager
+  interface merely because the composition root currently supplies the same
+  object for several ports.
+- Selection-wide commands use transactional selection-port methods; do not
+  rebuild per-entry loops in keymanager from copied file and selection data.
 
 Text entries that must not steal Tab:
 
@@ -394,10 +415,24 @@ Delete dialogs:
 
 ## Busy State Behavior
 
-When directory loading enters busy mode:
+`internal/ui.BusyController` owns the busy overlay and its input-handler token
+for one File Manager window. Directory loads, initial viewer reads, and direct
+directory comparisons share this controller.
 
-- Push `BusyKeyHandler` to consume input during critical section.
-- Pop it after load completes.
+- `BusyController` and `BusyOverlay` are confined to the Fyne UI thread and
+  must not be called concurrently. Timer and worker callbacks marshal through
+  `fyne.Do` before touching their state or widgets.
+- `Begin` pushes `BusyKeyHandler` immediately, before the delayed overlay is
+  visible, so a fast repeated command cannot enter the critical section.
+- Repeated `Begin` while active updates the existing overlay and does not push
+  a second handler. It preserves the one busy-session cancel callback, so a
+  caller whose operation can replace generations must make that callback
+  resolve the currently active generation rather than capture the first ID.
+- Escape invokes the operation-specific cancel callback when one is supplied.
+- `End` invalidates the delayed-show generation, hides the overlay, and removes
+  exactly the token the controller owns. Repeated `End` is a no-op.
+- Directory-loader cancel restores the watcher/focus for the current path;
+  window-close cancellation deliberately does neither.
 
 ## Invariants
 

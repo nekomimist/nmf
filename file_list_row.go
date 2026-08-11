@@ -22,10 +22,10 @@ func (fm *FileManager) newFileListRow() fyne.CanvasObject {
 }
 
 func (fm *FileManager) updateFileListRow(id widget.ListItemID, obj fyne.CanvasObject) {
-	if id < 0 || int(id) >= len(fm.files) {
+	fileInfo, ok := fm.FileAt(int(id))
+	if !ok {
 		return
 	}
-	fileInfo := fm.files[id]
 	index := int(id)
 
 	row, ok := obj.(*ui.FileListRow)
@@ -68,7 +68,7 @@ func (fm *FileManager) updateFileListRow(id widget.ListItemID, obj fyne.CanvasOb
 	row.NameLabel.SetFile(fileInfo.Name, textColor, fileInfo.Status == fileinfo.StatusDeleted)
 	row.NameLabel.SetOnTapped(func(modifier fyne.KeyModifier) {
 		debugPrint("FileManager: File name tapped file=%q modifier=%d active=%t focused=%s path=%q",
-			fileInfo.Path, modifier, fm.windowActive, focusedObjectLabel(fm.window), fm.currentPath)
+			fileInfo.Path, modifier, fm.windowActive, focusedObjectLabel(fm.window), fm.GetCurrentPath())
 		fm.handleFileNameClick(index, fileInfo, modifier)
 	})
 	row.NameLabel.SetOnDragged(func() {
@@ -89,7 +89,7 @@ func (fm *FileManager) updateFileListRow(id widget.ListItemID, obj fyne.CanvasOb
 
 	currentCursorIdx := fm.GetCurrentCursorIndex()
 	isCursor := index == currentCursorIdx
-	isSelected := fm.selectedFiles[fileInfo.Path]
+	isSelected := fm.browserModel().IsSelected(fileInfo.Path)
 	if isCursor {
 		fm.cursorAnchor = cursorRowAnchor{path: fileInfo.Path, object: row}
 	} else if fm.cursorAnchor.object == row {

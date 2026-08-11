@@ -7,16 +7,13 @@ import (
 )
 
 func (fm *FileManager) handleFileNameClick(index int, clicked fileinfo.FileInfo, modifier fyne.KeyModifier) {
-	if fm.selectedFiles == nil {
-		fm.selectedFiles = make(map[string]bool)
-	}
 	anchor := fm.GetCurrentCursorIndex()
 	fm.SetCursorByIndex(index)
 
 	if modifier&fyne.KeyModifierShift != 0 {
 		fm.markFileRange(anchor, index)
-	} else if isTargetFileInfo(clicked) {
-		fm.selectedFiles[clicked.Path] = !fm.selectedFiles[clicked.Path]
+	} else if fileinfo.IsFileOperationTarget(clicked) {
+		fm.browserModel().ToggleSelected(clicked.Path)
 		fm.updateStatusBar()
 	}
 
@@ -30,30 +27,17 @@ func (fm *FileManager) handleFileNameClick(index int, clicked fileinfo.FileInfo,
 }
 
 func (fm *FileManager) markFileRange(anchor, target int) {
-	if len(fm.files) == 0 {
+	count := fm.FileCount()
+	if count == 0 {
 		return
 	}
-	if anchor < 0 || anchor >= len(fm.files) {
+	if anchor < 0 || anchor >= count {
 		anchor = target
 	}
-	if target < 0 || target >= len(fm.files) {
+	if target < 0 || target >= count {
 		return
 	}
-	start, end := anchor, target
-	if start > end {
-		start, end = end, start
-	}
-
-	changed := false
-	for i := start; i <= end; i++ {
-		fi := fm.files[i]
-		if !isTargetFileInfo(fi) || fm.selectedFiles[fi.Path] {
-			continue
-		}
-		fm.selectedFiles[fi.Path] = true
-		changed = true
-	}
-	if changed {
+	if fm.browserModel().MarkRange(anchor, target) {
 		fm.updateStatusBar()
 	}
 }

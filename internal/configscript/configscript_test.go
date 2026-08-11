@@ -2365,19 +2365,12 @@ type configScriptFakeFileManager struct {
 	menuItems              []keymanager.CommandMenuItem
 }
 
+var _ keymanager.CommandFileManager = (*configScriptFakeFileManager)(nil)
+
 func (f *configScriptFakeFileManager) GetCurrentCursorIndex() int    { return f.cursorIndex }
-func (f *configScriptFakeFileManager) SetCursorByIndex(index int)    { f.cursorIndex = index }
-func (f *configScriptFakeFileManager) RefreshCursor()                {}
 func (f *configScriptFakeFileManager) LoadDirectory(path string)     { f.currentPath = path }
 func (f *configScriptFakeFileManager) GetCurrentPath() string        { return f.currentPath }
 func (f *configScriptFakeFileManager) GetFiles() []fileinfo.FileInfo { return f.files }
-func (f *configScriptFakeFileManager) FileCount() int                { return len(f.files) }
-func (f *configScriptFakeFileManager) FileAt(index int) (fileinfo.FileInfo, bool) {
-	if index < 0 || index >= len(f.files) {
-		return fileinfo.FileInfo{}, false
-	}
-	return f.files[index], true
-}
 func (f *configScriptFakeFileManager) CurrentSort() config.SortConfig {
 	if f.currentSort.SortBy == "" {
 		return config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}
@@ -2404,23 +2397,6 @@ func (f *configScriptFakeFileManager) GetAllSelectedFiles() []fileinfo.FileInfo 
 	}
 	return targets
 }
-func (f *configScriptFakeFileManager) SetFileSelected(path string, selected bool) {
-	if f.selectedFiles == nil {
-		f.selectedFiles = make(map[string]bool)
-	}
-	f.selectedFiles[path] = selected
-}
-func (f *configScriptFakeFileManager) RefreshFileList()                  {}
-func (f *configScriptFakeFileManager) SaveCursorPosition(dirPath string) {}
-func (f *configScriptFakeFileManager) OpenNewWindow()                    {}
-func (f *configScriptFakeFileManager) ReopenClosedWindow()               {}
-func (f *configScriptFakeFileManager) FocusWindowLeft()                  {}
-func (f *configScriptFakeFileManager) FocusWindowRight()                 {}
-func (f *configScriptFakeFileManager) ResetWindowSize()                  {}
-func (f *configScriptFakeFileManager) ResetAllWindowSizes()              {}
-func (f *configScriptFakeFileManager) PinCurrentHistoryPath()            {}
-func (f *configScriptFakeFileManager) ClearFilter()                      {}
-func (f *configScriptFakeFileManager) ToggleFilter()                     {}
 func (f *configScriptFakeFileManager) CreateDirectory(name string) bool {
 	f.createDirName = name
 	return f.createDirResult
@@ -2429,14 +2405,9 @@ func (f *configScriptFakeFileManager) CreateClipboardTextFile(name string) bool 
 	f.clipboardFileName = name
 	return f.clipboardFileResult
 }
-func (f *configScriptFakeFileManager) QuitApplication()                           {}
-func (f *configScriptFakeFileManager) OpenFile(file *fileinfo.FileInfo)           {}
-func (f *configScriptFakeFileManager) OpenFileDefaultApp(file *fileinfo.FileInfo) {}
 
-// The following are not part of the (reduced) keymanager.FileManagerInterface
-// any more; they exist only so tests can build closures for the CommandContext
-// fields that carry UI-launcher actions to Starlark commands (ShowCommandMenu,
-// ShowMessageDialog, ShowCreateDirectoryDialog, ShowClipboardTextFileDialog).
+// The following are UI-launcher closures carried beside CommandFileManager in
+// CommandContext; they are intentionally not part of that command-data port.
 func (f *configScriptFakeFileManager) ShowCreateDirectoryDialog()   { f.showCreateDirCount++ }
 func (f *configScriptFakeFileManager) ShowClipboardTextFileDialog() { f.showClipboardFileCount++ }
 func (f *configScriptFakeFileManager) ShowMessageDialog(title string, message string) {
