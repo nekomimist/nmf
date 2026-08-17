@@ -36,7 +36,14 @@ configuration.
 ## Example
 
 ```python
-nmf.window(width = 1000, height = 720, x = 100, y = 80)
+nmf.window(
+    width = 1000,
+    height = 720,
+    x = 100,
+    y = 80,
+    bring_all_to_front = False,
+    move_source_on_new_window = False,
+)
 nmf.startup(directory = "~/projects")
 
 nmf.theme(
@@ -164,7 +171,8 @@ call it from a custom command instead.
 
 Scalar sections:
 
-- `nmf.window(width = int, height = int, x = int, y = int)`
+- `nmf.window(width = int, height = int, x = int, y = int,
+  bring_all_to_front = bool, move_source_on_new_window = bool)`
 - `nmf.startup(directory = str)`
 - `nmf.theme(dark = bool, font_size = int, font_name = str, font_path = str,
   monospace_font_name = str, monospace_font_path = str)`
@@ -204,6 +212,12 @@ them by case-insensitive prefix.
 `nmf.window(x = ..., y = ...)` configures the first window position on Windows;
 the position is clamped into the nearest monitor work area when applied. Set
 `x` and `y` together. Other platforms currently ignore the position fields.
+`bring_all_to_front = True` groups visible, non-minimized File Manager windows
+at the front when one becomes active on Windows. It does not restore minimized
+windows, include the Jobs window, or make any window always-on-top.
+`move_source_on_new_window = True` allows `window.new` to move the sole existing
+File Manager horizontally by the minimum distance needed to fit the new window
+beside it. It does not move maximized, minimized, or snapped source windows.
 `nmf.startup(directory = "...")` sets the fallback startup directory used only
 when no command-line path is supplied.
 `nmf.debug_logging(enabled = True, log_directory = "logs", max_files = 10)`

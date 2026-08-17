@@ -18,6 +18,7 @@ behavior and the supported platform surface for those integrations.
 | Dragging files from NMF to another app | Supported through Windows Shell `IDataObject` and `DoDragDrop` | Not implemented | Not implemented |
 | Explorer/shell context menu | Supported through Windows Shell context menu APIs | Not implemented | Not implemented |
 | New File Manager placement beside source window | Supported through Win32 `HWND` positioning | Uses the window manager's default placement | Uses the window manager's default placement; unverified |
+| Raise visible File Manager windows together | Optional through Win32 Z-order positioning | Not implemented | Not implemented |
 | File Manager focus switching with Left/Right | Uses Win32 `HWND` window positions | Uses creation order on X11; unsupported on Wayland because the compositor controls focus activation | Unverified |
 | Native file icons | Uses Windows shell icons through the icon service | Uses theme/generic icons | Uses theme/generic icons; unverified |
 
@@ -127,8 +128,27 @@ context menu integration.
   small left/top coordinate threshold, Windows placement tries the opposite side
   when there is enough work-area space; if neither side is available, it uses
   the same clamped fallback position as the no-space case.
+- When `window.moveSourceOnNewWindow` is enabled, the source is the only
+  existing File Manager, and neither side has enough room at its current
+  position, NMF compares the horizontal movement needed for a left or right
+  pair. If both outer widths fit the source monitor work area, it moves the
+  source by the smaller amount and places the new window beside it; ties prefer
+  the right. Maximized, minimized, snapped, or otherwise unclassifiable source
+  windows are not moved. The setting defaults to `false` during evaluation.
+- With two or more existing File Managers, NMF keeps the source fixed and
+  retains the right, left, then clamped 32-pixel-offset fallback.
 - Other platforms intentionally use default window-manager placement through
   `window_position_other.go`.
+
+## Window Activation Grouping
+
+On Windows, `window.bringAllToFront` optionally groups File Manager windows in
+the Z order when one becomes active. NMF verifies that the foreground native
+window is a registered File Manager, leaves it active, and moves each other
+visible, non-minimized File Manager directly behind it in its existing relative
+order. The operation does not activate siblings, restore minimized windows,
+include the Jobs window, or mark any window as always-on-top. Other platforms
+ignore this setting.
 
 ## Window Focus Switching
 

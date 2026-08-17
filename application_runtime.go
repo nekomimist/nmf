@@ -64,6 +64,7 @@ func newApplicationRuntime(app fyne.App, options applicationRuntimeOptions) *App
 		windows:                 newFileManagerWindowRegistry(),
 		navigationHistoryEvents: newNavigationHistoryEventHub(),
 	}
+	installWindowActivationHandler(runtime)
 
 	// These package-level hooks bridge VFS code to the one application-scoped
 	// cache and broker. New windows register prompt targets with the broker;

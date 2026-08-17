@@ -73,7 +73,9 @@ temp directory), SMB credentials cached in the OS keyring (service
     "width": 1000,
     "height": 720,
     "x": 100,
-    "y": 80
+    "y": 80,
+    "bringAllToFront": false,
+    "moveSourceOnNewWindow": false
   },
   "startup": {
     "directory": "~/projects"
@@ -158,6 +160,15 @@ temp directory), SMB credentials cached in the OS keyring (service
   window to this position after startup and clamps it into the nearest monitor's
   work area if monitor layout changes would otherwise put it off-screen. Other
   platforms currently ignore these fields.
+- `bringAllToFront`: Windows-only opt-in. When `true`, activating a File Manager
+  brings its other visible, non-minimized File Manager windows directly behind
+  it. The active window keeps focus; minimized windows and the Jobs window are
+  unchanged. The default is `false` while this behavior is being evaluated.
+- `moveSourceOnNewWindow`: Windows-only opt-in. When `true` and `window.new`
+  cannot place a new window directly beside the sole existing File Manager, NMF
+  may move that source window horizontally by the minimum distance needed to
+  fit the pair. Maximized, minimized, and snapped source windows are not moved.
+  The default is `false` while this behavior is being evaluated.
 
 `startup`
 

@@ -67,6 +67,73 @@ func TestSelectWindowPlacementUsesLeftWhenRightDoesNotFit(t *testing.T) {
 	}
 }
 
+func TestPlanWindowPlacementMovesParentTowardLeftForRightChild(t *testing.T) {
+	parent := windowSwitchRect{Left: 400, Top: 50, Right: 1000, Bottom: 450}
+	work := windowSwitchRect{Left: 0, Top: 0, Right: 1500, Bottom: 900}
+
+	plan := planWindowPlacement(parent, 600, 400, work, nil, true)
+
+	if plan.ParentX != 300 || plan.ChildX != 900 || plan.ChildY != 50 || plan.Side != windowPlacementRight || !plan.MoveParent {
+		t.Fatalf("plan = %+v; want parent x=300 and right child at 900,50", plan)
+	}
+}
+
+func TestPlanWindowPlacementMovesParentTowardRightForLeftChild(t *testing.T) {
+	parent := windowSwitchRect{Left: 500, Top: 50, Right: 1100, Bottom: 450}
+	work := windowSwitchRect{Left: 0, Top: 0, Right: 1500, Bottom: 900}
+
+	plan := planWindowPlacement(parent, 600, 400, work, nil, true)
+
+	if plan.ParentX != 600 || plan.ChildX != 0 || plan.ChildY != 50 || plan.Side != windowPlacementLeft || !plan.MoveParent {
+		t.Fatalf("plan = %+v; want parent x=600 and left child at 0,50", plan)
+	}
+}
+
+func TestPlanWindowPlacementPrefersRightWhenParentMovesAreEqual(t *testing.T) {
+	parent := windowSwitchRect{Left: 400, Top: 50, Right: 1000, Bottom: 450}
+	work := windowSwitchRect{Left: 0, Top: 0, Right: 1400, Bottom: 900}
+
+	plan := planWindowPlacement(parent, 600, 400, work, nil, true)
+
+	if plan.ParentX != 200 || plan.ChildX != 800 || plan.Side != windowPlacementRight || !plan.MoveParent {
+		t.Fatalf("plan = %+v; want equal-move tie to place child on right", plan)
+	}
+}
+
+func TestPlanWindowPlacementSupportsNegativeWorkAreaWhenMovingParent(t *testing.T) {
+	parent := windowSwitchRect{Left: -1100, Top: -100, Right: -500, Bottom: 400}
+	work := windowSwitchRect{Left: -1600, Top: -200, Right: -300, Bottom: 800}
+
+	plan := planWindowPlacement(parent, 600, 500, work, nil, true)
+
+	if plan.ParentX != -1000 || plan.ChildX != -1600 || plan.ChildY != -100 || plan.Side != windowPlacementLeft || !plan.MoveParent {
+		t.Fatalf("plan = %+v; want parent x=-1000 and left child at -1600,-100", plan)
+	}
+}
+
+func TestPlanWindowPlacementFallsBackWhenPairDoesNotFit(t *testing.T) {
+	parent := windowSwitchRect{Left: 300, Top: 50, Right: 1000, Bottom: 450}
+	work := windowSwitchRect{Left: 0, Top: 0, Right: 1200, Bottom: 900}
+
+	plan := planWindowPlacement(parent, 600, 400, work, nil, true)
+
+	if plan.ChildX != 332 || plan.Side != windowPlacementFallback || plan.MoveParent {
+		t.Fatalf("plan = %+v; want unchanged-parent fallback at x=332", plan)
+	}
+}
+
+func TestPlanWindowPlacementDoesNotMoveParentAroundOccupiedWindows(t *testing.T) {
+	parent := windowSwitchRect{Left: 500, Top: 50, Right: 1100, Bottom: 450}
+	work := windowSwitchRect{Left: 0, Top: 0, Right: 1500, Bottom: 900}
+	occupied := []windowSwitchRect{{Left: 0, Top: 50, Right: 400, Bottom: 450}}
+
+	plan := planWindowPlacement(parent, 600, 400, work, occupied, true)
+
+	if plan.ChildX != 532 || plan.Side != windowPlacementFallback || plan.MoveParent {
+		t.Fatalf("plan = %+v; want occupied multi-window fallback at x=532", plan)
+	}
+}
+
 func TestWindowPlacementOccupiedUsesLeftTopNearThreshold(t *testing.T) {
 	occupied := []windowSwitchRect{{Left: 100, Top: 100, Right: 500, Bottom: 500}}
 

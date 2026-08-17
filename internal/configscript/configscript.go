@@ -297,6 +297,8 @@ func (rt *Runtime) builtinWindow(thread *starlark.Thread, fn *starlark.Builtin, 
 	var heightValue starlark.Value
 	var xValue starlark.Value
 	var yValue starlark.Value
+	bringAllToFront := rt.cfg.Window.BringAllToFront
+	moveSourceOnNewWindow := rt.cfg.Window.MoveSourceOnNewWindow
 	if err := starlark.UnpackArgs(
 		fn.Name(),
 		args,
@@ -305,6 +307,8 @@ func (rt *Runtime) builtinWindow(thread *starlark.Thread, fn *starlark.Builtin, 
 		"height?", &heightValue,
 		"x?", &xValue,
 		"y?", &yValue,
+		"bring_all_to_front?", &bringAllToFront,
+		"move_source_on_new_window?", &moveSourceOnNewWindow,
 	); err != nil {
 		return nil, err
 	}
@@ -321,6 +325,8 @@ func (rt *Runtime) builtinWindow(thread *starlark.Thread, fn *starlark.Builtin, 
 	}
 	rt.cfg.Window.Width = width
 	rt.cfg.Window.Height = height
+	rt.cfg.Window.BringAllToFront = bringAllToFront
+	rt.cfg.Window.MoveSourceOnNewWindow = moveSourceOnNewWindow
 	if xValue != nil || yValue != nil {
 		if xValue == nil || yValue == nil {
 			return nil, fmt.Errorf("window x and y must be set together")

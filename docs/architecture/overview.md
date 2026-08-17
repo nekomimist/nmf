@@ -122,6 +122,13 @@ Window placement:
   platform supports native placement.
 - Windows uses `driver.NativeWindow` plus Win32 `HWND` APIs in
   `window_position_windows.go`.
+- With `window.moveSourceOnNewWindow` enabled, if the source is the only
+  existing, normal unsnapped File Manager and the two window widths fit its
+  monitor work area, Windows may move the source by the minimum horizontal
+  distance needed to make the pair fit. Multiple existing File Managers retain
+  the non-moving fallback behavior.
+- Optional Windows activation grouping keeps the active File Manager focused
+  and raises visible, non-minimized sibling File Managers immediately behind it.
 - Other platforms intentionally use the window manager's default placement via
   `window_position_other.go`.
 
@@ -157,7 +164,8 @@ User-facing `config.json` syntax and examples are documented in
 
 Top-level config sections:
 
-- `window`: `width`, `height`
+- `window`: `width`, `height`, `x`, `y`, `bringAllToFront`,
+  `moveSourceOnNewWindow`
 - `theme`: `dark`, `fontSize`, `fontName`, `fontPath`,
   `monospaceFontName`, `monospaceFontPath`, `colors`
 - `debug`: `enabled`, `logDirectory`, `maxLogFiles`

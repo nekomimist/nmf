@@ -25,6 +25,8 @@ var (
 	procGetWindowPlacement = winUser32.NewProc("GetWindowPlacement")
 	procGetWindowRect      = winUser32.NewProc("GetWindowRect")
 	procIsIconic           = winUser32.NewProc("IsIconic")
+	procIsWindowArranged   = winUser32.NewProc("IsWindowArranged")
+	procIsZoomed           = winUser32.NewProc("IsZoomed")
 	procShowWindow         = winUser32.NewProc("ShowWindow")
 	procSetWindowPos       = winUser32.NewProc("SetWindowPos")
 	procMonitorFromWindow  = winUser32.NewProc("MonitorFromWindow")
@@ -122,28 +124,137 @@ func positionWindowNextTo(runtime *ApplicationRuntime, parent, child fyne.Window
 	childWidth := childRect.Right - childRect.Left
 	childHeight := childRect.Bottom - childRect.Top
 	occupied := fileManagerWindowPlacementRects(runtime, parent, child)
-	x, y, side := selectWindowPlacement(
-		windowSwitchRectFromWinRect(parentRect),
+	parentSwitchRect := windowSwitchRectFromWinRect(parentRect)
+	workSwitchRect := windowSwitchRectFromWinRect(workRect)
+	plan := planWindowPlacement(
+		parentSwitchRect,
 		childWidth,
 		childHeight,
-		windowSwitchRectFromWinRect(workRect),
+		workSwitchRect,
 		occupied,
+		false,
 	)
+	if plan.Side == windowPlacementFallback && sourceWindowMovementEnabled(runtime) && singleRegisteredParent(runtime, parent, child) && windowMovableForPlacement(parentHWND) {
+		plan = planWindowPlacement(
+			parentSwitchRect,
+			childWidth,
+			childHeight,
+			workSwitchRect,
+			occupied,
+			true,
+		)
+	}
+
+	if plan.MoveParent {
+		if positionWindowPair(parentHWND, childHWND, parentRect.Top, plan) {
+			debugPrint("FileManager: Positioned window pair parent_x=%d child_x=%d y=%d side=%s", plan.ParentX, plan.ChildX, plan.ChildY, plan.Side)
+			return
+		}
+		plan = planWindowPlacement(
+			parentSwitchRect,
+			childWidth,
+			childHeight,
+			workSwitchRect,
+			occupied,
+			false,
+		)
+	}
 
 	ret, _, err := procSetWindowPos.Call(
 		childHWND,
 		0,
-		uintptr(x),
-		uintptr(y),
+		uintptr(plan.ChildX),
+		uintptr(plan.ChildY),
 		0,
 		0,
-		swpNoSize|swpNoZOrder,
+		swpNoSize|swpNoZOrder|swpNoActivate,
 	)
 	if ret == 0 {
 		debugPrint("FileManager: SetWindowPos failed: %v", err)
 		return
 	}
-	debugPrint("FileManager: Positioned new window x=%d y=%d side=%s", x, y, side)
+	debugPrint("FileManager: Positioned new window x=%d y=%d side=%s", plan.ChildX, plan.ChildY, plan.Side)
+}
+
+func sourceWindowMovementEnabled(runtime *ApplicationRuntime) bool {
+	return runtime != nil && runtime.config != nil && runtime.config.Window.MoveSourceOnNewWindow
+}
+
+func singleRegisteredParent(runtime *ApplicationRuntime, parent, child fyne.Window) bool {
+	if runtime == nil || runtime.windows == nil {
+		return false
+	}
+	parents := 0
+	foundParent := false
+	for _, manager := range runtime.windows.snapshot() {
+		if manager == nil || manager.window == nil || manager.window == child {
+			continue
+		}
+		parents++
+		if manager.window == parent {
+			foundParent = true
+		}
+	}
+	return foundParent && parents == 1
+}
+
+func windowMovableForPlacement(hwnd uintptr) bool {
+	if isWindowIconic(hwnd) {
+		return false
+	}
+	zoomed, _, _ := procIsZoomed.Call(hwnd)
+	if zoomed != 0 {
+		return false
+	}
+	if err := procIsWindowArranged.Find(); err != nil {
+		debugPrint("FileManager: snapped window state unavailable; keeping parent position")
+		return false
+	}
+	arranged, _, _ := procIsWindowArranged.Call(hwnd)
+	return arranged == 0
+}
+
+func positionWindowPair(parentHWND, childHWND uintptr, parentY int32, plan windowPlacementPlan) bool {
+	hdwp, _, err := procBeginDeferWindowPos.Call(2)
+	if hdwp == 0 {
+		debugPrint("FileManager: BeginDeferWindowPos for window pair failed: %v", err)
+		return false
+	}
+	flags := uintptr(swpNoSize | swpNoZOrder | swpNoActivate)
+	hdwp, _, err = procDeferWindowPos.Call(
+		hdwp,
+		parentHWND,
+		0,
+		uintptr(plan.ParentX),
+		uintptr(parentY),
+		0,
+		0,
+		flags,
+	)
+	if hdwp == 0 {
+		debugPrint("FileManager: DeferWindowPos for parent placement failed: %v", err)
+		return false
+	}
+	hdwp, _, err = procDeferWindowPos.Call(
+		hdwp,
+		childHWND,
+		0,
+		uintptr(plan.ChildX),
+		uintptr(plan.ChildY),
+		0,
+		0,
+		flags,
+	)
+	if hdwp == 0 {
+		debugPrint("FileManager: DeferWindowPos for child placement failed: %v", err)
+		return false
+	}
+	ret, _, err := procEndDeferWindowPos.Call(hdwp)
+	if ret == 0 {
+		debugPrint("FileManager: EndDeferWindowPos for window pair failed: %v", err)
+		return false
+	}
+	return true
 }
 
 func fileManagerWindowPlacementRects(runtime *ApplicationRuntime, parent, child fyne.Window) []windowSwitchRect {

@@ -10,21 +10,59 @@ const (
 	windowPlacementFallback windowPlacementSide = "fallback"
 )
 
+type windowPlacementPlan struct {
+	ParentX    int32
+	ChildX     int32
+	ChildY     int32
+	Side       windowPlacementSide
+	MoveParent bool
+}
+
 func selectWindowPlacement(parentRect windowSwitchRect, childWidth, childHeight int32, workRect windowSwitchRect, occupied []windowSwitchRect) (int32, int32, windowPlacementSide) {
+	plan := planWindowPlacement(parentRect, childWidth, childHeight, workRect, occupied, false)
+	return plan.ChildX, plan.ChildY, plan.Side
+}
+
+func planWindowPlacement(parentRect windowSwitchRect, childWidth, childHeight int32, workRect windowSwitchRect, occupied []windowSwitchRect, allowParentMove bool) windowPlacementPlan {
 	y := clampInt32(parentRect.Top, workRect.Top, workRect.Bottom-childHeight)
 
 	rightX := parentRect.Right
 	if rightX+childWidth <= workRect.Right && !windowPlacementOccupied(rightX, y, occupied) {
-		return rightX, y, windowPlacementRight
+		return windowPlacementPlan{ParentX: parentRect.Left, ChildX: rightX, ChildY: y, Side: windowPlacementRight}
 	}
 
 	leftX := parentRect.Left - childWidth
 	if leftX >= workRect.Left && !windowPlacementOccupied(leftX, y, occupied) {
-		return leftX, y, windowPlacementLeft
+		return windowPlacementPlan{ParentX: parentRect.Left, ChildX: leftX, ChildY: y, Side: windowPlacementLeft}
+	}
+
+	parentWidth := parentRect.Right - parentRect.Left
+	workWidth := workRect.Right - workRect.Left
+	if allowParentMove && len(occupied) == 0 && parentWidth > 0 && childWidth > 0 && parentWidth+childWidth <= workWidth {
+		rightParentX := clampInt32(parentRect.Left, workRect.Left, workRect.Right-parentWidth-childWidth)
+		leftParentX := clampInt32(parentRect.Left, workRect.Left+childWidth, workRect.Right-parentWidth)
+		rightMove := absInt32(rightParentX - parentRect.Left)
+		leftMove := absInt32(leftParentX - parentRect.Left)
+		if rightMove <= leftMove {
+			return windowPlacementPlan{
+				ParentX:    rightParentX,
+				ChildX:     rightParentX + parentWidth,
+				ChildY:     y,
+				Side:       windowPlacementRight,
+				MoveParent: rightMove != 0,
+			}
+		}
+		return windowPlacementPlan{
+			ParentX:    leftParentX,
+			ChildX:     leftParentX - childWidth,
+			ChildY:     y,
+			Side:       windowPlacementLeft,
+			MoveParent: leftMove != 0,
+		}
 	}
 
 	fallbackX := clampInt32(parentRect.Left+windowPlacementNearThreshold, workRect.Left, workRect.Right-childWidth)
-	return fallbackX, y, windowPlacementFallback
+	return windowPlacementPlan{ParentX: parentRect.Left, ChildX: fallbackX, ChildY: y, Side: windowPlacementFallback}
 }
 
 func selectWindowPositionInWorkRect(requestX, requestY, windowWidth, windowHeight int32, workRect windowSwitchRect) (int32, int32) {

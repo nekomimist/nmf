@@ -19,7 +19,7 @@ func TestLoadAppliesStarlarkConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, FileName)
 	src := `
-nmf.window(width = 1000, height = 720, x = 200, y = 120)
+nmf.window(width = 1000, height = 720, x = 200, y = 120, bring_all_to_front = True, move_source_on_new_window = True)
 nmf.startup(directory = "~/work")
 nmf.theme(dark = False, font_size = 16, font_name = "Noto Sans")
 if nmf.dark_theme():
@@ -72,6 +72,12 @@ nmf.command("user.parent", parent)
 	}
 	if cfg.Window.Width != 1000 || cfg.Window.Height != 720 || cfg.Window.X == nil || *cfg.Window.X != 200 || cfg.Window.Y == nil || *cfg.Window.Y != 120 {
 		t.Fatalf("window = %+v, want 1000x720 at 200,120", cfg.Window)
+	}
+	if !cfg.Window.BringAllToFront {
+		t.Fatal("window bring_all_to_front should be enabled")
+	}
+	if !cfg.Window.MoveSourceOnNewWindow {
+		t.Fatal("window move_source_on_new_window should be enabled")
 	}
 	if cfg.Startup.Directory != "~/work" {
 		t.Fatalf("startup directory = %q, want ~/work", cfg.Startup.Directory)
@@ -142,6 +148,70 @@ nmf.command("user.parent", parent)
 	}
 	if _, ok := rt.Commands["user.parent"]; !ok {
 		t.Fatal("user.parent command was not registered")
+	}
+}
+
+func TestWindowBringAllToFrontOverlay(t *testing.T) {
+	tests := []struct {
+		name    string
+		source  string
+		initial bool
+		want    bool
+	}{
+		{name: "omitted preserves value", source: `nmf.window(width = 900)`, initial: true, want: true},
+		{name: "explicit false disables", source: `nmf.window(bring_all_to_front = False)`, initial: true, want: false},
+		{name: "explicit true enables", source: `nmf.window(bring_all_to_front = True)`, initial: false, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, FileName)
+			if err := os.WriteFile(path, []byte(tt.source), 0o644); err != nil {
+				t.Fatalf("WriteFile failed: %v", err)
+			}
+			cfg := testConfig()
+			cfg.Window.BringAllToFront = tt.initial
+
+			if _, err := Load(path, cfg, Options{}); err != nil {
+				t.Fatalf("Load failed: %v", err)
+			}
+			if cfg.Window.BringAllToFront != tt.want {
+				t.Fatalf("bring all to front = %t, want %t", cfg.Window.BringAllToFront, tt.want)
+			}
+		})
+	}
+}
+
+func TestWindowMoveSourceOnNewWindowOverlay(t *testing.T) {
+	tests := []struct {
+		name    string
+		source  string
+		initial bool
+		want    bool
+	}{
+		{name: "omitted preserves value", source: `nmf.window(width = 900)`, initial: true, want: true},
+		{name: "explicit false disables", source: `nmf.window(move_source_on_new_window = False)`, initial: true, want: false},
+		{name: "explicit true enables", source: `nmf.window(move_source_on_new_window = True)`, initial: false, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, FileName)
+			if err := os.WriteFile(path, []byte(tt.source), 0o644); err != nil {
+				t.Fatalf("WriteFile failed: %v", err)
+			}
+			cfg := testConfig()
+			cfg.Window.MoveSourceOnNewWindow = tt.initial
+
+			if _, err := Load(path, cfg, Options{}); err != nil {
+				t.Fatalf("Load failed: %v", err)
+			}
+			if cfg.Window.MoveSourceOnNewWindow != tt.want {
+				t.Fatalf("move source on new window = %t, want %t", cfg.Window.MoveSourceOnNewWindow, tt.want)
+			}
+		})
 	}
 }
 

@@ -46,6 +46,9 @@ func (fm *FileManager) setWindowActive(active bool) {
 	if fm.runtime != nil && fm.runtime.promptBroker != nil && fm.promptTargetID != 0 {
 		fm.runtime.promptBroker.SetActive(fm.promptTargetID, active)
 	}
+	if active {
+		bringFileManagerWindowsToFront(fm.runtime)
+	}
 	if fm.fileList != nil {
 		fm.RefreshCursor()
 	}

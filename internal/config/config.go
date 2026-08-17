@@ -31,10 +31,12 @@ type rawConfig struct {
 }
 
 type rawWindowConfig struct {
-	Width  *int `json:"width"`
-	Height *int `json:"height"`
-	X      *int `json:"x"`
-	Y      *int `json:"y"`
+	Width                 *int  `json:"width"`
+	Height                *int  `json:"height"`
+	X                     *int  `json:"x"`
+	Y                     *int  `json:"y"`
+	BringAllToFront       *bool `json:"bringAllToFront"`
+	MoveSourceOnNewWindow *bool `json:"moveSourceOnNewWindow"`
 }
 
 type rawStartupConfig struct {
@@ -132,10 +134,12 @@ type rawDirectoryJumpsConfig struct {
 
 // WindowConfig represents window-related settings
 type WindowConfig struct {
-	Width  int  `json:"width"`
-	Height int  `json:"height"`
-	X      *int `json:"x,omitempty"`
-	Y      *int `json:"y,omitempty"`
+	Width                 int  `json:"width"`
+	Height                int  `json:"height"`
+	X                     *int `json:"x,omitempty"`
+	Y                     *int `json:"y,omitempty"`
+	BringAllToFront       bool `json:"bringAllToFront"`
+	MoveSourceOnNewWindow bool `json:"moveSourceOnNewWindow"`
 }
 
 // StartupConfig represents startup-related settings.
@@ -507,8 +511,10 @@ func Default() *Config {
 func getDefaultConfig() *Config {
 	return &Config{
 		Window: WindowConfig{
-			Width:  800,
-			Height: 600,
+			Width:                 800,
+			Height:                600,
+			BringAllToFront:       false,
+			MoveSourceOnNewWindow: false,
 		},
 		Startup: StartupConfig{
 			Directory: "",
@@ -632,6 +638,12 @@ func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) error {
 	if fileConfig.Window.Y != nil {
 		y := *fileConfig.Window.Y
 		defaultConfig.Window.Y = &y
+	}
+	if fileConfig.Window.BringAllToFront != nil {
+		defaultConfig.Window.BringAllToFront = *fileConfig.Window.BringAllToFront
+	}
+	if fileConfig.Window.MoveSourceOnNewWindow != nil {
+		defaultConfig.Window.MoveSourceOnNewWindow = *fileConfig.Window.MoveSourceOnNewWindow
 	}
 
 	// Merge Startup config

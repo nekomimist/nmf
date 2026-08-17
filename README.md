@@ -98,6 +98,7 @@ Some things worth knowing before you try it:
 | `.lnk` shortcut resolution | Yes | Not applicable |
 | Native shell file icons | Yes | Theme/generic icons |
 | Restore window position, place new window beside source | Yes | Window manager decides |
+| Raise visible File Manager windows together | Optional | Not implemented |
 | Switch windows with Left/Right | Yes | X11 only; no-op on Wayland |
 
 macOS is not a supported target. The core packages are compile-checked for

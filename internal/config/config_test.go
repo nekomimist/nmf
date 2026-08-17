@@ -21,6 +21,12 @@ func TestGetDefaultConfig(t *testing.T) {
 	if config.Window.X != nil || config.Window.Y != nil {
 		t.Errorf("Expected default window position to be unset, got x=%v y=%v", config.Window.X, config.Window.Y)
 	}
+	if config.Window.BringAllToFront {
+		t.Error("Expected bring-all-to-front behavior to be disabled by default")
+	}
+	if config.Window.MoveSourceOnNewWindow {
+		t.Error("Expected source-window movement to be disabled by default")
+	}
 	if config.Startup.Directory != "" {
 		t.Errorf("Expected default startup directory empty, got %q", config.Startup.Directory)
 	}
@@ -151,6 +157,32 @@ func TestMergeConfigsWindowPositionAndStartupDirectory(t *testing.T) {
 	}
 	if cfg.Startup.Directory != "~/work" {
 		t.Fatalf("startup directory = %q, want ~/work", cfg.Startup.Directory)
+	}
+}
+
+func TestMergeConfigsCanDisableBringAllToFront(t *testing.T) {
+	cfg := getDefaultConfig()
+	cfg.Window.BringAllToFront = true
+	disabled := false
+
+	if err := mergeConfigs(cfg, &rawConfig{Window: rawWindowConfig{BringAllToFront: &disabled}}); err != nil {
+		t.Fatalf("mergeConfigs failed: %v", err)
+	}
+	if cfg.Window.BringAllToFront {
+		t.Fatal("explicit false should override the current bring-all-to-front value")
+	}
+}
+
+func TestMergeConfigsCanDisableMoveSourceOnNewWindow(t *testing.T) {
+	cfg := getDefaultConfig()
+	cfg.Window.MoveSourceOnNewWindow = true
+	disabled := false
+
+	if err := mergeConfigs(cfg, &rawConfig{Window: rawWindowConfig{MoveSourceOnNewWindow: &disabled}}); err != nil {
+		t.Fatalf("mergeConfigs failed: %v", err)
+	}
+	if cfg.Window.MoveSourceOnNewWindow {
+		t.Fatal("explicit false should override the current source-window movement value")
 	}
 }
 
@@ -312,8 +344,10 @@ func TestMergeConfigs(t *testing.T) {
 
 	fileConfig := &rawConfig{
 		Window: rawWindowConfig{
-			Width:  &width,
-			Height: &height,
+			Width:                 &width,
+			Height:                &height,
+			BringAllToFront:       &trueVal,
+			MoveSourceOnNewWindow: &trueVal,
 		},
 		Theme: rawThemeConfig{
 			Dark:              &falseVal,
@@ -376,6 +410,12 @@ func TestMergeConfigs(t *testing.T) {
 	}
 	if defaultConfig.Window.Height != 768 {
 		t.Errorf("Expected merged window height 768, got %d", defaultConfig.Window.Height)
+	}
+	if !defaultConfig.Window.BringAllToFront {
+		t.Error("Expected merged bring-all-to-front behavior to be enabled")
+	}
+	if !defaultConfig.Window.MoveSourceOnNewWindow {
+		t.Error("Expected merged source-window movement to be enabled")
 	}
 	if defaultConfig.Theme.Dark {
 		t.Error("Expected merged theme to be light (false)")
@@ -670,7 +710,7 @@ func TestManagerLoadReadsHandWrittenConfigFile(t *testing.T) {
 	configPath := filepath.Join(tempDir, "test_config.json")
 
 	raw := `{
-		"window": {"width": 1200, "height": 800},
+		"window": {"width": 1200, "height": 800, "bringAllToFront": true, "moveSourceOnNewWindow": true},
 		"theme": {"dark": false, "fontSize": 18},
 		"ui": {
 			"showHiddenFiles": true,
@@ -700,6 +740,12 @@ func TestManagerLoadReadsHandWrittenConfigFile(t *testing.T) {
 	// Verify loaded values match the hand-written file (merged with defaults)
 	if loadedConfig.Window.Width != 1200 {
 		t.Errorf("Expected loaded width 1200, got %d", loadedConfig.Window.Width)
+	}
+	if !loadedConfig.Window.BringAllToFront {
+		t.Error("Expected loaded bringAllToFront to be true")
+	}
+	if !loadedConfig.Window.MoveSourceOnNewWindow {
+		t.Error("Expected loaded moveSourceOnNewWindow to be true")
 	}
 	if loadedConfig.Theme.FontSize != 18 {
 		t.Errorf("Expected loaded font size 18, got %d", loadedConfig.Theme.FontSize)
