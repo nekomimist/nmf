@@ -143,6 +143,8 @@ Completion callback (`Job.OnFinished`, `internal/jobs/types.go`):
 - The Jobs view is an app-global singleton window.
   - FileManager Jobs buttons show or focus the same Jobs window.
   - Jobs window cleanup: `internal/ui/jobs_window.go`
+- In the Jobs window, `Ctrl+C` copies the selected row's summary, a blank line,
+  and the exact details text shown for that job.
 - Last FileManager window cleanup also closes the Jobs window before app quit.
 - Directory watcher must be stopped during window shutdown before process exit.
 - Last-window close requests from both the keyboard command and native title
@@ -177,6 +179,10 @@ Jobs:
 - Pending jobs can be canceled and removed from queue.
 - Running job cancellation signals context and transitions to `StatusCanceled`.
 - First failed path ends that job as `StatusFailed` with failure details recorded.
+- With debug logging enabled, a terminal job failure emits one structured
+  `jobs:` line containing the job ID/type, progress, current source,
+  destination, delete mode, failing path, and error. A wrapped OS error also
+  includes its numeric `errno` (for example, `errno=395`).
 - The destination is resolved and validated once, before any source is
   processed (`openTransferDestination`): it must already exist and be a
   directory, and archive paths are rejected outright since archive mutation is

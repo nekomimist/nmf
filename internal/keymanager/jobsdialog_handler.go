@@ -6,6 +6,7 @@ type JobsDialogInterface interface {
 	MoveDown()
 	MoveToTop()
 	MoveToBottom()
+	CopySelectedJobText()
 	CancelSelected()
 	CloseDialog()
 }
@@ -21,6 +22,7 @@ func NewJobsDialogKeyHandler(d JobsDialogInterface, debugPrint func(format strin
 		{"S-Up", d.MoveToTop},
 		{"Down", d.MoveDown},
 		{"S-Down", d.MoveToBottom},
+		{"C-C", d.CopySelectedJobText},
 
 		// Plain Delete only: Shift+Delete arrives as a folded Cut shortcut and
 		// has no binding here, so it falls through unmatched.

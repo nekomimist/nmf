@@ -20,6 +20,7 @@ const completedJobTargetLimit = 10
 
 // JobsWindow shows the global background job queue and allows cancel.
 type JobsWindow struct {
+	app         fyne.App
 	list        *widget.List
 	bind        binding.StringList
 	items       []jobs.JobSnapshot
@@ -37,6 +38,7 @@ type JobsWindow struct {
 
 func NewJobsWindow(app fyne.App, debugPrint func(format string, args ...interface{})) *JobsWindow {
 	jd := &JobsWindow{
+		app:         app,
 		window:      app.NewWindow("Jobs"),
 		km:          keymanager.NewKeyManager(debugPrint),
 		debugPrint:  debugPrint,
@@ -135,23 +137,7 @@ func (jd *JobsWindow) refresh() {
 	jd.items = snapshots
 	lines := make([]string, len(snapshots))
 	for i, it := range snapshots {
-		status := string(it.Status)
-		when := it.EnqueuedAt
-		if it.Status == jobs.StatusRunning && !it.StartedAt.IsZero() {
-			when = it.StartedAt
-		}
-		ts := when.Format("15:04:05")
-		target := it.DestDir
-		if it.Type == jobs.TypeDelete {
-			target = string(it.DeleteMode)
-		}
-		lines[i] = fmt.Sprintf("[%s] %s %d/%d → %s  (%s)", ts, string(it.Type), it.DoneFiles, it.TotalFiles, target, status)
-		if summary := runningProgressSummary(it); summary != "" {
-			lines[i] += "  " + summary
-		}
-		if it.Status == jobs.StatusFailed && it.Error != "" {
-			lines[i] += "  ERROR"
-		}
+		lines[i] = jobSummaryLine(it)
 	}
 	jd.bind.Set(lines)
 	jd.list.Refresh()
@@ -182,7 +168,31 @@ func (jd *JobsWindow) updateDetails() {
 		jd.details.SetText("")
 		return
 	}
-	it := jd.items[jd.selectedIdx]
+	jd.details.SetText(jobDetailsText(jd.items[jd.selectedIdx]))
+}
+
+func jobSummaryLine(it jobs.JobSnapshot) string {
+	status := string(it.Status)
+	when := it.EnqueuedAt
+	if it.Status == jobs.StatusRunning && !it.StartedAt.IsZero() {
+		when = it.StartedAt
+	}
+	ts := when.Format("15:04:05")
+	target := it.DestDir
+	if it.Type == jobs.TypeDelete {
+		target = string(it.DeleteMode)
+	}
+	line := fmt.Sprintf("[%s] %s %d/%d → %s  (%s)", ts, string(it.Type), it.DoneFiles, it.TotalFiles, target, status)
+	if summary := runningProgressSummary(it); summary != "" {
+		line += "  " + summary
+	}
+	if it.Status == jobs.StatusFailed && it.Error != "" {
+		line += "  ERROR"
+	}
+	return line
+}
+
+func jobDetailsText(it jobs.JobSnapshot) string {
 	b := &strings.Builder{}
 	target := it.DestDir
 	if it.Type == jobs.TypeDelete {
@@ -211,7 +221,7 @@ func (jd *JobsWindow) updateDetails() {
 	} else if it.Status == jobs.StatusCompleted {
 		writeCompletedTargets(b, it.Sources)
 	}
-	jd.details.SetText(b.String())
+	return b.String()
 }
 
 func runningProgressSummary(it jobs.JobSnapshot) string {
@@ -393,6 +403,35 @@ func (jd *JobsWindow) cancelSelected() {
 	}
 }
 func (jd *JobsWindow) CancelSelected() { jd.cancelSelected() }
+
+func (jd *JobsWindow) CopySelectedJobText() {
+	if jd.selectedIdx < 0 || jd.selectedIdx >= len(jd.items) {
+		if jd.debugPrint != nil {
+			jd.debugPrint("JobsWindow: copy skipped selected=false")
+		}
+		return
+	}
+	if jd.app == nil {
+		if jd.debugPrint != nil {
+			jd.debugPrint("JobsWindow: copy skipped app=nil")
+		}
+		return
+	}
+	clipboard := jd.app.Clipboard()
+	if clipboard == nil {
+		if jd.debugPrint != nil {
+			jd.debugPrint("JobsWindow: copy skipped clipboard=nil")
+		}
+		return
+	}
+
+	it := jd.items[jd.selectedIdx]
+	text := jobSummaryLine(it) + "\n\n" + jobDetailsText(it)
+	clipboard.SetContent(text)
+	if jd.debugPrint != nil {
+		jd.debugPrint("JobsWindow: copied job_id=%d bytes=%d", it.ID, len(text))
+	}
+}
 
 func (jd *JobsWindow) CloseDialog() { jd.Close() }
 

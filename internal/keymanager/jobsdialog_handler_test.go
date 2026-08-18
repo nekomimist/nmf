@@ -11,14 +11,18 @@ type fakeJobsDialog struct {
 	down   int
 	top    int
 	bottom int
+	copy   int
 	cancel int
 	close  int
 }
 
-func (f *fakeJobsDialog) MoveUp()         { f.up++ }
-func (f *fakeJobsDialog) MoveDown()       { f.down++ }
-func (f *fakeJobsDialog) MoveToTop()      { f.top++ }
-func (f *fakeJobsDialog) MoveToBottom()   { f.bottom++ }
+func (f *fakeJobsDialog) MoveUp()       { f.up++ }
+func (f *fakeJobsDialog) MoveDown()     { f.down++ }
+func (f *fakeJobsDialog) MoveToTop()    { f.top++ }
+func (f *fakeJobsDialog) MoveToBottom() { f.bottom++ }
+func (f *fakeJobsDialog) CopySelectedJobText() {
+	f.copy++
+}
 func (f *fakeJobsDialog) CancelSelected() { f.cancel++ }
 func (f *fakeJobsDialog) CloseDialog()    { f.close++ }
 
@@ -52,5 +56,27 @@ func TestJobsDialogHandlerDeleteCancelsSelected(t *testing.T) {
 	}
 	if dialog.close != 0 {
 		t.Fatalf("close count = %d, want 0", dialog.close)
+	}
+}
+
+func TestJobsDialogHandlerCtrlCCopiesSelectedJobText(t *testing.T) {
+	dialog := &fakeJobsDialog{}
+	handler := NewJobsDialogKeyHandler(dialog, func(string, ...interface{}) {})
+
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyC}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("Ctrl+C should be handled")
+	}
+	if dialog.copy != 1 {
+		t.Fatalf("copy count = %d, want 1", dialog.copy)
+	}
+
+	if handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyC}, ModifierState{}) {
+		t.Fatal("plain C should not be handled")
+	}
+	if handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyC}, ModifierState{CtrlPressed: true, ShiftPressed: true}) {
+		t.Fatal("Ctrl+Shift+C should not be handled")
+	}
+	if dialog.copy != 1 {
+		t.Fatalf("copy count after unmatched variants = %d, want 1", dialog.copy)
 	}
 }

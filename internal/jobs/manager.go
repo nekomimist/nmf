@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"nmf/internal/fileinfo"
@@ -321,7 +322,7 @@ func (m *Manager) worker() {
 			} else {
 				j.Status = StatusFailed
 				j.Error = err.Error()
-				dbg("job failed id=%d err=%v", j.ID, err)
+				dbg("%s", formatJobFailureDebug(j, err))
 			}
 		} else {
 			j.Status = StatusCompleted
@@ -1862,6 +1863,25 @@ func failingPath(err error) string {
 		return oe.Path
 	}
 	return ""
+}
+
+func formatJobFailureDebug(j *Job, err error) string {
+	message := fmt.Sprintf(
+		"job failed id=%d type=%s done=%d/%d source=%q dest=%q delete_mode=%q path=%q",
+		j.ID,
+		j.Type,
+		j.DoneFiles,
+		j.TotalFiles,
+		j.CurrentSource,
+		j.DestDir,
+		j.DeleteMode,
+		failingPath(err),
+	)
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		message += fmt.Sprintf(" errno=%d", uint64(errno))
+	}
+	return message + fmt.Sprintf(" error=%q", err.Error())
 }
 
 // exported cancel for running job (owner keeps pointer)

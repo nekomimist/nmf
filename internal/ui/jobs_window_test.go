@@ -124,6 +124,68 @@ func TestJobsWindowRunningDetailsShowsCurrentFileProgress(t *testing.T) {
 	}
 }
 
+func TestJobsWindowCopySelectedJobTextIncludesSummaryAndDisplayedDetails(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	logs := []string{}
+	jw := NewJobsWindow(app, func(format string, args ...interface{}) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	})
+	it := jobs.JobSnapshot{
+		ID:         12,
+		Type:       jobs.TypeCopy,
+		Status:     jobs.StatusFailed,
+		Sources:    []string{"/tmp/source/cloud.txt"},
+		DestDir:    "/tmp/destination",
+		TotalFiles: 1,
+		EnqueuedAt: time.Date(2026, 8, 18, 3, 4, 5, 0, time.Local),
+		Error:      "/tmp/source/cloud.txt: Access to the cloud file is denied.",
+		Failures: []jobs.JobFailure{{
+			TopSource: "/tmp/source/cloud.txt",
+			Path:      "/tmp/source/cloud.txt",
+			Error:     "/tmp/source/cloud.txt: Access to the cloud file is denied.",
+		}},
+	}
+	jw.items = []jobs.JobSnapshot{it}
+	jw.selectedIdx = 0
+	jw.updateDetails()
+
+	jw.CopySelectedJobText()
+
+	want := jobSummaryLine(it) + "\n\n" + jw.details.Text
+	if got := app.Clipboard().Content(); got != want {
+		t.Fatalf("clipboard content:\n%s\nwant:\n%s", got, want)
+	}
+	for _, fragment := range []string{
+		"[03:04:05] copy 0/1 → /tmp/destination  (failed)  ERROR",
+		"path: /tmp/source/cloud.txt",
+		"Access to the cloud file is denied.",
+	} {
+		if !strings.Contains(want, fragment) {
+			t.Fatalf("clipboard content missing %q in:\n%s", fragment, want)
+		}
+	}
+	if len(logs) == 0 || !strings.Contains(logs[len(logs)-1], "JobsWindow: copied job_id=12 bytes=") {
+		t.Fatalf("copy debug log = %v", logs)
+	}
+}
+
+func TestJobsWindowCopyWithoutSelectionLeavesClipboardUnchanged(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	app.Clipboard().SetContent("keep")
+	jw := NewJobsWindow(app, func(string, ...interface{}) {})
+	jw.selectedIdx = -1
+
+	jw.CopySelectedJobText()
+
+	if got := app.Clipboard().Content(); got != "keep" {
+		t.Fatalf("clipboard content = %q, want unchanged", got)
+	}
+}
+
 func TestRunningProgressSummaryIncludesPercentAndETA(t *testing.T) {
 	started := time.Now().Add(-4 * time.Second)
 	it := jobs.JobSnapshot{

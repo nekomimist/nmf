@@ -10,11 +10,54 @@ import (
 	"runtime"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
 	"nmf/internal/fileinfo"
 )
+
+func TestFormatJobFailureDebugIncludesWrappedErrno(t *testing.T) {
+	j := &Job{
+		ID:            42,
+		Type:          TypeCopy,
+		TotalFiles:    2,
+		DoneFiles:     1,
+		CurrentSource: "/cloud/source.txt",
+		DestDir:       "/local/destination",
+	}
+	err := wrapPath("/cloud/source.txt", syscall.Errno(395))
+
+	got := formatJobFailureDebug(j, err)
+	for _, want := range []string{
+		"job failed id=42",
+		"type=copy",
+		"done=1/2",
+		`source="/cloud/source.txt"`,
+		`dest="/local/destination"`,
+		`delete_mode=""`,
+		`path="/cloud/source.txt"`,
+		"errno=395",
+		`error="/cloud/source.txt: errno 395"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("failure debug log missing %q in %q", want, got)
+		}
+	}
+}
+
+func TestFormatJobFailureDebugOmitsErrnoForGenericError(t *testing.T) {
+	j := &Job{ID: 7, Type: TypeDelete, TotalFiles: 1, CurrentSource: "/source", DeleteMode: DeleteModeTrash}
+	err := wrapPath("/source", errors.New("cloud provider refused access"))
+
+	got := formatJobFailureDebug(j, err)
+	if strings.Contains(got, "errno=") {
+		t.Fatalf("failure debug log unexpectedly contains errno: %q", got)
+	}
+	if !strings.Contains(got, `delete_mode="trash"`) || !strings.Contains(got, `error="/source: cloud provider refused access"`) {
+		t.Fatalf("failure debug log missing delete context: %q", got)
+	}
+}
 
 func TestSubscribeUnsubscribe(t *testing.T) {
 	m := &Manager{}
