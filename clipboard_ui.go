@@ -38,6 +38,10 @@ func (fm *FileManager) ShowClipboardTextFileDialog() {
 
 // CreateClipboardTextFile creates a local text file from the current clipboard text.
 func (fm *FileManager) CreateClipboardTextFile(name string) bool {
+	if fm.directoryListingNavigationOnly() {
+		fm.logCachedListingBlocked("clipboard.createTextFile")
+		return false
+	}
 	text, ok := fm.clipboardText()
 	if !ok {
 		fm.ShowMessageDialog("Clipboard unavailable", "The application clipboard is not available.")

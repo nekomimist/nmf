@@ -62,6 +62,11 @@ func (fm *FileManager) setupDropHandler() {
 }
 
 func (fm *FileManager) handleDroppedURIs(uris []fyne.URI) {
+	if fm.directoryListingNavigationOnly() {
+		fm.logCachedListingBlocked("drop")
+		fm.FocusFileList()
+		return
+	}
 	currentPath := fm.GetCurrentPath()
 	debugPrint("FileManager: Drop handling start current=%s uri_count=%d", currentPath, len(uris))
 	dest, err := dropDestination(currentPath)

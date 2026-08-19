@@ -68,6 +68,11 @@ Watch behavior:
   that source falls back to polling.
 - Default fallback interval is 2 seconds. `SetPollInterval` affects the next
   `Start()` run.
+- A provisional directory-cache listing is never used as a watcher baseline.
+  The previous watcher stops when navigation begins, and the target watcher
+  starts only after the real directory read successfully replaces the cached
+  view. If revalidation fails, the cached view remains navigation-only and
+  unwatched until the user retries or navigates elsewhere.
 - `Subscription.Unsubscribe()` detaches its caller from the shared source
   immediately and never blocks. When the unsubscribing caller was the last
   subscriber for that path, `WatchHub` removes the source from its map

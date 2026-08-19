@@ -474,6 +474,56 @@ func TestMainScreenCursorCommandNeedsOnlyCursorListPort(t *testing.T) {
 	}
 }
 
+func TestMainScreenCommandGateUsesResolvedCommandID(t *testing.T) {
+	fm := &mainScreenFakeFileManager{
+		files:          []fileinfo.FileInfo{{Name: "a.txt"}, {Name: "b.txt"}},
+		cursorIndex:    0,
+		setCursorIndex: -1,
+	}
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+		{Key: "N", Command: CommandCursorDown},
+		{Key: "Space", Command: CommandSelectToggle},
+	})
+	handler.SetCommandGate(func(commandID string) bool {
+		return commandID == CommandCursorDown
+	})
+
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyN}, ModifierState{}) {
+		t.Fatal("allowed configured binding was not consumed")
+	}
+	if fm.setCursorIndex != 1 {
+		t.Fatalf("allowed cursor command set index = %d, want 1", fm.setCursorIndex)
+	}
+
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeySpace}, ModifierState{}) {
+		t.Fatal("blocked configured binding was not consumed")
+	}
+	if len(fm.selectedFiles) != 0 {
+		t.Fatalf("blocked selection command changed marks: %+v", fm.selectedFiles)
+	}
+}
+
+func TestMainScreenCommandGateRechecksDeferredCommand(t *testing.T) {
+	km, q := newGatedKeyManager()
+	fm := &mainScreenFakeFileManager{}
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
+		{Key: "H", Command: CommandHistoryShow},
+	})
+	allowed := true
+	handler.SetCommandGate(func(string) bool { return allowed })
+	handler.SetTransitionGate(km.BeginOwnerTransition)
+	km.PushHandler(handler)
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyH})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyH})
+	allowed = false
+	q.runAll()
+
+	if fm.showHistoryCount != 0 {
+		t.Fatalf("deferred command ran after policy changed: count=%d", fm.showHistoryCount)
+	}
+}
+
 func TestMainScreenHandlerRejectsIncompleteDependencies(t *testing.T) {
 	defer func() {
 		recovered := recover()

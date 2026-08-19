@@ -67,6 +67,17 @@ previous context whenever a newer generation begins. `Finish` accepts only the
 active generation, so a stale or close-canceled callback cannot replace newer
 browsing state.
 
+Each `FileManager` also owns a small `internal/browser.DirectoryCache`. It
+retains accepted real directory results in RAM for two minutes, up to eight
+paths, and never persists them. Navigating to a cached path displays that
+snapshot immediately while `DirectoryLoader` revalidates it. The provisional
+listing is navigation-only: cursor and direct directory navigation remain available,
+while marks, file opening, sorting/filtering, external commands, drag/drop, and
+filesystem mutations are blocked by a semantic main-command gate and the
+corresponding pointer entry points. A successful real read replaces the cache
+view and restores normal input; a failed revalidation leaves it visibly stale
+and navigation-only. Same-directory explicit refreshes do not replay cache.
+
 `internal/ui.BusyController` owns the per-window delayed busy overlay and the
 matching `BusyKeyHandler` token. It blocks input immediately, delays visuals to
 avoid flicker, rejects stale timer generations, and releases exactly its own
@@ -138,7 +149,8 @@ menus and outbound file dragging, are summarized in `platform-behavior.md`.
 ## Package Boundaries
 
 - `internal/browser`: synchronized, widget-free per-window browsing model plus
-  portable directory loading and latest-request generation control.
+  portable directory loading, latest-request generation control, and the
+  bounded in-memory directory snapshot cache.
 - `internal/config`: read-only `config.json` schema/loading (`Manager`) plus
   `state.json` runtime state and its async persistence (`StateManager`).
 - `internal/configscript`: optional Starlark overlay configuration and custom command registration.

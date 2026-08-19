@@ -54,6 +54,10 @@ func renameInitialSelection(target fileinfo.FileInfo) *ui.LineEditSelection {
 }
 
 func (fm *FileManager) renameCurrentFile(target fileinfo.FileInfo, newName string) bool {
+	if fm.directoryListingNavigationOnly() {
+		fm.logCachedListingBlocked("rename")
+		return false
+	}
 	trimmed := strings.TrimSpace(newName)
 	if trimmed == target.Name {
 		fm.FocusFileList()

@@ -26,6 +26,7 @@ func NewFileManager(runtime *ApplicationRuntime, path string) *FileManager {
 		window:            runtime.app.NewWindow("File Manager"),
 		browser:           browser.New(path, state.EffectiveSort(config.UI.Sort)),
 		directoryLoader:   browser.NewDirectoryLoader(),
+		directoryCache:    browser.NewDirectoryCache(directoryCacheTTL, directoryCacheMaxEntries),
 		config:            config,
 		state:             state,
 		stateManager:      runtime.stateManager,
@@ -72,6 +73,7 @@ func NewFileManager(runtime *ApplicationRuntime, path string) *FileManager {
 	mainDependencies := newMainScreenDependencies(fm)
 	mainHandler := keymanager.NewMainScreenKeyHandlerWithCommands(mainDependencies, debugPrint, config.UI.KeyBindings, scriptCommands)
 	mainHandler.SetTransitionGate(fm.keyManager.BeginOwnerTransition)
+	mainHandler.SetCommandGate(fm.mainScreenCommandAllowed)
 	mainHandler.SetActions(keymanager.DialogActions{
 		ShowDirectoryTreeDialog:     fm.ShowDirectoryTreeDialog,
 		ShowNavigationHistoryDialog: fm.ShowNavigationHistoryDialog,

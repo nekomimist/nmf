@@ -194,14 +194,26 @@ func (fm *FileManager) GetSelectedFiles() map[string]bool {
 }
 
 func (fm *FileManager) ToggleFileSelection(path string) {
+	if fm.directoryListingNavigationOnly() {
+		fm.logCachedListingBlocked("selection.toggle")
+		return
+	}
 	fm.browserModel().ToggleSelected(path)
 }
 
 func (fm *FileManager) SelectAllFiles() bool {
+	if fm.directoryListingNavigationOnly() {
+		fm.logCachedListingBlocked("selection.markAll")
+		return false
+	}
 	return fm.browserModel().SelectAll()
 }
 
 func (fm *FileManager) InvertFileSelection(includeDirectories bool) bool {
+	if fm.directoryListingNavigationOnly() {
+		fm.logCachedListingBlocked("selection.invert")
+		return false
+	}
 	return fm.browserModel().InvertSelection(includeDirectories)
 }
 
@@ -220,6 +232,10 @@ func (fm *FileManager) CurrentSort() config.SortConfig {
 
 // ApplyTemporarySort applies a sort configuration without changing persisted settings.
 func (fm *FileManager) ApplyTemporarySort(sortConfig config.SortConfig) {
+	if fm.directoryListingNavigationOnly() {
+		fm.logCachedListingBlocked("sort.apply")
+		return
+	}
 	debugPrint("FileManager: Applying temporary sort configuration: %+v", sortConfig)
 	fm.applySort(sortConfig)
 }
@@ -546,6 +562,10 @@ func (fm *FileManager) OpenFile(file *fileinfo.FileInfo) {
 	if file == nil {
 		return
 	}
+	if fm.directoryListingNavigationOnly() && !file.IsDir {
+		fm.logCachedListingBlocked("open.file")
+		return
+	}
 	if file.IsDir {
 		// Use the path provided in listing to handle parent (..) and SMB display paths correctly
 		fm.LoadDirectory(file.Path)
@@ -574,6 +594,10 @@ func (fm *FileManager) OpenFile(file *fileinfo.FileInfo) {
 // OpenFileDefaultApp opens a file with the system default app, or navigates into a directory.
 func (fm *FileManager) OpenFileDefaultApp(file *fileinfo.FileInfo) {
 	if file == nil {
+		return
+	}
+	if fm.directoryListingNavigationOnly() {
+		fm.logCachedListingBlocked("open.defaultApp")
 		return
 	}
 	if file.IsDir {

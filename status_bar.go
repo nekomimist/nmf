@@ -37,8 +37,16 @@ func (fm *FileManager) statusBarText() string {
 		total = fileinfo.FormatFileSize(int64(stats.Storage.Total))
 	}
 
-	return fmt.Sprintf("Mark: %d | Entry: %d/%d | Free: %s | Used: %s | Total: %s",
+	listing := fmt.Sprintf("Mark: %d | Entry: %d/%d | Free: %s | Used: %s | Total: %s",
 		stats.MarkedEntries, stats.VisibleEntries, stats.TotalEntries, free, used, total)
+	switch fm.directoryListingState {
+	case directoryListingCachedRefreshing:
+		return "Cached listing — refreshing; navigation only | " + listing
+	case directoryListingCachedStale:
+		return "Cached listing — refresh failed; navigation only | " + listing
+	default:
+		return listing
+	}
 }
 
 func parentFallbackStatusNotice(requestedPath, openedPath string) string {

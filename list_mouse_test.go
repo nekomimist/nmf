@@ -98,3 +98,20 @@ func TestHandleFileNameClickSkipsParentAndDeletedEntries(t *testing.T) {
 		t.Fatalf("selectedFiles = %+v, want no marks", selected)
 	}
 }
+
+func TestHandleFileNameClickMovesCursorWithoutMarkingCachedListing(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	fm := newMouseListTestFileManager(t)
+	fm.directoryListingState = directoryListingCachedRefreshing
+	file, _ := fm.FileAt(1)
+	fm.handleFileNameClick(1, file, fyne.KeyModifierShift)
+
+	if got := fm.GetCurrentCursorIndex(); got != 1 {
+		t.Fatalf("cursor index = %d, want 1", got)
+	}
+	if selected := fm.GetSelectedFiles(); len(selected) != 0 {
+		t.Fatalf("selected files = %+v, want cached click to leave marks empty", selected)
+	}
+}

@@ -9,6 +9,10 @@ import (
 
 // ShowDeleteDialog confirms and queues trash or permanent deletion.
 func (fm *FileManager) ShowDeleteDialog(permanent bool) {
+	if fm.directoryListingNavigationOnly() {
+		fm.logCachedListingBlocked("delete")
+		return
+	}
 	targets := fm.collectTargets()
 	if len(targets) == 0 {
 		debugPrint("FileManager: No valid target for delete")

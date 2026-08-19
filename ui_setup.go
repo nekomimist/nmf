@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/fileinfo"
+	"nmf/internal/keymanager"
 	"nmf/internal/ui"
 )
 
@@ -54,47 +55,47 @@ func (fm *FileManager) setupUI() {
 	// Fyne buttons clear canvas focus before running their callback. Restore
 	// the persistent main-screen owner before the action starts so a dialog or
 	// another window can return to the same KeySink instead of a nil owner.
-	toolbarAction := func(icon fyne.Resource, action func()) widget.ToolbarItem {
-		return widget.NewToolbarAction(icon, fm.mainScreenPointerAction(action))
+	toolbarAction := func(icon fyne.Resource, commandID string, action func()) widget.ToolbarItem {
+		return widget.NewToolbarAction(icon, fm.mainScreenPointerCommand(commandID, action))
 	}
 
 	// Create toolbar (left side)
 	toolbarItems := []widget.ToolbarItem{
-		toolbarAction(theme.NavigateBackIcon(), func() {
+		toolbarAction(theme.NavigateBackIcon(), keymanager.CommandParentDirectory, func() {
 			currentPath := fm.GetCurrentPath()
 			parent := fileinfo.ParentPath(currentPath)
 			if parent != currentPath {
 				fm.LoadDirectory(parent)
 			}
 		}),
-		toolbarAction(theme.HomeIcon(), func() {
+		toolbarAction(theme.HomeIcon(), keymanager.CommandHome, func() {
 			home, _ := os.UserHomeDir()
 			fm.LoadDirectory(home)
 		}),
-		toolbarAction(theme.ViewRefreshIcon(), func() {
+		toolbarAction(theme.ViewRefreshIcon(), keymanager.CommandRefresh, func() {
 			fm.LoadDirectory(fm.GetCurrentPath())
 		}),
-		toolbarAction(theme.FolderIcon(), func() {
+		toolbarAction(theme.FolderIcon(), keymanager.CommandTreeShow, func() {
 			fm.ShowDirectoryTreeDialog()
 		}),
-		toolbarAction(theme.FolderNewIcon(), func() {
+		toolbarAction(theme.FolderNewIcon(), keymanager.CommandWindowNew, func() {
 			fm.OpenNewWindow()
 		}),
 	}
 	if debugMode {
-		toolbarItems = append(toolbarItems, toolbarAction(theme.SettingsIcon(), func() {
+		toolbarItems = append(toolbarItems, toolbarAction(theme.SettingsIcon(), "debug.dump", func() {
 			fm.DumpKeyManagerState()
 		}))
 	}
 	toolbarItems = append(toolbarItems,
-		toolbarAction(theme.InfoIcon(), func() {
+		toolbarAction(theme.InfoIcon(), "app.info", func() {
 			fm.ShowVersionDialog()
 		}),
 	)
 	toolbar := widget.NewToolbar(toolbarItems...)
 
 	// Jobs button on the right
-	fm.jobsButton = widget.NewButton("Jobs", fm.mainScreenPointerAction(fm.ShowJobsDialog))
+	fm.jobsButton = widget.NewButton("Jobs", fm.mainScreenPointerCommand(keymanager.CommandJobsShow, fm.ShowJobsDialog))
 	fm.jobsButton.Importance = widget.MediumImportance
 
 	// Layout with search overlay
@@ -209,4 +210,18 @@ func (fm *FileManager) mainScreenPointerAction(action func()) func() {
 			action()
 		}
 	}
+}
+
+// mainScreenPointerCommand applies the same semantic policy as keyboard
+// bindings before a toolbar or button action runs.
+func (fm *FileManager) mainScreenPointerCommand(commandID string, action func()) func() {
+	return fm.mainScreenPointerAction(func() {
+		if !fm.mainScreenCommandAllowed(commandID) {
+			fm.logCachedListingBlocked(commandID)
+			return
+		}
+		if action != nil {
+			action()
+		}
+	})
 }
