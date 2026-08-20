@@ -26,6 +26,11 @@ func (fm *FileManager) setupUI() {
 	// to multiple lines and shift the file list, defeating status_bar.go's
 	// single-line invariant.
 	fm.statusLabel.Truncation = fyne.TextTruncateClip
+	fm.cacheStatusBadge = newDirectoryCacheStatusBadge(fm.customTheme)
+	statusBar := container.NewStack(
+		fm.statusLabel,
+		fm.cacheStatusBadge.container,
+	)
 
 	// Create file list
 	fm.fileListItemHeight = fm.newFileListRow().MinSize().Height
@@ -104,7 +109,7 @@ func (fm *FileManager) setupUI() {
 	// Subscribe to job updates to update indicator
 	fm.jobsUnsub = fm.jobManager().Subscribe(func() { fyne.Do(fm.onJobsUpdated) })
 	mainContent := container.NewBorder(
-		container.NewVBox(toolbarRow, fm.pathDisplay, fm.statusLabel),
+		container.NewVBox(toolbarRow, fm.pathDisplay, statusBar),
 		nil, nil, nil,
 		fm.fileList,
 	)

@@ -1,11 +1,19 @@
 package main
 
 import (
+	"image/color"
 	"strings"
 	"testing"
 
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/test"
+	fynetheme "fyne.io/fyne/v2/theme"
+	"fyne.io/fyne/v2/widget"
+
 	"nmf/internal/config"
 	"nmf/internal/fileinfo"
+	customtheme "nmf/internal/theme"
 )
 
 func TestParentFallbackStatusNoticeNamesRequestedAndOpenedPaths(t *testing.T) {
@@ -179,5 +187,68 @@ func TestStatusBarTextUsesDashForUnknownStorage(t *testing.T) {
 	text := fm.statusBarText()
 	if !strings.Contains(text, "Free: - | Used: - | Total: -") {
 		t.Fatalf("statusBarText %q should use dashes for unknown storage", text)
+	}
+}
+
+func TestUpdateStatusBarUsesOverlayForDirectoryCacheState(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	themeProvider := customtheme.NewCustomTheme(config.Default(), nil)
+	badge := newDirectoryCacheStatusBadge(themeProvider)
+	statusLabel := widget.NewLabel("")
+	statusLabel.TextStyle = fyne.TextStyle{Monospace: true}
+	fm := &FileManager{
+		browser:               newTestBrowser(testBrowserOptions{files: []fileinfo.FileInfo{{Name: "a.txt"}}}),
+		statusLabel:           statusLabel,
+		cacheStatusBadge:      badge,
+		directoryListingState: directoryListingCachedRefreshing,
+	}
+	statusBar := container.NewStack(fm.statusLabel, badge.container)
+	badge.container.Resize(fyne.NewSize(800, fm.statusLabel.MinSize().Height))
+	heightWithoutBadge := statusBar.MinSize().Height
+
+	fm.updateStatusBar()
+	if !badge.content.Visible() {
+		t.Fatal("cache status badge is hidden while a cached listing is refreshing")
+	}
+	if got, want := badge.label.Text, "Cached listing — refreshing; navigation only"; got != want {
+		t.Fatalf("cache status badge = %q, want %q", got, want)
+	}
+	fullTextLabel := widget.NewLabel(badge.label.Text)
+	fullTextLabel.TextStyle = badge.label.TextStyle
+	fullText := container.NewThemeOverride(fullTextLabel, badge.theme)
+	if got, want := badge.content.MinSize().Width, fullText.MinSize().Width; got < want {
+		t.Fatalf("cache badge width = %v, want at least full text width %v", got, want)
+	}
+	if got := statusBar.MinSize().Height; got != heightWithoutBadge {
+		t.Fatalf("status bar height with badge = %v, want unchanged height %v", got, heightWithoutBadge)
+	}
+	if badge.label.TextStyle != fm.statusLabel.TextStyle {
+		t.Fatalf("cache badge style = %+v, want status label style %+v", badge.label.TextStyle, fm.statusLabel.TextStyle)
+	}
+	if got := fm.statusLabel.Text; strings.Contains(got, "Cached listing") {
+		t.Fatalf("normal status text %q includes cache state", got)
+	}
+	if got, want := color.RGBAModel.Convert(badge.background.FillColor), color.Color(themeProvider.GetCustomColor(customtheme.ColorSearchOverlayBackground)); got != want {
+		t.Fatalf("cache badge background = %v, want search overlay background %v", got, want)
+	}
+	if got, want := color.RGBAModel.Convert(badge.theme.Color(fynetheme.ColorNameForeground, fynetheme.VariantLight)), color.Color(themeProvider.GetCustomColor(customtheme.ColorSearchOverlayForeground)); got != want {
+		t.Fatalf("cache badge foreground = %v, want search overlay foreground %v", got, want)
+	}
+	if got, want := badge.content.Position().X, badge.container.Size().Width-badge.content.MinSize().Width; got != want {
+		t.Fatalf("cache badge x = %v, want right-aligned x %v", got, want)
+	}
+
+	fm.directoryListingState = directoryListingCachedStale
+	fm.updateStatusBar()
+	if got, want := badge.label.Text, "Cached listing — refresh failed; navigation only"; got != want {
+		t.Fatalf("stale cache status badge = %q, want %q", got, want)
+	}
+
+	fm.directoryListingState = directoryListingFresh
+	fm.updateStatusBar()
+	if badge.content.Visible() {
+		t.Fatal("cache status badge remains visible for a fresh listing")
 	}
 }

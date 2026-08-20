@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
@@ -56,8 +55,8 @@ func TestDisplayCachedDirectoryAppliesProvisionalListing(t *testing.T) {
 	if got := state.NavigationHistory.Entries; len(got) != 1 || got[0] != previous {
 		t.Fatalf("navigation history = %#v, want previous path", got)
 	}
-	if got := fm.statusBarText(); !strings.HasPrefix(got, "Cached listing") {
-		t.Fatalf("status = %q, want cached-listing prefix", got)
+	if got := fm.directoryCacheStatusText(); got != "Cached listing — refreshing; navigation only" {
+		t.Fatalf("cache status = %q, want refreshing navigation-only message", got)
 	}
 }
 

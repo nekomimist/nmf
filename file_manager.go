@@ -29,6 +29,7 @@ type FileManager struct {
 	windowActive          bool
 	pathDisplay           *widget.Label
 	statusLabel           *widget.Label
+	cacheStatusBadge      *directoryCacheStatusBadge
 	cursorRefreshSeq      uint64          // Diagnostic sequence for requested cursor refreshes
 	cursorItemUpdateSeq   uint64          // Latest cursor refresh sequence observed by the list UpdateItem callback
 	cursorMoveDirection   int             // Pending vertical cursor movement: -1 up, 0 none, +1 down
@@ -69,7 +70,7 @@ type FileManager struct {
 	jobsBlinkStop chan struct{}
 	jobsUnsub     func()
 
-	// Transient non-modal notice appended to the status bar.
+	// Transient non-modal notice displayed in the status bar.
 	statusNotice           string
 	statusNoticeGeneration uint64
 }
