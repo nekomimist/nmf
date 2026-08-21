@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"strings"
 	"testing"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -202,6 +203,7 @@ func TestUpdateStatusBarUsesOverlayForDirectoryCacheState(t *testing.T) {
 		browser:               newTestBrowser(testBrowserOptions{files: []fileinfo.FileInfo{{Name: "a.txt"}}}),
 		statusLabel:           statusLabel,
 		cacheStatusBadge:      badge,
+		cacheStatusBadgeReady: true,
 		directoryListingState: directoryListingCachedRefreshing,
 	}
 	statusBar := container.NewStack(fm.statusLabel, badge.container)
@@ -250,5 +252,60 @@ func TestUpdateStatusBarUsesOverlayForDirectoryCacheState(t *testing.T) {
 	fm.updateStatusBar()
 	if badge.content.Visible() {
 		t.Fatal("cache status badge remains visible for a fresh listing")
+	}
+}
+
+func TestDirectoryCacheStatusBadgeDelayUsesCurrentGeneration(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	badge := newDirectoryCacheStatusBadge(customtheme.NewCustomTheme(config.Default(), nil))
+	var delays []time.Duration
+	var callbacks []func()
+	badge.afterFunc = func(delay time.Duration, callback func()) {
+		delays = append(delays, delay)
+		callbacks = append(callbacks, callback)
+	}
+	fm := &FileManager{
+		browser:          newTestBrowser(testBrowserOptions{files: []fileinfo.FileInfo{{Name: "a.txt"}}}),
+		statusLabel:      widget.NewLabel(""),
+		cacheStatusBadge: badge,
+	}
+
+	// A fast real read invalidates the pending reveal, so no badge appears.
+	fm.setDirectoryListingState(directoryListingCachedRefreshing)
+	if !fm.directoryListingNavigationOnly() {
+		t.Fatal("cached listing did not become navigation-only immediately")
+	}
+	if badge.content.Visible() {
+		t.Fatal("cache badge was visible before its delay")
+	}
+	if len(delays) != 1 || delays[0] != directoryCacheStatusBadgeDelay {
+		t.Fatalf("scheduled delays = %v, want [%v]", delays, directoryCacheStatusBadgeDelay)
+	}
+	fm.setDirectoryListingState(directoryListingFresh)
+	callbacks[0]()
+	if badge.content.Visible() {
+		t.Fatal("completed listing was revealed by a stale timer")
+	}
+
+	// Replacing one provisional listing with another restarts the delay. If
+	// the current one fails, the surviving timer reveals the stale state.
+	fm.setDirectoryListingState(directoryListingCachedRefreshing)
+	fm.setDirectoryListingState(directoryListingCachedRefreshing)
+	if len(callbacks) != 3 {
+		t.Fatalf("scheduled callback count = %d, want 3", len(callbacks))
+	}
+	callbacks[1]()
+	if badge.content.Visible() {
+		t.Fatal("new provisional listing was revealed by the previous timer")
+	}
+	fm.setDirectoryListingState(directoryListingCachedStale)
+	callbacks[2]()
+	if !badge.content.Visible() {
+		t.Fatal("stale cache badge was not shown after the current delay")
+	}
+	if got, want := badge.label.Text, "Cached listing — refresh failed; navigation only"; got != want {
+		t.Fatalf("stale cache badge = %q, want %q", got, want)
 	}
 }

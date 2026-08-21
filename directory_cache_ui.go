@@ -28,11 +28,18 @@ func (fm *FileManager) ensureDirectoryCache() *browser.DirectoryCache {
 }
 
 func (fm *FileManager) setDirectoryListingState(state directoryListingState) {
-	if fm == nil || fm.directoryListingState == state {
+	if fm == nil {
+		return
+	}
+	previous := fm.directoryListingState
+	// A new provisional listing can replace another one without changing the
+	// enum value. Restart its badge delay so an older timer cannot reveal the
+	// new path's status too early.
+	if previous == state && state != directoryListingCachedRefreshing {
 		return
 	}
 	fm.directoryListingState = state
-	fm.updateStatusBar()
+	fm.onDirectoryListingStateChanged(previous, state)
 }
 
 func (fm *FileManager) directoryListingNavigationOnly() bool {

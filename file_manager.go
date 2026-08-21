@@ -30,6 +30,8 @@ type FileManager struct {
 	pathDisplay           *widget.Label
 	statusLabel           *widget.Label
 	cacheStatusBadge      *directoryCacheStatusBadge
+	cacheStatusBadgeReady bool
+	cacheStatusBadgeGen   uint64
 	cursorRefreshSeq      uint64          // Diagnostic sequence for requested cursor refreshes
 	cursorItemUpdateSeq   uint64          // Latest cursor refresh sequence observed by the list UpdateItem callback
 	cursorMoveDirection   int             // Pending vertical cursor movement: -1 up, 0 none, +1 down

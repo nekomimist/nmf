@@ -241,7 +241,7 @@ func (fm *FileManager) displayCachedDirectory(path string, previousPath string, 
 	if fm.busy != nil {
 		fm.busy.End()
 	}
-	fm.directoryListingState = directoryListingCachedRefreshing
+	fm.setDirectoryListingState(directoryListingCachedRefreshing)
 	fm.applyDirectoryListing(path, files, snapshot.Storage, snapshot.StorageKnown, sortCfg, previousPath, cursorNeighbors, "")
 	if previousPath != "" && previousPath != path {
 		fm.recordNavigationHistory(previousPath)
@@ -375,7 +375,7 @@ func (fm *FileManager) loadDirectoryAsync(handle browser.DirectoryLoadHandle, pa
 		if presentation.cacheDisplayed && requestedPath == path {
 			preferredCursorPath = fm.browserModel().CursorPath()
 		}
-		fm.directoryListingState = directoryListingFresh
+		fm.setDirectoryListingState(directoryListingFresh)
 		fm.applyDirectoryListing(path, result.Files, result.Storage, result.StorageErr == nil, sortCfg, previousPath, cursorNeighbors, preferredCursorPath)
 		if result.UsedParentFallback {
 			fm.showStatusNotice(parentFallbackStatusNotice(result.RequestedPath, path))

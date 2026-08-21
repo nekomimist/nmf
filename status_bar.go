@@ -15,7 +15,10 @@ import (
 	customtheme "nmf/internal/theme"
 )
 
-const statusNoticeDuration = 5 * time.Second
+const (
+	statusNoticeDuration           = 5 * time.Second
+	directoryCacheStatusBadgeDelay = 250 * time.Millisecond
+)
 
 type directoryCacheStatusBadge struct {
 	container  *fyne.Container
@@ -23,6 +26,7 @@ type directoryCacheStatusBadge struct {
 	background *canvas.Rectangle
 	label      *widget.Label
 	theme      fyne.Theme
+	afterFunc  func(time.Duration, func())
 }
 
 type directoryCacheStatusBadgeTheme struct {
@@ -53,6 +57,9 @@ func newDirectoryCacheStatusBadge(themeProvider *customtheme.CustomTheme) *direc
 		background: background,
 		label:      label,
 		theme:      badgeTheme,
+		afterFunc: func(delay time.Duration, callback func()) {
+			time.AfterFunc(delay, callback)
+		},
 	}
 	return badge
 }
@@ -92,8 +99,58 @@ func (fm *FileManager) updateStatusBar() {
 		fm.statusLabel.SetText(fm.statusBarText())
 	}
 	if fm.cacheStatusBadge != nil {
-		fm.cacheStatusBadge.setText(fm.directoryCacheStatusText())
+		text := ""
+		if fm.cacheStatusBadgeReady {
+			text = fm.directoryCacheStatusText()
+		}
+		fm.cacheStatusBadge.setText(text)
 	}
+}
+
+func (fm *FileManager) onDirectoryListingStateChanged(previous, state directoryListingState) {
+	if state == directoryListingFresh {
+		fm.cacheStatusBadgeGen++
+		fm.cacheStatusBadgeReady = false
+		fm.updateStatusBar()
+		return
+	}
+
+	// Entering a provisional view starts a new delay. A refreshing-to-stale
+	// transition keeps the same delay so a fast failure does not flash either.
+	if state == directoryListingCachedRefreshing || previous == directoryListingFresh {
+		fm.startDirectoryCacheStatusBadgeDelay()
+		return
+	}
+	fm.updateStatusBar()
+}
+
+func (fm *FileManager) startDirectoryCacheStatusBadgeDelay() {
+	fm.cacheStatusBadgeGen++
+	generation := fm.cacheStatusBadgeGen
+	fm.cacheStatusBadgeReady = false
+	fm.updateStatusBar()
+
+	badge := fm.cacheStatusBadge
+	if badge == nil || badge.afterFunc == nil {
+		return
+	}
+	badge.afterFunc(directoryCacheStatusBadgeDelay, func() {
+		if fm.isWindowClosed() {
+			return
+		}
+		fyne.Do(func() {
+			fm.revealDirectoryCacheStatusBadge(generation)
+		})
+	})
+}
+
+func (fm *FileManager) revealDirectoryCacheStatusBadge(generation uint64) {
+	if fm == nil || fm.isWindowClosed() || fm.cacheStatusBadgeGen != generation ||
+		fm.directoryListingState == directoryListingFresh {
+		return
+	}
+	fm.cacheStatusBadgeReady = true
+	fm.updateStatusBar()
 }
 
 func (fm *FileManager) statusBarText() string {
