@@ -478,6 +478,9 @@ func TestLoadDirectoryAsyncFallbackSkipsHistoryWhenReopeningSameDirectory(t *tes
 	if got := state.NavigationHistory.Entries; len(got) != 0 {
 		t.Fatalf("NavigationHistory.Entries = %#v, want empty: reopening the same directory via fallback is not a navigation", got)
 	}
+	if len(fm.navigationBackStack) != 0 {
+		t.Fatalf("navigationBackStack = %#v, want empty after reopening the same directory", fm.navigationBackStack)
+	}
 }
 
 // TestLoadDirectoryAsyncFallbackRestoresCursorForOpenedPathNotRequestedPath
@@ -535,6 +538,64 @@ func TestLoadDirectoryAsyncFallbackRestoresCursorForOpenedPathNotRequestedPath(t
 	}
 	if got := state.NavigationHistory.Entries; len(got) != 1 || got[0] != previousPath {
 		t.Fatalf("NavigationHistory.Entries = %#v, want only %q recorded", got, previousPath)
+	}
+	if got, want := fm.navigationBackStack, []string{previousPath}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("navigationBackStack = %#v, want %#v", got, want)
+	}
+}
+
+func TestLoadDirectoryAsyncHistoryBackPopsWithoutPushingDeparture(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	older := t.TempDir()
+	target := t.TempDir()
+	departure := t.TempDir()
+	state := directoryLoadingTestState()
+	fm := newParentFallbackTestFileManager(state)
+	fm.navigationBackStack = []string{older, target}
+
+	handle := fm.directoryLoader.Begin()
+	fm.loadDirectoryAsync(
+		handle,
+		target,
+		departure,
+		config.SortConfig{SortBy: "name", SortOrder: "asc"},
+		true,
+		nil,
+		directoryLoadPresentation{navigation: directoryNavigation{kind: directoryNavigationBack, target: target}},
+	)
+
+	if got := fm.GetCurrentPath(); got != target {
+		t.Fatalf("currentPath = %q, want history target %q", got, target)
+	}
+	if got, want := fm.navigationBackStack, []string{older}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("navigationBackStack = %#v, want %#v", got, want)
+	}
+	if got := state.NavigationHistory.Entries; len(got) != 1 || got[0] != departure {
+		t.Fatalf("NavigationHistory.Entries = %#v, want departed path %q recorded", got, departure)
+	}
+}
+
+func TestCanceledHistoryBackKeepsTarget(t *testing.T) {
+	target := t.TempDir()
+	fm := newParentFallbackTestFileManager(directoryLoadingTestState())
+	fm.navigationBackStack = []string{target}
+	handle := fm.directoryLoader.Begin()
+	fm.directoryLoader.Cancel(handle.ID)
+
+	fm.loadDirectoryAsync(
+		handle,
+		target,
+		t.TempDir(),
+		config.SortConfig{SortBy: "name", SortOrder: "asc"},
+		true,
+		nil,
+		directoryLoadPresentation{navigation: directoryNavigation{kind: directoryNavigationBack, target: target}},
+	)
+
+	if got, want := fm.navigationBackStack, []string{target}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("navigationBackStack = %#v, want canceled target retained as %#v", got, want)
 	}
 }
 

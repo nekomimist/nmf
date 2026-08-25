@@ -35,6 +35,7 @@ const (
 	CommandWindowResetSize     = "window.resetSize"
 	CommandWindowResetAllSizes = "window.resetAllSizes"
 	CommandTreeShow            = "tree.show"
+	CommandHistoryBack         = "history.back"
 	CommandHistoryShow         = "history.show"
 	CommandHistoryPinCurrent   = "history.pinCurrent"
 	CommandDirectoryJumpShow   = "directoryJump.show"
@@ -302,7 +303,8 @@ func defaultMainScreenBindings() []config.KeyBindingEntry {
 		{Key: "C-A", Command: CommandSelectAll},
 		{Key: "I", Command: CommandSelectInvert},
 		{Key: "S-I", Command: CommandSelectInvertWithDir},
-		{Key: "Backspace", Command: CommandParentDirectory},
+		{Key: "Backspace", Command: CommandHistoryBack},
+		{Key: "S-6", Command: CommandParentDirectory},
 		{Key: "S-Comma", Command: CommandCursorFirst},
 		{Key: "Period", Command: CommandRefresh},
 		{Key: "S-Period", Command: CommandCursorLast},
@@ -365,6 +367,7 @@ func (mh *MainScreenKeyHandler) defaultCommands() map[string]commandSpec {
 		CommandTreeShow: {fn: func(CommandContext) {
 			mh.showDialogAction("ShowDirectoryTreeDialog", mh.actions.ShowDirectoryTreeDialog)
 		}, transition: true},
+		CommandHistoryBack: {fn: func(CommandContext) { mh.dependencies.history.HistoryBack() }},
 		CommandHistoryShow: {fn: func(CommandContext) {
 			mh.showDialogAction("ShowNavigationHistoryDialog", mh.actions.ShowNavigationHistoryDialog)
 		}, transition: true},

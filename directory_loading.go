@@ -167,6 +167,10 @@ func (fm *FileManager) loadDirectoryWithParentFallback(path string) {
 }
 
 func (fm *FileManager) loadDirectory(path string, allowParentFallback bool) {
+	fm.loadDirectoryWithNavigation(path, allowParentFallback, directoryNavigation{})
+}
+
+func (fm *FileManager) loadDirectoryWithNavigation(path string, allowParentFallback bool, navigation directoryNavigation) {
 	path = canonicalNavigationHistoryPath(path)
 	fm.clearStatusNotice()
 	currentPath := fm.GetCurrentPath()
@@ -207,6 +211,9 @@ func (fm *FileManager) loadDirectory(path string, allowParentFallback bool) {
 	sortCfg := fm.state.EffectiveSort(fm.config.UI.Sort)
 	cacheDisplayed := currentPath != "" && currentPath != path &&
 		fm.displayCachedDirectory(path, previousPath, sortCfg, refreshCursorNeighbors)
+	if cacheDisplayed {
+		fm.acceptDirectoryNavigation(previousPath, path, navigation)
+	}
 
 	if !cacheDisplayed {
 		// Beginning a newer read cancels any revalidation that owned the current
@@ -226,6 +233,7 @@ func (fm *FileManager) loadDirectory(path string, allowParentFallback bool) {
 	go fm.loadDirectoryAsync(handle, path, previousPath, sortCfg, allowParentFallback, refreshCursorNeighbors, directoryLoadPresentation{
 		cacheDisplayed:       cacheDisplayed,
 		previousListingState: previousListingState,
+		navigation:           navigation,
 	})
 }
 
@@ -254,6 +262,7 @@ func (fm *FileManager) displayCachedDirectory(path string, previousPath string, 
 type directoryLoadPresentation struct {
 	cacheDisplayed       bool
 	previousListingState directoryListingState
+	navigation           directoryNavigation
 }
 
 // loadDirectoryAsync asks the widget-free loader to read a path in a
@@ -317,6 +326,7 @@ func (fm *FileManager) loadDirectoryAsync(handle browser.DirectoryLoadHandle, pa
 				fm.ShowMessageDialog("フォルダを更新できませんでした", err.Error())
 				return
 			}
+			fm.rejectDirectoryNavigation(presentation.navigation)
 			fallbackState := presentation.previousListingState
 			if fallbackState == directoryListingCachedRefreshing {
 				fallbackState = directoryListingCachedStale
@@ -377,6 +387,9 @@ func (fm *FileManager) loadDirectoryAsync(handle browser.DirectoryLoadHandle, pa
 		}
 		fm.setDirectoryListingState(directoryListingFresh)
 		fm.applyDirectoryListing(path, result.Files, result.Storage, result.StorageErr == nil, sortCfg, previousPath, cursorNeighbors, preferredCursorPath)
+		if !presentation.cacheDisplayed {
+			fm.acceptDirectoryNavigation(previousPath, path, presentation.navigation)
+		}
 		if result.UsedParentFallback {
 			fm.showStatusNotice(parentFallbackStatusNotice(result.RequestedPath, path))
 			debugPrint("FileManager: LoadDirectory fallback requested=%s opened=%s", result.RequestedPath, path)

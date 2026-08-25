@@ -61,6 +61,7 @@ type FileManager struct {
 	directoryLoader       *browser.DirectoryLoader
 	directoryCache        *browser.DirectoryCache
 	directoryListingState directoryListingState
+	navigationBackStack   []string
 	viewerMu              sync.Mutex
 	nextViewerID          uint64
 	activeViewer          uint64

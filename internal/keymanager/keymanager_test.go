@@ -390,6 +390,7 @@ func TestKeyManagerTransientStackChangeRequiresFreshPress(t *testing.T) {
 type mainScreenFakeFileManager struct {
 	showJobsCount            int
 	showHistoryCount         int
+	historyBackCount         int
 	pinCurrentHistoryCount   int
 	showSearchCount          int
 	showDirectoryJumpCount   int
@@ -663,6 +664,7 @@ func (f *mainScreenFakeFileManager) FocusWindowLeft()                  { f.focus
 func (f *mainScreenFakeFileManager) FocusWindowRight()                 { f.focusWindowRightCount++ }
 func (f *mainScreenFakeFileManager) ResetWindowSize()                  { f.resetWindowSizeCount++ }
 func (f *mainScreenFakeFileManager) ResetAllWindowSizes()              { f.resetAllWindowSizesCount++ }
+func (f *mainScreenFakeFileManager) HistoryBack()                      { f.historyBackCount++ }
 func (f *mainScreenFakeFileManager) PinCurrentHistoryPath()            { f.pinCurrentHistoryCount++ }
 func (f *mainScreenFakeFileManager) ClearFilter()                      {}
 func (f *mainScreenFakeFileManager) ToggleFilter()                     {}
@@ -975,6 +977,40 @@ func TestMainScreenShiftBPinsCurrentHistoryPath(t *testing.T) {
 	}
 	if fm.pinCurrentHistoryCount != 1 {
 		t.Fatalf("PinCurrentHistoryPath count = %d, want 1", fm.pinCurrentHistoryCount)
+	}
+}
+
+func TestMainScreenBackspaceNavigatesBackInHistory(t *testing.T) {
+	fm := &mainScreenFakeFileManager{currentPath: "/tmp/nmf"}
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyBackspace}, ModifierState{})
+
+	if !handled {
+		t.Fatal("Backspace should be handled")
+	}
+	if fm.historyBackCount != 1 {
+		t.Fatalf("HistoryBack count = %d, want 1", fm.historyBackCount)
+	}
+	if fm.loadDirectoryPath != "" {
+		t.Fatalf("LoadDirectory path = %q, want no parent navigation", fm.loadDirectoryPath)
+	}
+}
+
+func TestMainScreenShift6NavigatesToParentDirectory(t *testing.T) {
+	fm := &mainScreenFakeFileManager{currentPath: "/tmp/nmf"}
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.Key6}, ModifierState{ShiftPressed: true})
+
+	if !handled {
+		t.Fatal("Shift+6 should be handled")
+	}
+	if got, want := fm.loadDirectoryPath, fileinfo.ParentPath(fm.currentPath); got != want {
+		t.Fatalf("LoadDirectory path = %q, want parent %q", got, want)
+	}
+	if fm.historyBackCount != 0 {
+		t.Fatalf("HistoryBack count = %d, want 0", fm.historyBackCount)
 	}
 }
 

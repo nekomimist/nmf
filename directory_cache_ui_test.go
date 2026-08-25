@@ -102,6 +102,7 @@ func TestCachedListingCommandPolicy(t *testing.T) {
 	for _, commandID := range []string{
 		keymanager.CommandCursorDown,
 		keymanager.CommandOpen,
+		keymanager.CommandHistoryBack,
 		keymanager.CommandParentDirectory,
 		keymanager.CommandHome,
 		keymanager.CommandQuit,

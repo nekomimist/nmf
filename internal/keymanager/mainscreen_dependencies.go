@@ -49,6 +49,7 @@ type MainScreenWindows interface {
 
 // MainScreenHistory contains navigation-history commands.
 type MainScreenHistory interface {
+	HistoryBack()
 	PinCurrentHistoryPath()
 }
 

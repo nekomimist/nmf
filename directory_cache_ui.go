@@ -72,6 +72,7 @@ func (fm *FileManager) mainScreenCommandAllowed(commandID string) bool {
 		keymanager.CommandCursorFirst,
 		keymanager.CommandCursorLast,
 		keymanager.CommandOpen,
+		keymanager.CommandHistoryBack,
 		keymanager.CommandParentDirectory,
 		keymanager.CommandRefresh,
 		keymanager.CommandHome,

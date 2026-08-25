@@ -9,7 +9,6 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
-	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 	"nmf/internal/ui"
 )
@@ -66,13 +65,7 @@ func (fm *FileManager) setupUI() {
 
 	// Create toolbar (left side)
 	toolbarItems := []widget.ToolbarItem{
-		toolbarAction(theme.NavigateBackIcon(), keymanager.CommandParentDirectory, func() {
-			currentPath := fm.GetCurrentPath()
-			parent := fileinfo.ParentPath(currentPath)
-			if parent != currentPath {
-				fm.LoadDirectory(parent)
-			}
-		}),
+		toolbarAction(theme.NavigateBackIcon(), keymanager.CommandHistoryBack, fm.HistoryBack),
 		toolbarAction(theme.HomeIcon(), keymanager.CommandHome, func() {
 			home, _ := os.UserHomeDir()
 			fm.LoadDirectory(home)
