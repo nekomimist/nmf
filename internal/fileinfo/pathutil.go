@@ -45,6 +45,25 @@ func ParentPath(p string) string {
 	return parent
 }
 
+// NavigationRootPath returns the root of the browsing namespace containing p.
+// Local paths use their filesystem volume root, SMB paths use their share
+// root, and archive paths use the root inside the archive.
+func NavigationRootPath(p string) (string, error) {
+	canonical, parsed, err := CanonicalDisplayPath(p)
+	if err != nil {
+		return "", err
+	}
+
+	switch parsed.Scheme {
+	case SchemeArchive:
+		return ArchiveRootPath(parsed.Archive), nil
+	case SchemeSMB:
+		return smbDisplayPath(parsed.Host, parsed.Share, nil), nil
+	default:
+		return filepath.VolumeName(canonical) + string(filepath.Separator), nil
+	}
+}
+
 // BaseName returns the last path segment analogous to filepath.Base.
 // For smb:// paths, it uses URL-style segments.
 func BaseName(p string) string {

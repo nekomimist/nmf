@@ -104,6 +104,7 @@ func TestCachedListingCommandPolicy(t *testing.T) {
 		keymanager.CommandOpen,
 		keymanager.CommandHistoryBack,
 		keymanager.CommandParentDirectory,
+		keymanager.CommandRootDirectory,
 		keymanager.CommandHome,
 		keymanager.CommandQuit,
 	} {

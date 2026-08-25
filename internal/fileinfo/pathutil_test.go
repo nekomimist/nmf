@@ -1,6 +1,9 @@
 package fileinfo
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func TestJoinParentBaseWithSMB(t *testing.T) {
 	base := "smb://host/share/dir"
@@ -32,5 +35,45 @@ func TestJoinParentBaseWithLocal(t *testing.T) {
 	}
 	if last := BaseName(joined); last != name {
 		t.Fatalf("BaseName(local) got %q", last)
+	}
+}
+
+func TestNavigationRootPathWithSMB(t *testing.T) {
+	for _, input := range []string{
+		"smb://server/share/dir/subdir",
+		`\\server\share\dir\subdir`,
+	} {
+		root, err := NavigationRootPath(input)
+		if err != nil {
+			t.Fatalf("NavigationRootPath(%q) returned error: %v", input, err)
+		}
+		if root != "smb://server/share" {
+			t.Fatalf("NavigationRootPath(%q) = %q, want smb://server/share", input, root)
+		}
+	}
+}
+
+func TestNavigationRootPathWithArchive(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "files.zip")
+	input := ArchiveDisplayPath(archive, "docs/src")
+
+	root, err := NavigationRootPath(input)
+	if err != nil {
+		t.Fatalf("NavigationRootPath(%q) returned error: %v", input, err)
+	}
+	if want := ArchiveRootPath(archive); root != want {
+		t.Fatalf("NavigationRootPath(%q) = %q, want %q", input, root, want)
+	}
+}
+
+func TestNavigationRootPathWithSMBArchive(t *testing.T) {
+	input := "smb://server/share/files.zip!/docs/src"
+
+	root, err := NavigationRootPath(input)
+	if err != nil {
+		t.Fatalf("NavigationRootPath(%q) returned error: %v", input, err)
+	}
+	if want := "smb://server/share/files.zip!/"; root != want {
+		t.Fatalf("NavigationRootPath(%q) = %q, want %q", input, root, want)
 	}
 }

@@ -1014,6 +1014,34 @@ func TestMainScreenShift6NavigatesToParentDirectory(t *testing.T) {
 	}
 }
 
+func TestMainScreenBackslashNavigatesToRootDirectory(t *testing.T) {
+	fm := &mainScreenFakeFileManager{currentPath: "smb://server/share/dir/subdir"}
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyBackslash}, ModifierState{})
+
+	if !handled {
+		t.Fatal("Backslash should be handled")
+	}
+	if got, want := fm.loadDirectoryPath, "smb://server/share"; got != want {
+		t.Fatalf("LoadDirectory path = %q, want root %q", got, want)
+	}
+}
+
+func TestMainScreenBackslashAtRootDoesNotReload(t *testing.T) {
+	fm := &mainScreenFakeFileManager{currentPath: "smb://server/share"}
+	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
+
+	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyBackslash}, ModifierState{})
+
+	if !handled {
+		t.Fatal("Backslash should be handled")
+	}
+	if fm.loadDirectoryPath != "" {
+		t.Fatalf("LoadDirectory path = %q, want no reload at root", fm.loadDirectoryPath)
+	}
+}
+
 func TestMainScreenLeftFocusesLeftWindow(t *testing.T) {
 	fm := &mainScreenFakeFileManager{}
 	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})

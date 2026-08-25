@@ -482,7 +482,7 @@ Key syntax:
 
 `Key` must be a valid `fyne.KeyName` value. Common values include `Up`,
 `Down`, `Return`, `BackSpace`, `Delete`, `F1` through `F12`, letters, digits,
-and punctuation key values such as `-`, `.`, `/`, `[`, and `]`.
+and punctuation key values such as `-`, `.`, `/`, `\`, `[`, and `]`.
 
 Supported aliases:
 
@@ -508,8 +508,10 @@ backward compatibility but ignored with a warning.
 
 Built-in window-size reset bindings are `S-Q` for the current File Manager
 window and `C-S-Q` for all File Manager windows.
-The built-in navigation bindings are `Backspace` for `history.back` and `S-6`
-for `directory.parent`.
+The built-in navigation bindings are `Backspace` for `history.back`, `S-6`
+for `directory.parent`, and `\` for `directory.root`. The root command opens
+the local filesystem or Windows drive root, the SMB share root, or the root
+inside the current archive.
 The built-in History Jump save binding is `S-B`, which pins the current
 directory in `navigationHistory.pinned`.
 
@@ -519,7 +521,8 @@ Available main-screen commands:
 - `cursor.first`, `cursor.last`
 - `open`, `open.defaultApp`, `selection.toggle`, `selection.markAll`
 - `selection.invert`, `selection.invertWithDirectories`
-- `directory.parent`, `directory.refresh`, `directory.home`, `directory.create`
+- `directory.parent`, `directory.root`, `directory.refresh`, `directory.home`,
+  `directory.create`
 - `clipboard.createTextFile`
 - `window.new`, `window.reopen`, `window.focusLeft`, `window.focusRight`
 - `window.resetSize`, `window.resetAllSizes`

@@ -24,6 +24,7 @@ const (
 	CommandSelectInvert        = "selection.invert"
 	CommandSelectInvertWithDir = "selection.invertWithDirectories"
 	CommandParentDirectory     = "directory.parent"
+	CommandRootDirectory       = "directory.root"
 	CommandRefresh             = "directory.refresh"
 	CommandHome                = "directory.home"
 	CommandDirectoryCreate     = "directory.create"
@@ -305,6 +306,7 @@ func defaultMainScreenBindings() []config.KeyBindingEntry {
 		{Key: "S-I", Command: CommandSelectInvertWithDir},
 		{Key: "Backspace", Command: CommandHistoryBack},
 		{Key: "S-6", Command: CommandParentDirectory},
+		{Key: "\\", Command: CommandRootDirectory},
 		{Key: "S-Comma", Command: CommandCursorFirst},
 		{Key: "Period", Command: CommandRefresh},
 		{Key: "S-Period", Command: CommandCursorLast},
@@ -356,6 +358,7 @@ func (mh *MainScreenKeyHandler) defaultCommands() map[string]commandSpec {
 		CommandSelectInvert:        {fn: func(CommandContext) { mh.invertSelection(false) }},
 		CommandSelectInvertWithDir: {fn: func(CommandContext) { mh.invertSelection(true) }},
 		CommandParentDirectory:     {fn: mh.parentDirectory},
+		CommandRootDirectory:       {fn: mh.rootDirectory},
 		CommandRefresh:             {fn: mh.refreshDirectory},
 		CommandHome:                {fn: mh.homeDirectory},
 		CommandWindowNew:           {fn: func(CommandContext) { mh.dependencies.windows.OpenNewWindow() }, transition: true},
@@ -539,6 +542,18 @@ func (mh *MainScreenKeyHandler) parentDirectory(CommandContext) {
 	parent := fileinfo.ParentPath(currentPath)
 	if parent != currentPath {
 		mh.dependencies.directory.LoadDirectory(parent)
+	}
+}
+
+func (mh *MainScreenKeyHandler) rootDirectory(CommandContext) {
+	currentPath := mh.dependencies.directory.GetCurrentPath()
+	root, err := fileinfo.NavigationRootPath(currentPath)
+	if err != nil {
+		mh.debugPrint("MainScreen: root path failed path=%s err=%v", currentPath, err)
+		return
+	}
+	if root != currentPath {
+		mh.dependencies.directory.LoadDirectory(root)
 	}
 }
 
