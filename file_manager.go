@@ -20,46 +20,51 @@ import (
 
 // FileManager is the main file manager struct.
 type FileManager struct {
-	window               fyne.Window
-	browser              *browser.Model
-	fileList             *widget.List
-	fileListView         *ui.KeySink
-	fileListItemHeight   float32
-	windowHighlight      *ui.HighlightFrame
-	windowActive         bool
-	pathDisplay          *widget.Label
-	statusLabel          *widget.Label
-	cursorRefreshSeq     uint64          // Diagnostic sequence for requested cursor refreshes
-	cursorItemUpdateSeq  uint64          // Latest cursor refresh sequence observed by the list UpdateItem callback
-	cursorMoveDirection  int             // Pending vertical cursor movement: -1 up, 0 none, +1 down
-	cursorAnchor         cursorRowAnchor // Last visible row object for shell menu positioning
-	config               *config.Config
-	state                *config.State
-	stateManager         *config.StateManager
-	initialWindowSize    fyne.Size
-	customTheme          *customtheme.CustomTheme                // Custom theme for colors
-	keyManager           *keymanager.KeyManager                  // Keyboard input manager
-	mainKeyHandler       *keymanager.MainScreenKeyHandler        // Main screen key handler (for canvas shortcut registration)
-	dirWatcher           *watcher.DirectoryWatcher               // Directory change watcher
-	searchOverlay        *ui.IncrementalSearchOverlay            // Incremental search overlay
-	searchHandler        *keymanager.IncrementalSearchKeyHandler // Search key handler
-	searchToken          keymanager.HandlerToken                 // Token of the pushed search handler
-	searchMatchers       *search.Provider                        // Shared search matcher provider
-	iconSvc              *fileinfo.IconService                   // Async icon service
-	runtime              *ApplicationRuntime                     // Application-scoped services
-	promptTargetID       uint64
-	promptUnregister     func()
-	transferDestSubID    uint64
-	transferDestUnsub    func()
-	lifecycleMu          sync.Mutex
-	closed               bool
-	quitConfirmationOpen bool
-	busy                 *ui.BusyController
-	directoryLoader      *browser.DirectoryLoader
-	viewerMu             sync.Mutex
-	nextViewerID         uint64
-	activeViewer         uint64
-	viewerCancel         context.CancelFunc
+	window                fyne.Window
+	browser               *browser.Model
+	fileList              *widget.List
+	fileListView          *ui.KeySink
+	fileListItemHeight    float32
+	windowHighlight       *ui.HighlightFrame
+	windowActive          bool
+	pathDisplay           *widget.Label
+	statusLabel           *widget.Label
+	cacheStatusBadge      *directoryCacheStatusBadge
+	cacheStatusBadgeReady bool
+	cacheStatusBadgeGen   uint64
+	cursorRefreshSeq      uint64          // Diagnostic sequence for requested cursor refreshes
+	cursorItemUpdateSeq   uint64          // Latest cursor refresh sequence observed by the list UpdateItem callback
+	cursorMoveDirection   int             // Pending vertical cursor movement: -1 up, 0 none, +1 down
+	cursorAnchor          cursorRowAnchor // Last visible row object for shell menu positioning
+	config                *config.Config
+	state                 *config.State
+	stateManager          *config.StateManager
+	initialWindowSize     fyne.Size
+	customTheme           *customtheme.CustomTheme                // Custom theme for colors
+	keyManager            *keymanager.KeyManager                  // Keyboard input manager
+	mainKeyHandler        *keymanager.MainScreenKeyHandler        // Main screen key handler (for canvas shortcut registration)
+	dirWatcher            *watcher.DirectoryWatcher               // Directory change watcher
+	searchOverlay         *ui.IncrementalSearchOverlay            // Incremental search overlay
+	searchHandler         *keymanager.IncrementalSearchKeyHandler // Search key handler
+	searchToken           keymanager.HandlerToken                 // Token of the pushed search handler
+	searchMatchers        *search.Provider                        // Shared search matcher provider
+	iconSvc               *fileinfo.IconService                   // Async icon service
+	runtime               *ApplicationRuntime                     // Application-scoped services
+	promptTargetID        uint64
+	promptUnregister      func()
+	transferDestSubID     uint64
+	transferDestUnsub     func()
+	lifecycleMu           sync.Mutex
+	closed                bool
+	quitConfirmationOpen  bool
+	busy                  *ui.BusyController
+	directoryLoader       *browser.DirectoryLoader
+	directoryCache        *browser.DirectoryCache
+	directoryListingState directoryListingState
+	viewerMu              sync.Mutex
+	nextViewerID          uint64
+	activeViewer          uint64
+	viewerCancel          context.CancelFunc
 
 	// Jobs indicator
 	jobsButton    *widget.Button
@@ -67,7 +72,7 @@ type FileManager struct {
 	jobsBlinkStop chan struct{}
 	jobsUnsub     func()
 
-	// Transient non-modal notice appended to the status bar.
+	// Transient non-modal notice displayed in the status bar.
 	statusNotice           string
 	statusNoticeGeneration uint64
 }

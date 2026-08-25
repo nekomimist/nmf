@@ -10,7 +10,9 @@ func (fm *FileManager) handleFileNameClick(index int, clicked fileinfo.FileInfo,
 	anchor := fm.GetCurrentCursorIndex()
 	fm.SetCursorByIndex(index)
 
-	if modifier&fyne.KeyModifierShift != 0 {
+	if fm.directoryListingNavigationOnly() {
+		fm.logCachedListingBlocked("selection.pointer")
+	} else if modifier&fyne.KeyModifierShift != 0 {
 		fm.markFileRange(anchor, index)
 	} else if fileinfo.IsFileOperationTarget(clicked) {
 		fm.browserModel().ToggleSelected(clicked.Path)
@@ -27,6 +29,10 @@ func (fm *FileManager) handleFileNameClick(index int, clicked fileinfo.FileInfo,
 }
 
 func (fm *FileManager) markFileRange(anchor, target int) {
+	if fm.directoryListingNavigationOnly() {
+		fm.logCachedListingBlocked("selection.range")
+		return
+	}
 	count := fm.FileCount()
 	if count == 0 {
 		return

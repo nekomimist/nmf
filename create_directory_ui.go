@@ -19,6 +19,10 @@ func (fm *FileManager) ShowCreateDirectoryDialog() {
 
 // CreateDirectory creates a directory under the current path and selects it.
 func (fm *FileManager) CreateDirectory(name string) bool {
+	if fm.directoryListingNavigationOnly() {
+		fm.logCachedListingBlocked("directory.create")
+		return false
+	}
 	currentPath := fm.GetCurrentPath()
 	newPath, err := fileinfo.CreateDirectoryPortable(currentPath, name)
 	if err != nil {

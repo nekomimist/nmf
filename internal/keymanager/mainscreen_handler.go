@@ -78,6 +78,7 @@ type MainScreenKeyHandler struct {
 	debugPrint      func(format string, args ...interface{})
 	commands        map[string]commandSpec
 	bindings        []keyBinding
+	commandAllowed  func(commandID string) bool
 	runningCommands map[string]int
 	runningDepth    int
 	deferTransition func(label string, action func())
@@ -132,6 +133,14 @@ func (mh *MainScreenKeyHandler) SetTransitionGate(deferTransition func(label str
 // debug warning and no-op instead of panicking.
 func (mh *MainScreenKeyHandler) SetActions(actions DialogActions) {
 	mh.actions = actions
+}
+
+// SetCommandGate installs a semantic command policy evaluated after a key has
+// been resolved to its command ID. This keeps temporary browsing modes
+// independent of configured key bindings. A denied command remains consumed
+// by its binding but is not run.
+func (mh *MainScreenKeyHandler) SetCommandGate(allowed func(commandID string) bool) {
+	mh.commandAllowed = allowed
 }
 
 // ActivationShortcuts returns the shortcuts the window canvas must register so
@@ -223,6 +232,10 @@ func (mh *MainScreenKeyHandler) executeCommand(commandID string, ctx CommandCont
 		mh.debugPrint("MainScreen: unknown command=%s key=%s", commandID, ctx.Key)
 		return false
 	}
+	if mh.commandAllowed != nil && !mh.commandAllowed(commandID) {
+		mh.debugPrint("MainScreen: command blocked command=%s key=%s", commandID, ctx.Key)
+		return false
+	}
 	if mh.runningDepth >= maxNestedCommandDepth {
 		mh.debugPrint("MainScreen: command depth exceeded command=%s", commandID)
 		return false
@@ -233,6 +246,13 @@ func (mh *MainScreenKeyHandler) executeCommand(commandID string, ctx CommandCont
 	}
 
 	run := func() {
+		// Transition commands may run on the next UI tick. Recheck the policy so
+		// a mode change in that gap cannot let a previously allowed mutation
+		// operate on a provisional listing.
+		if mh.commandAllowed != nil && !mh.commandAllowed(commandID) {
+			mh.debugPrint("MainScreen: deferred command blocked command=%s key=%s", commandID, ctx.Key)
+			return
+		}
 		mh.debugPrint("MainScreen: command=%s key=%s event=%s", commandID, ctx.Key, ctx.Event)
 		mh.runningDepth++
 		mh.runningCommands[commandID]++

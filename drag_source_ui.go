@@ -14,6 +14,10 @@ import (
 )
 
 func (fm *FileManager) StartFileDrag(dragged fileinfo.FileInfo) {
+	if fm.directoryListingNavigationOnly() {
+		fm.logCachedListingBlocked("drag.start")
+		return
+	}
 	if runtime.GOOS != "windows" {
 		debugPrint("FileManager: File drag source unsupported on %s", runtime.GOOS)
 		return

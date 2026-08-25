@@ -470,7 +470,7 @@ func TestLoadDirectoryAsyncFallbackSkipsHistoryWhenReopeningSameDirectory(t *tes
 	fm := newParentFallbackTestFileManager(state)
 
 	handle := fm.directoryLoader.Begin()
-	fm.loadDirectoryAsync(handle, requested, opened, config.SortConfig{SortBy: "name", SortOrder: "asc"}, true, nil)
+	fm.loadDirectoryAsync(handle, requested, opened, config.SortConfig{SortBy: "name", SortOrder: "asc"}, true, nil, directoryLoadPresentation{})
 
 	if got := fm.GetCurrentPath(); got != opened {
 		t.Fatalf("currentPath = %q, want fallback to have opened %q", got, opened)
@@ -521,7 +521,7 @@ func TestLoadDirectoryAsyncFallbackRestoresCursorForOpenedPathNotRequestedPath(t
 	fm := newParentFallbackTestFileManager(state)
 
 	handle := fm.directoryLoader.Begin()
-	fm.loadDirectoryAsync(handle, requested, previousPath, config.SortConfig{SortBy: "name", SortOrder: "asc"}, true, nil)
+	fm.loadDirectoryAsync(handle, requested, previousPath, config.SortConfig{SortBy: "name", SortOrder: "asc"}, true, nil, directoryLoadPresentation{})
 
 	if got := fm.GetCurrentPath(); got != opened {
 		t.Fatalf("currentPath = %q, want fallback to have opened %q", got, opened)
@@ -580,7 +580,7 @@ func TestLoadDirectoryAsyncRefreshRestoresNearestSurvivingCursorNeighbor(t *test
 	}
 
 	handle := fm.directoryLoader.Begin()
-	fm.loadDirectoryAsync(handle, dir, dir, config.SortConfig{SortBy: "name", SortOrder: "asc"}, false, neighbors)
+	fm.loadDirectoryAsync(handle, dir, dir, config.SortConfig{SortBy: "name", SortOrder: "asc"}, false, neighbors, directoryLoadPresentation{})
 
 	if got := fm.browserModel().CursorPath(); got != next {
 		t.Fatalf("cursorPath = %q, want following pre-refresh neighbor %q", got, next)
@@ -638,7 +638,7 @@ func TestLoadDirectoryAsyncKeepsActiveFilterOnReloadAndNavigation(t *testing.T) 
 
 			handle := fm.directoryLoader.Begin()
 			fm.loadDirectoryAsync(handle, dir, tt.previousPath,
-				config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}, false, nil)
+				config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}, false, nil, directoryLoadPresentation{})
 
 			if got, want := namesOf(fm.GetFiles()), []string{"..", "assets", "image.png"}; !reflect.DeepEqual(got, want) {
 				t.Fatalf("visible files = %v, want active filter preserved as %v", got, want)
