@@ -575,11 +575,9 @@ func (fm *FileManager) OpenFile(file *fileinfo.FileInfo) {
 		fm.LoadDirectory(fileinfo.ArchiveRootPath(file.Path))
 		return
 	}
-	if dir, ok, err := fileinfo.ResolveShortcutNavigationDir(file.Path); ok {
-		fm.LoadDirectory(dir)
+	if fm.isShortcutNavigationCandidate(file.Path) {
+		fm.openShortcut(file.Path)
 		return
-	} else if err != nil {
-		debugPrint("FileManager: Windows shortcut navigation skipped path=%s err=%v", file.Path, err)
 	}
 
 	// Regular file: try to open with associated application

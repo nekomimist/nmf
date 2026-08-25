@@ -65,3 +65,13 @@ func TestResolveAccessibleDirectoryPathContext_Cancelled(t *testing.T) {
 		t.Fatalf("error = %v, want context.Canceled", err)
 	}
 }
+
+func TestResolveDirectoryPathContext_Cancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, err := ResolveDirectoryPathContext(ctx, t.TempDir())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+}

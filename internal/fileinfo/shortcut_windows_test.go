@@ -3,6 +3,8 @@
 package fileinfo
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,7 +59,7 @@ func TestResolveShortcutNavigationDirToFileParent(t *testing.T) {
 	}
 }
 
-func TestResolveShortcutNavigationDirMissingTargetFallsBack(t *testing.T) {
+func TestResolveShortcutNavigationDirMissingTargetReportsTargetError(t *testing.T) {
 	tmp := t.TempDir()
 	shortcut := filepath.Join(tmp, "missing.lnk")
 	makeTestShortcut(t, shortcut, filepath.Join(tmp, "missing.txt"))
@@ -69,6 +71,10 @@ func TestResolveShortcutNavigationDirMissingTargetFallsBack(t *testing.T) {
 	if ok {
 		t.Fatal("ResolveShortcutNavigationDir ok = true, want false")
 	}
+	var shortcutErr *ShortcutNavigationError
+	if !errors.As(err, &shortcutErr) || shortcutErr.Stage != ShortcutNavigationTarget {
+		t.Fatalf("ResolveShortcutNavigationDir error = %#v, want target-stage error", err)
+	}
 }
 
 func TestResolveShortcutNavigationDirNonShortcut(t *testing.T) {
@@ -78,6 +84,19 @@ func TestResolveShortcutNavigationDirNonShortcut(t *testing.T) {
 	}
 	if ok || got != "" {
 		t.Fatalf("ResolveShortcutNavigationDir = %q, %t, want empty, false", got, ok)
+	}
+}
+
+func TestResolveShortcutNavigationDirContextCanceledBeforeCOM(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, ok, err := ResolveShortcutNavigationDirContext(ctx, filepath.Join(t.TempDir(), "target.lnk"))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("ResolveShortcutNavigationDirContext error = %v, want context.Canceled", err)
+	}
+	if ok {
+		t.Fatal("ResolveShortcutNavigationDirContext ok = true, want false")
 	}
 }
 

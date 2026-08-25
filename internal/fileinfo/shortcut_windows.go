@@ -3,6 +3,7 @@
 package fileinfo
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -10,15 +11,36 @@ import (
 	"github.com/nziu/lnk"
 )
 
-// ResolveShortcutNavigationDir resolves a Windows shortcut to the directory
-// nmf should navigate to when the regular open command is used.
-func ResolveShortcutNavigationDir(p string) (string, bool, error) {
-	if !strings.EqualFold(filepath.Ext(p), ".lnk") {
+// IsShortcutNavigationCandidate reports whether p should be resolved as a
+// Windows shortcut before default-app delegation.
+func IsShortcutNavigationCandidate(p string) bool {
+	return strings.EqualFold(filepath.Ext(p), ".lnk")
+}
+
+// ResolveShortcutNavigationDirContext resolves a Windows shortcut while
+// propagating logical cancellation around COM and filesystem calls. Windows
+// local/UNC filesystem calls themselves may remain blocked until the OS
+// returns, so callers must also discard results from canceled operations.
+func ResolveShortcutNavigationDirContext(ctx context.Context, p string) (string, bool, error) {
+	if !IsShortcutNavigationCandidate(p) {
 		return "", false, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return "", false, err
 	}
 
 	shortcut, err := lnk.Read(NormalizeInputPath(p))
 	if err != nil {
+		return "", false, &ShortcutNavigationError{
+			Stage: ShortcutNavigationRead,
+			Path:  p,
+			Err:   err,
+		}
+	}
+	if err := ctx.Err(); err != nil {
 		return "", false, err
 	}
 
@@ -27,9 +49,14 @@ func ResolveShortcutNavigationDir(p string) (string, bool, error) {
 		return "", false, nil
 	}
 
-	info, err := StatPortable(target)
+	info, err := StatPortableContext(ctx, target)
 	if err != nil {
-		return "", false, fmt.Errorf("stat shortcut target %q: %w", target, err)
+		return "", false, &ShortcutNavigationError{
+			Stage:  ShortcutNavigationTarget,
+			Path:   p,
+			Target: target,
+			Err:    fmt.Errorf("stat: %w", err),
+		}
 	}
 
 	dir := target
@@ -37,9 +64,14 @@ func ResolveShortcutNavigationDir(p string) (string, bool, error) {
 		dir = filepath.Dir(target)
 	}
 
-	resolved, _, err := ResolveDirectoryPath(dir)
+	resolved, _, err := ResolveDirectoryPathContext(ctx, dir)
 	if err != nil {
-		return "", false, err
+		return "", false, &ShortcutNavigationError{
+			Stage:  ShortcutNavigationTarget,
+			Path:   p,
+			Target: target,
+			Err:    err,
+		}
 	}
 	return resolved, true, nil
 }

@@ -17,6 +17,7 @@ func (fm *FileManager) closeWindow() {
 	if fm.directoryLoader != nil {
 		fm.directoryLoader.CancelActive()
 	}
+	fm.invalidateShortcutOpen(0)
 	fm.invalidateViewerLoad(0)
 	if fm.busy != nil {
 		fm.busy.End()

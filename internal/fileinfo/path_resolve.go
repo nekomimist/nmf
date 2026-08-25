@@ -134,14 +134,23 @@ func canonicalArchiveDisplayPath(input, trimmed string) (string, Parsed, bool, e
 // ResolveDirectoryPath resolves input to a canonical path for navigation.
 // Local paths are validated as directories; SMB paths are returned in canonical display form.
 func ResolveDirectoryPath(input string) (string, Parsed, error) {
-	resolved, parsed, err := ResolvePathDisplay(input)
+	return ResolveDirectoryPathContext(context.Background(), input)
+}
+
+// ResolveDirectoryPathContext resolves input to a canonical navigation path
+// while propagating cancellation to provider operations used for validation.
+func ResolveDirectoryPathContext(ctx context.Context, input string) (string, Parsed, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	resolved, parsed, err := ResolvePathDisplayContext(ctx, input)
 	if err != nil {
 		return "", parsed, err
 	}
 	if parsed.Scheme == SchemeSMB {
 		return resolved, parsed, nil
 	}
-	info, err := StatPortable(resolved)
+	info, err := StatPortableContext(ctx, resolved)
 	if err != nil {
 		return "", parsed, err
 	}

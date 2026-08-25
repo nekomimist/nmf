@@ -184,6 +184,10 @@ Long-running UI actions:
 - File preview reads run behind the main busy/input guard on a worker goroutine.
   A per-window viewer generation drops late results after cancellation or
   window close before they can push a viewer handler.
+- Windows shortcut resolution, target inspection, and any default-app fallback
+  run behind the same guard on a worker goroutine. Escape invalidates the
+  per-window shortcut generation. Native UNC calls may remain blocked until
+  Windows returns, but their late results cannot mutate UI or navigation state.
 - Direct paths typed into path/history/copy-move/compare dialogs are only
   canonicalized synchronously. Accessibility is checked by the downstream
   asynchronous directory load, job, or comparison, which owns error reporting.

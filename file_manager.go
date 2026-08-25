@@ -66,6 +66,13 @@ type FileManager struct {
 	nextViewerID          uint64
 	activeViewer          uint64
 	viewerCancel          context.CancelFunc
+	shortcutMu            sync.Mutex
+	nextShortcutOpenID    uint64
+	activeShortcutOpenID  uint64
+	shortcutOpenCancel    context.CancelFunc
+	shortcutCandidateFn   func(string) bool
+	shortcutResolverFn    func(context.Context, string) (string, bool, error)
+	shortcutDefaultOpenFn func(string) error
 
 	// Jobs indicator
 	jobsButton    *widget.Button

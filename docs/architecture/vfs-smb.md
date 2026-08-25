@@ -140,7 +140,12 @@ supported archive files, and delegates other files to
 `fileinfo.OpenWithDefaultApp`.
 On Windows, `.lnk` shortcut files are resolved before default-app delegation:
 shortcuts to directories enter the target directory, and shortcuts to files
-enter the target file's parent directory.
+enter the target file's parent directory. Shortcut COM reads and target
+accessibility checks run on a background worker behind the main busy guard;
+Escape logically cancels the operation and late operating-system results are
+discarded. A shortcut that cannot be parsed is still delegated to Windows on
+that worker, while an inaccessible parsed target is reported directly instead
+of invoking the same unreachable target again through `ShellExecuteW`.
 
 Main-list `Shift+Return` uses `open.defaultApp`. It enters directories but
 delegates files directly to `fileinfo.OpenWithDefaultApp`, so archive-like
