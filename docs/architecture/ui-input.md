@@ -390,7 +390,8 @@ Filter-style text input:
   clears the active filter without becoming history and `Ctrl+D` cannot delete it.
 - Navigation History and Apply Filter use `Ctrl+Enter` to apply the current
   input directly. Apply Filter uses `Ctrl+D` to delete the selected history
-  entry; Navigation History uses `Ctrl+D` to unpin a saved path.
+  entry; Navigation History uses `Ctrl+D` to unpin a saved path and `Ctrl+R`
+  to toggle between frecency and last-access ordering.
 - Directory Jump keeps shortcut-prefix matching separate from migemo so its
   unique-match auto-jump behavior stays deterministic.
 

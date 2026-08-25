@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image/color"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,6 +18,11 @@ import (
 	"nmf/internal/keymanager"
 	"nmf/internal/search"
 	customtheme "nmf/internal/theme"
+)
+
+const (
+	navigationHistoryOrderFrecency = "Frecency"
+	navigationHistoryOrderLastUsed = "Last Access"
 )
 
 // CustomSearchEntry is a custom entry that redirects focus to KeySink
@@ -70,6 +76,8 @@ func (c *CustomSearchEntry) updateIMEAnchor() {
 // NavigationHistoryDialog represents a navigation history dialog with search
 type NavigationHistoryDialog struct {
 	searchEntry      *CustomSearchEntry
+	orderRadio       *widget.RadioGroup
+	orderMode        string
 	historyList      *widget.List
 	selectedPath     string
 	selectedIndex    int // Currently selected list index
@@ -180,17 +188,31 @@ func (nhd *NavigationHistoryDialog) createWidgets() {
 
 	// Set list size
 	nhd.historyList.Resize(searchDialogListSize())
+
+	// Keep frecency as the default while allowing a chronological view of the
+	// same candidates. Required prevents clicking the selected option from
+	// leaving the dialog without an active ordering mode.
+	nhd.orderRadio = widget.NewRadioGroup([]string{
+		navigationHistoryOrderFrecency,
+		navigationHistoryOrderLastUsed,
+	}, func(selected string) {
+		nhd.setOrderMode(selected)
+	})
+	nhd.orderRadio.Horizontal = true
+	nhd.orderRadio.Required = true
+	nhd.orderRadio.SetSelected(navigationHistoryOrderFrecency)
 }
 
 // updateFilteredPaths updates the filtered paths based on query
 func (nhd *NavigationHistoryDialog) updateFilteredPaths(query string) {
+	orderedPaths := nhd.pathsInDisplayOrder()
 	if query == "" {
-		nhd.filteredPaths = nhd.allPaths
+		nhd.filteredPaths = orderedPaths
 	} else {
 		matcher := nhd.matchers.Build(query)
 		nhd.filteredPaths = []string{}
 
-		for _, path := range nhd.allPaths {
+		for _, path := range orderedPaths {
 			if matcher.Match(path) {
 				nhd.filteredPaths = append(nhd.filteredPaths, path)
 			}
@@ -212,6 +234,38 @@ func (nhd *NavigationHistoryDialog) updateFilteredPaths(query string) {
 		nhd.selectedIndex = -1
 		nhd.selectedPath = ""
 		nhd.notifySelectedPathChanged()
+	}
+}
+
+func (nhd *NavigationHistoryDialog) pathsInDisplayOrder() []string {
+	paths := append([]string(nil), nhd.allPaths...)
+	if nhd.orderMode != navigationHistoryOrderLastUsed {
+		return paths
+	}
+
+	sort.SliceStable(paths, func(i, j int) bool {
+		return nhd.lastUsed[paths[i]].After(nhd.lastUsed[paths[j]])
+	})
+	return paths
+}
+
+func (nhd *NavigationHistoryDialog) setOrderMode(mode string) {
+	if mode != navigationHistoryOrderFrecency && mode != navigationHistoryOrderLastUsed {
+		return
+	}
+	if nhd.orderMode == mode {
+		return
+	}
+
+	nhd.orderMode = mode
+	query := ""
+	if nhd.searchEntry != nil {
+		query = nhd.searchEntry.Text
+	}
+	nhd.updateFilteredPaths(query)
+	nhd.debugPrint("HistoryDialog: Order mode=%s", mode)
+	if nhd.parent != nil && nhd.sink != nil {
+		nhd.parent.Canvas().Focus(nhd.sink)
 	}
 }
 
@@ -246,6 +300,8 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 	// Create search section
 	searchLabel := widget.NewLabel("Filter:")
 	searchSection := container.NewBorder(nil, nil, searchLabel, nil, nhd.searchEntry)
+	orderLabel := widget.NewLabel("Order (Ctrl+R):")
+	orderSection := container.NewBorder(nil, nil, orderLabel, nil, nhd.orderRadio)
 
 	// Create scrollable list container
 	listScroll := newDialogListScroller(nhd.historyList, dialogTextWidth(nhd.allPaths, listWidth), listWidth, searchDialogListHeight)
@@ -283,7 +339,7 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 
 	// Create main content
 	content := container.NewBorder(
-		container.NewVBox(titleLabel, searchSection), // top
+		container.NewVBox(titleLabel, orderSection, searchSection),                                                      // top
 		dialogButtonBar(dialogCancelButton("Cancel", nhd.CancelDialog), dialogConfirmButton("OK", nhd.AcceptSelection)), // bottom
 		nil,            // left
 		nil,            // right
@@ -386,6 +442,18 @@ func (nhd *NavigationHistoryDialog) ClearSearch() {
 func (nhd *NavigationHistoryDialog) SelectCurrentItem() {
 	// The selection is already handled by the list widget
 	nhd.debugPrint("HistoryDialog: Select current item: %s", nhd.selectedPath)
+}
+
+// ToggleHistoryOrder switches between frecency and last-access ordering.
+func (nhd *NavigationHistoryDialog) ToggleHistoryOrder() {
+	if nhd.orderRadio == nil {
+		return
+	}
+	if nhd.orderMode == navigationHistoryOrderLastUsed {
+		nhd.orderRadio.SetSelected(navigationHistoryOrderFrecency)
+		return
+	}
+	nhd.orderRadio.SetSelected(navigationHistoryOrderLastUsed)
 }
 
 // AcceptSelection accepts the current selection and closes the dialog

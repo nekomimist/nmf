@@ -369,11 +369,14 @@ Shape of `state.json`:
   directory, and its LRU timestamp. The entry limit is
   `ui.cursorMemory.maxEntries` (in `config.json`).
 - `navigationHistory.entries`/`lastUsed`/`useCount`: visited-path history,
-  shown sorted by zoxide-style frecency. `useCount` stores usage counters;
-  missing values are migrated to `1`. The entry limit is
+  shown by default in zoxide-style frecency order. History Jump's order radio
+  can switch the view to newest `lastUsed` first; `Ctrl+R` toggles the same
+  mode. `useCount` stores usage counters; missing values are migrated to `1`.
+  The entry limit is
   `ui.navigationHistory.maxEntries` (in `config.json`).
 - `navigationHistory.pinned`: saved History Jump paths. They are shown before
-  regular history and are never pruned by `maxEntries`.
+  regular history in the default view and are never pruned by `maxEntries`.
+  Last Access mode instead orders every candidate solely by `lastUsed`.
 - `fileFilter.entries`/`current`/`enabled`: filter history, the currently
   applied filter, and whether it is enabled. Entries use `pattern`,
   `lastUsed`, and `useCount`; text after `;;` in a pattern is a searchable

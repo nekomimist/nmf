@@ -116,6 +116,71 @@ func TestNavigationHistoryFilterMatchesAllQueryTokens(t *testing.T) {
 	}
 }
 
+func TestNavigationHistoryOrderModeSwitchesBetweenFrecencyAndLastAccess(t *testing.T) {
+	now := time.Now()
+	dialog := NewNavigationHistoryDialog(
+		[]string{"/tmp/frequent", "/tmp/project-old", "/tmp/project-recent"},
+		nil,
+		nil,
+		nil,
+		map[string]time.Time{
+			"/tmp/frequent":       now.Add(-time.Hour),
+			"/tmp/project-old":    now.Add(-2 * time.Hour),
+			"/tmp/project-recent": now.Add(-time.Minute),
+		},
+		nil,
+		func(string, ...interface{}) {},
+		search.NewPlainProvider(),
+	)
+
+	dialog.searchEntry.SetText("project")
+	dialog.ToggleHistoryOrder()
+
+	wantRecent := []string{"/tmp/project-recent", "/tmp/project-old"}
+	if len(dialog.filteredPaths) != len(wantRecent) {
+		t.Fatalf("last-access paths = %#v, want %#v", dialog.filteredPaths, wantRecent)
+	}
+	for i := range wantRecent {
+		if dialog.filteredPaths[i] != wantRecent[i] {
+			t.Fatalf("last-access paths = %#v, want %#v", dialog.filteredPaths, wantRecent)
+		}
+	}
+	if got := dialog.orderRadio.Selected; got != navigationHistoryOrderLastUsed {
+		t.Fatalf("selected order = %q, want %q", got, navigationHistoryOrderLastUsed)
+	}
+	if got := dialog.selectedPath; got != "/tmp/project-recent" {
+		t.Fatalf("selected path = %q, want most recently accessed match", got)
+	}
+
+	dialog.ToggleHistoryOrder()
+	wantFrecency := []string{"/tmp/project-old", "/tmp/project-recent"}
+	for i := range wantFrecency {
+		if dialog.filteredPaths[i] != wantFrecency[i] {
+			t.Fatalf("frecency paths = %#v, want %#v", dialog.filteredPaths, wantFrecency)
+		}
+	}
+}
+
+func TestNavigationHistoryOrderRadioRequiresSelection(t *testing.T) {
+	dialog := NewNavigationHistoryDialog(
+		[]string{"/tmp"},
+		nil,
+		nil,
+		nil,
+		map[string]time.Time{},
+		nil,
+		func(string, ...interface{}) {},
+		search.NewPlainProvider(),
+	)
+
+	if !dialog.orderRadio.Required {
+		t.Fatal("order radio should require one selected option")
+	}
+	if got := dialog.orderRadio.Selected; got != navigationHistoryOrderFrecency {
+		t.Fatalf("default order = %q, want %q", got, navigationHistoryOrderFrecency)
+	}
+}
+
 func TestNavigationHistoryFilterKeepsOpenPathMetadata(t *testing.T) {
 	dialog := NewNavigationHistoryDialog(
 		[]string{"/tmp/open", "/tmp/history"},

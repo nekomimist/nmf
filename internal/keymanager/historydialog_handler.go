@@ -22,6 +22,7 @@ type HistoryDialogInterface interface {
 	ScrollSelectedRight()
 	ResetHorizontalScroll()
 	UnpinSelectedPath()
+	ToggleHistoryOrder()
 
 	// Focus management (deprecated in focusless design)
 	IsSearchFocused() bool
@@ -49,6 +50,7 @@ func NewHistoryDialogKeyHandler(hd HistoryDialogInterface, debugPrint func(forma
 		{"C-F", func() {}},
 		{"C-H", hd.BackspaceSearch},
 		{"C-D", hd.UnpinSelectedPath},
+		{"C-R", hd.ToggleHistoryOrder},
 		{"C-V", hd.PasteFromClipboard},
 		{"S-Insert", hd.PasteFromClipboard},
 

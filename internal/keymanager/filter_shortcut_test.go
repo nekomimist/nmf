@@ -17,6 +17,7 @@ type fakeFilterSearchDialog struct {
 	direct    int
 	deleted   int
 	unpinned  int
+	order     int
 	paste     int
 }
 
@@ -36,6 +37,7 @@ func (f *fakeFilterSearchDialog) AcceptSelection()              {}
 func (f *fakeFilterSearchDialog) AcceptDirectInput()            { f.direct++ }
 func (f *fakeFilterSearchDialog) DeleteSelectedEntry()          { f.deleted++ }
 func (f *fakeFilterSearchDialog) UnpinSelectedPath()            { f.unpinned++ }
+func (f *fakeFilterSearchDialog) ToggleHistoryOrder()           { f.order++ }
 func (f *fakeFilterSearchDialog) AcceptDirectPathNavigation()   { f.direct++ }
 func (f *fakeFilterSearchDialog) AcceptDirectPath()             {}
 func (f *fakeFilterSearchDialog) OpenDestination()              { f.open++ }

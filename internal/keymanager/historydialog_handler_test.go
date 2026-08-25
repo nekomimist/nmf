@@ -52,6 +52,18 @@ func TestHistoryDialogHandlerCtrlFSwallowed(t *testing.T) {
 	}
 }
 
+func TestHistoryDialogHandlerCtrlRTogglesHistoryOrder(t *testing.T) {
+	dialog := &fakeFilterSearchDialog{}
+	handler := NewHistoryDialogKeyHandler(dialog, func(string, ...interface{}) {})
+
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("Ctrl+R should be handled")
+	}
+	if dialog.order != 1 {
+		t.Fatalf("ToggleHistoryOrder count = %d, want 1", dialog.order)
+	}
+}
+
 func TestHistoryDialogHandlerPlainDeleteOnlyClearsSearch(t *testing.T) {
 	dialog := &fakeFilterSearchDialog{}
 	handler := NewHistoryDialogKeyHandler(dialog, func(string, ...interface{}) {})
