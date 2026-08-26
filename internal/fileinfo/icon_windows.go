@@ -3,15 +3,11 @@
 package fileinfo
 
 import (
-	"bytes"
 	"fmt"
 	"image"
-	"image/png"
 	"strings"
 	"syscall"
 	"unsafe"
-
-	"fyne.io/fyne/v2"
 )
 
 // Minimal Windows icon extraction using SHGetFileInfo and GDI to render HICON into a 32-bit DIB.
@@ -72,38 +68,22 @@ type bitmapinfo struct {
 	// We don't need color table for 32-bit BI_RGB
 }
 
-func platformFetchExtIcon(ext string, size int) (fyne.Resource, error) {
+func platformFetchExtIcon(ext string, size int) (*image.RGBA, error) {
 	hicon, err := getHICONForExt(ext, size)
 	if err != nil || hicon == 0 {
 		return nil, err
 	}
 	defer destroyIcon(hicon)
-	img, err := renderHICONToImage(hicon, iconSizeFor(size))
-	if err != nil {
-		return nil, err
-	}
-	buf := &bytes.Buffer{}
-	if err := png.Encode(buf, img); err != nil {
-		return nil, err
-	}
-	return fyne.NewStaticResource("ext:"+ext, buf.Bytes()), nil
+	return renderHICONToImage(hicon, iconPixelSize(size))
 }
 
-func platformFetchFileIcon(path string, size int) (fyne.Resource, error) {
+func platformFetchFileIcon(path string, size int) (*image.RGBA, error) {
 	hicon, err := getHICONForPath(path, size)
 	if err != nil || hicon == 0 {
 		return nil, err
 	}
 	defer destroyIcon(hicon)
-	img, err := renderHICONToImage(hicon, iconSizeFor(size))
-	if err != nil {
-		return nil, err
-	}
-	buf := &bytes.Buffer{}
-	if err := png.Encode(buf, img); err != nil {
-		return nil, err
-	}
-	return fyne.NewStaticResource("file:"+path, buf.Bytes()), nil
+	return renderHICONToImage(hicon, iconPixelSize(size))
 }
 
 // preferFileIcon returns true for types where a file-specific icon is beneficial.
@@ -118,26 +98,13 @@ func preferFileIcon(path, ext string) bool {
 	}
 }
 
-func iconSizeFor(size int) int {
-	if size <= 16 {
-		return 16
-	}
-	if size <= 24 {
-		return 24
-	}
-	if size <= 32 {
-		return 32
-	}
-	return 32
-}
-
 func getHICONForExt(ext string, size int) (syscall.Handle, error) {
 	if ext == "" {
 		return 0, fmt.Errorf("empty extension")
 	}
 	var sfi shfileinfoW
 	flags := uint32(SHGFI_ICON | SHGFI_USEFILEATTRIBUTES)
-	if iconSizeFor(size) <= 16 {
+	if iconPixelSize(size) <= 16 {
 		flags |= SHGFI_SMALLICON
 	} else {
 		flags |= SHGFI_LARGEICON
@@ -162,7 +129,7 @@ func getHICONForExt(ext string, size int) (syscall.Handle, error) {
 func getHICONForPath(path string, size int) (syscall.Handle, error) {
 	var sfi shfileinfoW
 	flags := uint32(SHGFI_ICON)
-	if iconSizeFor(size) <= 16 {
+	if iconPixelSize(size) <= 16 {
 		flags |= SHGFI_SMALLICON
 	} else {
 		flags |= SHGFI_LARGEICON
@@ -184,7 +151,7 @@ func getHICONForPath(path string, size int) (syscall.Handle, error) {
 	return sfi.hIcon, nil
 }
 
-func renderHICONToImage(hicon syscall.Handle, size int) (image.Image, error) {
+func renderHICONToImage(hicon syscall.Handle, size int) (*image.RGBA, error) {
 	// Create memory DC
 	hdc, _, _ := procCreateCompatibleDC.Call(0)
 	if hdc == 0 {
@@ -239,7 +206,7 @@ func renderHICONToImage(hicon syscall.Handle, size int) (image.Image, error) {
 
 	// Read pixels (BGRA) and convert to RGBA
 	stride := size * 4
-	buf := CGoBytes(bits, size*stride)
+	buf := unsafe.Slice((*byte)(bits), size*stride)
 	// Convert to image.RGBA
 	img := image.NewRGBA(image.Rect(0, 0, size, size))
 	// BGRA -> RGBA
@@ -264,15 +231,4 @@ func destroyIcon(h syscall.Handle) {
 	if h != 0 {
 		procDestroyIcon.Call(uintptr(h))
 	}
-}
-
-// CGoBytes converts C memory to a Go byte slice without using cgo by copying.
-func CGoBytes(p unsafe.Pointer, n int) []byte {
-	if p == nil || n <= 0 {
-		return nil
-	}
-	var b = make([]byte, n)
-	src := (*[1 << 30]byte)(p)[:n:n]
-	copy(b, src)
-	return b
 }

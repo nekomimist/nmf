@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image"
 	"image/color"
 
 	"fyne.io/fyne/v2"
@@ -13,19 +14,26 @@ import (
 // TappableIcon is a custom icon widget that can handle tap events
 type TappableIcon struct {
 	widget.BaseWidget
-	icon      *widget.Icon
-	onTapped  func()
-	onDragged func()
-	dragging  bool
-	pressed   bool
-	pressPos  fyne.Position
+	icon        *widget.Icon
+	raster      *canvas.Image
+	usingRaster bool
+	onTapped    func()
+	onDragged   func()
+	dragging    bool
+	pressed     bool
+	pressPos    fyne.Position
 }
 
 // NewTappableIcon creates a new tappable icon widget
 func NewTappableIcon(resource fyne.Resource, onTapped func()) *TappableIcon {
 	icon := widget.NewIcon(resource)
+	raster := canvas.NewImageFromImage(nil)
+	raster.FillMode = canvas.ImageFillContain
+	raster.ScaleMode = canvas.ImageScaleFastest
+	raster.Hide()
 	ti := &TappableIcon{
 		icon:     icon,
+		raster:   raster,
 		onTapped: onTapped,
 	}
 	ti.ExtendBaseWidget(ti)
@@ -90,8 +98,36 @@ func (ti *TappableIcon) MouseOut() {
 
 // SetResource sets the icon resource
 func (ti *TappableIcon) SetResource(resource fyne.Resource) {
-	ti.icon.SetResource(resource)
-	ti.Refresh()
+	if !ti.usingRaster && ti.icon.Resource == resource {
+		return
+	}
+	if ti.usingRaster {
+		ti.usingRaster = false
+		ti.raster.Image = nil
+		ti.raster.Hide()
+		ti.raster.Refresh()
+		ti.icon.Show()
+	}
+	if ti.icon.Resource != resource {
+		ti.icon.SetResource(resource)
+	}
+}
+
+// SetImage displays a decoded native icon without converting it to a resource.
+// The image is owned by IconService and may be shared by multiple rows.
+func (ti *TappableIcon) SetImage(img *image.RGBA) {
+	if img == nil {
+		ti.SetResource(ti.icon.Resource)
+		return
+	}
+	if ti.usingRaster && ti.raster.Image == img {
+		return
+	}
+	ti.usingRaster = true
+	ti.icon.Hide()
+	ti.raster.Image = img
+	ti.raster.Show()
+	ti.raster.Refresh()
 }
 
 // SetOnTapped sets the tap handler function
@@ -108,8 +144,39 @@ func (ti *TappableIcon) SetOnDragged(onDragged func()) {
 
 // CreateRenderer creates the widget renderer
 func (ti *TappableIcon) CreateRenderer() fyne.WidgetRenderer {
-	return widget.NewSimpleRenderer(ti.icon)
+	return &tappableIconRenderer{
+		icon:    ti,
+		objects: []fyne.CanvasObject{ti.icon, ti.raster},
+	}
 }
+
+type tappableIconRenderer struct {
+	icon    *TappableIcon
+	objects []fyne.CanvasObject
+}
+
+func (r *tappableIconRenderer) Layout(size fyne.Size) {
+	r.icon.icon.Resize(size)
+	r.icon.raster.Resize(size)
+}
+
+func (r *tappableIconRenderer) MinSize() fyne.Size {
+	return r.icon.icon.MinSize()
+}
+
+func (r *tappableIconRenderer) Refresh() {
+	if r.icon.usingRaster {
+		r.icon.raster.Refresh()
+		return
+	}
+	r.icon.icon.Refresh()
+}
+
+func (r *tappableIconRenderer) Objects() []fyne.CanvasObject {
+	return r.objects
+}
+
+func (r *tappableIconRenderer) Destroy() {}
 
 // FileNameLabel draws a file name that shrinks to its assigned width.
 type FileNameLabel struct {

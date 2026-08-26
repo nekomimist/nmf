@@ -74,6 +74,9 @@ type FileManager struct {
 	shortcutResolverFn    func(context.Context, string) (string, bool, error)
 	shortcutDefaultOpenFn func(string) error
 
+	fileListRows           map[int]*ui.FileListRow
+	fileListRowAssignments map[*ui.FileListRow]fileListRowAssignment
+
 	// Jobs indicator
 	jobsButton    *widget.Button
 	jobsBlinking  bool
@@ -136,6 +139,11 @@ func (fm *FileManager) jobManager() *jobs.Manager {
 type cursorRowAnchor struct {
 	path   string
 	object fyne.CanvasObject
+}
+
+type fileListRowAssignment struct {
+	index int
+	path  string
 }
 
 func (fm *FileManager) browserModel() *browser.Model {

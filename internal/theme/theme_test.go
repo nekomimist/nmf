@@ -49,6 +49,37 @@ func TestCustomThemeDelegatesFyneThemeColors(t *testing.T) {
 	}
 }
 
+func TestCustomThemeCachesFyneBaseThemes(t *testing.T) {
+	cfg := &config.Config{Theme: config.ThemeConfig{Dark: true}}
+	customTheme := NewCustomTheme(cfg, func(string, ...interface{}) {})
+	if customTheme.darkBase != nil || customTheme.lightBase != nil {
+		t.Fatal("base themes were initialized eagerly")
+	}
+
+	dark := customTheme.fyneTheme()
+	if dark == nil {
+		t.Fatal("dark base theme = nil")
+	}
+	if got := customTheme.fyneTheme(); got != dark {
+		t.Fatal("dark base theme was recreated")
+	}
+	if customTheme.lightBase != nil {
+		t.Fatal("light base theme was initialized while using dark mode")
+	}
+
+	cfg.Theme.Dark = false
+	light := customTheme.fyneTheme()
+	if light == nil {
+		t.Fatal("light base theme = nil")
+	}
+	if light == dark {
+		t.Fatal("light and dark base themes unexpectedly share one instance")
+	}
+	if got := customTheme.fyneTheme(); got != light {
+		t.Fatal("light base theme was recreated")
+	}
+}
+
 func TestCustomThemeAppColorOverrides(t *testing.T) {
 	cfg := &config.Config{
 		Theme: config.ThemeConfig{

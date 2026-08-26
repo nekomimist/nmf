@@ -3,6 +3,7 @@ package theme
 import (
 	"image/color"
 	"strings"
+	"sync"
 
 	"fyne.io/fyne/v2"
 	fynetheme "fyne.io/fyne/v2/theme"
@@ -126,6 +127,10 @@ type CustomTheme struct {
 	config        *config.Config
 	customFont    fyne.Resource
 	monospaceFont fyne.Resource
+	lightBase     fyne.Theme
+	darkBase      fyne.Theme
+	lightBaseOnce sync.Once
+	darkBaseOnce  sync.Once
 	debugPrint    func(format string, args ...interface{})
 }
 
@@ -160,10 +165,20 @@ func (t *CustomTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
 // fyneTheme returns the base Fyne theme matching the configured dark/light
 // variant, for delegating colors, icons, and font fallbacks.
 func (t *CustomTheme) fyneTheme() fyne.Theme {
-	if t.config.Theme.Dark {
-		return fynetheme.DarkTheme()
+	return t.baseTheme(t.config.Theme.Dark)
+}
+
+func (t *CustomTheme) baseTheme(dark bool) fyne.Theme {
+	if dark {
+		t.darkBaseOnce.Do(func() {
+			t.darkBase = fynetheme.DarkTheme()
+		})
+		return t.darkBase
 	}
-	return fynetheme.LightTheme()
+	t.lightBaseOnce.Do(func() {
+		t.lightBase = fynetheme.LightTheme()
+	})
+	return t.lightBase
 }
 
 // Font method with custom font support
@@ -207,10 +222,7 @@ func (t *CustomTheme) Size(name fyne.ThemeSizeName) float32 {
 		}
 	}
 
-	if t.config.Theme.Dark {
-		return fynetheme.DarkTheme().Size(name)
-	}
-	return fynetheme.LightTheme().Size(name)
+	return t.fyneTheme().Size(name)
 }
 
 // GetCustomColor returns app-specific colors based on the current theme.
@@ -222,12 +234,11 @@ func (t *CustomTheme) GetCustomColor(colorType string) color.RGBA {
 func (t *CustomTheme) GetCustomColorForVariant(colorType string, dark bool) color.RGBA {
 	defaults := lightAppColorDefaults
 	variant := fynetheme.VariantLight
-	base := fynetheme.LightTheme()
 	if dark {
 		defaults = darkAppColorDefaults
 		variant = fynetheme.VariantDark
-		base = fynetheme.DarkTheme()
 	}
+	base := t.baseTheme(dark)
 	fallback, ok := defaults[colorType]
 	if !ok {
 		fyneColorName, ok := fyneAppColorDefaults[colorType]
@@ -280,10 +291,7 @@ func (t *CustomTheme) resolveConfiguredColor(value config.ThemeColorValue, varia
 		return color.RGBA{}, false
 	}
 	if colorName, ok := fyneColorNames[name]; ok {
-		base := fynetheme.LightTheme()
-		if variant == fynetheme.VariantDark {
-			base = fynetheme.DarkTheme()
-		}
+		base := t.baseTheme(variant == fynetheme.VariantDark)
 		return color.RGBAModel.Convert(base.Color(colorName, variant)).(color.RGBA), true
 	}
 	if primaryColorNames[name] {

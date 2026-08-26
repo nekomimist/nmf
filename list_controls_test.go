@@ -13,6 +13,7 @@ import (
 
 	"nmf/internal/config"
 	"nmf/internal/fileinfo"
+	customtheme "nmf/internal/theme"
 )
 
 func TestUpdateFilesUsesActiveTemporarySort(t *testing.T) {
@@ -261,6 +262,94 @@ func newScrollMarginTestFileManager(count, margin int) *FileManager {
 		func(widget.ListItemID, fyne.CanvasObject) {},
 	)
 	return fm
+}
+
+func newTrackedCursorTestFileManager(count, margin int) (*FileManager, *int) {
+	files := make([]fileinfo.FileInfo, count)
+	for i := range files {
+		files[i] = fileinfo.FileInfo{
+			Name: fmt.Sprintf("file-%02d", i),
+			Path: fmt.Sprintf("/tmp/file-%02d", i),
+		}
+	}
+
+	cfg := config.Default()
+	cfg.UI.ScrollMargin = margin
+	fm := &FileManager{
+		browser:      newTestBrowser(testBrowserOptions{files: files}),
+		config:       cfg,
+		customTheme:  customtheme.NewCustomTheme(cfg, nil),
+		windowActive: true,
+	}
+	fm.fileListItemHeight = fm.newFileListRow().MinSize().Height
+	updates := 0
+	fm.fileList = widget.NewList(
+		fm.FileCount,
+		fm.newFileListRow,
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			updates++
+			fm.updateFileListRow(id, obj)
+		},
+	)
+	return fm, &updates
+}
+
+func TestRefreshCursorUpdatesTrackedRowsWithoutFullListRefresh(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	fm, updates := newTrackedCursorTestFileManager(40, 3)
+	fm.SetCursorByIndex(0)
+	window := test.NewWindow(fm.fileList)
+	defer window.Close()
+	window.SetPadded(false)
+
+	padding := fm.fileList.Theme().Size(theme.SizeNamePadding)
+	rowStride := fm.fileListItemHeight + padding
+	window.Resize(fyne.NewSize(400, fm.fileListItemHeight+9*rowStride))
+	fm.RefreshCursor()
+	if _, _, ok := fm.trackedVisibleFileListRow(0); !ok {
+		t.Fatal("initial cursor row is not tracked as visible")
+	}
+
+	*updates = 0
+	fm.SetCursorByIndex(1)
+	fm.RefreshCursor()
+	if *updates != 0 {
+		t.Fatalf("UpdateItem calls for an in-viewport cursor move = %d, want 0", *updates)
+	}
+	if got := fm.cursorAnchor.path; got != "/tmp/file-01" {
+		t.Fatalf("cursor anchor after direct update = %q, want file-01", got)
+	}
+
+	lastFullyVisible := int((fm.fileList.Size().Height - fm.fileListItemHeight) / rowStride)
+	lastWithoutScroll := lastFullyVisible - fm.config.UI.ScrollMargin
+	for i := 2; i <= lastWithoutScroll; i++ {
+		fm.SetCursorByIndex(i)
+		fm.RefreshCursor()
+	}
+	*updates = 0
+	fm.SetCursorByIndex(lastWithoutScroll + 1)
+	fm.RefreshCursor()
+	if got := fm.fileList.GetScrollOffset(); got <= 0 {
+		t.Fatalf("scroll offset after entering margin = %v, want positive", got)
+	}
+	if *updates <= 0 || *updates >= 5 {
+		t.Fatalf("UpdateItem calls for one-row offset scroll = %d, want only newly visible rows", *updates)
+	}
+	if got := fm.cursorAnchor.path; got != fmt.Sprintf("/tmp/file-%02d", lastWithoutScroll+1) {
+		t.Fatalf("cursor anchor after offset scroll = %q", got)
+	}
+
+	*updates = 0
+	fm.SetCursorByIndex(-1)
+	fm.RefreshCursor()
+	if *updates != 0 {
+		t.Fatalf("UpdateItem calls while clearing cursor = %d, want 0", *updates)
+	}
+	if fm.cursorAnchor.object != nil || fm.cursorAnchor.path != "" {
+		t.Fatalf("cursor anchor after clearing cursor = %+v, want empty", fm.cursorAnchor)
+	}
 }
 
 func TestCursorScrollTargetAppliesMarginAndClampsToList(t *testing.T) {

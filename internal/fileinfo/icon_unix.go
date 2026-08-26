@@ -3,15 +3,15 @@
 package fileinfo
 
 import (
-	"fyne.io/fyne/v2"
+	"image"
 )
 
 // Non-Windows platforms: return nil to indicate using theme defaults.
-func platformFetchExtIcon(ext string, size int) (fyne.Resource, error) {
+func platformFetchExtIcon(ext string, size int) (*image.RGBA, error) {
 	return nil, nil
 }
 
-func platformFetchFileIcon(path string, size int) (fyne.Resource, error) {
+func platformFetchFileIcon(path string, size int) (*image.RGBA, error) {
 	return nil, nil
 }
 

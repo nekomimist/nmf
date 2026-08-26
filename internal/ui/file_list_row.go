@@ -98,6 +98,22 @@ func (r *FileListRow) SetDecorations(
 	r.Refresh()
 }
 
+// SetCursor updates only the cursor decoration, preserving status and
+// selection state already assigned to this reusable row.
+func (r *FileListRow) SetCursor(cursor bool, cursorColor color.RGBA) {
+	nextCursorColor := color.RGBA{}
+	if cursor {
+		nextCursorColor = cursorColor
+	}
+	if r.cursor == cursor && r.cursorColor == nextCursorColor {
+		return
+	}
+
+	r.cursor = cursor
+	r.cursorColor = nextCursorColor
+	r.Refresh()
+}
+
 // CreateRenderer builds the fixed layers used for every update of this row.
 func (r *FileListRow) CreateRenderer() fyne.WidgetRenderer {
 	r.ExtendBaseWidget(r)

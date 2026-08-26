@@ -1,20 +1,28 @@
 package fileinfo
 
 import (
+	"image"
 	"sync"
 	"time"
-
-	"fyne.io/fyne/v2"
 )
 
-// IconService provides asynchronous icon fetching with simple in-memory caches.
+const (
+	maxExtensionIconCacheEntries = 256
+	maxFileIconCacheEntries      = 512
+)
+
+// IconService provides asynchronous icon fetching with bounded decoded-image caches.
 // - On Windows, platform-specific functions provide actual icons.
 // - On other platforms, it falls back to nil (UI should use theme defaults).
 type IconService struct {
 	mu        sync.RWMutex
-	extCache  map[string]fyne.Resource // key: lower-case file extension (e.g., ".txt")
-	fileCache map[string]fyne.Resource // key: full path (or strategy-defined key)
-	pending   map[string]struct{}      // de-duplicate queued jobs (use scope+key)
+	extCache  map[iconCacheKey]*image.RGBA // key: lower-case file extension and pixel size
+	fileCache map[iconCacheKey]*image.RGBA // key: full path and pixel size
+	extOrder  []iconCacheKey
+	fileOrder []iconCacheKey
+	extNext   int
+	fileNext  int
+	pending   map[iconJob]struct{} // de-duplicate queued jobs
 	jobs      chan iconJob
 	done      chan struct{}
 	closeOnce sync.Once
@@ -27,6 +35,11 @@ type IconService struct {
 	debugPrint func(format string, args ...interface{})
 }
 
+type iconCacheKey struct {
+	name string
+	size int
+}
+
 type iconJob struct {
 	scope string // "ext" or "file"
 	key   string // ext (".txt") or full path
@@ -36,9 +49,11 @@ type iconJob struct {
 // NewIconService creates a new icon service with background workers.
 func NewIconService(debug func(format string, args ...interface{})) *IconService {
 	s := &IconService{
-		extCache:   make(map[string]fyne.Resource, 256),
-		fileCache:  make(map[string]fyne.Resource, 512),
-		pending:    make(map[string]struct{}, 512),
+		extCache:   make(map[iconCacheKey]*image.RGBA, maxExtensionIconCacheEntries),
+		fileCache:  make(map[iconCacheKey]*image.RGBA, maxFileIconCacheEntries),
+		extOrder:   make([]iconCacheKey, 0, maxExtensionIconCacheEntries),
+		fileOrder:  make([]iconCacheKey, 0, maxFileIconCacheEntries),
+		pending:    make(map[iconJob]struct{}, maxFileIconCacheEntries),
 		jobs:       make(chan iconJob, 256),
 		done:       make(chan struct{}),
 		debugPrint: debug,
@@ -71,17 +86,19 @@ func (s *IconService) OnUpdated(f func()) {
 // fetch and returns (nil, false) so the UI can display a default icon immediately.
 // - Directories: always return (nil, false) and let UI use folder icon.
 // - For .exe files on Windows, prefer file-specific icon. For others, prefer extension icon.
-func (s *IconService) GetCachedOrRequest(path string, isDir bool, ext string, size int) (fyne.Resource, bool) {
-	if isDir {
+func (s *IconService) GetCachedOrRequest(path string, isDir bool, ext string, size int) (*image.RGBA, bool) {
+	if s == nil || isDir || s.closed() {
 		return nil, false
 	}
+	size = iconPixelSize(size)
 
 	// 1) File-specific cache (platform policy decides if it’s worth fetching)
 	if preferFileIcon(path, ext) {
+		key := iconCacheKey{name: path, size: size}
 		s.mu.RLock()
-		if r, ok := s.fileCache[path]; ok {
+		if img, ok := s.fileCache[key]; ok {
 			s.mu.RUnlock()
-			return r, true
+			return img, true
 		}
 		s.mu.RUnlock()
 		s.enqueue("file", path, size)
@@ -89,10 +106,11 @@ func (s *IconService) GetCachedOrRequest(path string, isDir bool, ext string, si
 	}
 
 	// 2) Extension cache
+	key := iconCacheKey{name: ext, size: size}
 	s.mu.RLock()
-	if r, ok := s.extCache[ext]; ok {
+	if img, ok := s.extCache[key]; ok {
 		s.mu.RUnlock()
-		return r, true
+		return img, true
 	}
 	s.mu.RUnlock()
 
@@ -108,6 +126,15 @@ func (s *IconService) Close() {
 	}
 	s.closeOnce.Do(func() {
 		close(s.done)
+		s.mu.Lock()
+		s.extCache = nil
+		s.fileCache = nil
+		s.extOrder = nil
+		s.fileOrder = nil
+		s.extNext = 0
+		s.fileNext = 0
+		s.pending = nil
+		s.mu.Unlock()
 		s.updMu.Lock()
 		s.updatedAny = false
 		s.subscribers = nil
@@ -131,28 +158,32 @@ func (s *IconService) enqueue(scope, key string, size int) {
 	if s.closed() {
 		return
 	}
-	k := scope + "|" + key
+	job := iconJob{scope: scope, key: key, size: iconPixelSize(size)}
 	s.mu.Lock()
-	if _, exists := s.pending[k]; exists {
+	if s.closed() {
 		s.mu.Unlock()
 		return
 	}
-	s.pending[k] = struct{}{}
+	if _, exists := s.pending[job]; exists {
+		s.mu.Unlock()
+		return
+	}
+	s.pending[job] = struct{}{}
 	s.mu.Unlock()
 
 	select {
 	case <-s.done:
 		s.mu.Lock()
-		delete(s.pending, k)
+		delete(s.pending, job)
 		s.mu.Unlock()
-	case s.jobs <- iconJob{scope: scope, key: key, size: size}:
+	case s.jobs <- job:
 	default:
 		// queue full; drop silently to protect UI responsiveness
 		if s.debugPrint != nil {
 			s.debugPrint("IconService: job queue full, dropping %s:%s", scope, key)
 		}
 		s.mu.Lock()
-		delete(s.pending, k)
+		delete(s.pending, job)
 		s.mu.Unlock()
 	}
 }
@@ -168,31 +199,67 @@ func (s *IconService) worker() {
 		if s.closed() {
 			return
 		}
-		var res fyne.Resource
+		var img *image.RGBA
 		var err error
+		stored := false
 		switch job.scope {
 		case "ext":
-			res, err = platformFetchExtIcon(job.key, job.size)
-			if err == nil && res != nil && !s.closed() {
+			img, err = platformFetchExtIcon(job.key, job.size)
+			if err == nil && img != nil {
 				s.mu.Lock()
-				s.extCache[job.key] = res
+				if !s.closed() {
+					putBoundedIcon(s.extCache, &s.extOrder, &s.extNext, iconCacheKey{name: job.key, size: job.size}, img, maxExtensionIconCacheEntries)
+					stored = true
+				}
 				s.mu.Unlock()
-				s.flagUpdated()
 			}
 		case "file":
-			res, err = platformFetchFileIcon(job.key, job.size)
-			if err == nil && res != nil && !s.closed() {
+			img, err = platformFetchFileIcon(job.key, job.size)
+			if err == nil && img != nil {
 				s.mu.Lock()
-				s.fileCache[job.key] = res
+				if !s.closed() {
+					putBoundedIcon(s.fileCache, &s.fileOrder, &s.fileNext, iconCacheKey{name: job.key, size: job.size}, img, maxFileIconCacheEntries)
+					stored = true
+				}
 				s.mu.Unlock()
-				s.flagUpdated()
 			}
+		}
+		if stored {
+			s.flagUpdated()
 		}
 		// clear pending marker
 		s.mu.Lock()
-		delete(s.pending, job.scope+"|"+job.key)
+		delete(s.pending, job)
 		s.mu.Unlock()
 	}
+}
+
+func iconPixelSize(size int) int {
+	if size <= 16 {
+		return 16
+	}
+	if size <= 24 {
+		return 24
+	}
+	return 32
+}
+
+func putBoundedIcon(cache map[iconCacheKey]*image.RGBA, order *[]iconCacheKey, next *int, key iconCacheKey, img *image.RGBA, limit int) {
+	if cache == nil || img == nil || limit <= 0 {
+		return
+	}
+	if _, exists := cache[key]; exists {
+		cache[key] = img
+		return
+	}
+	if len(*order) < limit {
+		*order = append(*order, key)
+	} else {
+		delete(cache, (*order)[*next])
+		(*order)[*next] = key
+		*next = (*next + 1) % limit
+	}
+	cache[key] = img
 }
 
 func (s *IconService) flagUpdated() {

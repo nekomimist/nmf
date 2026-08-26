@@ -1,13 +1,16 @@
 package ui
 
 import (
+	"image"
 	"image/color"
 	"strings"
 	"testing"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/theme"
 )
 
 func TestFileNameLabelMinSizeDoesNotUseFullNameWidth(t *testing.T) {
@@ -144,5 +147,60 @@ func TestTappableIconMouseMovedStartsDragAfterThreshold(t *testing.T) {
 	})
 	if calls != 2 {
 		t.Fatalf("drag calls = %d, want 2 after axis threshold", calls)
+	}
+}
+
+func TestTappableIconSetResourceUpdatesEmbeddedIcon(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	initial := fyne.NewStaticResource("initial", []byte("initial"))
+	next := fyne.NewStaticResource("next", []byte("next"))
+	icon := NewTappableIcon(initial, nil)
+
+	icon.SetResource(initial)
+	if icon.icon.Resource != initial {
+		t.Fatalf("resource after identical update = %v, want initial", icon.icon.Resource)
+	}
+	icon.SetResource(next)
+	if icon.icon.Resource != next {
+		t.Fatalf("resource after replacement = %v, want next", icon.icon.Resource)
+	}
+}
+
+func TestTappableIconSwitchesBetweenSharedImageAndResource(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	initial := theme.FileIcon()
+	next := theme.FolderIcon()
+	icon := NewTappableIcon(initial, nil)
+	renderer := icon.CreateRenderer()
+	objects := renderer.Objects()
+	if len(objects) != 2 || objects[0] != icon.icon || objects[1] != icon.raster {
+		t.Fatalf("renderer objects = %#v, want resource and raster layers", objects)
+	}
+	if icon.raster.ScaleMode != canvas.ImageScaleFastest {
+		t.Fatalf("raster scale mode = %v, want ImageScaleFastest", icon.raster.ScaleMode)
+	}
+
+	shared := image.NewRGBA(image.Rect(0, 0, 16, 16))
+	icon.SetImage(shared)
+	if !icon.usingRaster || icon.raster.Image != shared {
+		t.Fatal("SetImage should display the shared decoded image directly")
+	}
+	if icon.icon.Visible() || !icon.raster.Visible() {
+		t.Fatal("resource layer should be hidden while displaying a native image")
+	}
+
+	icon.SetResource(next)
+	if icon.usingRaster || icon.raster.Image != nil {
+		t.Fatal("SetResource should release the row's decoded image reference")
+	}
+	if !icon.icon.Visible() || icon.raster.Visible() {
+		t.Fatal("resource layer should be visible after switching back")
+	}
+	if icon.icon.Resource != next {
+		t.Fatalf("resource after switch = %v, want folder icon", icon.icon.Resource)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"nmf/internal/config"
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
+	customtheme "nmf/internal/theme"
 	"nmf/internal/ui"
 )
 
@@ -48,24 +49,87 @@ func (fm *FileManager) RefreshCursor() {
 	moveDirection := fm.cursorMoveDirection
 	fm.cursorMoveDirection = 0
 	seq, cursorIdx := fm.beginCursorRefresh("cursor")
+
+	var currentRow *ui.FileListRow
+	if cursorIdx >= 0 {
+		currentRow, _, _ = fm.trackedVisibleFileListRow(cursorIdx)
+	}
+	fm.clearTrackedCursorRows(currentRow)
 	if cursorIdx < 0 {
-		// No cursor: refresh to clear any stale cursor decoration.
-		fm.fileList.Refresh()
 		fm.endCursorRefresh(seq, "cursor", cursorIdx)
 		return
 	}
-	// Fyne v2.8.0 List.ScrollTo unconditionally ends with a full Refresh(), so
-	// an explicit Refresh here would double the per-keypress render cost.
-	// Re-verify on Fyne upgrades.
+
 	scrollTarget := fm.cursorScrollTarget(cursorIdx, moveDirection)
-	fm.fileList.ScrollTo(widget.ListItemID(scrollTarget))
+	fm.scrollFileListTargetIntoView(scrollTarget)
+	row, path, ok := fm.trackedVisibleFileListRow(cursorIdx)
+	if !ok {
+		// The renderer may not have created its initial row pool yet. Preserve
+		// correctness with the public List API; steady-state cursor moves use
+		// the tracked-row path above and avoid this full refresh.
+		fm.resetFileListRowTracking()
+		fm.fileList.ScrollTo(widget.ListItemID(scrollTarget))
+		fm.endCursorRefresh(seq, "cursor-fallback", cursorIdx)
+		return
+	}
+	provider := fm.cursorThemeProvider()
+	if provider == nil {
+		fm.endCursorRefresh(seq, "cursor", cursorIdx)
+		return
+	}
+	row.SetCursor(true, provider.GetCustomColor(customtheme.ColorCursor))
+	fm.cursorAnchor = cursorRowAnchor{path: path, object: row}
+	fm.noteCursorItemUpdated(cursorIdx)
 	fm.endCursorRefresh(seq, "cursor", cursorIdx)
 }
 
+// scrollFileListTargetIntoView mirrors List.scrollTo's uniform-row geometry,
+// but uses ScrollToOffset so Fyne updates only rows entering the viewport.
+// List.ScrollTo performs an unconditional full widget Refresh in Fyne 2.8.0.
+func (fm *FileManager) scrollFileListTargetIntoView(target int) {
+	if fm.fileList == nil || target < 0 || fm.fileListItemHeight <= 0 {
+		return
+	}
+	padding := fm.fileList.Theme().Size(theme.SizeNamePadding)
+	rowStride := fm.fileListItemHeight + padding
+	if rowStride <= 0 {
+		return
+	}
+
+	offset := fm.fileList.GetScrollOffset()
+	targetTop := float32(target) * rowStride
+	targetBottom := targetTop + fm.fileListItemHeight
+	viewportBottom := offset + fm.fileList.Size().Height
+	nextOffset := offset
+	if targetTop < offset {
+		nextOffset = targetTop
+	} else if targetBottom > viewportBottom {
+		nextOffset = targetBottom - fm.fileList.Size().Height
+	}
+	if nextOffset != offset {
+		fm.fileList.ScrollToOffset(nextOffset)
+	}
+}
+
+func (fm *FileManager) fileListItemVisible(index int) bool {
+	if fm.fileList == nil || index < 0 || fm.fileListItemHeight <= 0 {
+		return false
+	}
+	padding := fm.fileList.Theme().Size(theme.SizeNamePadding)
+	rowStride := fm.fileListItemHeight + padding
+	if rowStride <= 0 || fm.fileList.Size().Height <= 0 {
+		return false
+	}
+	itemTop := float32(index) * rowStride
+	itemBottom := itemTop + fm.fileListItemHeight
+	offset := fm.fileList.GetScrollOffset()
+	return itemBottom > offset && itemTop < offset+fm.fileList.Size().Height
+}
+
 // cursorScrollTarget returns the look-ahead row that keeps the cursor away
-// from the approaching viewport edge. Scrolling to a row instead of a pixel
-// offset lets Fyne account for its own row spacing and keeps the existing
-// single-refresh cursor path.
+// from the approaching viewport edge. Cursor-only updates translate this row
+// to an offset without refreshing the whole list; structural updates can pass
+// it to List.ScrollTo after rebuilding the list.
 func (fm *FileManager) cursorScrollTarget(cursorIdx, moveDirection int) int {
 	if fm.config == nil || fm.fileList == nil || fm.config.UI.ScrollMargin <= 0 {
 		return cursorIdx
@@ -96,7 +160,7 @@ func (fm *FileManager) cursorScrollTarget(cursorIdx, moveDirection int) int {
 }
 
 // effectiveScrollMargin limits the configured margin to the number of row
-// steps that fit beside the cursor. This guarantees that ScrollTo can keep
+// steps that fit beside the cursor. This guarantees that scrolling can keep
 // both the cursor and its look-ahead row visible even in a short viewport.
 func (fm *FileManager) effectiveScrollMargin() (margin int, itemHeight, rowStride float32) {
 	if fm.config == nil || fm.fileList == nil || fm.fileListItemHeight <= 0 {
@@ -134,6 +198,7 @@ func (fm *FileManager) refreshListAndCursor() {
 	moveDirection := fm.cursorMoveDirection
 	fm.cursorMoveDirection = 0
 	seq, cursorIdx := fm.beginCursorRefresh("list")
+	fm.resetFileListRowTracking()
 	fm.fileList.Refresh()
 	if cursorIdx >= 0 {
 		scrollTarget := fm.cursorScrollTarget(cursorIdx, moveDirection)

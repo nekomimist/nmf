@@ -174,6 +174,42 @@ func TestFileListRowCursorStyles(t *testing.T) {
 	}
 }
 
+func TestFileListRowSetCursorPreservesOtherDecorations(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	row := NewFileListRow(config.CursorStyleConfig{Type: "underline", Thickness: 2}, color.RGBA{A: 255})
+	renderer := test.WidgetRenderer(row).(*fileListRowRenderer)
+	statusColor := color.RGBA{R: 10, G: 20, B: 30, A: 80}
+	selectionColor := color.RGBA{R: 40, G: 50, B: 60, A: 100}
+	cursorColor := color.RGBA{R: 70, G: 80, B: 90, A: 255}
+	row.SetDecorations(&statusColor, true, selectionColor, false, color.RGBA{})
+
+	row.SetCursor(true, cursorColor)
+	renderer.Refresh()
+	if got := rgba(renderer.status.FillColor); got != statusColor {
+		t.Fatalf("status after cursor enable = %#v, want %#v", got, statusColor)
+	}
+	if got := rgba(renderer.selection.FillColor); got != selectionColor {
+		t.Fatalf("selection after cursor enable = %#v, want %#v", got, selectionColor)
+	}
+	if got := rgba(renderer.cursorBottom.FillColor); got != cursorColor {
+		t.Fatalf("cursor after enable = %#v, want %#v", got, cursorColor)
+	}
+
+	row.SetCursor(false, cursorColor)
+	renderer.Refresh()
+	if got := rgba(renderer.status.FillColor); got != statusColor {
+		t.Fatalf("status after cursor disable = %#v, want %#v", got, statusColor)
+	}
+	if got := rgba(renderer.selection.FillColor); got != selectionColor {
+		t.Fatalf("selection after cursor disable = %#v, want %#v", got, selectionColor)
+	}
+	if got := rgba(renderer.cursorBottom.FillColor); got.A != 0 {
+		t.Fatalf("cursor after disable = %#v, want transparent", got)
+	}
+}
+
 func TestFileListRowDecorationZOrder(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
