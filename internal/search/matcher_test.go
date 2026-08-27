@@ -1,6 +1,13 @@
 package search
 
-import "testing"
+import (
+	"errors"
+	"sync"
+	"sync/atomic"
+	"testing"
+
+	"github.com/koron/gomigemo/migemo"
+)
 
 func TestPlainMatcherIsCaseInsensitiveSubstring(t *testing.T) {
 	matcher := NewPlainProvider().Build("ALP")
@@ -48,5 +55,48 @@ func TestMigemoMatcherCombinesTokenMatchesWithAnd(t *testing.T) {
 	}
 	if matcher.Match("/work/日本語") {
 		t.Fatal("migemo matcher should reject candidates missing the plain token")
+	}
+}
+
+func TestProviderLoadsMigemoOnFirstNonEmptyQueryOnly(t *testing.T) {
+	loadCount := 0
+	provider := newProvider(nil, func() (migemo.Dict, error) {
+		loadCount++
+		return nil, errors.New("test load failure")
+	})
+
+	if loadCount != 0 {
+		t.Fatalf("load count after construction = %d, want 0", loadCount)
+	}
+	provider.Build("   ")
+	if loadCount != 0 {
+		t.Fatalf("load count after whitespace query = %d, want 0", loadCount)
+	}
+	provider.Build("alpha")
+	provider.Build("beta")
+	if loadCount != 1 {
+		t.Fatalf("load count after non-empty queries = %d, want 1", loadCount)
+	}
+}
+
+func TestProviderLoadsMigemoOnceAcrossConcurrentQueries(t *testing.T) {
+	var loadCount atomic.Int32
+	provider := newProvider(nil, func() (migemo.Dict, error) {
+		loadCount.Add(1)
+		return nil, errors.New("test load failure")
+	})
+
+	var wg sync.WaitGroup
+	for range 16 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			provider.Build("alpha")
+		}()
+	}
+	wg.Wait()
+
+	if got := loadCount.Load(); got != 1 {
+		t.Fatalf("load count = %d, want 1", got)
 	}
 }

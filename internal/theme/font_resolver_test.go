@@ -1,6 +1,7 @@
 package theme
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -122,6 +123,105 @@ func TestLoadFontResourceFromPath(t *testing.T) {
 	}
 	if res.Name() != "font.ttf" {
 		t.Fatalf("resource name = %q, want font.ttf", res.Name())
+	}
+}
+
+func TestFontResolverSharesFallbackCatalogAcrossNames(t *testing.T) {
+	systemLoads := 0
+	catalogScans := 0
+	resolver := &fontResolver{
+		loadSystemFontMap: func() (*fontscan.FontMap, error) {
+			systemLoads++
+			return nil, errors.New("system index unavailable")
+		},
+		scanCatalog: func() (fontCatalog, error) {
+			catalogScans++
+			return fontCatalog{
+				font.NormalizeFamily("UI Family"):   {{File: "ui.ttf"}},
+				font.NormalizeFamily("Mono Family"): {{File: "mono.ttf"}},
+			}, nil
+		},
+	}
+
+	uiLocations, err := resolver.fontLocations("UI Family")
+	if err != nil || len(uiLocations) != 1 || uiLocations[0].File != "ui.ttf" {
+		t.Fatalf("UI locations = %#v, err=%v", uiLocations, err)
+	}
+	monoLocations, err := resolver.fontLocations("Mono Family")
+	if err != nil || len(monoLocations) != 1 || monoLocations[0].File != "mono.ttf" {
+		t.Fatalf("mono locations = %#v, err=%v", monoLocations, err)
+	}
+	if systemLoads != 1 {
+		t.Fatalf("system font map loads = %d, want 1", systemLoads)
+	}
+	if catalogScans != 1 {
+		t.Fatalf("fallback catalog scans = %d, want 1", catalogScans)
+	}
+}
+
+func TestValidateCachedFontDataRejectsCorruptTableBounds(t *testing.T) {
+	valid := append([]byte(nil), fynetheme.DefaultTextFont().Content()...)
+	if err := validateCachedFontData(valid); err != nil {
+		t.Fatalf("default font failed cached validation: %v", err)
+	}
+
+	if err := validateCachedFontData(valid[:11]); err == nil {
+		t.Fatal("short cached font passed validation")
+	}
+
+	corrupt := append([]byte(nil), valid...)
+	if len(corrupt) < 28 {
+		t.Fatal("default font unexpectedly has no table records")
+	}
+	corrupt[20] = 0xff
+	corrupt[21] = 0xff
+	corrupt[22] = 0xff
+	corrupt[23] = 0xff
+	if err := validateCachedFontData(corrupt); err == nil {
+		t.Fatal("cached font with out-of-bounds table passed validation")
+	}
+
+	path := filepath.Join(t.TempDir(), "cached.ttf")
+	if err := os.WriteFile(path, valid, 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	if err := validateCachedFontFile(path); err != nil {
+		t.Fatalf("valid cached font file failed validation: %v", err)
+	}
+	if err := os.WriteFile(path, corrupt, 0644); err != nil {
+		t.Fatalf("WriteFile corrupt cache failed: %v", err)
+	}
+	if err := validateCachedFontFile(path); err == nil {
+		t.Fatal("cached font file with out-of-bounds table passed validation")
+	}
+}
+
+func TestScanDirectoryForFontCatalogIndexesEachFamily(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "default.ttf")
+	if err := os.WriteFile(path, fynetheme.DefaultTextFont().Content(), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	descriptions := describeFontFile(path)
+	if len(descriptions) == 0 {
+		t.Fatal("default font has no descriptions")
+	}
+
+	catalog := make(fontCatalog)
+	scanDirectoryForFontCatalog(dir, make(map[string]bool), catalog)
+	for _, described := range descriptions {
+		family := font.NormalizeFamily(described.description.Family)
+		locations := catalog[family]
+		found := false
+		for _, location := range locations {
+			if location.File == path && location.Index == described.index {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("catalog[%q] = %#v, missing %s#%d", family, locations, path, described.index)
+		}
 	}
 }
 

@@ -2,6 +2,8 @@ package search
 
 import (
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/koron/gomigemo/embedict"
 	"github.com/koron/gomigemo/migemo"
@@ -16,29 +18,38 @@ type Matcher interface {
 // substring matching, and adds migemo matching when the embedded dictionary
 // loads successfully.
 type Provider struct {
+	dictOnce   sync.Once
 	dict       migemo.Dict
+	loadDict   func() (migemo.Dict, error)
 	debugPrint func(format string, args ...interface{})
 }
 
-// NewProvider creates a matcher provider backed by gomigemo's embedded
-// dictionary. If dictionary loading fails, returned matchers fall back to plain
-// substring matching.
+// NewProvider creates a matcher provider that loads gomigemo's embedded
+// dictionary on the first non-empty query. If dictionary loading fails,
+// returned matchers fall back to plain substring matching.
 func NewProvider(debugPrint func(format string, args ...interface{})) *Provider {
-	provider := &Provider{debugPrint: debugPrint}
-	dict, err := embedict.Load()
-	if err != nil {
-		provider.debug("Search: migemo disabled err=%v", err)
-		return provider
-	}
-	provider.dict = migemo.MultiClauses(dict)
-	provider.debug("Search: migemo enabled")
-	return provider
+	return newProvider(debugPrint, loadEmbeddedDict)
 }
 
 // NewPlainProvider creates a provider without migemo. It is useful for tests
 // and for callers that need explicit legacy matching behavior.
 func NewPlainProvider() *Provider {
 	return &Provider{}
+}
+
+func newProvider(debugPrint func(format string, args ...interface{}), loadDict func() (migemo.Dict, error)) *Provider {
+	return &Provider{
+		loadDict:   loadDict,
+		debugPrint: debugPrint,
+	}
+}
+
+func loadEmbeddedDict() (migemo.Dict, error) {
+	dict, err := embedict.Load()
+	if err != nil {
+		return nil, err
+	}
+	return migemo.MultiClauses(dict), nil
 }
 
 // Build compiles a matcher for one query. Whitespace-separated query tokens
@@ -61,16 +72,37 @@ func (p *Provider) Build(query string) Matcher {
 
 func (p *Provider) buildToken(query string) Matcher {
 	plain := plainMatcher{queryLower: strings.ToLower(query)}
-	if query == "" || p == nil || p.dict == nil {
+	if query == "" {
+		return plain
+	}
+	dict := p.dictionary()
+	if dict == nil {
 		return plain
 	}
 
-	re, err := migemo.Compile(p.dict, query)
+	re, err := migemo.Compile(dict, query)
 	if err != nil {
 		p.debug("Search: migemo compile failed query=%q err=%v", query, err)
 		return plain
 	}
 	return combinedMatcher{plain: plain, migemo: re}
+}
+
+func (p *Provider) dictionary() migemo.Dict {
+	if p == nil || p.loadDict == nil {
+		return nil
+	}
+	p.dictOnce.Do(func() {
+		started := time.Now()
+		dict, err := p.loadDict()
+		if err != nil {
+			p.debug("Search: migemo disabled elapsed=%s err=%v", time.Since(started), err)
+			return
+		}
+		p.dict = dict
+		p.debug("Search: migemo enabled elapsed=%s", time.Since(started))
+	})
+	return p.dict
 }
 
 func (p *Provider) debug(format string, args ...interface{}) {

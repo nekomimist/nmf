@@ -13,6 +13,7 @@ import (
 	"nmf/internal/fileinfo"
 	"nmf/internal/jobs"
 	"nmf/internal/keymanager"
+	"nmf/internal/search"
 	"nmf/internal/secret"
 	customtheme "nmf/internal/theme"
 	"nmf/internal/ui"
@@ -35,6 +36,7 @@ type ApplicationRuntime struct {
 	promptBroker            *applicationPromptBroker
 	windows                 *fileManagerWindowRegistry
 	navigationHistoryEvents *navigationHistoryEventHub
+	searchMatchers          *search.Provider
 	viewerSearchText        string
 	viewerSearchMatchCase   bool
 	closeOnce               sync.Once
@@ -63,6 +65,7 @@ func newApplicationRuntime(app fyne.App, options applicationRuntimeOptions) *App
 		promptBroker:            broker,
 		windows:                 newFileManagerWindowRegistry(),
 		navigationHistoryEvents: newNavigationHistoryEventHub(),
+		searchMatchers:          search.NewProvider(debugPrint),
 	}
 	installWindowActivationHandler(runtime)
 

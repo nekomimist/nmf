@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"strings"
 	"sync"
+	"time"
 
 	"fyne.io/fyne/v2"
 	fynetheme "fyne.io/fyne/v2/theme"
@@ -148,8 +149,13 @@ func NewCustomTheme(config *config.Config, debugPrint func(format string, args .
 
 // loadCustomFont resolves and loads the configured font.
 func (t *CustomTheme) loadCustomFont() {
-	t.customFont = resolveThemeFont(t.config.Theme, t.debugPrint)
-	t.monospaceFont = resolveThemeMonospaceFont(t.config.Theme, t.debugPrint)
+	started := time.Now()
+	resolver := newFontResolver()
+	t.customFont = resolver.resolveThemeFont(t.config.Theme, t.debugPrint)
+	t.monospaceFont = resolver.resolveThemeMonospaceFont(t.config.Theme, t.debugPrint)
+	if t.debugPrint != nil {
+		t.debugPrint("Theme: fonts resolved elapsed=%s", time.Since(started))
+	}
 }
 
 // Color methods from default theme

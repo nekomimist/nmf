@@ -9,7 +9,6 @@ import (
 	"nmf/internal/browser"
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
-	"nmf/internal/search"
 	"nmf/internal/ui"
 	"nmf/internal/watcher"
 )
@@ -34,7 +33,7 @@ func NewFileManager(runtime *ApplicationRuntime, path string) *FileManager {
 		windowActive:      true,
 		customTheme:       customTheme,
 		keyManager:        keyManager,
-		searchMatchers:    search.NewProvider(debugPrint),
+		searchMatchers:    runtime.searchMatchers,
 		runtime:           runtime,
 	}
 
