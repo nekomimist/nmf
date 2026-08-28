@@ -118,7 +118,7 @@ there. Details and rationale live in
 
 ## Requirements
 
-- Go 1.25 or newer for native Linux/macOS development.
+- Go 1.26 or newer for native Linux/macOS development.
 - Fyne build requirements for the target platform.
 - Nix with Flakes enabled for reproducible Windows cross-builds.
 
@@ -202,4 +202,5 @@ Both files live in the OS configuration directory
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). Third-party software licenses and notices are
+listed in [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt).

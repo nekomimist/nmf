@@ -17,6 +17,7 @@ import (
 	"testing"
 	"unicode/utf16"
 
+	"github.com/gen2brain/jxl"
 	"golang.org/x/image/bmp"
 	"golang.org/x/image/tiff"
 	"golang.org/x/text/encoding/japanese"
@@ -57,6 +58,9 @@ func TestReadPreviewFileDecodesSupportedImagesByContent(t *testing.T) {
 	}{
 		{name: "png with wrong extension", format: "PNG", encode: png.Encode},
 		{name: "jpeg", format: "JPEG", encode: func(w io.Writer, img image.Image) error { return jpeg.Encode(w, img, nil) }},
+		{name: "jpeg xl", format: "JPEG XL", encode: func(w io.Writer, img image.Image) error {
+			return jxl.Encode(w, img, jxl.EncodeOptions{Lossless: true, Threads: 1})
+		}},
 		{name: "gif", format: "GIF", encode: func(w io.Writer, img image.Image) error { return gif.Encode(w, img, nil) }},
 		{name: "bmp", format: "BMP", encode: bmp.Encode},
 		{name: "tiff", format: "TIFF", encode: func(w io.Writer, img image.Image) error { return tiff.Encode(w, img, nil) }},
@@ -80,6 +84,27 @@ func TestReadPreviewFileDecodesSupportedImagesByContent(t *testing.T) {
 			}
 			if preview.ImageWidth != 3 || preview.ImageHeight != 2 || !preview.Binary {
 				t.Fatalf("image metadata = %dx%d binary=%t", preview.ImageWidth, preview.ImageHeight, preview.Binary)
+			}
+		})
+	}
+}
+
+func TestLooksLikeJPEGXL(t *testing.T) {
+	tests := []struct {
+		name string
+		data []byte
+		want bool
+	}{
+		{name: "codestream", data: []byte{'\xff', '\x0a'}, want: true},
+		{name: "container", data: []byte("\x00\x00\x00\x0cJXL \x0d\x0a\x87\x0a"), want: true},
+		{name: "jpeg", data: []byte{'\xff', '\xd8', '\xff'}, want: false},
+		{name: "truncated container", data: []byte("\x00\x00\x00\x0cJXL "), want: false},
+		{name: "empty", data: nil, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := looksLikeJPEGXL(tt.data); got != tt.want {
+				t.Fatalf("looksLikeJPEGXL() = %t, want %t", got, tt.want)
 			}
 		})
 	}

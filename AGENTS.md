@@ -33,7 +33,7 @@ v2.8.1 (VFS with local/SMB/archive support, background jobs, multi-window).
 - Optional packaging: use `fyne package` directly when needed; the Makefile's Windows target already invokes it.
 
 ## Coding Style & Naming Conventions
-- Language: Go 1.25; follow standard Go style (tabs; 1TBS braces via `gofmt`).
+- Language: Go 1.26; follow standard Go style (tabs; 1TBS braces via `gofmt`).
 - Files: lower_snake_case (e.g., `tree_dialog.go`).
 - Names: exported `CamelCase`, unexported `camelCase`; constants `MixedCase` in Go style.
 - Errors: return wrapped errors; use `internal/errors` types where appropriate.

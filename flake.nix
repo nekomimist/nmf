@@ -14,7 +14,7 @@
       devShells = forEachSystem (pkgs: {
         default = pkgs.mkShell {
           packages = with pkgs; [
-            go_1_25
+            go_1_26
             zig
             fyne
             gnumake

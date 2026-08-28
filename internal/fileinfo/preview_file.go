@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	_ "github.com/gen2brain/jxl"
 	"github.com/gogs/chardet"
 	_ "golang.org/x/image/bmp"
 	_ "golang.org/x/image/tiff"
@@ -211,6 +212,8 @@ func supportedPreviewImageFormat(data []byte) string {
 		return "PNG"
 	case len(data) >= 3 && data[0] == 0xff && data[1] == 0xd8 && data[2] == 0xff:
 		return "JPEG"
+	case looksLikeJPEGXL(data):
+		return "JPEG XL"
 	case len(data) >= 6 && (bytes.Equal(data[:6], []byte("GIF87a")) || bytes.Equal(data[:6], []byte("GIF89a"))):
 		return "GIF"
 	case len(data) >= 12 && bytes.Equal(data[:4], []byte("RIFF")) && bytes.Equal(data[8:12], []byte("WEBP")):
@@ -222,6 +225,13 @@ func supportedPreviewImageFormat(data []byte) string {
 	default:
 		return ""
 	}
+}
+
+func looksLikeJPEGXL(data []byte) bool {
+	const containerSignature = "\x00\x00\x00\x0cJXL \x0d\x0a\x87\x0a"
+
+	return len(data) >= 2 && data[0] == 0xff && data[1] == 0x0a ||
+		len(data) >= len(containerSignature) && string(data[:len(containerSignature)]) == containerSignature
 }
 
 // looksLikeBMP reports whether data starts with a BMP the decoder could

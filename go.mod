@@ -1,6 +1,6 @@
 module nmf
 
-go 1.25.0
+go 1.26.0
 
 require (
 	fyne.io/fyne/v2 v2.8.1
@@ -8,6 +8,7 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/bodgit/sevenzip v1.6.1
 	github.com/fswatcher/fswatcher v0.1.0
+	github.com/gen2brain/jxl v0.2.0
 	github.com/go-gl/glfw/v3.4/glfw v0.1.0-pre.1.0.20260707082822-2a407d02d01a
 	github.com/go-text/typesetting v0.3.4
 	github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f
