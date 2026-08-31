@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/config"
 )
@@ -259,5 +261,64 @@ func BenchmarkFileListRowDecorationUpdate(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		row.SetDecorations(nil, false, color.RGBA{}, i%2 == 0, cursorColor)
+	}
+}
+
+var benchmarkFileListMinSize fyne.Size
+
+// BenchmarkFileListRowsMinSize measures the recursive layout work for the
+// actual row object tree used by the file list. Keeping several visible rows
+// in the tree makes Fyne layout allocation changes visible to the benchmark.
+func BenchmarkFileListRowsMinSize(b *testing.B) {
+	app := test.NewApp()
+	b.Cleanup(app.Quit)
+
+	const visibleRows = 40
+	rows := make([]fyne.CanvasObject, visibleRows)
+	for i := range rows {
+		rows[i] = NewFileListRow(
+			config.CursorStyleConfig{Type: "underline", Thickness: 2},
+			color.RGBA{A: 255},
+		)
+	}
+	content := container.NewVBox(rows...)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		benchmarkFileListMinSize = content.MinSize()
+	}
+}
+
+// BenchmarkFileListViewportCapture measures a complete software repaint of a
+// file-list viewport built from the production row widget.
+func BenchmarkFileListViewportCapture(b *testing.B) {
+	app := test.NewApp()
+	b.Cleanup(app.Quit)
+
+	list := widget.NewList(
+		func() int { return 1000 },
+		func() fyne.CanvasObject {
+			return NewFileListRow(
+				config.CursorStyleConfig{Type: "underline", Thickness: 2},
+				color.RGBA{A: 255},
+			)
+		},
+		func(id widget.ListItemID, object fyne.CanvasObject) {
+			row := object.(*FileListRow)
+			row.NameLabel.SetFile("representative-file-name.txt", color.RGBA{A: 255}, false)
+			row.InfoLabel.SetText("128 KiB  2026-08-29 12:34")
+			row.SetCursor(id == 10, color.RGBA{R: 255, G: 255, B: 255, A: 255})
+		},
+	)
+	window := app.NewWindow("file-list repaint benchmark")
+	window.SetContent(list)
+	window.Resize(fyne.NewSize(1200, 800))
+	window.Canvas().Capture() // warm renderer and text caches
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		window.Canvas().Capture()
 	}
 }
