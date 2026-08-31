@@ -24,17 +24,17 @@ behavior and the supported platform surface for those integrations.
 
 ## Windows RDP and DPI Detection
 
-Windows startup sets `FYNE_DISABLE_DPI_DETECTION=1` internally before the
-primary display probe and the first Fyne window is created. This is a defensive
-workaround for an Fyne/GLFW monitor re-detection failure that can occur when an
-RDP session changes the Windows display topology. Without the workaround,
-Fyne's per-monitor DPI detection can dereference a failed video-mode query and
-terminate NMF during or after an RDP connection.
+NMF previously set `FYNE_DISABLE_DPI_DETECTION=1` during Windows startup as a
+defensive workaround for a Fyne/GLFW monitor re-detection failure when an RDP
+session changed the display topology. Fyne 2.8.1 guards failed video-mode
+queries when a monitor disappears, so NMF leaves per-monitor DPI detection
+enabled by default while that upstream fix is validated.
 
-This intentionally disables Fyne's additional per-monitor DPI detection on
-Windows. Native window content-scale queries and NMF's `nmf.display()` scale
-value continue to use the Windows/GLFW content scale path. The workaround is
-implemented in `dpi_workaround_windows.go` and applied from `main.go`.
+The previous workaround remains behind `forceDisableFyneDPIDetection` in
+`dpi_workaround_windows.go` for quick RDP regression testing. Setting that
+constant to `true` restores the startup environment override before the primary
+display probe and first Fyne window are created. Users can also set
+`FYNE_DISABLE_DPI_DETECTION=1` externally without changing the build.
 
 ## SMB and UNC Paths
 

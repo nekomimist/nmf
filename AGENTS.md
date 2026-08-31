@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 nmf is a cross-platform keyboard-driven GUI file manager built with Go + Fyne
-v2.8.0 (VFS with local/SMB/archive support, background jobs, multi-window).
+v2.8.1 (VFS with local/SMB/archive support, background jobs, multi-window).
 
 ## Project Structure & Module Organization
 - Root: `main.go` (startup/flag handling), `go.mod`, and split `*_ui.go` /

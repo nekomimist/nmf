@@ -3,7 +3,7 @@ module nmf
 go 1.25.0
 
 require (
-	fyne.io/fyne/v2 v2.8.0
+	fyne.io/fyne/v2 v2.8.1
 	github.com/99designs/keyring v1.2.2
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/bodgit/sevenzip v1.6.1
@@ -31,7 +31,7 @@ require (
 )
 
 require (
-	fyne.io/systray v1.12.2 // indirect
+	fyne.io/systray v1.12.3-0.20260810170012-af4e8e793ec4 // indirect
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/STARRY-S/zip v0.2.3 // indirect
@@ -42,7 +42,6 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707 // indirect
 	github.com/dvsekhvalnov/jose2go v1.8.0 // indirect
-	github.com/fredbi/uri v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fyne-io/gl-js v0.2.1-0.20260315212741-029c47fd27e8 // indirect
 	github.com/fyne-io/glfw-js v0.4.0 // indirect
