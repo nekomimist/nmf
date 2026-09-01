@@ -7,6 +7,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver"
+	"fyne.io/fyne/v2/driver/desktop"
 	"golang.org/x/sys/windows"
 
 	"nmf/internal/config"
@@ -60,6 +61,20 @@ type winWindowPlacement struct {
 	PtMinPosition    winPoint
 	PtMaxPosition    winPoint
 	RcNormalPosition winRect
+}
+
+func requestInitialWindowPosition(window fyne.Window, cfg config.WindowConfig) {
+	if cfg.X == nil || cfg.Y == nil {
+		return
+	}
+	desktopWindow, ok := window.(desktop.Window)
+	if !ok {
+		debugPrint("FileManager: Desktop window position request unavailable")
+		return
+	}
+
+	desktopWindow.RequestPosition(*cfg.X, *cfg.Y)
+	debugPrint("FileManager: requested initial window position x=%d y=%d", *cfg.X, *cfg.Y)
 }
 
 func applyInitialWindowPosition(window fyne.Window, cfg config.WindowConfig) {

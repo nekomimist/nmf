@@ -8,6 +8,9 @@ import (
 	"nmf/internal/config"
 )
 
+func requestInitialWindowPosition(fyne.Window, config.WindowConfig) {
+}
+
 func applyInitialWindowPosition(fyne.Window, config.WindowConfig) {
 }
 

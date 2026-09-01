@@ -209,9 +209,10 @@ List APIs append to values already loaded from `config.json`. Use the matching
 `clear_*` function when the Starlark file should own the whole list.
 Directory jump shortcuts may be empty or multiple characters; the dialog filters
 them by case-insensitive prefix.
-`nmf.window(x = ..., y = ...)` configures the first window position on Windows;
-the position is clamped into the nearest monitor work area when applied. Set
-`x` and `y` together. Other platforms currently ignore the position fields.
+`nmf.window(x = ..., y = ...)` configures the first window position on Windows.
+NMF requests the position before displaying the window, then clamps its final
+outer bounds into the nearest monitor work area. Set `x` and `y` together.
+Other platforms currently ignore the position fields.
 `bring_all_to_front = True` groups visible, non-minimized File Manager windows
 at the front when one becomes active on Windows. It does not restore minimized
 windows, include the Jobs window, or make any window always-on-top.

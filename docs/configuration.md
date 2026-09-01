@@ -156,10 +156,10 @@ temp directory), SMB credentials cached in the OS keyring (service
 `window`
 
 - `width`, `height`: initial window size in pixels.
-- `x`, `y`: optional initial window position. On Windows, NMF moves the first
-  window to this position after startup and clamps it into the nearest monitor's
-  work area if monitor layout changes would otherwise put it off-screen. Other
-  platforms currently ignore these fields.
+- `x`, `y`: optional initial window position. On Windows, NMF requests this
+  position before displaying the first window, then clamps its final outer
+  bounds into the nearest monitor's work area if monitor layout changes would
+  otherwise put it off-screen. Other platforms currently ignore these fields.
 - `bringAllToFront`: Windows-only opt-in. When `true`, activating a File Manager
   brings its other visible, non-minimized File Manager windows directly behind
   it. The active window keeps focus; minimized windows and the Jobs window are

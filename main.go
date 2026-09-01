@@ -240,6 +240,7 @@ func main() {
 		ConfigScript: configScript,
 	})
 	fm := NewFileManager(runtime, startPath)
+	requestInitialWindowPosition(fm.window, cfg.Window)
 	fm.window.Show()
 	applyInitialWindowPosition(fm.window, cfg.Window)
 	fyneApp.Run()
