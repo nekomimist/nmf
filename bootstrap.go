@@ -36,6 +36,7 @@ func NewFileManager(runtime *ApplicationRuntime, path string) *FileManager {
 		searchMatchers:    runtime.searchMatchers,
 		runtime:           runtime,
 	}
+	keyManager.SetInputActivityCallback(fm.noteInputActivity)
 
 	// Busy overlay and its input guard are window-owned.
 	fm.busy = ui.NewBusyController(fm.window, keyManager, customTheme, 150*time.Millisecond, debugPrint)

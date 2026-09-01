@@ -33,6 +33,18 @@ func (h *recordingHandler) OnTypedRune(r rune, _ ModifierState) bool {
 }
 func (h *recordingHandler) GetName() string { return "recording" }
 
+type inputActivityHandler struct {
+	activeBeforeActivation bool
+	inputActive            func() bool
+}
+
+func (h *inputActivityHandler) OnKeyActivated(_ *fyne.KeyEvent, _ ModifierState) bool {
+	h.activeBeforeActivation = h.inputActive != nil && h.inputActive()
+	return true
+}
+func (h *inputActivityHandler) OnTypedRune(_ rune, _ ModifierState) bool { return false }
+func (h *inputActivityHandler) GetName() string                          { return "inputActivity" }
+
 // manualMainQueue stands in for the Fyne main-loop queue so tests can
 // control when queued owner transitions run ("the next tick").
 type manualMainQueue struct{ fns []func() }
@@ -172,6 +184,34 @@ func TestKeyManagerActivationRequiresFreshPress(t *testing.T) {
 	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
 	if len(main.typedKeys) != 1 || main.typedKeys[0] != fyne.KeyReturn {
 		t.Fatalf("typed keys = %v, want [Return]", main.typedKeys)
+	}
+}
+
+func TestKeyManagerReportsInputActivityBeforeActivation(t *testing.T) {
+	km, _ := newGatedKeyManager()
+	active := false
+	handler := &inputActivityHandler{inputActive: func() bool { return active }}
+	km.PushHandler(handler)
+
+	activityCalls := 0
+	km.SetInputActivityCallback(func() {
+		activityCalls++
+		active = true
+		// The callback must run outside the KeyManager mutex so window-state
+		// observers can safely inspect routing state.
+		if got := km.GetCurrentHandler(); got != handler {
+			t.Fatalf("current handler during input activity = %T, want inputActivityHandler", got)
+		}
+	})
+
+	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyDown})
+	km.HandleTypedKey(&fyne.KeyEvent{Name: fyne.KeyDown})
+
+	if activityCalls != 1 {
+		t.Fatalf("input activity calls = %d, want 1", activityCalls)
+	}
+	if !handler.activeBeforeActivation {
+		t.Fatal("input activity should be visible before typed activation")
 	}
 }
 

@@ -88,6 +88,10 @@ Event delivery paths:
 - Invariant: every path that forwards activations into the KeyManager must
   also forward key downs, because a fresh press is what arms the gate
   (KeySink, canvas fallback, viewer text grid, conflict dialog name entry).
+- Raw key down also reports input activity to the owning File Manager before
+  the same press's typed activation. This repairs stale inactive cursor state
+  when Fyne restores a retained content focus manager after removing an
+  overlay without sending the content KeySink another `FocusGained()`.
 - `ui_setup.go` registers the canvas-level callbacks as the no-focus fallback
   with defensive `Focused() != nil` guards. Because the driver routes
   shortcuts to the canvas shortcut table in that state, the main screen's

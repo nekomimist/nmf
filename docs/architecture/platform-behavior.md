@@ -181,8 +181,10 @@ content also uses the same frame above Fyne's modal dim layer so the accent
 remains clear; the dimmed File Manager frame remains active underneath.
 
 Inactive File Manager windows dim only the file-list cursor. Fyne does not expose
-a public top-level window activation callback, so NMF derives this from the main
-File Manager `KeySink` focus state.
+a public per-window activation callback, so NMF combines the main File Manager
+`KeySink` focus state with actual `KeyManager` input activity. A raw key down
+repairs stale inactive state before that press's typed activation is dispatched;
+application backgrounding marks every File Manager inactive.
 
 ## Adding Platform Integrations
 

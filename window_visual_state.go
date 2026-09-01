@@ -32,25 +32,63 @@ func (fm *FileManager) cursorThemeProvider() ui.ThemeColorProvider {
 }
 
 func (fm *FileManager) setWindowActive(active bool) {
-	if fm == nil || fm.windowActive == active {
+	if fm == nil {
 		return
 	}
-	// Fyne can deliver a focus change while the window is being torn down, and
-	// this runs from the KeySink's focus callback (ui_setup.go). Every other
-	// window-owned callback takes the same guard.
+	// Fyne can deliver focus/lifecycle activity while the window is being torn
+	// down. KeySink focus, KeyManager input, and application lifecycle callbacks
+	// all converge here, so keep the same guard as other window-owned callbacks.
 	if fm.isWindowClosed() {
+		return
+	}
+	if active {
+		deactivateOtherFileManagerWindows(fm)
+	}
+	if fm.runtime != nil && fm.runtime.promptBroker != nil && fm.promptTargetID != 0 {
+		// Keep prompt ownership synchronized even when the visual state was
+		// already correct but another callback left the broker stale.
+		fm.runtime.promptBroker.SetActive(fm.promptTargetID, active)
+	}
+	if fm.windowActive == active {
 		return
 	}
 	debugPrint("FileManager: window active change active=%t focused=%s path=%s", active, focusedObjectLabel(fm.window), fm.GetCurrentPath())
 	fm.windowActive = active
-	if fm.runtime != nil && fm.runtime.promptBroker != nil && fm.promptTargetID != 0 {
-		fm.runtime.promptBroker.SetActive(fm.promptTargetID, active)
-	}
 	if active {
 		bringFileManagerWindowsToFront(fm.runtime)
 	}
 	if fm.fileList != nil {
 		fm.RefreshCursor()
+	}
+}
+
+// noteInputActivity repairs a stale inactive state before the typed activation
+// for the same key press is dispatched. All keyboard delivery paths that can
+// reach KeyManager first forward the raw key down event.
+func (fm *FileManager) noteInputActivity() {
+	if fm == nil || fm.windowActive {
+		return
+	}
+	fm.setWindowActive(true)
+}
+
+func deactivateOtherFileManagerWindows(active *FileManager) {
+	if active == nil {
+		return
+	}
+	for _, manager := range active.registeredWindows() {
+		if manager != active {
+			manager.setWindowActive(false)
+		}
+	}
+}
+
+func deactivateFileManagerWindows(runtime *ApplicationRuntime) {
+	if runtime == nil || runtime.windows == nil {
+		return
+	}
+	for _, manager := range runtime.windows.snapshot() {
+		manager.setWindowActive(false)
 	}
 }
 

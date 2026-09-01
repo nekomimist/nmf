@@ -4,9 +4,11 @@ import (
 	"image/color"
 	"testing"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 
+	"nmf/internal/keymanager"
 	customtheme "nmf/internal/theme"
 	"nmf/internal/ui"
 )
@@ -19,6 +21,20 @@ func (visualStateTheme) GetCustomColor(colorType string) color.RGBA {
 	}
 	return color.RGBA{}
 }
+
+type visualStateInputHandler struct {
+	onActivated func()
+}
+
+func (h *visualStateInputHandler) OnKeyActivated(_ *fyne.KeyEvent, _ keymanager.ModifierState) bool {
+	if h.onActivated != nil {
+		h.onActivated()
+	}
+	return true
+}
+
+func (*visualStateInputHandler) OnTypedRune(rune, keymanager.ModifierState) bool { return false }
+func (*visualStateInputHandler) GetName() string                                 { return "VisualStateInput" }
 
 func TestInactiveCursorThemeDimsCursorAlphaOnly(t *testing.T) {
 	theme := inactiveCursorTheme{base: visualStateTheme{}}
@@ -84,6 +100,120 @@ func TestMainScreenPointerActionRestoresFocusBeforeAction(t *testing.T) {
 
 	if got := window.Canvas().Focused(); got != fm.fileListView {
 		t.Fatalf("focused object after action = %T, want fileListView", got)
+	}
+}
+
+func TestKeyInputRestoresWindowActiveBeforeActivationAfterOverlay(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	window := app.NewWindow("overlay focus")
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	fm := &FileManager{
+		window:       window,
+		windowActive: true,
+		keyManager:   km,
+		browser:      newTestBrowser(testBrowserOptions{path: "/tmp"}),
+	}
+	fm.fileListView = ui.NewKeySink(
+		widget.NewLabel("files"),
+		km,
+		ui.WithFocusChanged(fm.setWindowActive),
+	)
+	window.SetContent(fm.fileListView)
+	window.Canvas().Focus(fm.fileListView)
+	km.SetInputActivityCallback(fm.noteInputActivity)
+
+	activated := false
+	km.PushHandler(&visualStateInputHandler{onActivated: func() {
+		activated = true
+		if !fm.windowActive {
+			t.Fatal("typed activation ran while the File Manager was inactive")
+		}
+	}})
+
+	// Model the failing Fyne sequence: the content owner loses window focus,
+	// an overlay becomes the current focus manager, then removing it restores
+	// the retained content owner without another content FocusGained callback.
+	fm.fileListView.FocusLost()
+	if fm.windowActive {
+		t.Fatal("focus loss should mark the File Manager inactive")
+	}
+	overlaySink := ui.NewKeySink(widget.NewLabel("dialog"), km)
+	window.Canvas().Overlays().Add(overlaySink)
+	window.Canvas().Focus(overlaySink)
+	window.Canvas().Overlays().Remove(overlaySink)
+	if got := window.Canvas().Focused(); got != fm.fileListView {
+		t.Fatalf("focused object after overlay removal = %T, want main KeySink", got)
+	}
+	if fm.windowActive {
+		t.Fatal("overlay removal should reproduce the stale inactive state")
+	}
+
+	fm.fileListView.KeyDown(&fyne.KeyEvent{Name: fyne.KeyDown})
+	if !fm.windowActive {
+		t.Fatal("raw key input should restore active state before activation")
+	}
+	fm.fileListView.TypedKey(&fyne.KeyEvent{Name: fyne.KeyDown})
+	if !activated {
+		t.Fatal("typed key was not delivered after active-state recovery")
+	}
+}
+
+func TestWindowActivationDeactivatesOtherFileManagers(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	runtime := newFileManagerWindowTestRuntime(t)
+
+	active := &FileManager{
+		runtime:      runtime,
+		window:       app.NewWindow("active"),
+		windowActive: true,
+		browser:      newTestBrowser(testBrowserOptions{path: "/active"}),
+	}
+	other := &FileManager{
+		runtime:      runtime,
+		window:       app.NewWindow("other"),
+		windowActive: true,
+		browser:      newTestBrowser(testBrowserOptions{path: "/other"}),
+	}
+	registerFileManagerWindow(active)
+	registerFileManagerWindow(other)
+
+	active.setWindowActive(true)
+
+	if !active.windowActive {
+		t.Fatal("activating window should keep it active")
+	}
+	if other.windowActive {
+		t.Fatal("activating window should deactivate other File Managers")
+	}
+}
+
+func TestApplicationBackgroundDeactivatesAllFileManagers(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	runtime := newFileManagerWindowTestRuntime(t)
+
+	first := &FileManager{
+		runtime:      runtime,
+		window:       app.NewWindow("first"),
+		windowActive: true,
+		browser:      newTestBrowser(testBrowserOptions{path: "/first"}),
+	}
+	second := &FileManager{
+		runtime:      runtime,
+		window:       app.NewWindow("second"),
+		windowActive: true,
+		browser:      newTestBrowser(testBrowserOptions{path: "/second"}),
+	}
+	registerFileManagerWindow(first)
+	registerFileManagerWindow(second)
+
+	deactivateFileManagerWindows(runtime)
+
+	if first.windowActive || second.windowActive {
+		t.Fatalf("backgrounded File Managers active states = %t, %t; want both false", first.windowActive, second.windowActive)
 	}
 }
 

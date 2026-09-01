@@ -72,6 +72,32 @@ type KeyManager struct {
 	armed             bool
 	queuedTransitions int
 	queueOnMain       func(func())
+	onInputActivity   func()
+}
+
+// SetInputActivityCallback sets a callback invoked when this KeyManager
+// receives a raw key down. A key down is definitive evidence that the owning
+// window is receiving input, and it always precedes the typed activation for
+// the same press. The callback runs without the KeyManager mutex held.
+func (km *KeyManager) SetInputActivityCallback(callback func()) {
+	if km == nil {
+		return
+	}
+	km.mutex.Lock()
+	km.onInputActivity = callback
+	km.mutex.Unlock()
+}
+
+func (km *KeyManager) notifyInputActivity() {
+	if km == nil {
+		return
+	}
+	km.mutex.RLock()
+	callback := km.onInputActivity
+	km.mutex.RUnlock()
+	if callback != nil {
+		callback()
+	}
 }
 
 // NewKeyManager creates a new KeyManager instance
@@ -248,6 +274,8 @@ func (km *KeyManager) GetModifierState() ModifierState {
 // press arms the gate (unless an owner transition is still queued), so the
 // same press's typed events are delivered. It never dispatches to handlers.
 func (km *KeyManager) HandleKeyDown(ev *fyne.KeyEvent) {
+	km.notifyInputActivity()
+
 	km.mutex.Lock()
 	modifierHandled := km.updateModifierState(ev, true)
 	armedNow := false

@@ -67,6 +67,9 @@ func newApplicationRuntime(app fyne.App, options applicationRuntimeOptions) *App
 		navigationHistoryEvents: newNavigationHistoryEventHub(),
 		searchMatchers:          search.NewProvider(debugPrint),
 	}
+	app.Lifecycle().SetOnExitedForeground(func() {
+		deactivateFileManagerWindows(runtime)
+	})
 	installWindowActivationHandler(runtime)
 
 	// These package-level hooks bridge VFS code to the one application-scoped
