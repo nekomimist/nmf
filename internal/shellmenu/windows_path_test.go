@@ -71,6 +71,11 @@ func TestNormalizeWindowsShellPath(t *testing.T) {
 			want:  `\\naja.local\neko\dir\file.txt`,
 		},
 		{
+			name:  "SMB URL preserves at in path",
+			input: "smb://naja.local/neko/dir@name/file@name.txt",
+			want:  `\\naja.local\neko\dir@name\file@name.txt`,
+		},
+		{
 			name:  "WSL host alias",
 			input: "smb://wsl$/Ubuntu/home/neko",
 			want:  `\\wsl.localhost\Ubuntu\home\neko`,

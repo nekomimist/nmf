@@ -1,6 +1,9 @@
 package fileinfo
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestParseSMBURLBasic(t *testing.T) {
 	host, share, segs, user, pass, domain := parseSMBURL("smb://server/share/a/b")
@@ -30,6 +33,53 @@ func TestParseSMBURLWithCreds(t *testing.T) {
 	_, _, _, user, pass, domain = parseSMBURL("smb://corp\\carol:pw@host/share")
 	if user != "carol" || pass != "pw" || domain != "corp" {
 		t.Fatalf("domain\\user mismatch: %q %q %q", user, pass, domain)
+	}
+}
+
+func TestParseSMBURLPreservesAtInShareAndPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		share    string
+		segments []string
+		user     string
+		pass     string
+	}{
+		{
+			name:     "share",
+			input:    "smb://server/sh@re/dir",
+			share:    "sh@re",
+			segments: []string{"dir"},
+		},
+		{
+			name:     "path",
+			input:    "smb://server/share/dir@name/file@name.txt",
+			share:    "share",
+			segments: []string{"dir@name", "file@name.txt"},
+		},
+		{
+			name:     "credentials and path",
+			input:    "smb://alice:secret@server/share/dir@name",
+			share:    "share",
+			segments: []string{"dir@name"},
+			user:     "alice",
+			pass:     "secret",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			host, share, segments, user, pass, _ := parseSMBURL(tt.input)
+			if host != "server" || share != tt.share {
+				t.Fatalf("host/share = %q/%q, want server/%s", host, share, tt.share)
+			}
+			if !slices.Equal(segments, tt.segments) {
+				t.Fatalf("segments = %#v, want %#v", segments, tt.segments)
+			}
+			if user != tt.user || pass != tt.pass {
+				t.Fatalf("credentials = %q/%q, want %q/%q", user, pass, tt.user, tt.pass)
+			}
+		})
 	}
 }
 
@@ -103,6 +153,14 @@ func TestUNCConversionRoundTripDisplay(t *testing.T) {
 	}
 }
 
+func TestSMBURLToUNCPreservesAtInPath(t *testing.T) {
+	got := smbURLToUNC("smb://alice:secret@srv/share/dir@name/file@name.txt")
+	want := `\\srv\share\dir@name\file@name.txt`
+	if got != want {
+		t.Fatalf("smbURLToUNC() = %q, want %q", got, want)
+	}
+}
+
 func TestCanonicalDisplayPathNormalizesSMBForms(t *testing.T) {
 	tests := []string{
 		`\\wsl$\Ubuntu\home\neko`,
@@ -123,6 +181,20 @@ func TestCanonicalDisplayPathNormalizesSMBForms(t *testing.T) {
 		if got != "smb://wsl.localhost/Ubuntu/home/neko" {
 			t.Fatalf("CanonicalDisplayPath(%q) = %q, want canonical WSL path", input, got)
 		}
+	}
+}
+
+func TestCanonicalDisplayPathPreservesBangDirectory(t *testing.T) {
+	input := "smb://server/share/bang!/readme.txt"
+	got, parsed, err := CanonicalDisplayPath(input)
+	if err != nil {
+		t.Fatalf("CanonicalDisplayPath(%q) returned error: %v", input, err)
+	}
+	if got != input {
+		t.Fatalf("CanonicalDisplayPath(%q) = %q, want unchanged path", input, got)
+	}
+	if parsed.Scheme != SchemeSMB {
+		t.Fatalf("CanonicalDisplayPath(%q) scheme = %q, want smb", input, parsed.Scheme)
 	}
 }
 

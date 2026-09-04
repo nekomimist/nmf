@@ -1,9 +1,12 @@
 package fileinfo
 
 import (
+	"context"
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/mholt/archives"
 )
 
 const archivePathSeparator = "!/"
@@ -18,7 +21,7 @@ func IsArchivePath(p string) bool {
 // and an archive-internal path. The root inside the archive is returned as ".".
 func SplitArchivePath(p string) (archiveFile, inner string, ok bool) {
 	p = strings.TrimSpace(p)
-	idx := strings.Index(p, archivePathSeparator)
+	idx := archivePathSeparatorIndex(p)
 	if idx < 0 {
 		return "", "", false
 	}
@@ -29,6 +32,40 @@ func SplitArchivePath(p string) (archiveFile, inner string, ok bool) {
 	}
 	inner = cleanArchiveInnerPath(inner)
 	return archiveFile, inner, true
+}
+
+// archivePathSeparatorIndex finds an archive virtual-path boundary while
+// ignoring ordinary directories whose names end in "!". A boundary is valid
+// only when the preceding path has a filename recognized as an extractable
+// archive. Scanning all candidates also allows such directories to contain an
+// actual archive virtual path.
+func archivePathSeparatorIndex(p string) int {
+	searchFrom := 0
+	for searchFrom < len(p) {
+		relative := strings.Index(p[searchFrom:], archivePathSeparator)
+		if relative < 0 {
+			return -1
+		}
+		idx := searchFrom + relative
+		if isArchiveFileName(p[:idx]) {
+			return idx
+		}
+		searchFrom = idx + len(archivePathSeparator)
+	}
+	return -1
+}
+
+func isArchiveFileName(p string) bool {
+	name := path.Base(strings.ReplaceAll(strings.TrimSpace(p), "\\", "/"))
+	if name == "" || name == "." || name == "/" {
+		return false
+	}
+	format, _, err := archives.Identify(context.Background(), name, nil)
+	if err != nil {
+		return false
+	}
+	_, ok := format.(archives.Extractor)
+	return ok
 }
 
 // ArchiveRootPath returns the display path for the root of an archive.

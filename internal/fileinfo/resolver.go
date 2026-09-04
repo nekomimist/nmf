@@ -226,8 +226,9 @@ func smbURLToUNC(u string) string {
 	}
 	// find authority and path
 	hostAndPath := s
-	// Strip optional creds
-	if at := strings.Index(hostAndPath, "@"); at >= 0 {
+	// Strip optional credentials only from the URL authority. An @ in a share
+	// or path component is part of its name.
+	if at := smbUserInfoEnd(hostAndPath); at >= 0 {
 		hostAndPath = hostAndPath[at+1:]
 	}
 	parts := strings.Split(hostAndPath, "/")
@@ -328,7 +329,7 @@ func parseSMBURL(u string) (host, share string, segments []string, user, pass, d
 	}
 	t := s[len("smb://"):]
 	// Extract and strip creds
-	if at := strings.Index(t, "@"); at >= 0 {
+	if at := smbUserInfoEnd(t); at >= 0 {
 		cred := t[:at]
 		t = t[at+1:]
 		// Split password part
@@ -358,6 +359,17 @@ func parseSMBURL(u string) (host, share string, segments []string, user, pass, d
 		segments = parts[2:]
 	}
 	return
+}
+
+// smbUserInfoEnd returns the index of the @ terminating optional SMB URL
+// credentials. Only an @ in the authority is considered; @ characters after
+// the first forward slash belong to share and path names.
+func smbUserInfoEnd(authorityAndPath string) int {
+	authorityEnd := strings.IndexByte(authorityAndPath, '/')
+	if authorityEnd < 0 {
+		authorityEnd = len(authorityAndPath)
+	}
+	return strings.LastIndex(authorityAndPath[:authorityEnd], "@")
 }
 
 func normalizeParsedSMBPath(parsed *Parsed) error {

@@ -66,7 +66,11 @@ func normalizeWindowsShellPath(input string) string {
 	}
 
 	authorityAndPath := p[len("smb://"):]
-	if at := strings.Index(authorityAndPath, "@"); at >= 0 {
+	authorityEnd := strings.IndexByte(authorityAndPath, '/')
+	if authorityEnd < 0 {
+		authorityEnd = len(authorityAndPath)
+	}
+	if at := strings.LastIndex(authorityAndPath[:authorityEnd], "@"); at >= 0 {
 		authorityAndPath = authorityAndPath[at+1:]
 	}
 	parts := strings.Split(authorityAndPath, "/")

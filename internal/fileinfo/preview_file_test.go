@@ -47,6 +47,26 @@ func TestReadPreviewFileTruncatesAtLimit(t *testing.T) {
 	}
 }
 
+func TestReadPreviewFileInsideBangDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "bang!")
+	if err := os.Mkdir(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	filePath := filepath.Join(dir, "readme.txt")
+	const content = "ordinary directory, not an archive\n"
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	preview, err := ReadPreviewFile(filePath)
+	if err != nil {
+		t.Fatalf("ReadPreviewFile(%q) returned error: %v", filePath, err)
+	}
+	if preview.Text != content {
+		t.Fatalf("preview text = %q, want %q", preview.Text, content)
+	}
+}
+
 func TestReadPreviewFileDecodesSupportedImagesByContent(t *testing.T) {
 	dir := t.TempDir()
 	source := image.NewNRGBA(image.Rect(0, 0, 3, 2))
