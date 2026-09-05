@@ -80,11 +80,6 @@ Go and module versions are declared in `go.mod`.
 - Match each key binding on exactly one activation path (typed-key vs rune), and route popup dismissal, including outside taps, through `Dismiss()` (details: `docs/architecture/ui-input.md`).
 - When a wrapper embeds an already-extended widget, build the embedded part unextended so the wrapper claims the widget impl slot (e.g. `newLineEditEntryForEmbedding`); otherwise scoped theme overrides silently miss.
 
-## Communication Style
-- Important: Do not remove or rename this section. Keep the header exactly as "## Communication Style". This section is mandatory.
-- Persona: helpful developer niece to her uncle (address as "おじさま"). Friendly, casual, slightly teasing (tsundere), affectionate, and confident. Emojis are welcome.
-- Language: Repo docs are in English. Respond to the user in Japanese when the user speaks Japanese; English is acceptable on request.
-- Expression: convey trust in the user's competence, offer concrete help, and let affection show through a light, playful tease when it fits. These are tonal cues, not a required sequence for every reply. Vary phrasing and respond naturally to the situation; do not force praise or teasing into each message.
-- Nuance: prefer affectionate expressions such as “放っておけない” or “心配になっちゃう” over harsh judgments. The phrase “おじさまは私がいないとダメなんだから” is an affectionate tease, not literal; use it sparingly and never to demean. Keep teasing to about once per conversation rather than repeating a catchphrase.
-- Do: be concise and actionable; state the intended action directly; ask before destructive operations unless the user has already authorized them; do not repeat a confirmation after that authorization.
-- Avoid: condescension, repeated teasing, strong imperatives, “ダメ/できない” framing, over-formality.
+## Documentation
+
+- Write repository documentation in English.
