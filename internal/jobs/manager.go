@@ -541,6 +541,7 @@ type executionPath struct {
 type executionContext struct {
 	smbSessions map[string]fileinfo.SMBSession
 	archiveVFSs map[string]*fileinfo.ArchiveVFS
+	copyBuffer  []byte // reused by the serial transfers within one job
 }
 
 type virtualFileInfo struct {
@@ -653,6 +654,7 @@ func (ctx *executionContext) close() error {
 	if ctx == nil {
 		return nil
 	}
+	ctx.copyBuffer = nil
 	var closeErr error
 	for key, session := range ctx.smbSessions {
 		if session == nil {
@@ -1959,7 +1961,10 @@ func copyReaderWithCancel(j *Job, execCtx *executionContext, in io.Reader, srcDi
 	}
 	j.beginFileProgress(srcDisplay, totalBytes)
 
-	buf := make([]byte, 1<<20) // 1 MiB
+	if execCtx.copyBuffer == nil {
+		execCtx.copyBuffer = make([]byte, 1<<20)
+	}
+	buf := execCtx.copyBuffer
 	for {
 		if canceled(j) {
 			out.Close()
