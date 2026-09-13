@@ -86,6 +86,14 @@ Watch behavior:
 
 Source: `internal/jobs/manager.go`.
 
+The manager owns queueing, subscriptions, history, and job execution. Transfer
+traversal lives in `transfer.go`, conflict decisions in `conflict.go`, and copy
+buffers and output publication in `transfer_io.go` and `transfer_destination.go`.
+`execution_path.go` owns provider paths and per-job sessions; `backend_io.go`
+routes I/O through those providers. Archive extraction and deletion live in
+`archive_extract.go` and `delete.go`. These files share the same package and
+execution context rather than introducing additional service interfaces.
+
 `Manager` model:
 
 - Singleton manager (`GetManager`) with one worker goroutine.
@@ -99,7 +107,7 @@ Subscription rules:
 - Notifications are emitted without holding manager lock.
 - UI callbacks must marshal to Fyne main thread (`fyne.Do`) when touching widgets.
 
-Result recording (`Job.Result`, `internal/jobs/types.go` and `manager.go`):
+Result recording (`Job.Result`, `internal/jobs/types.go`, `transfer.go`, and `manager.go`):
 
 - A `Result` records one top-level operation's outcome: `Source`, `Destination`,
   `SourceIsDir`, and `DestinationCreated` (source/destination display paths,
