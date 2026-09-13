@@ -2,14 +2,10 @@ package ui
 
 import (
 	"fmt"
-	"image/color"
 	"strings"
-	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -17,7 +13,6 @@ import (
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 	"nmf/internal/search"
-	customtheme "nmf/internal/theme"
 )
 
 // Operation represents the requested action
@@ -29,12 +24,6 @@ const (
 	OpExtract Operation = "extract"
 )
 
-// DestinationCandidate describes a copy/move destination and where it came from.
-type DestinationCandidate struct {
-	Path         string
-	OpenInWindow bool
-}
-
 // CopyMoveResult describes the accepted copy/move dialog choices.
 type CopyMoveResult struct {
 	Destination        string
@@ -43,36 +32,23 @@ type CopyMoveResult struct {
 
 // CopyMoveDialog presents targets and lets user pick destination by filtering history
 type CopyMoveDialog struct {
-	op           Operation
-	targets      []string
-	searchEntry  *CustomSearchEntry
-	destList     *widget.List
-	filteredDest []DestinationCandidate
-	allDest      []DestinationCandidate
-	openDest     map[string]bool
-	lastUsed     map[string]time.Time
-	dataBinding  binding.StringList
-	selectedPath string
-	selectedIdx  int
-	preserveCB   *widget.Check
+	destinationPicker
+	op         Operation
+	targets    []string
+	preserveCB *widget.Check
 
-	debugPrint  func(format string, args ...interface{})
-	keyManager  *keymanager.KeyManager
-	kmToken     keymanager.HandlerToken
-	matchers    *search.Provider
-	parent      fyne.Window
-	dialog      dialog.Dialog
-	sink        *KeySink
-	closed      bool
-	destScroll  *dialogListScroller
-	destEmpty   *widget.Label
-	scrollRight bool
-	ownerFrame  dialogHighlightState
+	debugPrint func(format string, args ...interface{})
+	keyManager *keymanager.KeyManager
+	kmToken    keymanager.HandlerToken
+	parent     fyne.Window
+	dialog     dialog.Dialog
+	sink       *KeySink
+	closed     bool
+	ownerFrame dialogHighlightState
 
-	onAccept      func(CopyMoveResult)
-	onPathChanged func(string)
-	onOpenDest    func(string)
-	onClosed      func()
+	onAccept   func(CopyMoveResult)
+	onOpenDest func(string)
+	onClosed   func()
 }
 
 // NewCopyMoveDialog creates a new dialog instance
@@ -80,20 +56,17 @@ func NewCopyMoveDialog(
 	op Operation,
 	targets []string,
 	destCandidates []DestinationCandidate,
-	lastUsed map[string]time.Time,
 	preserveTimestamps bool,
 	km *keymanager.KeyManager,
 	debugPrint func(format string, args ...interface{}),
 	matchers ...*search.Provider,
 ) *CopyMoveDialog {
 	d := &CopyMoveDialog{
-		op:         op,
-		targets:    targets,
-		allDest:    destCandidates,
-		openDest:   destinationOpenMap(destCandidates),
-		lastUsed:   lastUsed,
-		keyManager: km,
-		debugPrint: debugPrint,
+		destinationPicker: destinationPicker{allDest: destCandidates, openDest: destinationOpenMap(destCandidates)},
+		op:                op,
+		targets:           targets,
+		keyManager:        km,
+		debugPrint:        debugPrint,
 	}
 	if op == OpCopy || op == OpExtract {
 		d.preserveCB = widget.NewCheck("Preserve timestamps", nil)
@@ -108,39 +81,11 @@ func NewCopyMoveDialog(
 }
 
 func (d *CopyMoveDialog) createWidgets() {
-	d.searchEntry = NewCustomSearchEntry()
-	d.searchEntry.SetPlaceHolder("Type to filter destination...")
-	d.searchEntry.OnChanged = func(q string) { d.updateFiltered(q) }
-	d.dataBinding = binding.NewStringList()
-	d.destList = widget.NewListWithData(
-		d.dataBinding,
-		func() fyne.CanvasObject {
-			text := canvas.NewText("", currentAppThemeColor(fynetheme.ColorNameForeground))
-			text.TextStyle = fyne.TextStyle{Monospace: true}
-			text.TextSize = fynetheme.TextSize()
-			return text
-		},
-		func(item binding.DataItem, obj fyne.CanvasObject) {
-			str, _ := item.(binding.String).Get()
-			if text, ok := obj.(*canvas.Text); ok {
-				text.Text = str
-				text.TextSize = fynetheme.TextSize()
-				text.Color = d.destinationTextColor(str)
-				text.Refresh()
-			}
-		},
-	)
-	d.destList.OnSelected = func(id widget.ListItemID) {
-		if id >= 0 && int(id) < len(d.filteredDest) {
-			d.selectedIdx = int(id)
-			d.selectedPath = d.filteredDest[id].Path
-			d.notifySelectedPathChanged()
-			d.applyHorizontalScroll()
-			if d.parent != nil && d.sink != nil {
-				d.parent.Canvas().Focus(d.sink)
-			}
+	d.destinationPicker.createWidgets(func() {
+		if d.parent != nil && d.sink != nil {
+			d.parent.Canvas().Focus(d.sink)
 		}
-	}
+	})
 }
 
 // ShowDialog renders and shows the copy/move dialog
@@ -149,7 +94,6 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveRe
 	d.onAccept = onAccept
 	listWidth := responsiveDialogWidth(parent, searchDialogListWidth)
 	targetListWidth := fyne.Max(copyMoveTargetListWidth, listWidth)
-	destListSize := metricsSize(listWidth, copyMoveDestListHeight)
 
 	// Title is derived dynamically when creating the dialog below
 
@@ -194,21 +138,7 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveRe
 		d.OpenDestination()
 	})
 	searchSection := container.NewBorder(nil, nil, searchLabel, openButton, d.searchEntry)
-	destScroll := newDialogListScroller(d.destList, dialogDestinationTextWidth(d.allDest, listWidth), listWidth, copyMoveDestListHeight)
-	d.destScroll = destScroll
-	empty := widget.NewLabel("No matching destinations")
-	d.destEmpty = empty
-	empty.Alignment = fyne.TextAlignCenter
-	empty.Hide()
-	fixed := container.NewWithoutLayout(destScroll, empty)
-	fixed.Resize(destListSize)
-	destScroll.Resize(destListSize)
-	destScroll.Move(fyne.NewPos(0, 0))
-	empty.Resize(destListSize)
-	empty.Move(fyne.NewPos(0, 0))
-	d.searchEntry.OnChanged = func(q string) {
-		d.updateFiltered(q)
-	}
+	fixed := d.destinationArea(listWidth, copyMoveDestListHeight)
 
 	contentObjects := []fyne.CanvasObject{
 		header,
@@ -245,50 +175,9 @@ func (d *CopyMoveDialog) PreserveTimestamps() bool {
 	return d.preserveCB != nil && d.preserveCB.Checked
 }
 
-// updateFiltered updates destination list
-func (d *CopyMoveDialog) updateFiltered(q string) {
-	if q == "" {
-		d.filteredDest = d.allDest
-	} else {
-		matcher := d.matchers.Build(q)
-		d.filteredDest = d.filteredDest[:0:0]
-		for _, p := range d.allDest {
-			if matcher.Match(p.Path) {
-				d.filteredDest = append(d.filteredDest, p)
-			}
-		}
-	}
-	d.dataBinding.Set(destinationPaths(d.filteredDest))
-	if len(d.filteredDest) > 0 {
-		d.selectedIdx = 0
-		d.selectedPath = d.filteredDest[0].Path
-		d.destList.Select(0)
-		d.notifySelectedPathChanged()
-		d.applyHorizontalScroll()
-	} else {
-		d.selectedIdx = -1
-		d.selectedPath = ""
-		d.notifySelectedPathChanged()
-	}
-	d.destList.Refresh()
-	d.updateDestinationEmptyState()
-}
-
-// SetOnSelectedPathChanged sets a callback for destination selection changes.
-func (d *CopyMoveDialog) SetOnSelectedPathChanged(callback func(string)) {
-	d.onPathChanged = callback
-	d.notifySelectedPathChanged()
-}
-
 // SetOwnerHighlighted changes the accent frame around the owning dialog.
 func (d *CopyMoveDialog) SetOwnerHighlighted(highlighted bool) {
 	d.ownerFrame.setHighlighted(highlighted)
-}
-
-func (d *CopyMoveDialog) notifySelectedPathChanged() {
-	if d.onPathChanged != nil {
-		d.onPathChanged(d.selectedPath)
-	}
 }
 
 // SetOnOpenDestination sets a callback for opening the currently selected destination.
@@ -301,85 +190,6 @@ func (d *CopyMoveDialog) SetOnClosed(callback func()) {
 	d.onClosed = callback
 }
 
-// SetDestinations replaces destination candidates while preserving the current search.
-func (d *CopyMoveDialog) SetDestinations(candidates []DestinationCandidate, preferredPath string) {
-	previousPath := d.selectedPath
-	query := d.GetSearchText()
-	d.allDest = append([]DestinationCandidate(nil), candidates...)
-	d.openDest = destinationOpenMap(d.allDest)
-	d.updateFiltered(query)
-
-	if preferredPath != "" && d.selectFilteredPath(preferredPath) {
-		return
-	}
-	if previousPath != "" {
-		d.selectFilteredPath(previousPath)
-	}
-}
-
-// Interface methods used by key handler
-func (d *CopyMoveDialog) MoveUp() {
-	if d.destList != nil && len(d.filteredDest) > 0 {
-		i := d.selectedIdx - 1
-		if i < 0 {
-			i = 0
-		}
-		if i != d.selectedIdx {
-			d.destList.Select(widget.ListItemID(i))
-		}
-	}
-}
-func (d *CopyMoveDialog) MoveDown() {
-	if d.destList != nil && len(d.filteredDest) > 0 {
-		i := d.selectedIdx + 1
-		m := len(d.filteredDest) - 1
-		if i > m {
-			i = m
-		}
-		if i != d.selectedIdx {
-			d.destList.Select(widget.ListItemID(i))
-		}
-	}
-}
-func (d *CopyMoveDialog) MoveToTop() {
-	if d.destList != nil && len(d.filteredDest) > 0 {
-		d.destList.Select(0)
-	}
-}
-func (d *CopyMoveDialog) MoveToBottom() {
-	if d.destList != nil && len(d.filteredDest) > 0 {
-		d.destList.Select(len(d.filteredDest) - 1)
-	}
-}
-func (d *CopyMoveDialog) ClearSearch() {
-	if d.searchEntry != nil {
-		d.searchEntry.SetText("")
-	}
-}
-func (d *CopyMoveDialog) AppendToSearch(c string) {
-	if d.searchEntry != nil {
-		d.searchEntry.SetText(d.searchEntry.Text + c)
-	}
-}
-func (d *CopyMoveDialog) BackspaceSearch() {
-	if d.searchEntry != nil {
-		t := d.searchEntry.Text
-		if len(t) > 0 {
-			d.searchEntry.SetText(trimLastRune(t))
-		}
-	}
-}
-func (d *CopyMoveDialog) GetSearchText() string {
-	if d.searchEntry != nil {
-		return d.searchEntry.Text
-	}
-	return ""
-}
-func (d *CopyMoveDialog) CopySelectedPathToSearch() {
-	if d.searchEntry != nil && d.selectedPath != "" {
-		d.searchEntry.SetText(d.selectedPath)
-	}
-}
 func (d *CopyMoveDialog) SelectCurrentItem() {
 	d.debugPrint("CopyMoveDialog: Select current dest: %s", d.selectedPath)
 }
@@ -401,75 +211,32 @@ func (d *CopyMoveDialog) OpenDestination() {
 	d.onOpenDest(path)
 }
 
-func (d *CopyMoveDialog) ScrollSelectedRight() {
-	d.scrollRight = true
-	d.applyHorizontalScroll()
-}
-
-func (d *CopyMoveDialog) ResetHorizontalScroll() {
-	d.scrollRight = false
-	if d.destScroll != nil {
-		d.destScroll.ResetHorizontalScroll()
-	}
-}
-
-func (d *CopyMoveDialog) applyHorizontalScroll() {
-	if !d.scrollRight || d.destScroll == nil || d.selectedPath == "" {
-		return
-	}
-	d.destScroll.ScrollPathRight(d.selectedPath)
-}
-
 func (d *CopyMoveDialog) AcceptSelection() {
+	d.accept(false)
+}
+
+func (d *CopyMoveDialog) AcceptDirectPath() {
+	d.accept(true)
+}
+
+func (d *CopyMoveDialog) accept(direct bool) {
 	if d.closed {
 		return
 	}
 	d.closed = true
-
-	// Allow direct path via search text when no list match
 	acceptedPath := ""
 	search := d.GetSearchText()
-	if search != "" && len(d.filteredDest) == 0 {
+	if search != "" && (direct || len(d.filteredDest) == 0) {
 		if resolvedPath, ok := d.resolveDirectoryPath(search); ok {
 			d.debugPrint("CopyMoveDialog: direct path accept: %s", resolvedPath)
 			acceptedPath = resolvedPath
+		} else if d.selectedPath != "" {
+			acceptedPath = d.selectedPath
 		}
 	} else if d.selectedPath != "" {
 		acceptedPath = d.selectedPath
 	}
 	deferDialogClose(d.keyManager, "copyMove.accept", func() {
-		d.notifyDialogClosed()
-		d.keyManager.RemoveHandler(d.kmToken)
-		if d.dialog != nil {
-			d.dialog.Hide()
-		}
-		unfocusIfDialogOwned(d.parent, d.sink, d.searchEntry)
-		if d.onAccept != nil && acceptedPath != "" {
-			d.onAccept(CopyMoveResult{Destination: acceptedPath, PreserveTimestamps: d.PreserveTimestamps()})
-		}
-	})
-}
-
-func (d *CopyMoveDialog) AcceptDirectPath() {
-	if d.closed {
-		return
-	}
-	d.closed = true
-	acceptedPath := ""
-	search := d.GetSearchText()
-	if search != "" {
-		if resolvedPath, ok := d.resolveDirectoryPath(search); ok {
-			d.debugPrint("CopyMoveDialog: Ctrl+Enter direct: %s", resolvedPath)
-			acceptedPath = resolvedPath
-		} else if d.selectedPath != "" {
-			d.debugPrint("CopyMoveDialog: invalid direct path; fallback to selection: %s", d.selectedPath)
-			acceptedPath = d.selectedPath
-		}
-	} else if d.selectedPath != "" {
-		d.debugPrint("CopyMoveDialog: empty direct path; fallback to selection: %s", d.selectedPath)
-		acceptedPath = d.selectedPath
-	}
-	deferDialogClose(d.keyManager, "copyMove.acceptDirect", func() {
 		d.notifyDialogClosed()
 		d.keyManager.RemoveHandler(d.kmToken)
 		if d.dialog != nil {
@@ -515,59 +282,4 @@ func (d *CopyMoveDialog) resolveDirectoryPath(p string) (string, bool) {
 		return "", false
 	}
 	return resolved, true
-}
-
-func (d *CopyMoveDialog) destinationTextColor(path string) color.Color {
-	if d.openDest[path] {
-		themeProvider := currentThemeColorProvider()
-		if themeProvider != nil {
-			return themeProvider.GetCustomColor(customtheme.ColorCopyMoveOpenDestination)
-		}
-	}
-	return currentAppThemeColor(fynetheme.ColorNameForeground)
-}
-
-func destinationOpenMap(candidates []DestinationCandidate) map[string]bool {
-	result := make(map[string]bool, len(candidates))
-	for _, candidate := range candidates {
-		if candidate.OpenInWindow {
-			result[candidate.Path] = true
-		}
-	}
-	return result
-}
-
-func (d *CopyMoveDialog) selectFilteredPath(path string) bool {
-	for i, candidate := range d.filteredDest {
-		if candidate.Path == path {
-			d.destList.Select(widget.ListItemID(i))
-			return true
-		}
-	}
-	return false
-}
-
-func (d *CopyMoveDialog) updateDestinationEmptyState() {
-	if d.destScroll == nil || d.destEmpty == nil {
-		return
-	}
-	if len(d.filteredDest) == 0 {
-		d.destScroll.Hide()
-		d.destEmpty.Show()
-	} else {
-		d.destEmpty.Hide()
-		d.destScroll.Show()
-	}
-}
-
-func destinationPaths(candidates []DestinationCandidate) []string {
-	paths := make([]string, len(candidates))
-	for i, candidate := range candidates {
-		paths[i] = candidate.Path
-	}
-	return paths
-}
-
-func dialogDestinationTextWidth(candidates []DestinationCandidate, minimum float32) float32 {
-	return dialogTextWidth(destinationPaths(candidates), minimum)
 }

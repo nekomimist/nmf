@@ -179,7 +179,7 @@ func (fm *FileManager) showTransferDestinationDialog(op ui.Operation, targets []
 	if len(dest) == 0 {
 		debugPrint("FileManager: No destination candidates available")
 	}
-	dlg := ui.NewCopyMoveDialog(op, targets, dest, fm.state.NavigationHistory.LastUsed, fm.config.UI.Copy.PreserveTimestamps, fm.keyManager, debugPrint, fm.searchMatchers)
+	dlg := ui.NewCopyMoveDialog(op, targets, dest, fm.config.UI.Copy.PreserveTimestamps, fm.keyManager, debugPrint, fm.searchMatchers)
 	openDest := destinationCandidateOpenMap(dest)
 	refreshDestinations := func(preferredPath string) {
 		dest = fm.buildDestinationCandidates()

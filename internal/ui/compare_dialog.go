@@ -2,13 +2,10 @@ package ui
 
 import (
 	"fmt"
-	"image/color"
 	"strings"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -17,7 +14,6 @@ import (
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 	"nmf/internal/search"
-	customtheme "nmf/internal/theme"
 )
 
 // CompareResult describes accepted compare dialog choices.
@@ -28,32 +24,21 @@ type CompareResult struct {
 
 // CompareDialog presents compare options and a destination directory picker.
 type CompareDialog struct {
-	sourcePath   string
-	sourceCount  int
-	searchEntry  *CustomSearchEntry
-	destList     *widget.List
-	filteredDest []DestinationCandidate
-	allDest      []DestinationCandidate
-	openDest     map[string]bool
-	dataBinding  binding.StringList
-	selectedPath string
-	selectedIdx  int
-	methodRadio  *widget.RadioGroup
+	destinationPicker
+	sourcePath  string
+	sourceCount int
+	methodRadio *widget.RadioGroup
 
-	debugPrint  func(format string, args ...interface{})
-	keyManager  *keymanager.KeyManager
-	kmToken     keymanager.HandlerToken
-	matchers    *search.Provider
-	parent      fyne.Window
-	dialog      dialog.Dialog
-	sink        *KeySink
-	closed      bool
-	destScroll  *dialogListScroller
-	scrollRight bool
-	ownerFrame  dialogHighlightState
+	debugPrint func(format string, args ...interface{})
+	keyManager *keymanager.KeyManager
+	kmToken    keymanager.HandlerToken
+	parent     fyne.Window
+	dialog     dialog.Dialog
+	sink       *KeySink
+	closed     bool
+	ownerFrame dialogHighlightState
 
-	onAccept      func(CompareResult)
-	onPathChanged func(string)
+	onAccept func(CompareResult)
 }
 
 // NewCompareDialog creates a new directory compare dialog.
@@ -66,12 +51,11 @@ func NewCompareDialog(
 	matchers ...*search.Provider,
 ) *CompareDialog {
 	d := &CompareDialog{
-		sourcePath:  sourcePath,
-		sourceCount: sourceCount,
-		allDest:     destCandidates,
-		openDest:    destinationOpenMap(destCandidates),
-		keyManager:  km,
-		debugPrint:  debugPrint,
+		destinationPicker: destinationPicker{allDest: destCandidates, openDest: destinationOpenMap(destCandidates)},
+		sourcePath:        sourcePath,
+		sourceCount:       sourceCount,
+		keyManager:        km,
+		debugPrint:        debugPrint,
 	}
 	if len(matchers) > 0 {
 		d.matchers = matchers[0]
@@ -85,40 +69,11 @@ func NewCompareDialog(
 }
 
 func (d *CompareDialog) createWidgets() {
-	d.searchEntry = NewCustomSearchEntry()
-	d.searchEntry.SetPlaceHolder("Type to filter destination...")
-	d.searchEntry.OnChanged = func(q string) { d.updateFiltered(q) }
-	d.dataBinding = binding.NewStringList()
-	d.destList = widget.NewListWithData(
-		d.dataBinding,
-		func() fyne.CanvasObject {
-			text := canvas.NewText("", currentAppThemeColor(fynetheme.ColorNameForeground))
-			text.TextStyle = fyne.TextStyle{Monospace: true}
-			text.TextSize = fynetheme.TextSize()
-			return text
-		},
-		func(item binding.DataItem, obj fyne.CanvasObject) {
-			str, _ := item.(binding.String).Get()
-			if text, ok := obj.(*canvas.Text); ok {
-				text.Text = str
-				text.TextSize = fynetheme.TextSize()
-				text.Color = d.destinationTextColor(str)
-				text.Refresh()
-			}
-		},
-	)
-	d.destList.OnSelected = func(id widget.ListItemID) {
-		if id >= 0 && int(id) < len(d.filteredDest) {
-			d.selectedIdx = int(id)
-			d.selectedPath = d.filteredDest[id].Path
-			d.notifySelectedPathChanged()
-			d.applyHorizontalScroll()
-			if d.parent != nil && d.sink != nil {
-				d.parent.Canvas().Focus(d.sink)
-			}
+	d.destinationPicker.createWidgets(func() {
+		if d.parent != nil && d.sink != nil {
+			d.parent.Canvas().Focus(d.sink)
 		}
-	}
-
+	})
 	d.methodRadio = widget.NewRadioGroup(compareMethodLabels(), func(string) {
 		d.focusSink()
 	})
@@ -131,7 +86,6 @@ func (d *CompareDialog) ShowDialog(parent fyne.Window, onAccept func(CompareResu
 	d.parent = parent
 	d.onAccept = onAccept
 	dialogWidth := responsiveDialogWidth(parent, compareDialogWidth)
-	listSize := metricsSize(dialogWidth, compareDialogListHeight)
 
 	header := widget.NewLabel(fmt.Sprintf("Compare %d file(s)", d.sourceCount))
 	header.TextStyle.Bold = true
@@ -146,27 +100,7 @@ func (d *CompareDialog) ShowDialog(parent fyne.Window, onAccept func(CompareResu
 
 	searchLabel := widget.NewLabel("Destination:")
 	searchSection := container.NewBorder(nil, nil, searchLabel, nil, d.searchEntry)
-	destScroll := newDialogListScroller(d.destList, dialogDestinationTextWidth(d.allDest, dialogWidth), dialogWidth, compareDialogListHeight)
-	d.destScroll = destScroll
-	empty := widget.NewLabel("No matching destinations")
-	empty.Alignment = fyne.TextAlignCenter
-	empty.Hide()
-	fixed := container.NewWithoutLayout(destScroll, empty)
-	fixed.Resize(listSize)
-	destScroll.Resize(listSize)
-	destScroll.Move(fyne.NewPos(0, 0))
-	empty.Resize(listSize)
-	empty.Move(fyne.NewPos(0, 0))
-	d.searchEntry.OnChanged = func(q string) {
-		d.updateFiltered(q)
-		if len(d.filteredDest) == 0 {
-			destScroll.Hide()
-			empty.Show()
-		} else {
-			empty.Hide()
-			destScroll.Show()
-		}
-	}
+	fixed := d.destinationArea(dialogWidth, compareDialogListHeight)
 
 	content := container.NewVBox(
 		headerBox,
@@ -198,135 +132,13 @@ func (d *CompareDialog) focusSink() {
 	}
 }
 
-func (d *CompareDialog) updateFiltered(q string) {
-	if q == "" {
-		d.filteredDest = d.allDest
-	} else {
-		matcher := d.matchers.Build(q)
-		d.filteredDest = d.filteredDest[:0:0]
-		for _, p := range d.allDest {
-			if matcher.Match(p.Path) {
-				d.filteredDest = append(d.filteredDest, p)
-			}
-		}
-	}
-	d.dataBinding.Set(destinationPaths(d.filteredDest))
-	if len(d.filteredDest) > 0 {
-		d.selectedIdx = 0
-		d.selectedPath = d.filteredDest[0].Path
-		d.destList.Select(0)
-		d.notifySelectedPathChanged()
-		d.applyHorizontalScroll()
-	} else {
-		d.selectedIdx = -1
-		d.selectedPath = ""
-		d.notifySelectedPathChanged()
-	}
-	d.destList.Refresh()
-}
-
-// SetOnSelectedPathChanged sets a callback for destination selection changes.
-func (d *CompareDialog) SetOnSelectedPathChanged(callback func(string)) {
-	d.onPathChanged = callback
-	d.notifySelectedPathChanged()
-}
-
 // SetOwnerHighlighted changes the accent frame around the owning dialog.
 func (d *CompareDialog) SetOwnerHighlighted(highlighted bool) {
 	d.ownerFrame.setHighlighted(highlighted)
 }
 
-func (d *CompareDialog) notifySelectedPathChanged() {
-	if d.onPathChanged != nil {
-		d.onPathChanged(d.selectedPath)
-	}
-}
-
-func (d *CompareDialog) MoveUp() {
-	if d.destList != nil && len(d.filteredDest) > 0 {
-		i := d.selectedIdx - 1
-		if i < 0 {
-			i = 0
-		}
-		if i != d.selectedIdx {
-			d.destList.Select(widget.ListItemID(i))
-		}
-	}
-}
-
-func (d *CompareDialog) MoveDown() {
-	if d.destList != nil && len(d.filteredDest) > 0 {
-		i := d.selectedIdx + 1
-		m := len(d.filteredDest) - 1
-		if i > m {
-			i = m
-		}
-		if i != d.selectedIdx {
-			d.destList.Select(widget.ListItemID(i))
-		}
-	}
-}
-
-func (d *CompareDialog) MoveToTop() {
-	if d.destList != nil && len(d.filteredDest) > 0 {
-		d.destList.Select(0)
-	}
-}
-
-func (d *CompareDialog) MoveToBottom() {
-	if d.destList != nil && len(d.filteredDest) > 0 {
-		d.destList.Select(len(d.filteredDest) - 1)
-	}
-}
-
-func (d *CompareDialog) ClearSearch() {
-	if d.searchEntry != nil {
-		d.searchEntry.SetText("")
-	}
-}
-
-func (d *CompareDialog) AppendToSearch(c string) {
-	if d.searchEntry != nil {
-		d.searchEntry.SetText(d.searchEntry.Text + c)
-	}
-}
-
-func (d *CompareDialog) BackspaceSearch() {
-	if d.searchEntry != nil {
-		t := d.searchEntry.Text
-		if len(t) > 0 {
-			d.searchEntry.SetText(trimLastRune(t))
-		}
-	}
-}
-
-func (d *CompareDialog) CopySelectedPathToSearch() {
-	if d.searchEntry != nil && d.selectedPath != "" {
-		d.searchEntry.SetText(d.selectedPath)
-	}
-}
-
 func (d *CompareDialog) SelectCurrentItem() {
 	d.debugPrint("CompareDialog: Select current dest: %s", d.selectedPath)
-}
-
-func (d *CompareDialog) ScrollSelectedRight() {
-	d.scrollRight = true
-	d.applyHorizontalScroll()
-}
-
-func (d *CompareDialog) ResetHorizontalScroll() {
-	d.scrollRight = false
-	if d.destScroll != nil {
-		d.destScroll.ResetHorizontalScroll()
-	}
-}
-
-func (d *CompareDialog) applyHorizontalScroll() {
-	if !d.scrollRight || d.destScroll == nil || d.selectedPath == "" {
-		return
-	}
-	d.destScroll.ScrollPathRight(d.selectedPath)
 }
 
 func (d *CompareDialog) NextMethod() {
@@ -431,13 +243,6 @@ func (d *CompareDialog) accept(direct bool) {
 	})
 }
 
-func (d *CompareDialog) GetSearchText() string {
-	if d.searchEntry != nil {
-		return d.searchEntry.Text
-	}
-	return ""
-}
-
 func (d *CompareDialog) CancelDialog() {
 	if d.closed {
 		return
@@ -483,16 +288,6 @@ func (d *CompareDialog) selectedMethod() filecompare.Method {
 	default:
 		return filecompare.MissingOrNewer
 	}
-}
-
-func (d *CompareDialog) destinationTextColor(path string) color.Color {
-	if d.openDest[path] {
-		themeProvider := currentThemeColorProvider()
-		if themeProvider != nil {
-			return themeProvider.GetCustomColor(customtheme.ColorCopyMoveOpenDestination)
-		}
-	}
-	return currentAppThemeColor(fynetheme.ColorNameForeground)
 }
 
 func compareMethodLabels() []string {

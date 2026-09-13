@@ -2,7 +2,6 @@ package ui
 
 import (
 	"testing"
-	"time"
 
 	fynetest "fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
@@ -19,7 +18,6 @@ func TestCopyMoveFilterKeepsOpenDestinationMetadata(t *testing.T) {
 			{Path: "/tmp/open", OpenInWindow: true},
 			{Path: "/tmp/history"},
 		},
-		map[string]time.Time{},
 		false,
 		nil,
 		func(string, ...interface{}) {},
@@ -49,7 +47,6 @@ func TestCopyMoveFilterMatchesAllQueryTokens(t *testing.T) {
 			{Path: "/tmp/project/docs"},
 			{Path: "/tmp/archive/logs"},
 		},
-		map[string]time.Time{},
 		false,
 		nil,
 		func(string, ...interface{}) {},
@@ -71,7 +68,6 @@ func TestCopyMoveFilterUsesMigemoMatcher(t *testing.T) {
 			{Path: "/tmp/日本語"},
 			{Path: "/tmp/alpha"},
 		},
-		map[string]time.Time{},
 		false,
 		nil,
 		func(string, ...interface{}) {},
@@ -90,7 +86,6 @@ func TestCopyMoveHorizontalScrollState(t *testing.T) {
 		OpCopy,
 		[]string{"file.txt"},
 		[]DestinationCandidate{{Path: "/tmp/very/long/path"}},
-		map[string]time.Time{},
 		false,
 		nil,
 		func(string, ...interface{}) {},
@@ -113,7 +108,6 @@ func TestCopyMoveReportsSelectedPathChanges(t *testing.T) {
 		OpCopy,
 		[]string{"file.txt"},
 		[]DestinationCandidate{{Path: "/tmp/one"}, {Path: "/tmp/two"}},
-		map[string]time.Time{},
 		false,
 		nil,
 		func(string, ...interface{}) {},
@@ -142,7 +136,6 @@ func TestCopyMoveSetDestinationsKeepsSearchAndSelectsPreferredPath(t *testing.T)
 		OpCopy,
 		[]string{"file.txt"},
 		[]DestinationCandidate{{Path: "/tmp/source"}},
-		map[string]time.Time{},
 		false,
 		nil,
 		func(string, ...interface{}) {},
@@ -171,7 +164,6 @@ func TestCopyMoveOpenDestinationUsesSelectedPath(t *testing.T) {
 		OpCopy,
 		[]string{"file.txt"},
 		[]DestinationCandidate{{Path: "/tmp/one"}},
-		map[string]time.Time{},
 		false,
 		nil,
 		func(string, ...interface{}) {},
@@ -191,7 +183,6 @@ func TestCopyDialogPreserveTimestampsDefault(t *testing.T) {
 		OpCopy,
 		[]string{"file.txt"},
 		[]DestinationCandidate{{Path: "/tmp/one"}},
-		map[string]time.Time{},
 		true,
 		nil,
 		func(string, ...interface{}) {},
@@ -207,7 +198,6 @@ func TestMoveDialogDoesNotExposePreserveTimestamps(t *testing.T) {
 		OpMove,
 		[]string{"file.txt"},
 		[]DestinationCandidate{{Path: "/tmp/one"}},
-		map[string]time.Time{},
 		true,
 		nil,
 		func(string, ...interface{}) {},
@@ -228,7 +218,6 @@ func TestCopyMoveDialogOwnerFrameKeepsSinkFocused(t *testing.T) {
 		OpCopy,
 		[]string{"file.txt"},
 		[]DestinationCandidate{{Path: "/tmp/one", OpenInWindow: true}},
-		map[string]time.Time{},
 		false,
 		km,
 		func(string, ...interface{}) {},
