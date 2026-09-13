@@ -434,3 +434,21 @@ func fileNames(files []fileinfo.FileInfo) []string {
 	}
 	return names
 }
+
+func TestModelChangesPreserveCallerOwnedListings(t *testing.T) {
+	input := []fileinfo.FileInfo{{Name: "a.txt", Path: "/tmp/a.txt", Size: 1}}
+	model := New("/tmp", nameSort())
+	model.ReplaceDirectory("/tmp", input, fileinfo.StorageInfo{}, false, nameSort())
+	snapshot := model.Files()
+	modified := []fileinfo.FileInfo{{Name: "a.txt", Path: "/tmp/a.txt", Size: 2}}
+	if err := model.ApplyChanges(nil, nil, modified); err != nil {
+		t.Fatal(err)
+	}
+	modified[0].Size = 3
+	if input[0].Size != 1 || snapshot[0].Size != 1 {
+		t.Fatalf("old listings changed: input=%v snapshot=%v", input, snapshot)
+	}
+	if file, ok := model.FileAt(0); !ok || file.Size != 2 {
+		t.Fatalf("model file = %v, %t", file, ok)
+	}
+}

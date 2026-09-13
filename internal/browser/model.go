@@ -202,11 +202,17 @@ func (m *Model) ReplaceFiles(files []fileinfo.FileInfo, resort bool) error {
 }
 
 func (m *Model) replaceFilesLocked(files []fileinfo.FileInfo, resort bool) error {
-	m.originalFiles = cloneFiles(files)
+	return m.adoptFilesLocked(cloneFiles(files), resort)
+}
+
+// adoptFilesLocked takes internally owned data. Public inputs are copied by
+// replaceFilesLocked; watcher merges already own the model's baseline.
+func (m *Model) adoptFilesLocked(files []fileinfo.FileInfo, resort bool) error {
+	m.originalFiles = files
 	if resort {
 		m.originalFiles = SortFiles(m.originalFiles, m.sort)
 	}
-	m.files = cloneFiles(m.originalFiles)
+	m.files = m.originalFiles
 
 	var filterErr error
 	if pattern := effectiveFilterPattern(m.filter); pattern != "" {
@@ -235,36 +241,35 @@ func (m *Model) ApplyChanges(added, deleted, modified []fileinfo.FileInfo) error
 	if baseline == nil {
 		baseline = m.files
 	}
-	files := cloneFiles(baseline)
-	for _, deletedFile := range deleted {
-		for i, file := range files {
-			if file.Path == deletedFile.Path {
-				files[i].Status = fileinfo.StatusDeleted
-				delete(m.selected, deletedFile.Path)
-				break
-			}
-		}
+	files := baseline
+	deletedPaths := make(map[string]bool, len(deleted))
+	for _, file := range deleted {
+		deletedPaths[file.Path] = true
 	}
-
+	updates := make(map[string]fileinfo.FileInfo, len(modified)+len(added))
+	for _, file := range modified {
+		updates[file.Path] = file
+	}
+	for _, file := range added {
+		updates[file.Path] = file
+	}
 	typeFlipped := false
-	for _, modifiedFile := range modified {
-		for i, file := range files {
-			if file.Path == modifiedFile.Path {
-				if file.IsDir != modifiedFile.IsDir {
-					typeFlipped = true
-				}
-				files[i] = modifiedFile
-				break
-			}
+	for i, file := range files {
+		if deletedPaths[file.Path] {
+			files[i].Status = fileinfo.StatusDeleted
+			delete(m.selected, file.Path)
+		}
+		if updated, ok := updates[file.Path]; ok {
+			typeFlipped = typeFlipped || file.IsDir != updated.IsDir
+			files[i] = updated
+			delete(updates, file.Path)
 		}
 	}
-
-	for _, addedFile := range added {
-		if i := indexOfPath(files, addedFile.Path); i >= 0 {
-			files[i] = addedFile
-			continue
+	for _, file := range added {
+		if updated, ok := updates[file.Path]; ok {
+			files = append(files, updated)
+			delete(updates, file.Path)
 		}
-		files = append(files, addedFile)
 	}
 
 	resort := len(added) > 0 || len(deleted) > 0 || typeFlipped
@@ -274,7 +279,7 @@ func (m *Model) ApplyChanges(added, deleted, modified []fileinfo.FileInfo) error
 			resort = true
 		}
 	}
-	return m.replaceFilesLocked(files, resort)
+	return m.adoptFilesLocked(files, resort)
 }
 
 func (m *Model) ReplaceDirectory(path string, files []fileinfo.FileInfo, storage fileinfo.StorageInfo, storageKnown bool, sortConfig config.SortConfig) {
@@ -315,7 +320,7 @@ func (m *Model) ApplySort(sortConfig config.SortConfig) {
 		return
 	}
 	m.originalFiles = SortFiles(m.originalFiles, m.sort)
-	m.files = cloneFiles(m.originalFiles)
+	m.files = m.originalFiles
 	if pattern := effectiveFilterPattern(m.filter); pattern != "" {
 		if filtered, err := fileinfo.FilterFiles(m.files, pattern); err == nil {
 			m.files = filtered
@@ -372,7 +377,7 @@ func (m *Model) ClearFilter() bool {
 	if len(m.originalFiles) == 0 {
 		return false
 	}
-	m.files = SortFiles(cloneFiles(m.originalFiles), m.sort)
+	m.files = SortFiles(m.originalFiles, m.sort)
 	m.cursorIndex = -1
 	return true
 }
@@ -384,7 +389,7 @@ func (m *Model) Upsert(created fileinfo.FileInfo) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.originalFiles = upsertFileInfo(m.originalFiles, created)
-	m.files = cloneFiles(m.originalFiles)
+	m.files = m.originalFiles
 	var filterErr error
 	if pattern := effectiveFilterPattern(m.filter); pattern != "" {
 		filtered, err := fileinfo.FilterFiles(m.originalFiles, pattern)
@@ -682,69 +687,25 @@ func (m *Model) SelectedFiles() []fileinfo.FileInfo {
 	return files
 }
 
+type sortKey struct {
+	index     int
+	lowerName string
+	lowerExt  string
+}
+
+// SortFiles sorts without modifying input, pinning the parent and optionally
+// grouping directories. Zero/one-entry inputs need no copy.
 func SortFiles(files []fileinfo.FileInfo, sortConfig config.SortConfig) []fileinfo.FileInfo {
 	if len(files) <= 1 {
 		return files
 	}
 	sortConfig = normalizeSortConfig(sortConfig)
-	if sortConfig.DirectoriesFirst {
-		var dirs []fileinfo.FileInfo
-		var regularFiles []fileinfo.FileInfo
-		for _, file := range files {
-			if file.Name == ".." {
-				continue
-			}
-			if file.IsDir {
-				dirs = append(dirs, file)
-			} else {
-				regularFiles = append(regularFiles, file)
-			}
-		}
-		SortSlice(dirs, sortConfig)
-		SortSlice(regularFiles, sortConfig)
-		result := make([]fileinfo.FileInfo, 0, len(files))
-		for _, file := range files {
-			if file.Name == ".." {
-				result = append(result, file)
-				break
-			}
-		}
-		result = append(result, dirs...)
-		return append(result, regularFiles...)
-	}
-
-	var parent *fileinfo.FileInfo
-	var regularFiles []fileinfo.FileInfo
-	for _, file := range files {
-		if file.Name == ".." {
-			entry := file
-			parent = &entry
-		} else {
-			regularFiles = append(regularFiles, file)
-		}
-	}
-	SortSlice(regularFiles, sortConfig)
-	result := make([]fileinfo.FileInfo, 0, len(files))
-	if parent != nil {
-		result = append(result, *parent)
-	}
-	return append(result, regularFiles...)
-}
-
-type sortKey struct {
-	file      fileinfo.FileInfo
-	lowerName string
-	lowerExt  string
-}
-
-func SortSlice(files []fileinfo.FileInfo, sortConfig config.SortConfig) {
-	if len(files) <= 1 {
-		return
-	}
-	sortConfig = normalizeSortConfig(sortConfig)
 	keys := make([]sortKey, len(files))
 	for i, file := range files {
-		key := sortKey{file: file, lowerName: strings.ToLower(file.Name)}
+		key := sortKey{index: i}
+		if sortConfig.SortBy != "size" && sortConfig.SortBy != "modified" {
+			key.lowerName = strings.ToLower(file.Name)
+		}
 		if sortConfig.SortBy == "extension" {
 			key.lowerExt = strings.ToLower(filepath.Ext(file.Name))
 		}
@@ -752,23 +713,29 @@ func SortSlice(files []fileinfo.FileInfo, sortConfig config.SortConfig) {
 	}
 	desc := sortConfig.SortOrder == "desc"
 	slices.SortFunc(keys, func(a, b sortKey) int {
+		af, bf := files[a.index], files[b.index]
+		if af.Name == ".." && bf.Name != ".." {
+			return -1
+		}
+		if bf.Name == ".." && af.Name != ".." {
+			return 1
+		}
+		if sortConfig.DirectoriesFirst && af.IsDir != bf.IsDir {
+			if af.IsDir {
+				return -1
+			}
+			return 1
+		}
 		var result int
 		switch sortConfig.SortBy {
 		case "size":
-			result = cmp.Compare(a.file.Size, b.file.Size)
+			result = cmp.Compare(af.Size, bf.Size)
 		case "modified":
-			result = a.file.Modified.Compare(b.file.Modified)
+			result = af.Modified.Compare(bf.Modified)
 		case "extension":
-			switch {
-			case a.lowerExt == "" && b.lowerExt != "":
-				result = -1
-			case a.lowerExt != "" && b.lowerExt == "":
-				result = 1
-			default:
-				result = cmp.Compare(a.lowerExt, b.lowerExt)
-				if result == 0 {
-					result = cmp.Compare(a.lowerName, b.lowerName)
-				}
+			result = cmp.Compare(a.lowerExt, b.lowerExt)
+			if result == 0 {
+				result = cmp.Compare(a.lowerName, b.lowerName)
 			}
 		default:
 			result = cmp.Compare(a.lowerName, b.lowerName)
@@ -778,9 +745,11 @@ func SortSlice(files []fileinfo.FileInfo, sortConfig config.SortConfig) {
 		}
 		return result
 	})
+	result := make([]fileinfo.FileInfo, len(files))
 	for i, key := range keys {
-		files[i] = key.file
+		result[i] = files[key.index]
 	}
+	return result
 }
 
 func cloneFiles(files []fileinfo.FileInfo) []fileinfo.FileInfo {
@@ -813,15 +782,6 @@ func effectiveFilterPattern(filter *config.FilterEntry) string {
 		return ""
 	}
 	return config.EffectiveFilterPattern(filter.Pattern)
-}
-
-func indexOfPath(files []fileinfo.FileInfo, path string) int {
-	for i, file := range files {
-		if file.Path == path {
-			return i
-		}
-	}
-	return -1
 }
 
 func upsertFileInfo(files []fileinfo.FileInfo, created fileinfo.FileInfo) []fileinfo.FileInfo {

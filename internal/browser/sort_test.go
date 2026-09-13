@@ -9,7 +9,7 @@ import (
 	"nmf/internal/fileinfo"
 )
 
-func TestSortSlice(t *testing.T) {
+func TestSortFilesSortModes(t *testing.T) {
 	times := []time.Time{
 		time.Unix(1000, 0),
 		time.Unix(2000, 0),
@@ -45,9 +45,9 @@ func TestSortSlice(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.sortBy+"_"+tt.sortOrder, func(t *testing.T) {
 			files := newFiles()
-			SortSlice(files, config.SortConfig{SortBy: tt.sortBy, SortOrder: tt.sortOrder})
+			files = SortFiles(files, config.SortConfig{SortBy: tt.sortBy, SortOrder: tt.sortOrder})
 			if got := fileNames(files); !reflect.DeepEqual(got, tt.want) {
-				t.Fatalf("SortSlice(SortBy=%s,SortOrder=%s) = %v, want %v", tt.sortBy, tt.sortOrder, got, tt.want)
+				t.Fatalf("SortFiles(SortBy=%s,SortOrder=%s) = %v, want %v", tt.sortBy, tt.sortOrder, got, tt.want)
 			}
 		})
 	}
@@ -94,4 +94,16 @@ func TestSortFilesPinsParentAndGroupsDirectories(t *testing.T) {
 			t.Fatalf("SortFiles(single) = %v, want unchanged single element", got)
 		}
 	})
+}
+
+func TestSortFilesDescendingPreservesGroupsAndInput(t *testing.T) {
+	files := []fileinfo.FileInfo{{Name: "a"}, {Name: "..", IsDir: true}, {Name: "dir-a", IsDir: true}, {Name: "z"}, {Name: "dir-z", IsDir: true}}
+	wantInput := fileNames(files)
+	got := SortFiles(files, config.SortConfig{SortBy: "name", SortOrder: "desc", DirectoriesFirst: true})
+	if want := []string{"..", "dir-z", "dir-a", "z", "a"}; !reflect.DeepEqual(fileNames(got), want) {
+		t.Fatalf("sorted names = %v", fileNames(got))
+	}
+	if !reflect.DeepEqual(fileNames(files), wantInput) {
+		t.Fatalf("input changed: %v", fileNames(files))
+	}
 }
