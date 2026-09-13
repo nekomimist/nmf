@@ -2,6 +2,7 @@ package fileinfo
 
 import (
 	"image"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -46,8 +47,16 @@ type iconJob struct {
 	size  int    // desired size in pixels (16/24/32 etc.)
 }
 
-// NewIconService creates a new icon service with background workers.
+// NewIconService creates the native icon workers. Unsupported platforms return
+// nil; the service's public methods accept nil and the UI uses theme defaults.
 func NewIconService(debug func(format string, args ...interface{})) *IconService {
+	if runtime.GOOS != "windows" {
+		return nil
+	}
+	return newIconService(debug)
+}
+
+func newIconService(debug func(format string, args ...interface{})) *IconService {
 	s := &IconService{
 		extCache:   make(map[iconCacheKey]*image.RGBA, maxExtensionIconCacheEntries),
 		fileCache:  make(map[iconCacheKey]*image.RGBA, maxFileIconCacheEntries),

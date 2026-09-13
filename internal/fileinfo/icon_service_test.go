@@ -7,7 +7,7 @@ import (
 )
 
 func TestIconServiceCloseIsIdempotentAndRejectsNewWork(t *testing.T) {
-	service := NewIconService(nil)
+	service := newIconService(nil)
 	service.Close()
 	service.Close()
 
@@ -40,7 +40,7 @@ func TestIconPixelSizeUsesSupportedBuckets(t *testing.T) {
 }
 
 func TestIconServiceCacheSeparatesPixelSizes(t *testing.T) {
-	service := NewIconService(nil)
+	service := newIconService(nil)
 	defer service.Close()
 
 	icon16 := image.NewRGBA(image.Rect(0, 0, 16, 16))
@@ -88,7 +88,7 @@ func TestPutBoundedIconEvictsInInsertionOrder(t *testing.T) {
 }
 
 func TestIconServiceCloseReleasesCachedImages(t *testing.T) {
-	service := NewIconService(nil)
+	service := newIconService(nil)
 	service.mu.Lock()
 	key := iconCacheKey{name: ".txt", size: 16}
 	putBoundedIcon(service.extCache, &service.extOrder, &service.extNext, key, image.NewRGBA(image.Rect(0, 0, 16, 16)), maxExtensionIconCacheEntries)
@@ -104,7 +104,7 @@ func TestIconServiceCloseReleasesCachedImages(t *testing.T) {
 }
 
 func TestIconServiceCloseReleasesSubscribers(t *testing.T) {
-	service := NewIconService(nil)
+	service := newIconService(nil)
 	called := make(chan struct{}, 1)
 	service.OnUpdated(func() { called <- struct{}{} })
 	service.Close()
