@@ -21,33 +21,17 @@ func (fm *FileManager) onJobsUpdated() {
 		return
 	}
 	mgr := fm.jobManager()
-	snaps := mgr.List()
-	var hasError, hasPending, hasRunning bool
-	remainingJobs := 0
-	for _, s := range snaps {
-		switch s.Status {
-		case jobs.StatusFailed:
-			if !s.FailureAcknowledged {
-				hasError = true
-			}
-		case jobs.StatusPending:
-			hasPending = true
-			remainingJobs++
-		case jobs.StatusRunning:
-			hasRunning = true
-			remainingJobs++
-		}
-	}
+	summary := mgr.Summary()
 
 	if fm.jobsButton == nil {
 		return
 	}
-	fm.jobsButton.SetText(jobsButtonText(remainingJobs))
+	fm.jobsButton.SetText(jobsButtonText(summary.Pending + summary.Running))
 
 	// Visual policy:
 	// - Error or Pending: blink
 	// - Running only: highlight but no blink
-	if hasError || hasPending {
+	if summary.HasUnacknowledgedFailure || summary.Pending > 0 {
 		fm.jobsButton.Importance = widget.HighImportance
 		if !fm.jobsBlinking {
 			fm.startJobsBlink()
@@ -56,7 +40,7 @@ func (fm *FileManager) onJobsUpdated() {
 		if fm.jobsBlinking {
 			fm.stopJobsBlink()
 		}
-		if hasRunning {
+		if summary.Running > 0 {
 			fm.jobsButton.Importance = widget.HighImportance
 		} else {
 			fm.jobsButton.Importance = widget.MediumImportance

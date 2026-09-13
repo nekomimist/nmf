@@ -223,7 +223,43 @@ func (m *Manager) Cancel(id int64) bool {
 	return false
 }
 
-// List returns snapshots of pending + possibly running job (head is running when active).
+// Summary contains only the state needed by per-window job indicators.
+type Summary struct {
+	Pending                  int
+	Running                  int
+	HasUnacknowledgedFailure bool
+}
+
+// Summary avoids copying sources, results, and failures on every progress update.
+func (m *Manager) Summary() Summary {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var summary Summary
+	add := func(j *Job) {
+		j.mu.RLock()
+		defer j.mu.RUnlock()
+		switch j.Status {
+		case StatusPending:
+			summary.Pending++
+		case StatusRunning:
+			summary.Running++
+		case StatusFailed:
+			summary.HasUnacknowledgedFailure = summary.HasUnacknowledgedFailure || !j.FailureAcknowledged
+		}
+	}
+	if m.current != nil {
+		add(m.current)
+	}
+	for _, j := range m.queue {
+		add(j)
+	}
+	for _, j := range m.history {
+		add(j)
+	}
+	return summary
+}
+
+// List returns detailed snapshots of running, pending, and historical jobs.
 func (m *Manager) List() []JobSnapshot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
