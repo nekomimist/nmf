@@ -153,3 +153,21 @@ func TestRenameNativeSameDirPropagatesOtherErrors(t *testing.T) {
 		t.Fatalf("renameNativeSameDir() = %v, want EACCES", err)
 	}
 }
+
+func TestRenameNativeNoReplaceDoesNotUseUnsafeFallback(t *testing.T) {
+	dir := t.TempDir()
+	src, dst := filepath.Join(dir, "source"), filepath.Join(dir, "destination")
+	if err := os.WriteFile(src, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	stubRenameNoReplace(t, unix.EINVAL)
+	if err := RenameNativeNoReplace(src, dst); !errors.Is(err, unix.EINVAL) {
+		t.Fatalf("rename error = %v", err)
+	}
+	if _, err := os.Stat(src); err != nil {
+		t.Fatalf("source consumed: %v", err)
+	}
+	if _, err := os.Stat(dst); !os.IsNotExist(err) {
+		t.Fatalf("unexpected destination: %v", err)
+	}
+}

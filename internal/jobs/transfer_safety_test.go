@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -153,5 +154,64 @@ func TestCopyPreservesExistingDirectoryPermissions(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0700 {
 		t.Fatalf("directory permissions = %04o, want 0700", info.Mode().Perm())
+	}
+}
+
+func TestTransferPreservesDestinationCreatedDuringConflict(t *testing.T) {
+	for _, operation := range []Type{TypeCopy, TypeMove} {
+		t.Run(string(operation), func(t *testing.T) {
+			srcDir, dstDir := t.TempDir(), t.TempDir()
+			src, dst := filepath.Join(srcDir, "file.txt"), filepath.Join(dstDir, "file.txt")
+			if err := os.WriteFile(src, []byte("source"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(dst, []byte("original"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			var latePath string
+			job := &Job{Type: operation, ctx: t.Context(), Resolver: func(_ context.Context, req ConflictRequest) ConflictResolution {
+				latePath = req.SuggestedPath
+				if err := os.WriteFile(latePath, []byte("late creator"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				return ConflictResolution{Action: ConflictAutoSuffix}
+			}}
+			if err := transferOneSource(job, src, dstDir); !errors.Is(err, os.ErrExist) {
+				t.Fatalf("transfer error = %v, want destination conflict", err)
+			}
+			for path, want := range map[string]string{src: "source", dst: "original", latePath: "late creator"} {
+				if data, err := os.ReadFile(path); err != nil || string(data) != want {
+					t.Fatalf("%s = %q, %v, want %q", path, data, err, want)
+				}
+			}
+		})
+	}
+}
+
+func TestExclusivePublishFallbackPreservesDestination(t *testing.T) {
+	dir := t.TempDir()
+	tmp, dst := filepath.Join(dir, "temporary"), filepath.Join(dir, "destination")
+	if err := os.WriteFile(tmp, []byte("source"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	job := &Job{Type: TypeCopy, ctx: t.Context()}
+	if err := os.WriteFile(dst, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	err := publishExclusiveCopy(job, newExecutionContext(), mustResolveExecutionPath(t, tmp), mustResolveExecutionPath(t, dst))
+	if !os.IsExist(err) {
+		t.Fatalf("publish error = %v", err)
+	}
+	if data, err := os.ReadFile(dst); err != nil || string(data) != "keep" {
+		t.Fatalf("destination = %q, %v", data, err)
+	}
+	if err := os.Remove(dst); err != nil {
+		t.Fatal(err)
+	}
+	if err := publishExclusiveCopy(job, newExecutionContext(), mustResolveExecutionPath(t, tmp), mustResolveExecutionPath(t, dst)); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(dst); err != nil || string(data) != "source" {
+		t.Fatalf("destination = %q, %v", data, err)
 	}
 }

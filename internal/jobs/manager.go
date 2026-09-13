@@ -874,7 +874,7 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 	} else if isLink {
 		if j.Type == TypeMove {
 			if !overwrite {
-				if err := renamePath(execCtx, src, dst); err == nil {
+				if err := renamePath(execCtx, src, dst, false); err == nil {
 					dbg("job %d: rename link %s -> %s", j.ID, src.displayPath(), dst.displayPath())
 					return nil
 				} else {
@@ -882,7 +882,7 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 				}
 			} else if err := removePath(execCtx, dst); err != nil {
 				return wrapPath(dst.displayPath(), err)
-			} else if err := renamePath(execCtx, src, dst); err == nil {
+			} else if err := renamePath(execCtx, src, dst, false); err == nil {
 				dbg("job %d: rename link %s -> %s", j.ID, src.displayPath(), dst.displayPath())
 				return nil
 			} else {
@@ -1120,7 +1120,7 @@ func tryFastMovePath(j *Job, execCtx *executionContext, src, dst executionPath, 
 			return false, nil
 		}
 	}
-	if err := renamePath(execCtx, src, dst); err == nil {
+	if err := renamePath(execCtx, src, dst, overwrite); err == nil {
 		dbg("job %d: rename %s -> %s", j.ID, src.displayPath(), dst.displayPath())
 		return true, nil
 	} else {
@@ -1702,7 +1702,7 @@ func symlinkPath(execCtx *executionContext, target string, link executionPath) e
 	return os.Symlink(target, link.path)
 }
 
-func renamePath(execCtx *executionContext, src executionPath, dst executionPath) error {
+func renamePath(execCtx *executionContext, src executionPath, dst executionPath, overwrite bool) error {
 	if src.backend != dst.backend {
 		return errors.New("cannot rename across backends")
 	}
@@ -1718,6 +1718,9 @@ func renamePath(execCtx *executionContext, src executionPath, dst executionPath)
 			return err
 		}
 		return ops.Rename(src.path, dst.path)
+	}
+	if !overwrite {
+		return fileinfo.RenameNativeNoReplace(src.path, dst.path)
 	}
 	return os.Rename(src.path, dst.path)
 }
@@ -1774,7 +1777,7 @@ func createTransferTemp(execCtx *executionContext, dst executionPath, mode os.Fi
 	return executionPath{}, nil, fmt.Errorf("could not create temporary output in %s", dirPath(dst).displayPath())
 }
 
-func replacePath(execCtx *executionContext, tmp executionPath, dst executionPath, overwrite bool) error {
+func replacePath(j *Job, execCtx *executionContext, tmp executionPath, dst executionPath, overwrite bool) error {
 	if dst.backend == backendArchive {
 		return errors.New("archive paths are read-only")
 	}
@@ -1792,14 +1795,55 @@ func replacePath(execCtx *executionContext, tmp executionPath, dst executionPath
 			return err
 		}
 	}
-	if err := os.Rename(tmp.path, dst.path); err == nil {
-		return nil
-	} else if overwrite {
-		_ = os.Remove(dst.path)
+	if overwrite {
+		// Native rename replaces files where supported. Never delete the old
+		// destination after a failed rename: a second failure would lose it.
 		return os.Rename(tmp.path, dst.path)
-	} else {
+	}
+	if err := fileinfo.RenameNativeNoReplace(tmp.path, dst.path); err == nil {
+		return nil
+	} else if os.IsExist(err) {
 		return err
 	}
+	return publishExclusiveCopy(j, execCtx, tmp, dst)
+}
+
+// publishExclusiveCopy supports filesystems without no-replace rename (for
+// example some mounted volumes). The destination may be visible while copied,
+// but exclusive creation still protects a concurrent creator's data.
+func publishExclusiveCopy(j *Job, execCtx *executionContext, tmp, dst executionPath) error {
+	in, err := openReadPath(execCtx, tmp)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	info, err := lstatPath(execCtx, tmp)
+	if err != nil {
+		return err
+	}
+	out, err := createExclusivePath(execCtx, dst, info.Mode())
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(out, &transferContextReader{ctx: j.ctx, reader: in})
+	closeErr := out.Close()
+	if err := errors.Join(copyErr, closeErr); err != nil {
+		_ = removePath(execCtx, dst)
+		return err
+	}
+	return removePath(execCtx, tmp)
+}
+
+type transferContextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r *transferContextReader) Read(p []byte) (int, error) {
+	if r.ctx.Err() != nil {
+		return 0, errCanceled
+	}
+	return r.reader.Read(p)
 }
 
 func copyFileWithCancel(j *Job, execCtx *executionContext, src, dst executionPath, fi os.FileInfo, overwrite bool) error {
@@ -1866,7 +1910,7 @@ func copyReaderWithCancel(j *Job, execCtx *executionContext, in io.Reader, srcDi
 	}
 
 	dbg("job %d: rename %s -> %s", j.ID, tmp.displayPath(), dst.displayPath())
-	if err := replacePath(execCtx, tmp, dst, overwrite); err != nil {
+	if err := replacePath(j, execCtx, tmp, dst, overwrite); err != nil {
 		_ = removePath(execCtx, tmp)
 		return wrapPath(dst.displayPath(), err)
 	}

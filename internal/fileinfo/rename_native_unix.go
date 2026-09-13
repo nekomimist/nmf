@@ -14,6 +14,16 @@ import (
 // simulate filesystems that reject the flag.
 var renameNoReplace = renameNoReplaceSyscall
 
+// RenameNativeNoReplace atomically renames a native path without replacing an
+// existing destination. Unsupported filesystems return an error; callers must
+// not fall back to an unchecked rename.
+func RenameNativeNoReplace(oldNative, newNative string) error {
+	if err := renameNoReplace(oldNative, newNative); err != nil {
+		return &os.LinkError{Op: "rename", Old: oldNative, New: newNative, Err: err}
+	}
+	return nil
+}
+
 // renameNativeSameDir renames within one directory, preferring the kernel's
 // no-clobber rename and degrading to a plain rename where that flag is not
 // implemented.

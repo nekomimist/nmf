@@ -53,6 +53,12 @@ func moveFileNoReplace(oldNative, newNative string) error {
 	return nil
 }
 
+// RenameNativeNoReplace atomically renames a native path without replacing an
+// existing destination.
+func RenameNativeNoReplace(oldNative, newNative string) error {
+	return moveFileNoReplace(oldNative, newNative)
+}
+
 func nativeBaseMatches(native string) bool {
 	targetInfo, err := os.Stat(native)
 	if err != nil {
