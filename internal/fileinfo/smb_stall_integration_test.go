@@ -61,7 +61,12 @@ func TestSMBReadCancellationWithPausedServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer in.Close()
+	defer func() {
+		// Cleanup must remain cancelable even when an assertion fails before
+		// the explicit cancellation below, while the server is still paused.
+		cancel()
+		_ = in.Close()
+	}()
 	if output, err := exec.Command("docker", "pause", container).CombinedOutput(); err != nil {
 		t.Fatalf("pause server: %v: %s", err, output)
 	}
