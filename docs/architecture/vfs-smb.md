@@ -232,3 +232,19 @@ Delete behavior:
 - Trash delete uses OS trash/recycle APIs for local-provider paths.
 - Direct SMB trash is unsupported; users must use explicit permanent delete for
   direct SMB paths.
+
+## Transfer destination safety
+
+Jobs create unique temporary files exclusively beside their destinations. A
+non-overwrite transfer also refuses replacement when it publishes its output,
+so a file created after the conflict check is preserved. Native filesystems
+without no-replace rename use exclusive creation and copying as a fallback;
+the final file can be visible while that fallback completes.
+
+Local archive extraction uses `os.Root` to confine reads and writes to the
+opened extraction directory, including when an intermediate path changes to a
+symlink during extraction. Windows UNC paths handled by the local provider use
+this same boundary. Direct SMB extraction checks existing parent components
+for links and creates missing parents individually. Its path-based provider
+API cannot make a concurrent remote directory replacement atomic; this is a
+remaining backend limitation.

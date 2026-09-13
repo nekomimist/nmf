@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -236,4 +237,106 @@ func mustResolveExecutionPath(t *testing.T, p string) executionPath {
 		t.Fatalf("resolveExecutionPath(%q) returned error: %v", p, err)
 	}
 	return resolved
+}
+
+func TestExtractRejectsExistingDirectorySymlink(t *testing.T) {
+	archive := writeJobTestZip(t, map[string]string{"dir/file.txt": "archive"})
+	dst, outside := t.TempDir(), t.TempDir()
+	root := filepath.Join(dst, "sample")
+	if err := os.Mkdir(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "dir")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	job := &Job{Type: TypeExtract, ctx: t.Context()}
+	if err := extractArchivePath(job, newExecutionContext(), archive, mustResolveExecutionPath(t, dst)); err == nil {
+		t.Fatal("extraction followed external symlink")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "file.txt")); !os.IsNotExist(err) {
+		t.Fatalf("outside file = %v", err)
+	}
+}
+
+func TestExtractConfinesWritesAfterDestinationChanges(t *testing.T) {
+	for _, swapRoot := range []bool{false, true} {
+		t.Run(fmt.Sprint("root=", swapRoot), func(t *testing.T) {
+			archive := writeJobTestZip(t, map[string]string{"dir/file.txt": "archive"})
+			dst, outside := t.TempDir(), t.TempDir()
+			root := filepath.Join(dst, "sample")
+			child := filepath.Join(root, "dir")
+			if err := os.MkdirAll(child, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(child, "file.txt"), []byte("old"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			// Check symlink support before the operation mutates the fixture.
+			probe := filepath.Join(dst, "probe")
+			if err := os.Symlink(outside, probe); err != nil {
+				t.Skipf("symlink unavailable: %v", err)
+			}
+			if err := os.Remove(probe); err != nil {
+				t.Fatal(err)
+			}
+			job := &Job{Type: TypeExtract, ctx: t.Context(), Resolver: func(_ context.Context, _ ConflictRequest) ConflictResolution {
+				target := child
+				if swapRoot {
+					target = root
+				}
+				if err := os.Rename(target, target+"-saved"); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(outside, target); err != nil {
+					t.Fatal(err)
+				}
+				return ConflictResolution{Action: ConflictOverwrite}
+			}}
+			err := extractArchivePath(job, newExecutionContext(), archive, mustResolveExecutionPath(t, dst))
+			if swapRoot {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if data, err := os.ReadFile(filepath.Join(root+"-saved", "dir", "file.txt")); err != nil || string(data) != "archive" {
+					t.Fatalf("anchored output = %q, %v", data, err)
+				}
+			} else if err == nil {
+				t.Fatal("extraction accepted replaced intermediate directory")
+			}
+			entries, err := os.ReadDir(outside)
+			if err != nil || len(entries) != 0 {
+				t.Fatalf("outside directory changed: %v, %v", entries, err)
+			}
+		})
+	}
+}
+
+type archiveParentSMB struct {
+	fakeSMBOps
+	directory string
+}
+
+func (s archiveParentSMB) Lstat(path string) (os.FileInfo, error) {
+	return os.Lstat(filepath.Join(s.directory, strings.TrimPrefix(path, "/")))
+}
+func (s archiveParentSMB) Mkdir(path string, mode os.FileMode) error {
+	return os.Mkdir(filepath.Join(s.directory, strings.TrimPrefix(path, "/")), mode)
+}
+
+func TestSMBArchiveParentsRejectExistingLinks(t *testing.T) {
+	dst, outside := t.TempDir(), t.TempDir()
+	if err := os.Mkdir(filepath.Join(dst, "sample"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dst, "sample", "dir")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	root := executionPath{backend: backendSMB, path: "/sample", smb: archiveParentSMB{directory: dst}}
+	if err := ensureSMBArchiveParents(newExecutionContext(), root, joinPath(joinPath(root, "dir"), "nested")); err == nil {
+		t.Fatal("SMB extraction accepted link parent")
+	}
+	entries, err := os.ReadDir(outside)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("outside entries = %v, %v", entries, err)
+	}
 }

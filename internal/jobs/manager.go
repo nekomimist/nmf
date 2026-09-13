@@ -527,6 +527,8 @@ const (
 )
 
 type executionPath struct {
+	localRoot      *os.Root
+	rootDisplay    string
 	raw            string
 	path           string
 	backend        executionBackend
@@ -716,6 +718,9 @@ func (ctx *executionContext) smbOpsFor(p executionPath) (fileinfo.SMBPathOps, er
 }
 
 func (p executionPath) displayPath() string {
+	if p.localRoot != nil {
+		return filepath.Join(p.rootDisplay, p.path)
+	}
 	switch p.backend {
 	case backendArchive:
 		return fileinfo.ArchiveDisplayPath(p.archivePath, p.path)
@@ -991,6 +996,17 @@ func extractArchivePath(j *Job, execCtx *executionContext, src string, destDir e
 		return wrapPath(src, err)
 	}
 
+	if destDir.backend == backendLocal {
+		anchor, err := os.OpenRoot(destDir.path)
+		if err != nil {
+			return wrapPath(destDir.displayPath(), err)
+		}
+		defer anchor.Close()
+		destDir.rootDisplay = destDir.path
+		destDir.path = "."
+		destDir.localRoot = anchor
+	}
+
 	root := joinPath(destDir, rootName)
 	rootInfo := virtualFileInfo{name: rootName, mode: os.ModeDir | 0755, modTime: time.Now()}
 	root, skipped, _, err := resolveDestinationConflict(j, execCtx, extractSourcePath(src, "."), root, rootInfo)
@@ -1003,6 +1019,15 @@ func extractArchivePath(j *Job, execCtx *executionContext, src string, destDir e
 	rootCreated, err := createDirectoryIfMissing(execCtx, root, rootInfo.Mode())
 	if err != nil {
 		return wrapPath(root.displayPath(), err)
+	}
+
+	if root.localRoot != nil {
+		anchored, err := anchorExtractionRoot(root)
+		if err != nil {
+			return wrapPath(root.displayPath(), err)
+		}
+		defer anchored.localRoot.Close()
+		root = anchored
 	}
 
 	err = fileinfo.ExtractArchive(j.ctx, src, func(ctx context.Context, entry fileinfo.ArchiveEntry) error {
@@ -1023,6 +1048,13 @@ func extractArchivePath(j *Job, execCtx *executionContext, src string, destDir e
 		if err != nil {
 			return wrapPath(fileinfo.ArchiveDisplayPath(src, entry.Name), err)
 		}
+		parent := dirPath(dst)
+		if entry.Info.IsDir() {
+			parent = dst
+		}
+		if err := ensureSMBArchiveParents(execCtx, root, parent); err != nil {
+			return err
+		}
 		srcPath := extractSourcePath(src, entry.Name)
 		if entry.Info.IsDir() {
 			if err := ensureDir(execCtx, dst, entry.Info.Mode()); err != nil {
@@ -1042,6 +1074,9 @@ func extractArchivePath(j *Job, execCtx *executionContext, src string, destDir e
 		}
 		if skipped {
 			return nil
+		}
+		if err := ensureSMBArchiveParents(execCtx, root, dirPath(dst)); err != nil {
+			return err
 		}
 		in, err := entry.Open()
 		if err != nil {
@@ -1542,6 +1577,9 @@ func lstatPath(execCtx *executionContext, p executionPath) (os.FileInfo, error) 
 		}
 		return ops.Lstat(p.path)
 	}
+	if p.localRoot != nil {
+		return p.localRoot.Lstat(p.path)
+	}
 	return os.Lstat(p.path)
 }
 
@@ -1560,6 +1598,9 @@ func statPath(execCtx *executionContext, p executionPath) (os.FileInfo, error) {
 		}
 		return ops.Stat(p.path)
 	}
+	if p.localRoot != nil {
+		return p.localRoot.Stat(p.path)
+	}
 	return os.Stat(p.path)
 }
 
@@ -1577,6 +1618,14 @@ func readDir(execCtx *executionContext, p executionPath) ([]os.DirEntry, error) 
 			return nil, err
 		}
 		return ops.ReadDir(p.path)
+	}
+	if p.localRoot != nil {
+		dir, err := p.localRoot.Open(p.path)
+		if err != nil {
+			return nil, err
+		}
+		defer dir.Close()
+		return dir.ReadDir(-1)
 	}
 	return os.ReadDir(p.path)
 }
@@ -1598,6 +1647,9 @@ func ensureDir(execCtx *executionContext, p executionPath, mode os.FileMode) err
 	}
 	// MkdirAll preserves permissions of existing directories. In particular,
 	// ensuring a file's parent must not reset a private directory to 0755.
+	if p.localRoot != nil {
+		return p.localRoot.MkdirAll(p.path, perm)
+	}
 	return os.MkdirAll(p.path, perm)
 }
 
@@ -1608,8 +1660,8 @@ func createDirectoryIfMissing(execCtx *executionContext, p executionPath, mode o
 		return false, errors.New("archive paths are read-only")
 	}
 	if info, err := lstatPath(execCtx, p); err == nil {
-		if !info.IsDir() {
-			return false, fmt.Errorf("path exists and is not a directory")
+		if !info.IsDir() || isLinkLikeForTraversal(execCtx, p, info) {
+			return false, fmt.Errorf("path exists and is not a plain directory")
 		}
 		return false, nil
 	} else if !fileinfo.IsNotExist(err) {
@@ -1627,20 +1679,19 @@ func createDirectoryIfMissing(execCtx *executionContext, p executionPath, mode o
 			return false, opsErr
 		}
 		err = ops.Mkdir(p.path, perm)
+	} else if p.localRoot != nil {
+		err = p.localRoot.Mkdir(p.path, perm)
 	} else {
 		err = os.Mkdir(p.path, perm)
 	}
 	if err == nil {
-		if p.backend == backendLocal {
-			_ = os.Chmod(p.path, perm)
-		}
 		return true, nil
 	}
 
 	// A concurrent creator may have won the race. Treat a resulting directory
 	// as pre-existing rather than claiming it as nmf's newly created root.
 	info, statErr := lstatPath(execCtx, p)
-	if statErr == nil && info.IsDir() {
+	if statErr == nil && info.IsDir() && !isLinkLikeForTraversal(execCtx, p, info) {
 		return false, nil
 	}
 	return false, err
@@ -1657,6 +1708,9 @@ func chtimesPath(execCtx *executionContext, p executionPath, atime, mtime time.T
 		}
 		return ops.Chtimes(p.path, atime, mtime)
 	}
+	if p.localRoot != nil {
+		return p.localRoot.Chtimes(p.path, atime, mtime)
+	}
 	return os.Chtimes(p.path, atime, mtime)
 }
 
@@ -1670,6 +1724,9 @@ func removePath(execCtx *executionContext, p executionPath) error {
 			return err
 		}
 		return ops.Remove(p.path)
+	}
+	if p.localRoot != nil {
+		return p.localRoot.Remove(p.path)
 	}
 	return os.Remove(p.path)
 }
@@ -1685,6 +1742,9 @@ func readlinkPath(execCtx *executionContext, p executionPath) (string, error) {
 		}
 		return ops.Readlink(p.path)
 	}
+	if p.localRoot != nil {
+		return p.localRoot.Readlink(p.path)
+	}
 	return os.Readlink(p.path)
 }
 
@@ -1699,10 +1759,19 @@ func symlinkPath(execCtx *executionContext, target string, link executionPath) e
 		}
 		return ops.Symlink(target, link.path)
 	}
+	if link.localRoot != nil {
+		return link.localRoot.Symlink(target, link.path)
+	}
 	return os.Symlink(target, link.path)
 }
 
 func renamePath(execCtx *executionContext, src executionPath, dst executionPath, overwrite bool) error {
+	if src.localRoot != nil || dst.localRoot != nil {
+		if src.localRoot != dst.localRoot || !overwrite {
+			return errors.New("rename between confined paths requires replacement within the same root")
+		}
+		return dst.localRoot.Rename(src.path, dst.path)
+	}
 	if src.backend != dst.backend {
 		return errors.New("cannot rename across backends")
 	}
@@ -1740,6 +1809,9 @@ func openReadPath(execCtx *executionContext, p executionPath) (io.ReadCloser, er
 		}
 		return ops.Open(p.path)
 	}
+	if p.localRoot != nil {
+		return p.localRoot.Open(p.path)
+	}
 	return os.Open(p.path)
 }
 
@@ -1759,6 +1831,9 @@ func createExclusivePath(execCtx *executionContext, p executionPath, mode os.Fil
 			return nil, err
 		}
 		return ops.OpenFile(p.path, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0666)
+	}
+	if p.localRoot != nil {
+		return p.localRoot.OpenFile(p.path, os.O_CREATE|os.O_WRONLY|os.O_EXCL, perm)
 	}
 	return os.OpenFile(p.path, os.O_CREATE|os.O_WRONLY|os.O_EXCL, perm)
 }
@@ -1794,6 +1869,19 @@ func replacePath(j *Job, execCtx *executionContext, tmp executionPath, dst execu
 		} else {
 			return err
 		}
+	}
+	if dst.localRoot != nil {
+		if overwrite {
+			return dst.localRoot.Rename(tmp.path, dst.path)
+		}
+		// A hard link publishes the completed temporary file without replacing
+		// a concurrent creator. Filesystems without links use exclusive copy.
+		if err := dst.localRoot.Link(tmp.path, dst.path); err == nil {
+			return removePath(execCtx, tmp)
+		} else if os.IsExist(err) {
+			return err
+		}
+		return publishExclusiveCopy(j, execCtx, tmp, dst)
 	}
 	if overwrite {
 		// Native rename replaces files where supported. Never delete the old
@@ -1897,16 +1985,16 @@ func copyReaderWithCancel(j *Job, execCtx *executionContext, in io.Reader, srcDi
 		}
 	}
 	j.completeFileProgress()
-	if err := out.Close(); err != nil {
-		_ = removePath(execCtx, tmp)
-		return wrapPath(tmp.displayPath(), err)
-	}
-
-	if dst.backend == backendLocal {
-		if err := os.Chmod(tmp.path, fi.Mode().Perm()); err != nil {
+	if local, ok := out.(*os.File); ok {
+		if err := local.Chmod(fi.Mode().Perm()); err != nil {
+			out.Close()
 			_ = removePath(execCtx, tmp)
 			return wrapPath(tmp.displayPath(), err)
 		}
+	}
+	if err := out.Close(); err != nil {
+		_ = removePath(execCtx, tmp)
+		return wrapPath(tmp.displayPath(), err)
 	}
 
 	dbg("job %d: rename %s -> %s", j.ID, tmp.displayPath(), dst.displayPath())

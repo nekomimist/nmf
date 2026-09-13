@@ -42,3 +42,20 @@ func createTestJunction(t *testing.T, link string, target string) {
 		t.Skipf("junction unavailable: %v: %s", err, string(output))
 	}
 }
+
+func TestExtractRejectsExistingDirectoryJunction(t *testing.T) {
+	archive := writeJobTestZip(t, map[string]string{"dir/file.txt": "archive"})
+	dst, outside := t.TempDir(), t.TempDir()
+	root := filepath.Join(dst, "sample")
+	if err := os.Mkdir(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	createTestJunction(t, filepath.Join(root, "dir"), outside)
+	job := &Job{Type: TypeExtract, ctx: t.Context()}
+	if err := extractArchivePath(job, newExecutionContext(), archive, mustResolveExecutionPath(t, dst)); err == nil {
+		t.Fatal("extraction followed outside junction")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "file.txt")); !os.IsNotExist(err) {
+		t.Fatalf("outside file = %v", err)
+	}
+}
