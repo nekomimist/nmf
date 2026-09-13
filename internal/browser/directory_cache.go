@@ -28,10 +28,13 @@ type DirectoryCache struct {
 	entries    map[string]DirectorySnapshot
 	ttl        time.Duration
 	maxEntries int
+	maxFiles   int
 	now        func() time.Time
 }
 
-// NewDirectoryCache creates a bounded cache. Non-positive limits disable it.
+// NewDirectoryCache creates a cache bounded by path count and 100,000 total
+// file records. Larger listings remain usable but are not cached. Non-positive
+// limits disable the cache.
 func NewDirectoryCache(ttl time.Duration, maxEntries int) *DirectoryCache {
 	return newDirectoryCache(ttl, maxEntries, time.Now)
 }
@@ -44,6 +47,7 @@ func newDirectoryCache(ttl time.Duration, maxEntries int, now func() time.Time) 
 		entries:    make(map[string]DirectorySnapshot),
 		ttl:        ttl,
 		maxEntries: maxEntries,
+		maxFiles:   100000,
 		now:        now,
 	}
 }
@@ -52,7 +56,7 @@ func newDirectoryCache(ttl time.Duration, maxEntries int, now func() time.Time) 
 // extend its lifetime: repeated visits must not keep an old listing alive
 // indefinitely.
 func (c *DirectoryCache) Get(path string) (DirectorySnapshot, bool) {
-	if c == nil || path == "" || c.ttl <= 0 || c.maxEntries <= 0 {
+	if c == nil || path == "" || c.ttl <= 0 || c.maxEntries <= 0 || c.maxFiles <= 0 {
 		return DirectorySnapshot{}, false
 	}
 	c.mu.Lock()
@@ -70,7 +74,7 @@ func (c *DirectoryCache) Get(path string) (DirectorySnapshot, bool) {
 // Put records one accepted real directory read. LoadedAt is assigned here so
 // callers cannot accidentally extend a cached result by copying its old time.
 func (c *DirectoryCache) Put(snapshot DirectorySnapshot) {
-	if c == nil || snapshot.Path == "" || c.ttl <= 0 || c.maxEntries <= 0 {
+	if c == nil || snapshot.Path == "" || c.ttl <= 0 || c.maxEntries <= 0 || c.maxFiles <= 0 {
 		return
 	}
 	c.mu.Lock()
@@ -78,11 +82,17 @@ func (c *DirectoryCache) Put(snapshot DirectorySnapshot) {
 
 	now := c.now()
 	c.removeExpiredLocked(now)
-	snapshot.LoadedAt = now
-	c.entries[snapshot.Path] = cloneDirectorySnapshot(snapshot)
-	for len(c.entries) > c.maxEntries {
+	// Replacing a listing must discard the old snapshot even if the new one
+	// exceeds the budget. Evict before cloning to avoid an oversized copy.
+	delete(c.entries, snapshot.Path)
+	if len(snapshot.Files) > c.maxFiles {
+		return
+	}
+	for len(c.entries) >= c.maxEntries || c.fileCountLocked() > c.maxFiles-len(snapshot.Files) {
 		c.removeOldestLocked()
 	}
+	snapshot.LoadedAt = now
+	c.entries[snapshot.Path] = cloneDirectorySnapshot(snapshot)
 }
 
 // Delete removes a path after a real read proves that a cached target no
@@ -116,6 +126,14 @@ func (c *DirectoryCache) removeOldestLocked() {
 	if oldestPath != "" {
 		delete(c.entries, oldestPath)
 	}
+}
+
+func (c *DirectoryCache) fileCountLocked() int {
+	var count int
+	for _, snapshot := range c.entries {
+		count += len(snapshot.Files)
+	}
+	return count
 }
 
 func cloneDirectorySnapshot(snapshot DirectorySnapshot) DirectorySnapshot {

@@ -69,7 +69,11 @@ browsing state.
 
 Each `FileManager` also owns a small `internal/browser.DirectoryCache`. It
 retains accepted real directory results in RAM for two minutes, up to eight
-paths, and never persists them. Navigating to a cached path displays that
+paths and 100,000 file records in total per window, and never persists them.
+Oldest snapshots are evicted to fit both limits; a single listing above the
+file-record limit is displayed normally but not cached. This bounds retained
+record count, not bytes: path lengths and the active UI listing still contribute
+to memory use. Navigating to a cached path displays that
 snapshot immediately while `DirectoryLoader` revalidates it. The provisional
 listing is navigation-only: cursor and direct directory navigation remain available,
 while marks, file opening, sorting/filtering, external commands, drag/drop, and

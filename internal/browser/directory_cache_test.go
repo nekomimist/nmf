@@ -60,3 +60,54 @@ func TestDirectoryCacheDelete(t *testing.T) {
 		t.Fatal("Delete left the cache entry present")
 	}
 }
+
+func TestDirectoryCacheEvictsOldestListingAtFileBudget(t *testing.T) {
+	now := time.Unix(300, 0)
+	cache := newDirectoryCache(time.Minute, 8, func() time.Time { return now })
+	cache.maxFiles = 3
+	cache.Put(DirectorySnapshot{Path: "/one", Files: make([]fileinfo.FileInfo, 2)})
+	now = now.Add(time.Second)
+	cache.Put(DirectorySnapshot{Path: "/two", Files: make([]fileinfo.FileInfo, 1)})
+	now = now.Add(time.Second)
+	cache.Put(DirectorySnapshot{Path: "/three", Files: make([]fileinfo.FileInfo, 2)})
+	if _, ok := cache.Get("/one"); ok {
+		t.Fatal("oldest listing remained after exceeding the file budget")
+	}
+	for _, path := range []string{"/two", "/three"} {
+		if _, ok := cache.Get(path); !ok {
+			t.Fatalf("live entry %q was evicted", path)
+		}
+	}
+}
+
+func TestDirectoryCacheReplacementReleasesFileBudget(t *testing.T) {
+	cache := NewDirectoryCache(time.Minute, 8)
+	cache.maxFiles = 3
+	cache.Put(DirectorySnapshot{Path: "/one", Files: make([]fileinfo.FileInfo, 2)})
+	cache.Put(DirectorySnapshot{Path: "/two", Files: make([]fileinfo.FileInfo, 1)})
+	cache.Put(DirectorySnapshot{Path: "/one", Files: []fileinfo.FileInfo{{Name: "replacement"}}})
+	cache.Put(DirectorySnapshot{Path: "/three", Files: make([]fileinfo.FileInfo, 1)})
+	for _, path := range []string{"/one", "/two", "/three"} {
+		if _, ok := cache.Get(path); !ok {
+			t.Fatalf("entry %q was evicted despite fitting the file budget", path)
+		}
+	}
+	got, _ := cache.Get("/one")
+	if got.Files[0].Name != "replacement" {
+		t.Fatalf("replacement listing = %+v", got.Files)
+	}
+}
+
+func TestDirectoryCacheOversizedReplacementDropsStaleListing(t *testing.T) {
+	cache := NewDirectoryCache(time.Minute, 8)
+	cache.maxFiles = 3
+	cache.Put(DirectorySnapshot{Path: "/one", Files: make([]fileinfo.FileInfo, 1)})
+	cache.Put(DirectorySnapshot{Path: "/two", Files: make([]fileinfo.FileInfo, 1)})
+	cache.Put(DirectorySnapshot{Path: "/one", Files: make([]fileinfo.FileInfo, 4)})
+	if _, ok := cache.Get("/one"); ok {
+		t.Fatal("oversized replacement left a cached listing")
+	}
+	if _, ok := cache.Get("/two"); !ok {
+		t.Fatal("oversized replacement evicted an unrelated listing")
+	}
+}
