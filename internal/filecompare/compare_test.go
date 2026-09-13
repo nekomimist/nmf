@@ -1,6 +1,9 @@
 package filecompare
 
 import (
+	"context"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -124,4 +127,40 @@ func sameNames(got, want []string) bool {
 		}
 	}
 	return true
+}
+
+func TestCompareCanceledBeforeListing(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err := CompareDirectFilesContext(ctx, nil, filepath.Join(t.TempDir(), "missing"), Missing)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("compare error = %v, want canceled", err)
+	}
+}
+
+type cancelRead struct {
+	cancel context.CancelFunc
+	reads  int
+}
+
+func (r *cancelRead) Read(p []byte) (int, error) { r.reads++; p[0] = 'x'; r.cancel(); return 1, nil }
+
+type unexpectedRead struct{ t *testing.T }
+
+func (r unexpectedRead) Read([]byte) (int, error) {
+	r.t.Fatal("read after cancellation")
+	return 0, io.EOF
+}
+
+func TestContentComparisonStopsBetweenReads(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	left := &cancelRead{cancel: cancel}
+	equal, err := readersEqual(ctx, left, unexpectedRead{t: t})
+	if equal || !errors.Is(err, context.Canceled) {
+		t.Fatalf("comparison = %t, %v", equal, err)
+	}
+	if left.reads != 1 {
+		t.Fatalf("source read %d times after cancellation", left.reads)
+	}
 }

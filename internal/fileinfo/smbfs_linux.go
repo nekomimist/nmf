@@ -31,10 +31,11 @@ func NewSMBFSWithCred(host, share string, c Credentials) SMBFS {
 func (SMBFS) Capabilities() Capabilities { return Capabilities{FastList: false, Watch: false} }
 
 type smbReadWriteFile struct {
-	file  *smb2.File
-	share *smb2.Share
-	sess  *smb2.Session
-	conn  net.Conn
+	stopCancel func() bool
+	file       *smb2.File
+	share      *smb2.Share
+	sess       *smb2.Session
+	conn       net.Conn
 }
 
 func (f *smbReadWriteFile) Read(p []byte) (int, error)  { return f.file.Read(p) }
@@ -43,6 +44,9 @@ func (f *smbReadWriteFile) Write(p []byte) (int, error) { return f.file.Write(p)
 func (f *smbReadWriteFile) Close() error {
 	if f == nil {
 		return nil
+	}
+	if f.stopCancel != nil {
+		f.stopCancel()
 	}
 	var fileErr error
 	if f.file != nil {
@@ -497,11 +501,26 @@ func (SMBFS) Base(p string) string {
 
 // Open opens a file for reading.
 func (s SMBFS) Open(relPath string) (io.ReadCloser, error) {
-	share, sess, conn, _, err := s.dialAndMount(relPath)
+	return s.OpenContext(context.Background(), relPath)
+}
+
+// OpenContext closes the transport on cancellation to interrupt blocked reads.
+func (s SMBFS) OpenContext(ctx context.Context, relPath string) (io.ReadCloser, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	share, sess, conn, _, err := s.dialAndMountContext(ctx, relPath)
 	if err != nil {
 		return nil, err
 	}
 
+	stopCancel := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	keepCancel := false
+	defer func() {
+		if !keepCancel {
+			stopCancel()
+		}
+	}()
 	p := normalizeSMBPath(relPath)
 	if p == "" {
 		_ = closeSMBSession(nil, share, sess, conn)
@@ -517,7 +536,8 @@ func (s SMBFS) Open(relPath string) (io.ReadCloser, error) {
 		return nil, err
 	}
 
-	return &smbReadWriteFile{file: f, share: share, sess: sess, conn: conn}, nil
+	keepCancel = true
+	return &smbReadWriteFile{file: f, share: share, sess: sess, conn: conn, stopCancel: stopCancel}, nil
 }
 
 // OpenFile opens a file with flags for read/write operations.

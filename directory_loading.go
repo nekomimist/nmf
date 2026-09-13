@@ -171,6 +171,7 @@ func (fm *FileManager) loadDirectory(path string, allowParentFallback bool) {
 }
 
 func (fm *FileManager) loadDirectoryWithNavigation(path string, allowParentFallback bool, navigation directoryNavigation) {
+	fm.cancelCompare()
 	path = canonicalNavigationHistoryPath(path)
 	fm.clearStatusNotice()
 	currentPath := fm.GetCurrentPath()

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"fyne.io/fyne/v2"
@@ -58,14 +59,22 @@ func (fm *FileManager) runCompare(sourcePath string, sourceFiles []fileinfo.File
 		return
 	}
 
-	fm.busy.Begin(fmt.Sprintf("Comparing %s...", result.Destination), nil)
+	fm.cancelCompare()
+	ctx, cancel := context.WithCancel(context.Background())
+	fm.compareCancel = cancel
+	fm.compareGeneration++
+	generation := fm.compareGeneration
+	fm.busy.Begin(fmt.Sprintf("Comparing %s...", result.Destination), func() {
+		fm.cancelCompare()
+		fm.FocusFileList()
+	})
 	go func() {
-		compareResult, err := filecompare.CompareDirectFiles(sourceFiles, result.Destination, result.Method)
+		compareResult, err := filecompare.CompareDirectFilesContext(ctx, sourceFiles, result.Destination, result.Method)
 		fyne.Do(func() {
-			if fm.isWindowClosed() {
+			if fm.isWindowClosed() || generation != fm.compareGeneration || fm.compareCancel == nil {
 				return
 			}
-			fm.busy.End()
+			fm.cancelCompare()
 			if err != nil {
 				debugPrint("FileManager: Compare failed source=%s dest=%s method=%s err=%v", sourcePath, result.Destination, result.Method, err)
 				fm.ShowMessageDialog("Compare Directories", err.Error())
@@ -92,4 +101,18 @@ func (fm *FileManager) applyCompareMarks(matched []fileinfo.FileInfo) int {
 	}
 	fm.updateStatusBar()
 	return len(matched)
+}
+
+// cancelCompare invalidates queued completions before releasing busy input.
+// It is called only on the UI thread, including navigation and window close.
+func (fm *FileManager) cancelCompare() {
+	if fm.compareCancel == nil {
+		return
+	}
+	fm.compareGeneration++
+	fm.compareCancel()
+	fm.compareCancel = nil
+	if fm.busy != nil {
+		fm.busy.End()
+	}
 }

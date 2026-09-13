@@ -14,6 +14,7 @@ func (fm *FileManager) closeWindow() {
 	}
 
 	// Invalidate background work before releasing window-owned UI resources.
+	fm.cancelCompare()
 	if fm.directoryLoader != nil {
 		fm.directoryLoader.CancelActive()
 	}

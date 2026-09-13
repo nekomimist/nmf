@@ -1,6 +1,7 @@
 package fileinfo
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -57,7 +58,15 @@ func (r *resolvedReadCloser) Close() error {
 // OpenPortable resolves and opens p. Closing the returned reader also closes
 // the resolved VFS, including any remote archive source temporary file.
 func OpenPortable(p string) (io.ReadCloser, error) {
-	vfs, parsed, err := ResolveRead(p)
+	return OpenPortableContext(context.Background(), p)
+}
+
+// OpenPortableContext propagates cancellation to providers that support it.
+func OpenPortableContext(ctx context.Context, p string) (io.ReadCloser, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	vfs, parsed, err := ResolveReadContext(ctx, p)
 	if err != nil {
 		return nil, err
 	}
@@ -65,9 +74,21 @@ func OpenPortable(p string) (io.ReadCloser, error) {
 	if native == "" {
 		native = p
 	}
-	reader, err := vfs.Open(native)
+	var reader io.ReadCloser
+	if provider, ok := vfs.(interface {
+		OpenContext(context.Context, string) (io.ReadCloser, error)
+	}); ok {
+		reader, err = provider.OpenContext(ctx, native)
+	} else {
+		reader, err = vfs.Open(native)
+	}
 	if err != nil {
 		_ = CloseVFS(vfs)
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		reader.Close()
+		CloseVFS(vfs)
 		return nil, err
 	}
 	return &resolvedReadCloser{ReadCloser: reader, vfs: vfs}, nil

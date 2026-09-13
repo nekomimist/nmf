@@ -2,6 +2,7 @@ package filecompare
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 
@@ -32,13 +33,24 @@ type Result struct {
 // CompareDirectFiles compares non-directory source files against targetDir's
 // non-directory direct children by exact file name.
 func CompareDirectFiles(sourceFiles []fileinfo.FileInfo, targetDir string, method Method) (Result, error) {
-	targetEntries, err := fileinfo.ReadDirPortable(targetDir)
+	return CompareDirectFilesContext(context.Background(), sourceFiles, targetDir, method)
+}
+
+// CompareDirectFilesContext compares files until completion or cancellation.
+func CompareDirectFilesContext(ctx context.Context, sourceFiles []fileinfo.FileInfo, targetDir string, method Method) (Result, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	targetEntries, err := fileinfo.ReadDirPortableContext(ctx, targetDir)
 	if err != nil {
 		return Result{}, err
 	}
 
 	targets := make(map[string]fileinfo.FileInfo, len(targetEntries))
 	for _, entry := range targetEntries {
+		if err := ctx.Err(); err != nil {
+			return Result{}, err
+		}
 		fi, err := fileinfo.FileInfoFromDirEntry(targetDir, entry)
 		if err != nil || !isComparableFile(fi) {
 			continue
@@ -48,12 +60,18 @@ func CompareDirectFiles(sourceFiles []fileinfo.FileInfo, targetDir string, metho
 
 	result := Result{TargetCount: len(targets)}
 	for _, source := range sourceFiles {
+		if err := ctx.Err(); err != nil {
+			return Result{}, err
+		}
 		if !isComparableFile(source) {
 			continue
 		}
 		result.SourceCount++
 		target, exists := targets[source.Name]
-		matched, err := matches(source, target, exists, method)
+		matched, err := matches(ctx, source, target, exists, method)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return Result{}, ctxErr
+		}
 		if err != nil {
 			result.ErrorCount++
 			if result.FirstError == nil {
@@ -72,7 +90,7 @@ func isComparableFile(fi fileinfo.FileInfo) bool {
 	return fi.Name != ".." && !fi.IsDir && fi.Status != fileinfo.StatusDeleted
 }
 
-func matches(source, target fileinfo.FileInfo, exists bool, method Method) (bool, error) {
+func matches(ctx context.Context, source, target fileinfo.FileInfo, exists bool, method Method) (bool, error) {
 	switch method {
 	case MissingOrNewer:
 		return !exists || source.Modified.After(target.Modified), nil
@@ -88,7 +106,7 @@ func matches(source, target fileinfo.FileInfo, exists bool, method Method) (bool
 		if !exists || source.Size != target.Size {
 			return false, nil
 		}
-		equal, err := contentEqual(source.Path, target.Path)
+		equal, err := contentEqual(ctx, source.Path, target.Path)
 		if err != nil {
 			return false, err
 		}
@@ -98,19 +116,25 @@ func matches(source, target fileinfo.FileInfo, exists bool, method Method) (bool
 	}
 }
 
-func contentEqual(leftPath, rightPath string) (bool, error) {
-	left, err := openRead(leftPath)
+func contentEqual(ctx context.Context, leftPath, rightPath string) (bool, error) {
+	left, err := fileinfo.OpenPortableContext(ctx, leftPath)
 	if err != nil {
 		return false, fmt.Errorf("%s: %w", leftPath, err)
 	}
 	defer left.Close()
 
-	right, err := openRead(rightPath)
+	right, err := fileinfo.OpenPortableContext(ctx, rightPath)
 	if err != nil {
 		return false, fmt.Errorf("%s: %w", rightPath, err)
 	}
 	defer right.Close()
 
+	return readersEqual(ctx, left, right)
+}
+
+func readersEqual(ctx context.Context, left, right io.Reader) (bool, error) {
+	left = &comparisonReader{ctx: ctx, reader: left}
+	right = &comparisonReader{ctx: ctx, reader: right}
 	leftBuf := make([]byte, 32*1024)
 	rightBuf := make([]byte, 32*1024)
 	for {
@@ -121,6 +145,9 @@ func contentEqual(leftPath, rightPath string) (bool, error) {
 		}
 		if rightErr == io.ErrUnexpectedEOF {
 			rightErr = io.EOF
+		}
+		if err := ctx.Err(); err != nil {
+			return false, err
 		}
 		if leftN != rightN || !bytes.Equal(leftBuf[:leftN], rightBuf[:rightN]) {
 			return false, nil
@@ -137,6 +164,14 @@ func contentEqual(leftPath, rightPath string) (bool, error) {
 	}
 }
 
-func openRead(p string) (io.ReadCloser, error) {
-	return fileinfo.OpenPortable(p)
+type comparisonReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r *comparisonReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
 }
