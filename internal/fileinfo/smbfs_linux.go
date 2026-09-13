@@ -271,6 +271,9 @@ func (s SMBFS) dialAndMountContext(ctx context.Context, relPath string) (*smb2.S
 		return nil, nil, nil, creds, err
 	}
 
+	// DialContext only covers negotiation. go-smb2 resets the session and
+	// share contexts, so bind both explicitly for mount, I/O, and cleanup.
+	sess = sess.WithContext(ctx)
 	share, err := sess.Mount(s.share)
 	if err != nil {
 		if isAuthError(err) {
@@ -280,6 +283,7 @@ func (s SMBFS) dialAndMountContext(ctx context.Context, relPath string) (*smb2.S
 		_ = conn.Close()
 		return nil, nil, nil, creds, err
 	}
+	share = share.WithContext(ctx)
 
 	// These credentials work, so any session-scoped refusal recorded for this
 	// share is stale.

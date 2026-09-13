@@ -20,18 +20,8 @@ import (
 //
 // The test is skipped when the env var is unset.
 func TestSMBCopyRoundtrip(t *testing.T) {
-	smbDir := strings.TrimSpace(os.Getenv("NMF_SMB_TEST_DIR"))
-	if smbDir == "" {
-		t.Skip("set NMF_SMB_TEST_DIR to run SMB integration test")
-	}
-
-	dstExec, err := resolveExecutionPath(smbDir)
-	if err != nil {
-		t.Fatalf("failed to resolve SMB test dir: %v", err)
-	}
-	if dstExec.backend != backendSMB {
-		t.Skipf("NMF_SMB_TEST_DIR resolved to %v backend; direct SMB backend required for this test", dstExec.backend)
-	}
+	root, _ := smbTestDirectory(t)
+	smbDir := strings.TrimRight(os.Getenv("NMF_SMB_TEST_DIR"), "/") + "/" + baseName(root)
 
 	localTmp := t.TempDir()
 	sourceName := "nmf_smb_roundtrip_src.txt"
@@ -42,7 +32,8 @@ func TestSMBCopyRoundtrip(t *testing.T) {
 	}
 
 	job := &Job{Type: TypeCopy}
-	job.ctx, job.cancel = context.WithCancel(context.Background())
+	job.ctx, job.cancel = context.WithCancel(t.Context())
+	defer job.cancel()
 
 	// local -> smb
 	if err := transferOneSource(job, sourcePath, smbDir); err != nil {
@@ -76,10 +67,4 @@ func TestSMBCopyRoundtrip(t *testing.T) {
 		t.Fatalf("restored payload mismatch: got=%q want=%q", string(got), string(payload))
 	}
 
-	// Best-effort cleanup of SMB test artifact.
-	if srcExec, rerr := resolveExecutionPath(smbFileDisplay); rerr == nil {
-		cleanupCtx := newExecutionContext()
-		_ = removePath(cleanupCtx, srcExec)
-		_ = cleanupCtx.close()
-	}
 }
