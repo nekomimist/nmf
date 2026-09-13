@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -1713,7 +1714,7 @@ func openReadPath(execCtx *executionContext, p executionPath) (io.ReadCloser, er
 	return os.Open(p.path)
 }
 
-func openWritePath(execCtx *executionContext, p executionPath, mode os.FileMode) (io.ReadWriteCloser, error) {
+func createExclusivePath(execCtx *executionContext, p executionPath, mode os.FileMode) (io.ReadWriteCloser, error) {
 	if p.backend == backendArchive {
 		return nil, errors.New("archive paths are read-only")
 	}
@@ -1728,9 +1729,23 @@ func openWritePath(execCtx *executionContext, p executionPath, mode os.FileMode)
 		if err != nil {
 			return nil, err
 		}
-		return ops.OpenFile(p.path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
+		return ops.OpenFile(p.path, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0666)
 	}
-	return os.OpenFile(p.path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
+	return os.OpenFile(p.path, os.O_CREATE|os.O_WRONLY|os.O_EXCL, perm)
+}
+
+// createTransferTemp exclusively creates an owned output beside the destination.
+// Never reuse a predictable .part path: it may contain unrelated user data.
+func createTransferTemp(execCtx *executionContext, dst executionPath, mode os.FileMode) (executionPath, io.ReadWriteCloser, error) {
+	for range 100 {
+		tmp := joinPath(dirPath(dst), ".nmf-"+rand.Text()+".part")
+		out, err := createExclusivePath(execCtx, tmp, mode)
+		if os.IsExist(err) {
+			continue
+		}
+		return tmp, out, err
+	}
+	return executionPath{}, nil, fmt.Errorf("could not create temporary output in %s", dirPath(dst).displayPath())
 }
 
 func replacePath(execCtx *executionContext, tmp executionPath, dst executionPath, overwrite bool) error {
@@ -1771,15 +1786,11 @@ func copyFileWithCancel(j *Job, execCtx *executionContext, src, dst executionPat
 }
 
 func copyReaderWithCancel(j *Job, execCtx *executionContext, in io.Reader, srcDisplay string, dst executionPath, fi os.FileInfo, overwrite bool) error {
-	tmp := dst
-	tmp.path = dst.path + ".part"
-	tmp.raw = tmp.path
-
-	if err := ensureDir(execCtx, dirPath(tmp), 0755); err != nil {
+	if err := ensureDir(execCtx, dirPath(dst), 0755); err != nil {
 		return wrapPath(dst.displayPath(), err)
 	}
 
-	out, err := openWritePath(execCtx, tmp, fi.Mode())
+	tmp, out, err := createTransferTemp(execCtx, dst, fi.Mode())
 	if err != nil {
 		return wrapPath(tmp.displayPath(), err)
 	}
