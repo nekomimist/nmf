@@ -474,7 +474,7 @@ func TestArchivePathHelpers(t *testing.T) {
 	if parent := ParentPath(inner); parent != "/tmp/sample.zip!/dir" {
 		t.Fatalf("ParentPath archive got %q", parent)
 	}
-	if parent := ParentPath(root); parent != "/tmp" {
+	if parent := ParentPath(root); parent != filepath.FromSlash("/tmp") {
 		t.Fatalf("ParentPath archive root got %q", parent)
 	}
 	if base := BaseName(root); base != "sample.zip" {

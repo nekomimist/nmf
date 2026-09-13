@@ -19,8 +19,9 @@ func TestDisplayCachedDirectoryAppliesProvisionalListing(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
-	previous := filepath.Join(string(filepath.Separator), "previous")
-	target := filepath.Join(string(filepath.Separator), "target")
+	root := t.TempDir()
+	previous := filepath.Join(root, "previous")
+	target := filepath.Join(root, "target")
 	sortCfg := config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}
 	state := directoryLoadingTestState()
 	state.CursorMemory.Entries[target] = "docs"

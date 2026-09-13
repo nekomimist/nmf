@@ -7,6 +7,7 @@ WINDOWS_OBJCOPY ?= llvm-objcopy
 WINDOWS_CC_FLAGS := -Wdeprecated-non-prototype -Wl,--subsystem,windows
 FYNE_TAGS := migrated_fynedo
 NIX_DEVELOP ?= nix develop
+WINDOWS_TEST_PACKAGES ?= ./...
 
 .PHONY: build build-linux build-windows build-windows-in-nix build-windows-arm64 build-windows-arm64-in-nix test test-all test-race test-windows-compile test-windows-compile-in-nix test-windows-compile-arm64 test-windows-compile-arm64-in-nix test-darwin-compile debug-env clean
 .NOTPARALLEL: build-windows build-windows-in-nix build-windows-arm64 build-windows-arm64-in-nix
@@ -86,6 +87,23 @@ test-windows-compile-arm64:
 
 test-windows-compile-arm64-in-nix:
 	$(call test-windows-target,aarch64,arm64)
+
+# Build with the pinned Linux toolchain and execute on the WSL Windows host.
+.PHONY: test-windows-wsl test-windows-wsl-in-nix
+test-windows-wsl:
+	@command -v powershell.exe >/dev/null && command -v wslpath >/dev/null || \
+		{ echo "test-windows-wsl requires WSL Windows interop" >&2; exit 1; }
+	@if [ "$${NMF_NIX_DEV_SHELL:-0}" = 1 ]; then \
+		$(MAKE) test-windows-wsl-in-nix; \
+	else \
+		$(NIX_DEVELOP) --command env NMF_NIX_DEV_SHELL=1 $(MAKE) test-windows-wsl-in-nix; \
+	fi
+
+test-windows-wsl-in-nix:
+	CC="$(WINDOWS_ZIG) cc -target x86_64-windows-gnu $(WINDOWS_CC_FLAGS)" \
+	CXX="$(WINDOWS_ZIG) c++ -target x86_64-windows-gnu $(WINDOWS_CC_FLAGS)" \
+	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
+	go test -tags $(FYNE_TAGS) -count=1 -v -exec 'bash $(CURDIR)/scripts/windows-test-exec.sh' $(WINDOWS_TEST_PACKAGES)
 
 test-darwin-compile:
 	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 \

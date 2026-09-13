@@ -241,7 +241,7 @@ func TestResolveDebugLogDirectory(t *testing.T) {
 	if got := resolveDebugLogDirectory(configPath, "custom"); got != filepath.Join("home", "nekomimist", "nmf", "custom") {
 		t.Fatalf("relative log dir = %q", got)
 	}
-	abs := filepath.Join(string(os.PathSeparator), "tmp", "nmf-logs")
+	abs := filepath.Join(t.TempDir(), "nmf-logs")
 	if got := resolveDebugLogDirectory(configPath, abs); got != abs {
 		t.Fatalf("absolute log dir = %q", got)
 	}
@@ -323,6 +323,7 @@ func TestResolveDataDirs(t *testing.T) {
 	t.Run("~ expansion", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
+		t.Setenv("USERPROFILE", home)
 
 		gotConfig, gotState, err := resolveDataDirs(filepath.Join("~", "profile"), "", "")
 		if err != nil {

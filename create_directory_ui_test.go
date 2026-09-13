@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"testing"
 
 	"nmf/internal/config"
@@ -27,7 +28,7 @@ func TestCreateDirectoryAddsNewPathToNavigationHistory(t *testing.T) {
 	if len(history) == 0 {
 		t.Fatal("navigation history is empty")
 	}
-	if got, want := history[0], tmpDir+"/created"; got != want {
+	if got, want := history[0], filepath.Join(tmpDir, "created"); got != want {
 		t.Fatalf("history[0] = %q, want %q", got, want)
 	}
 }

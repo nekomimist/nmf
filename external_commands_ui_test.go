@@ -1,7 +1,6 @@
 package main
 
 import (
-	"path/filepath"
 	"reflect"
 	"runtime"
 	"testing"
@@ -103,7 +102,7 @@ func TestExpandExternalCommandCwd(t *testing.T) {
 		[]string{"/tmp/work/a.txt"},
 		"/tmp/work",
 	)
-	want := filepath.Join("/tmp/work", "sub-a.txt")
+	want := "/tmp/work/sub-a.txt"
 
 	if got != want {
 		t.Fatalf("expandExternalCommandCwd() = %q, want %q", got, want)

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -38,7 +39,7 @@ func TestFormatJobFailureDebugIncludesWrappedErrno(t *testing.T) {
 		`delete_mode=""`,
 		`path="/cloud/source.txt"`,
 		"errno=395",
-		`error="/cloud/source.txt: errno 395"`,
+		"error=" + strconv.Quote(err.Error()),
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("failure debug log missing %q in %q", want, got)
@@ -559,9 +560,6 @@ func TestPermanentDeleteRemovesDirectoryRecursively(t *testing.T) {
 }
 
 func TestPermanentDeleteDoesNotFollowDirectorySymlink(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("creating directory symlinks on Windows often requires privileges")
-	}
 	tmp := t.TempDir()
 	targetDir := filepath.Join(tmp, "target")
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
