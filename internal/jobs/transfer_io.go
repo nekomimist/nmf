@@ -44,8 +44,11 @@ func publishExclusiveCopy(j *Job, execCtx *executionContext, tmp, dst executionP
 		return err
 	}
 	_, copyErr := io.Copy(out, &transferContextReader{ctx: j.ctx, reader: in})
+	// Windows does not allow removing this temporary file while its read
+	// handle is open. Close it before publication cleanup.
+	readCloseErr := in.Close()
 	closeErr := out.Close()
-	if err := errors.Join(copyErr, closeErr); err != nil {
+	if err := errors.Join(copyErr, readCloseErr, closeErr); err != nil {
 		_ = removePath(execCtx, dst)
 		return err
 	}
