@@ -126,7 +126,7 @@ func (r *contextReader) Read(p []byte) (int, error) {
 // LocalFS implements VFS using the host OS.
 type LocalFS struct{}
 
-func (LocalFS) ReadDir(path string) ([]os.DirEntry, error) { return os.ReadDir(path) }
+func (LocalFS) ReadDir(path string) ([]os.DirEntry, error) { return readDirLocal(path) }
 func (LocalFS) Stat(path string) (os.FileInfo, error)      { return os.Stat(path) }
 func (LocalFS) Lstat(path string) (os.FileInfo, error)     { return os.Lstat(path) }
 func (LocalFS) Readlink(path string) (string, error)       { return os.Readlink(path) }

@@ -4,8 +4,23 @@
 package fileinfo
 
 import (
+	"os"
 	"syscall"
+
+	"golang.org/x/sys/windows"
 )
+
+func readDirLocal(path string) ([]os.DirEntry, error) {
+	entries, err := os.ReadDir(path)
+	// FindFirstFile can report PATH_NOT_FOUND for a regular file. Preserve
+	// the not-a-directory distinction so parent fallback stops at blockers.
+	if os.IsNotExist(err) {
+		if info, statErr := os.Stat(path); statErr == nil && !info.IsDir() {
+			return nil, &os.PathError{Op: "readdir", Path: path, Err: windows.ERROR_DIRECTORY}
+		}
+	}
+	return entries, err
+}
 
 // Windows file attributes constants
 const (
