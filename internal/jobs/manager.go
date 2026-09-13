@@ -857,8 +857,10 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 		return nil
 	}
 
-	if j.Type == TypeMove && fi.IsDir() && isDescendantExecutionPath(dst, src) {
-		return wrapPath(dst.displayPath(), errors.New("cannot move a directory into itself"))
+	if fi.IsDir() && !isLinkLikeForTraversal(execCtx, src, fi) {
+		if err := validateDirectoryTransfer(src, dst, j.Type); err != nil {
+			return err
+		}
 	}
 
 	if moved, err := tryFastMovePath(j, execCtx, src, dst, fi, overwrite); err != nil {
@@ -1316,6 +1318,33 @@ func isDescendantExecutionPath(child, parent executionPath) bool {
 	}
 }
 
+func validateDirectoryTransfer(src, dst executionPath, operation Type) error {
+	if src.backend == backendLocal && dst.backend == backendLocal {
+		// The destination parent exists. Resolve aliases before adding the final
+		// name, which may not exist yet, so a symlink/junction cannot hide a
+		// destination beneath the source.
+		source, err := filepath.EvalSymlinks(src.path)
+		if err != nil {
+			return wrapPath(src.displayPath(), err)
+		}
+		parent, err := filepath.EvalSymlinks(filepath.Dir(dst.path))
+		if err != nil {
+			return wrapPath(dst.displayPath(), err)
+		}
+		src.path = source
+		dst.path = filepath.Join(parent, filepath.Base(dst.path))
+		if resolved, err := filepath.EvalSymlinks(dst.path); err == nil {
+			dst.path = resolved
+		} else if !os.IsNotExist(err) {
+			return wrapPath(dst.displayPath(), err)
+		}
+	}
+	if sameExecutionPath(src, dst) || isDescendantExecutionPath(dst, src) {
+		return wrapPath(dst.displayPath(), fmt.Errorf("cannot %s a directory into itself", operation))
+	}
+	return nil
+}
+
 func isDescendantSlashPath(child, parent string) bool {
 	childPath := normalizeSMBExecutionPath(child)
 	parentPath := normalizeSMBExecutionPath(parent)
@@ -1567,12 +1596,9 @@ func ensureDir(execCtx *executionContext, p executionPath, mode os.FileMode) err
 		}
 		return ops.MkdirAll(p.path, perm)
 	}
-	if err := os.MkdirAll(p.path, perm); err != nil {
-		return err
-	}
-	// best-effort to set mode
-	_ = os.Chmod(p.path, perm)
-	return nil
+	// MkdirAll preserves permissions of existing directories. In particular,
+	// ensuring a file's parent must not reset a private directory to 0755.
+	return os.MkdirAll(p.path, perm)
 }
 
 // createDirectoryIfMissing creates exactly p and reports whether this call

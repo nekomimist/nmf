@@ -2,9 +2,12 @@ package jobs
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -99,5 +102,56 @@ func TestTransferTempUsesExclusiveSMBCreate(t *testing.T) {
 	}
 	if tmp.path == dst.path+".part" {
 		t.Fatal("predictable temporary path")
+	}
+}
+
+func TestCopyDirectoryIntoDescendantIsRejected(t *testing.T) {
+	for _, alias := range []bool{false, true} {
+		t.Run(fmt.Sprint("alias=", alias), func(t *testing.T) {
+			root := t.TempDir()
+			src := filepath.Join(root, "source")
+			dst := filepath.Join(src, "child")
+			if err := os.MkdirAll(dst, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if alias {
+				link := filepath.Join(root, "alias")
+				if err := os.Symlink(dst, link); err != nil {
+					t.Skipf("symlink unavailable: %v", err)
+				}
+				dst = link
+			}
+			err := transferOneSource(&Job{Type: TypeCopy, ctx: t.Context()}, src, dst)
+			if err == nil || !strings.Contains(err.Error(), "cannot copy a directory into itself") {
+				t.Fatalf("copy error = %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(dst, "source")); !os.IsNotExist(err) {
+				t.Fatalf("copy created a destination: %v", err)
+			}
+		})
+	}
+}
+
+func TestCopyPreservesExistingDirectoryPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix permission bits")
+	}
+	srcDir, dstDir := t.TempDir(), t.TempDir()
+	if err := os.Chmod(dstDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(srcDir, "file.txt")
+	if err := os.WriteFile(src, []byte("source"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := transferOneSource(&Job{Type: TypeCopy, ctx: t.Context()}, src, dstDir); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(dstDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0700 {
+		t.Fatalf("directory permissions = %04o, want 0700", info.Mode().Perm())
 	}
 }
