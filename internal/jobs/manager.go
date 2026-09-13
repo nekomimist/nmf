@@ -879,30 +879,7 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 	if target, isLink, err := linkTargetForCopy(execCtx, src, fi); err != nil {
 		return wrapPath(src.displayPath(), err)
 	} else if isLink {
-		if j.Type == TypeMove {
-			if !overwrite {
-				if err := renamePath(execCtx, src, dst, false); err == nil {
-					dbg("job %d: rename link %s -> %s", j.ID, src.displayPath(), dst.displayPath())
-					return nil
-				} else {
-					dbg("job %d: rename link fallback %s -> %s: %v", j.ID, src.displayPath(), dst.displayPath(), err)
-				}
-			} else if err := removePath(execCtx, dst); err != nil {
-				return wrapPath(dst.displayPath(), err)
-			} else if err := renamePath(execCtx, src, dst, false); err == nil {
-				dbg("job %d: rename link %s -> %s", j.ID, src.displayPath(), dst.displayPath())
-				return nil
-			} else {
-				dbg("job %d: rename link fallback %s -> %s: %v", j.ID, src.displayPath(), dst.displayPath(), err)
-			}
-		}
-		dbg("job %d: symlink %s -> %s", j.ID, dst.displayPath(), target)
-		if overwrite {
-			if err := removePath(execCtx, dst); err != nil && !fileinfo.IsNotExist(err) {
-				return wrapPath(dst.displayPath(), err)
-			}
-		}
-		if err := symlinkPath(execCtx, target, dst); err != nil {
+		if err := copySymlink(execCtx, j, target, dst, overwrite); err != nil {
 			return wrapPath(dst.displayPath(), err)
 		}
 		if j.Type == TypeMove {
@@ -1863,14 +1840,7 @@ func replacePath(j *Job, execCtx *executionContext, tmp executionPath, dst execu
 		if err != nil {
 			return err
 		}
-		if err := ops.Rename(tmp.path, dst.path); err == nil {
-			return nil
-		} else if overwrite {
-			_ = ops.Remove(dst.path)
-			return ops.Rename(tmp.path, dst.path)
-		} else {
-			return err
-		}
+		return replaceSMBPath(ops, tmp, dst, overwrite)
 	}
 	if dst.localRoot != nil {
 		if overwrite {

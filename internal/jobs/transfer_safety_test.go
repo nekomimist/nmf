@@ -85,6 +85,88 @@ type exclusiveCreateSMB struct {
 	flags int
 }
 
+type replacementSMB struct {
+	fakeSMBOps
+	files          map[string]string
+	failPublish    bool
+	concurrentFile bool
+}
+
+func (s *replacementSMB) Lstat(path string) (os.FileInfo, error) {
+	if _, ok := s.files[path]; !ok {
+		return nil, os.ErrNotExist
+	}
+	return virtualFileInfo{name: path, mode: 0600}, nil
+}
+
+func (s *replacementSMB) Rename(from, to string) error {
+	data, ok := s.files[from]
+	if !ok {
+		return os.ErrNotExist
+	}
+	if _, exists := s.files[to]; exists {
+		return os.ErrExist
+	}
+	if from == "/temp" && s.failPublish {
+		if s.concurrentFile {
+			s.files[to] = "concurrent"
+		}
+		return os.ErrPermission
+	}
+	s.files[to] = data
+	delete(s.files, from)
+	return nil
+}
+
+func (s *replacementSMB) Remove(path string) error {
+	delete(s.files, path)
+	return nil
+}
+
+func (s *replacementSMB) Symlink(string, string) error { return os.ErrPermission }
+
+func TestSMBReplacementPreservesPreviousDestinationOnFailure(t *testing.T) {
+	for _, scenario := range []string{"success", "restore", "retain backup"} {
+		t.Run(scenario, func(t *testing.T) {
+			ops := &replacementSMB{
+				files:       map[string]string{"/temp": "new", "/destination": "old"},
+				failPublish: scenario != "success", concurrentFile: scenario == "retain backup",
+			}
+			dst := executionPath{backend: backendSMB, path: "/destination", smb: ops}
+			tmp := executionPath{backend: backendSMB, path: "/temp", smb: ops}
+			err := replacePath(&Job{ctx: t.Context()}, newExecutionContext(), tmp, dst, true)
+			switch scenario {
+			case "success":
+				if err != nil || len(ops.files) != 1 || ops.files[dst.path] != "new" {
+					t.Fatalf("replacement = %v, files = %v", err, ops.files)
+				}
+			case "restore":
+				if !errors.Is(err, os.ErrPermission) || len(ops.files) != 2 || ops.files[dst.path] != "old" {
+					t.Fatalf("replacement = %v, files = %v", err, ops.files)
+				}
+			case "retain backup":
+				if !errors.Is(err, os.ErrPermission) || ops.files[dst.path] != "concurrent" || len(ops.files) != 3 {
+					t.Fatalf("replacement = %v, files = %v", err, ops.files)
+				}
+				for path, data := range ops.files {
+					if path != tmp.path && path != dst.path && (data != "old" || !strings.Contains(err.Error(), path)) {
+						t.Fatalf("previous destination not retained with a reported backup path: %v, %v", err, ops.files)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestSymlinkCreationFailurePreservesOverwriteDestination(t *testing.T) {
+	ops := &replacementSMB{files: map[string]string{"/destination": "old"}}
+	dst := executionPath{backend: backendSMB, path: "/destination", smb: ops}
+	err := copySymlink(newExecutionContext(), &Job{ctx: t.Context()}, "target", dst, true)
+	if !errors.Is(err, os.ErrPermission) || ops.files[dst.path] != "old" {
+		t.Fatalf("symlink copy = %v, files = %v", err, ops.files)
+	}
+}
+
 func (s *exclusiveCreateSMB) OpenFile(_ string, flags int, _ os.FileMode) (io.ReadWriteCloser, error) {
 	s.flags = flags
 	return nopReadWriteCloser{}, nil

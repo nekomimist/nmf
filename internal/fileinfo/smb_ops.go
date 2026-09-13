@@ -17,6 +17,7 @@ type SMBPathOps interface {
 	MkdirAll(path string, perm os.FileMode) error
 	Chtimes(path string, atime, mtime time.Time) error
 	Remove(path string) error
+	// Rename must refuse to replace an existing destination.
 	Rename(oldpath, newpath string) error
 	Readlink(path string) (string, error)
 	Symlink(target, linkpath string) error

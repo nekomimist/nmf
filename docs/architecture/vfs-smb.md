@@ -241,6 +241,12 @@ so a file created after the conflict check is preserved. Native filesystems
 without no-replace rename use exclusive creation and copying as a fallback;
 the final file can be visible while that fallback completes.
 
+SMB replacement preserves the previous destination under a unique backup name
+until publication succeeds. If publication fails, jobs restore the backup; if
+restoration also fails, the error identifies the retained backup. This sequence
+is not atomic, so an interruption may leave a `.nmf-*.backup` file. Symlink
+replacement also creates its new link before replacing the previous destination.
+
 Local archive extraction uses `os.Root` to confine reads and writes to the
 opened extraction directory, including when an intermediate path changes to a
 symlink during extraction. Windows UNC paths handled by the local provider use
