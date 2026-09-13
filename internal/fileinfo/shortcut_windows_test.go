@@ -29,9 +29,7 @@ func TestResolveShortcutNavigationDirToDirectory(t *testing.T) {
 	if !ok {
 		t.Fatal("ResolveShortcutNavigationDir ok = false, want true")
 	}
-	if got != target {
-		t.Fatalf("ResolveShortcutNavigationDir = %q, want %q", got, target)
-	}
+	assertShortcutNavigationDir(t, got, target)
 }
 
 func TestResolveShortcutNavigationDirToFileParent(t *testing.T) {
@@ -54,9 +52,7 @@ func TestResolveShortcutNavigationDirToFileParent(t *testing.T) {
 	if !ok {
 		t.Fatal("ResolveShortcutNavigationDir ok = false, want true")
 	}
-	if got != targetDir {
-		t.Fatalf("ResolveShortcutNavigationDir = %q, want %q", got, targetDir)
-	}
+	assertShortcutNavigationDir(t, got, targetDir)
 }
 
 func TestResolveShortcutNavigationDirMissingTargetReportsTargetError(t *testing.T) {
@@ -97,6 +93,23 @@ func TestResolveShortcutNavigationDirContextCanceledBeforeCOM(t *testing.T) {
 	}
 	if ok {
 		t.Fatal("ResolveShortcutNavigationDirContext ok = true, want false")
+	}
+}
+
+func assertShortcutNavigationDir(t *testing.T, got, want string) {
+	t.Helper()
+	gotInfo, err := os.Stat(got)
+	if err != nil {
+		t.Fatalf("stat resolved directory %q: %v", got, err)
+	}
+	wantInfo, err := os.Stat(want)
+	if err != nil {
+		t.Fatalf("stat expected directory %q: %v", want, err)
+	}
+	// Windows may expand an 8.3 path from TEMP when resolving a shortcut.
+	// Verify the destination's identity instead of its path spelling.
+	if !gotInfo.IsDir() || !os.SameFile(gotInfo, wantInfo) {
+		t.Fatalf("ResolveShortcutNavigationDir = %q, want directory %q", got, want)
 	}
 }
 
