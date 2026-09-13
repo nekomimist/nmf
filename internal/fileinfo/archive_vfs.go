@@ -67,8 +67,6 @@ type ArchiveEntry struct {
 	Open       func() (io.ReadCloser, error)
 }
 
-var archiveTempMu sync.Mutex
-
 // ErrUnsafeArchiveEntry reports an archive entry name that could escape or
 // confuse a destination filesystem if materialized.
 var ErrUnsafeArchiveEntry = errors.New("unsafe archive entry")
@@ -87,7 +85,7 @@ func NewArchiveVFSContext(ctx context.Context, archivePath string) (*ArchiveVFS,
 		return nil, fmt.Errorf("nested archive paths are not supported: %s", archivePath)
 	}
 
-	localPath, tempPath, err := archiveLocalPath(archivePath)
+	localPath, tempPath, err := archiveLocalPath(ctx, archivePath)
 	if err != nil {
 		return nil, err
 	}
@@ -387,7 +385,7 @@ func ExtractArchive(ctx context.Context, archivePath string, handler func(contex
 		return fmt.Errorf("nested archive paths are not supported: %s", archivePath)
 	}
 
-	localPath, tempPath, err := archiveLocalPath(archivePath)
+	localPath, tempPath, err := archiveLocalPath(ctx, archivePath)
 	if err != nil {
 		return err
 	}
@@ -448,7 +446,7 @@ func IsSupportedArchive(p string) bool {
 	if strings.TrimSpace(p) == "" || IsArchivePath(p) {
 		return false
 	}
-	localPath, tempPath, err := archiveLocalPath(p)
+	localPath, tempPath, err := archiveLocalPath(context.Background(), p)
 	if err != nil {
 		return false
 	}
@@ -625,8 +623,8 @@ func (a *ArchiveVFS) Close() error {
 	return nil
 }
 
-func archiveLocalPath(displayPath string) (localPath, tempPath string, err error) {
-	vfs, parsed, err := ResolveRead(displayPath)
+func archiveLocalPath(ctx context.Context, displayPath string) (localPath, tempPath string, err error) {
+	vfs, parsed, err := ResolveReadContext(ctx, displayPath)
 	if err != nil {
 		return "", "", err
 	}
@@ -646,15 +644,19 @@ func archiveLocalPath(displayPath string) (localPath, tempPath string, err error
 	if native == "" {
 		native = displayPath
 	}
-	in, err := vfs.Open(native)
+	return stageArchiveSource(ctx, vfs, native, filepath.Ext(displayPath))
+}
+
+// stageArchiveSource owns one independent download. Its temporary file is
+// private, so unrelated archives do not need to wait for this transfer.
+func stageArchiveSource(ctx context.Context, vfs VFS, native, extension string) (localPath, tempPath string, err error) {
+	in, err := openVFSContext(ctx, vfs, native)
 	if err != nil {
 		return "", "", err
 	}
 	defer in.Close()
 
-	archiveTempMu.Lock()
-	defer archiveTempMu.Unlock()
-	tmp, err := os.CreateTemp("", "nmf-archive-source-*"+filepath.Ext(displayPath))
+	tmp, err := os.CreateTemp("", "nmf-archive-source-*"+extension)
 	if err != nil {
 		return "", "", err
 	}
@@ -664,7 +666,11 @@ func archiveLocalPath(displayPath string) (localPath, tempPath string, err error
 			_ = os.Remove(tmp.Name())
 		}
 	}()
-	if _, err = io.Copy(tmp, in); err != nil {
+	_, err = io.Copy(tmp, &contextReader{ctx: ctx, reader: in})
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		err = ctxErr
+	}
+	if err != nil {
 		return "", "", err
 	}
 	if err = tmp.Close(); err != nil {

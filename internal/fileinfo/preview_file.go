@@ -107,7 +107,7 @@ func ReadPreviewFileWithDebugContext(ctx context.Context, p string, debugPrint f
 	defer rc.Close()
 
 	stepStart = time.Now()
-	rawPrefix, err := io.ReadAll(io.LimitReader(&previewContextReader{ctx: ctx, reader: rc}, PreviewReadLimit+1))
+	rawPrefix, err := io.ReadAll(io.LimitReader(&contextReader{ctx: ctx, reader: rc}, PreviewReadLimit+1))
 	previewDebug(debugPrint, "FileViewer: read elapsed=%s bytes=%d err=%v", time.Since(stepStart), len(rawPrefix), err)
 	if err != nil {
 		return nil, err
@@ -150,7 +150,7 @@ func ReadPreviewFileWithDebugContext(ctx context.Context, p string, debugPrint f
 				stepStart = time.Now()
 				decoded, _, decodeErr := image.Decode(io.MultiReader(
 					bytes.NewReader(rawPrefix),
-					&previewContextReader{ctx: ctx, reader: rc},
+					&contextReader{ctx: ctx, reader: rc},
 				))
 				previewDebug(debugPrint, "FileViewer: image-decode elapsed=%s format=%s err=%v", time.Since(stepStart), format, decodeErr)
 				if decodeErr != nil {
@@ -175,24 +175,6 @@ func ReadPreviewFileWithDebugContext(ctx context.Context, p string, debugPrint f
 	previewDebug(debugPrint, "FileViewer: preview-ready elapsed=%s bytes=%d text_bytes=%d binary=%t truncated=%t",
 		time.Since(totalStart), len(preview.Data), len(preview.Text), preview.Binary, preview.Truncated)
 	return preview, nil
-}
-
-type previewContextReader struct {
-	ctx    context.Context
-	reader io.Reader
-}
-
-func (r *previewContextReader) Read(p []byte) (int, error) {
-	if err := r.ctx.Err(); err != nil {
-		return 0, err
-	}
-	n, err := r.reader.Read(p)
-	if err == nil {
-		if ctxErr := r.ctx.Err(); ctxErr != nil {
-			return n, ctxErr
-		}
-	}
-	return n, err
 }
 
 func validatePreviewImageDimensions(width, height int) error {

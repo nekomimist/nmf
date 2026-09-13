@@ -74,7 +74,20 @@ func OpenPortableContext(ctx context.Context, p string) (io.ReadCloser, error) {
 	if native == "" {
 		native = p
 	}
+	reader, err := openVFSContext(ctx, vfs, native)
+	if err != nil {
+		_ = CloseVFS(vfs)
+		return nil, err
+	}
+	return &resolvedReadCloser{ReadCloser: reader, vfs: vfs}, nil
+}
+
+func openVFSContext(ctx context.Context, vfs VFS, native string) (io.ReadCloser, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	var reader io.ReadCloser
+	var err error
 	if provider, ok := vfs.(interface {
 		OpenContext(context.Context, string) (io.ReadCloser, error)
 	}); ok {
@@ -83,15 +96,31 @@ func OpenPortableContext(ctx context.Context, p string) (io.ReadCloser, error) {
 		reader, err = vfs.Open(native)
 	}
 	if err != nil {
-		_ = CloseVFS(vfs)
 		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
 		reader.Close()
-		CloseVFS(vfs)
 		return nil, err
 	}
-	return &resolvedReadCloser{ReadCloser: reader, vfs: vfs}, nil
+	return reader, nil
+}
+
+// contextReader checks between reads. Providers with blocking I/O must also
+// implement OpenContext to interrupt the transport when cancellation arrives.
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r *contextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	n, err := r.reader.Read(p)
+	if ctxErr := r.ctx.Err(); ctxErr != nil {
+		return n, ctxErr
+	}
+	return n, err
 }
 
 // LocalFS implements VFS using the host OS.
