@@ -5,9 +5,6 @@ import (
 	"image/color"
 	"time"
 
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
-	fynetheme "fyne.io/fyne/v2/theme"
 	"github.com/bmatcuk/doublestar/v4"
 
 	customtheme "nmf/internal/theme"
@@ -109,59 +106,6 @@ func FormatFileSize(size int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(size)/float64(div), "KMGTPE"[exp])
-}
-
-// ColoredTextSegment is a custom RichText segment that supports custom colors and styles
-type ColoredTextSegment struct {
-	Text          string
-	Color         color.RGBA
-	Strikethrough bool
-}
-
-func (s *ColoredTextSegment) Inline() bool {
-	return true
-}
-
-func (s *ColoredTextSegment) Textual() string {
-	return s.Text
-}
-
-func (s *ColoredTextSegment) Update(o fyne.CanvasObject) {
-	if text, ok := o.(*canvas.Text); ok {
-		text.Text = s.Text
-		text.Color = s.Color
-		text.Refresh()
-	}
-}
-
-func (s *ColoredTextSegment) Visual() fyne.CanvasObject {
-	text := canvas.NewText(s.Text, s.Color)
-	text.TextStyle = fyne.TextStyle{
-		Bold:      false,
-		Italic:    false,
-		Monospace: false,
-	}
-
-	// For deleted files, we'll use a visual indication by prefixing with strikethrough-like chars
-	if s.Strikethrough {
-		text.Text = "⊠ " + s.Text
-	}
-
-	// Set appropriate text size from theme
-	text.TextSize = fyne.CurrentApp().Settings().Theme().Size(fynetheme.SizeNameText)
-	return text
-}
-
-func (s *ColoredTextSegment) Select(pos1, pos2 fyne.Position) {
-	// Selection handling - could be implemented if needed
-}
-
-func (s *ColoredTextSegment) SelectedText() string {
-	return s.Text
-}
-
-func (s *ColoredTextSegment) Unselect() {
-	// Unselection handling - could be implemented if needed
 }
 
 // FilterFiles filters a slice of FileInfo based on a doublestar glob pattern

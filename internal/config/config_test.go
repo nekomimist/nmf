@@ -528,19 +528,6 @@ func TestThemeColorConfigUnmarshal(t *testing.T) {
 	}
 }
 
-func TestManagerInterface(t *testing.T) {
-	// Test that Manager implements ManagerInterface
-	// Note: Manager now requires debugPrint function
-	dummyDebugPrint := func(format string, args ...interface{}) {}
-	manager := NewManager(dummyDebugPrint)
-
-	var managerInterface ManagerInterface = manager
-
-	if managerInterface == nil {
-		t.Error("Manager should implement ManagerInterface")
-	}
-}
-
 func TestConfigSerialization(t *testing.T) {
 	config := getDefaultConfig()
 

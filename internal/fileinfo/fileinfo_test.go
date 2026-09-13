@@ -229,47 +229,6 @@ func TestFormatFileSize(t *testing.T) {
 	}
 }
 
-func TestColoredTextSegment(t *testing.T) {
-	segment := &ColoredTextSegment{
-		Text:          "test.txt",
-		Color:         color.RGBA{R: 255, G: 255, B: 255, A: 255},
-		Strikethrough: false,
-	}
-
-	// Test Inline method
-	if !segment.Inline() {
-		t.Error("ColoredTextSegment should be inline")
-	}
-
-	// Test Textual method
-	if segment.Textual() != "test.txt" {
-		t.Errorf("Expected 'test.txt', got '%s'", segment.Textual())
-	}
-
-	// Test SelectedText method
-	if segment.SelectedText() != "test.txt" {
-		t.Errorf("Expected 'test.txt', got '%s'", segment.SelectedText())
-	}
-
-	// Test strikethrough segment creation
-	segmentDeleted := &ColoredTextSegment{
-		Text:          "deleted.txt",
-		Color:         color.RGBA{R: 128, G: 128, B: 128, A: 255},
-		Strikethrough: true,
-	}
-
-	// Test that strikethrough segment has correct properties
-	if segmentDeleted.Text != "deleted.txt" {
-		t.Errorf("Expected text 'deleted.txt', got '%s'", segmentDeleted.Text)
-	}
-
-	if !segmentDeleted.Strikethrough {
-		t.Error("Expected strikethrough to be true")
-	}
-
-	// Note: Visual() method requires Fyne app to be initialized, so we skip testing it
-}
-
 func TestFileInfo(t *testing.T) {
 	now := time.Now()
 	fileInfo := FileInfo{
