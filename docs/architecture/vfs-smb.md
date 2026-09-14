@@ -50,6 +50,12 @@ cache before provider access.
 
 Archive paths are read-only. The root display path for an archive is
 `archive-file!/`; nested archive navigation is intentionally unsupported.
+Virtual-path parsing recognizes archive filenames and common ZIP-based
+application extensions, including Office/OpenDocument files, JAR, APK, and
+EPUB. It does not perform I/O, so history and remote paths remain parseable
+while unavailable. Opening still identifies and validates the actual contents.
+Ordinary `bang!/` directory components are skipped when locating the archive
+boundary; this guard must not reject recognized ZIP-container filenames.
 ZIP entry names without the UTF-8 flag use the configured fallback charset
 (`ui.archive.zipNameEncoding`, default `shift_jis`); valid UTF-8 names are kept
 as UTF-8 even when the flag is absent.

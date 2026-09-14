@@ -36,9 +36,9 @@ func SplitArchivePath(p string) (archiveFile, inner string, ok bool) {
 
 // archivePathSeparatorIndex finds an archive virtual-path boundary while
 // ignoring ordinary directories whose names end in "!". A boundary is valid
-// only when the preceding path has a filename recognized as an extractable
-// archive. Scanning all candidates also allows such directories to contain an
-// actual archive virtual path.
+// only when the preceding filename identifies an archive or a known ZIP-based
+// application format. Scanning all candidates also allows such directories to
+// contain an actual archive virtual path.
 func archivePathSeparatorIndex(p string) int {
 	searchFrom := 0
 	for searchFrom < len(p) {
@@ -59,6 +59,18 @@ func isArchiveFileName(p string) bool {
 	name := path.Base(strings.ReplaceAll(strings.TrimSpace(p), "\\", "/"))
 	if name == "" || name == "." || name == "/" {
 		return false
+	}
+	// Identify recognizes these ZIP containers by their contents, but does
+	// not match their names without a stream. Path parsing must also work for
+	// offline history and remote paths, so it cannot inspect file contents.
+	// Opening the archive still validates its actual format independently.
+	switch strings.ToLower(path.Ext(name)) {
+	case ".xlsx", ".xlsm", ".xlsb", ".xltx", ".xltm", ".xlam",
+		".docx", ".docm", ".dotx", ".dotm",
+		".pptx", ".pptm", ".potx", ".potm", ".ppsx", ".ppsm", ".ppam", ".sldx", ".sldm",
+		".odt", ".ods", ".odp", ".odg", ".odf", ".odb", ".ott", ".ots", ".otp", ".otg",
+		".jar", ".war", ".ear", ".apk", ".aab", ".epub", ".cbz":
+		return true
 	}
 	format, _, err := archives.Identify(context.Background(), name, nil)
 	if err != nil {

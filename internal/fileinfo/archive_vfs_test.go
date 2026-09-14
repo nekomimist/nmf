@@ -68,6 +68,51 @@ func TestArchiveVFSReadDirStatAndOpen(t *testing.T) {
 	}
 }
 
+func TestArchiveVFSBrowsesZIPApplicationFormats(t *testing.T) {
+	for _, name := range []string{"開発履歴.xlsx", "book.xlsm", "document.docx", "slides.pptx", "book.ods", "app.jar", "book.epub"} {
+		t.Run(name, func(t *testing.T) {
+			archivePath := writeTestZip(t, map[string]string{"contents/readme.txt": "container data"})
+			dir := filepath.Join(filepath.Dir(archivePath), "資料!")
+			if err := os.Mkdir(dir, 0755); err != nil {
+				t.Fatal(err)
+			}
+			containerPath := filepath.Join(dir, name)
+			if err := os.Rename(archivePath, containerPath); err != nil {
+				t.Fatal(err)
+			}
+			// Follow the same content-detection, virtual-path, and listing
+			// sequence as opening a ZIP-based document from the main list.
+			if !IsSupportedArchive(containerPath) {
+				t.Fatal("ZIP container was not detected by its contents")
+			}
+			root := ArchiveRootPath(containerPath)
+			entries, err := ReadDirPortableContext(t.Context(), root)
+			if err != nil {
+				t.Fatalf("ReadDirPortableContext(%q): %v", root, err)
+			}
+			if len(entries) != 1 || entries[0].Name() != "contents" || !entries[0].IsDir() {
+				t.Fatalf("archive root entries = %v, want contents directory", entryNames(entries))
+			}
+			innerDir := JoinPath(root, "contents")
+			if got := ParentPath(innerDir); got != root {
+				t.Fatalf("ParentPath(%q) = %q, want %q", innerDir, got, root)
+			}
+			if got := ParentPath(root); got != dir {
+				t.Fatalf("ParentPath(%q) = %q, want %q", root, got, dir)
+			}
+			reader, err := OpenPortableContext(t.Context(), JoinPath(innerDir, "readme.txt"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reader.Close()
+			data, err := io.ReadAll(reader)
+			if err != nil || string(data) != "container data" {
+				t.Fatalf("read archive member = %q, %v", data, err)
+			}
+		})
+	}
+}
+
 func TestReadDirPortableContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()

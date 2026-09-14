@@ -5,6 +5,7 @@ import "testing"
 func TestSplitArchivePathIgnoresOrdinaryBangDirectories(t *testing.T) {
 	paths := []string{
 		"/tmp/bang!/file.txt",
+		"/tmp/notes.txt!/file.txt",
 		"smb://server/share/bang!/file.txt",
 		"smb://server/share/parent/bang!/nested/file.txt",
 	}
@@ -18,6 +19,23 @@ func TestSplitArchivePathIgnoresOrdinaryBangDirectories(t *testing.T) {
 				t.Fatalf("IsArchivePath(%q) = true, want false", p)
 			}
 		})
+	}
+}
+
+func TestSplitArchivePathRecognizesZIPApplicationFormats(t *testing.T) {
+	for _, archive := range []string{
+		`C:\Users\hiro\OneDrive\ドキュメント\開発履歴.xlsx`,
+		`\\server\share\book.XLSX`,
+		"smb://server/share/bang!/document.docx",
+		"/tmp/slides.pptx",
+	} {
+		for _, inner := range []string{".", "contents/readme.txt"} {
+			p := ArchiveDisplayPath(archive, inner)
+			gotArchive, gotInner, ok := SplitArchivePath(p)
+			if !ok || gotArchive != archive || gotInner != inner {
+				t.Fatalf("SplitArchivePath(%q) = %q, %q, %t", p, gotArchive, gotInner, ok)
+			}
+		}
 	}
 }
 
