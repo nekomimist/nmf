@@ -29,13 +29,13 @@ mkdir -p subdir_{01..50}
 # Launch with debug logs (use the harness's run_in_background, not shell '&')
 "$SCRATCH/nmf-bench" -d -debug-log "$SCRATCH/run.log" -path /tmp/nmf-bench/big -profile "$SCRATCH/profile"
 
-# Drive (window title is "File Manager", not "nmf")
-uv run "$SKILL/scripts/inject_keys.py" "File Manager" Down 200 5     # hold-down simulation
-uv run "$SKILL/scripts/inject_keys.py" "File Manager" S-Period 1 50  # cursor to last entry
-uv run "$SKILL/scripts/inject_keys.py" "File Manager" Return 1 50
+# Drive (window title is "Nekomimist Filer", not "nmf")
+uv run "$SKILL/scripts/inject_keys.py" "Nekomimist Filer" Down 200 5     # hold-down simulation
+uv run "$SKILL/scripts/inject_keys.py" "Nekomimist Filer" S-Period 1 50  # cursor to last entry
+uv run "$SKILL/scripts/inject_keys.py" "Nekomimist Filer" Return 1 50
 
 # Observe
-import -window "File Manager" shot.png          # ImageMagick, works on WSLg
+import -window "Nekomimist Filer" shot.png          # ImageMagick, works on WSLg
 grep -E "LoadDirectory (start|done)" "$SCRATCH/run.log"
 grep -c "KeyManager: KeyDown recorded key=Down" "$SCRATCH/run.log"
 ```
@@ -99,5 +99,5 @@ powershell.exe -NoProfile -Command "Stop-Process -Name nmf-verify -Force"
   loop stays healthy (keys log `handled=true` but `import -window` returns
   byte-identical images for minutes; looks like a hang). Not an app bug —
   diagnose by md5-comparing screenshots against the debug log, revive with
-  `uv run scripts/poke_window.py "File Manager"` (±1px resize jiggle; a
+  `uv run scripts/poke_window.py "Nekomimist Filer"` (±1px resize jiggle; a
   synthetic Expose alone does not restart painting).

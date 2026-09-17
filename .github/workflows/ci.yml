@@ -29,6 +29,8 @@ jobs:
           cache: true
       - name: Install Fyne build dependencies
         run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev xorg-dev libxkbcommon-dev libwayland-dev
+      - name: Test release tooling
+        run: python3 -m unittest discover -s scripts -p '*_test.py'
       - run: go vet -tags migrated_fynedo ./...
       - run: go test -race -tags migrated_fynedo ./...
 

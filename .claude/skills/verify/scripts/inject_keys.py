@@ -14,9 +14,9 @@ Usage: uv run inject_keys.py <title-substr> <keyspec> <count> <delay_ms>
            character ("q", "r"), with optional modifier prefixes "S-"
            (Shift), "C-" (Control), "A-" (Alt), combinable as "C-S-x".
 Examples:
-  uv run inject_keys.py "File Manager" Down 200 5     # hold-down simulation
-  uv run inject_keys.py "File Manager" S-Period 1 50  # cursor to last entry
-  uv run inject_keys.py "File Manager" C-F 1 50       # Ctrl+F
+  uv run inject_keys.py "Nekomimist Filer" Down 200 5     # hold-down simulation
+  uv run inject_keys.py "Nekomimist Filer" S-Period 1 50  # cursor to last entry
+  uv run inject_keys.py "Nekomimist Filer" C-F 1 50       # Ctrl+F
 """
 
 import sys

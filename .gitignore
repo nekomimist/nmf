@@ -42,6 +42,7 @@ build/
 dist/
 .cache/
 .direnv/
+__pycache__/
 
 # Config files that might contain sensitive data
 config.local.json

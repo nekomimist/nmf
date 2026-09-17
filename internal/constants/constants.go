@@ -5,7 +5,7 @@ import "time"
 // Application constants
 const (
 	ApplicationName  = "nmf"
-	ApplicationTitle = "File Manager"
+	ApplicationTitle = "Nekomimist Filer"
 )
 
 // UI constants

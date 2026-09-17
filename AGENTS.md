@@ -48,6 +48,11 @@ Go and module versions are declared in `go.mod`.
 - Commits: concise imperative subject (≤72 chars). Conventional Commits type prefixes such as `fix:` and `refactor:` are accepted.
 - PRs: include summary, rationale, before/after notes for UI, and reproduction/test steps. Link issues when available; add screenshots/GIFs for visual changes.
 
+## Versioning & Releases
+- Use Semantic Versioning; `VERSION` is the application version source of truth.
+- Add user-visible improvements, features, fixes, and behavior changes to the root `CHANGELOG.md` under `Unreleased`; mark incompatible changes with `**Breaking:**` and migration advice. Keep entries in English and user-focused. Internal-only changes do not need entries.
+- Follow [the release guide](docs/releasing.md) for version bumps, dated changelog entries, `vVERSION` tags, and Windows x64/ARM64 ZIP releases. Include `LICENSE`, `THIRD_PARTY_LICENSES.txt`, and collected dependency notices in every release archive.
+
 ## Configuration Tips
 - Config file: OS‑specific path ending in `config.json` (XDG/AppData conventions). Use `internal/config.Manager` to load it; it is read-only from the app (never saved back to).
 - Runtime state (cursor memory, navigation history, file filter history, last-applied sort) lives in a separate `state.json`, managed by `internal/config.StateManager`; see "Runtime State" in `docs/configuration.md`.

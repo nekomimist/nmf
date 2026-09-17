@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 
 	"nmf/internal/browser"
+	"nmf/internal/constants"
 	"nmf/internal/fileinfo"
 	"nmf/internal/keymanager"
 	"nmf/internal/ui"
@@ -22,7 +23,7 @@ func NewFileManager(runtime *ApplicationRuntime, path string) *FileManager {
 	customTheme := runtime.customTheme
 	keyManager := keymanager.NewKeyManager(debugPrint)
 	fm := &FileManager{
-		window:            runtime.app.NewWindow("File Manager"),
+		window:            runtime.app.NewWindow(constants.ApplicationTitle),
 		browser:           browser.New(path, state.EffectiveSort(config.UI.Sort)),
 		directoryLoader:   browser.NewDirectoryLoader(),
 		directoryCache:    browser.NewDirectoryCache(directoryCacheTTL, directoryCacheMaxEntries),

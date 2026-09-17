@@ -122,6 +122,16 @@ there. Details and rationale live in
 - Fyne build requirements for the target platform.
 - Nix with Flakes enabled for reproducible Windows cross-builds.
 
+## Downloads and releases
+
+Download Windows x64 or ARM64 ZIPs from [GitHub Releases](https://github.com/nekomimist/nmf/releases).
+Extract the entire ZIP and run `nmf.exe`; license documents are included alongside
+the executable. Checksums are supplied as `.zip.sha256` files.
+
+NMF uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html), starting at
+0.1.0. See [CHANGELOG.md](CHANGELOG.md) for user-visible changes and the
+[release guide](docs/releasing.md) for the versioning policy and release process.
+
 ## Build and run
 
 ```sh
@@ -190,6 +200,8 @@ Both files live in the OS configuration directory
 ## Documentation
 
 - [Documentation guide](docs/README.md)
+- [Changelog](CHANGELOG.md)
+- [Versioning and releases](docs/releasing.md)
 - [Configuration](docs/configuration.md)
 - [Starlark configuration](docs/starlark-configuration.md)
 - [Architecture docs index](docs/architecture/README.md)
@@ -202,5 +214,6 @@ Both files live in the OS configuration directory
 
 ## License
 
-MIT. See [LICENSE](LICENSE). Third-party software licenses and notices are
-listed in [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt).
+MIT. See [LICENSE](LICENSE). Supplementary third-party notices are in
+[THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt). Release ZIPs also include
+dependency and runtime license documents in `licenses/`.

@@ -13,12 +13,19 @@
     in {
       devShells = forEachSystem (pkgs: {
         default = pkgs.mkShell {
+          # nixpkgs omits Go's top-level license files from the installed GOROOT.
+          NMF_GO_LICENSE_DIR = pkgs.runCommand "nmf-go-license-documents" { } ''
+            mkdir -p "$out"
+            tar -xf ${pkgs.go_1_26.src} --strip-components=1 -C "$out" go/LICENSE go/PATENTS
+          '';
+
           packages = with pkgs; [
             go_1_26
             zig
             fyne
             gnumake
             pkg-config
+            python3
             llvmPackages.llvm
           ];
 

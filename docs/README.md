@@ -20,6 +20,10 @@ This directory is the canonical source for project design and operational docume
 - `docs/starlark-configuration.md`
   - Optional `init.star` overlay configuration, custom commands, and
     persistence behavior.
+- `CHANGELOG.md` (repository root)
+  - User-visible release history and pending changes under `Unreleased`.
+- `docs/releasing.md`
+  - Semantic Versioning policy, tag-triggered Windows releases, and license packaging.
 - `docs/todo.md`
   - Lower-priority follow-up items and completed work notes.
 - `docs/runbooks/` (recommended when needed)

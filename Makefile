@@ -1,6 +1,11 @@
 APP := nmf
 APP_NAME := NMF
 APP_ID := io.github.nekomimist.nmf
+APP_VERSION := $(shell cat VERSION)
+# Windows version resources accept only the numeric SemVer core.
+WINDOWS_VERSION := $(firstword $(subst +, ,$(subst -, ,$(APP_VERSION))))
+# Use the same packaging build number for both architectures.
+WINDOWS_APP_BUILD := $(shell sed -n 's/^Build = //p' FyneApp.toml)
 DIST := dist
 WINDOWS_ZIG ?= zig
 WINDOWS_OBJCOPY ?= llvm-objcopy
@@ -24,10 +29,14 @@ build-linux:
 
 define build-windows-target
 	mkdir -p $(DIST)
+	@set -eu; \
+	metadata_backup=$$(mktemp); \
+	cp FyneApp.toml "$$metadata_backup"; \
+	trap 'cp "$$metadata_backup" FyneApp.toml; rm -f "$$metadata_backup"' EXIT; \
 	CC="$(WINDOWS_ZIG) cc -target $(1)-windows-gnu $(WINDOWS_CC_FLAGS)" \
 	CXX="$(WINDOWS_ZIG) c++ -target $(1)-windows-gnu $(WINDOWS_CC_FLAGS)" \
 	CGO_ENABLED=1 GOOS=windows GOARCH=$(2) \
-	fyne package --target windows --icon nmf-icon.png --app-id $(APP_ID) --name $(APP_NAME) --release
+	fyne package --target windows --icon nmf-icon.png --app-id $(APP_ID) --name $(APP_NAME) --app-version $(WINDOWS_VERSION) --app-build $(WINDOWS_APP_BUILD) --release
 	mv $(APP_NAME).exe $(DIST)/$(3).exe
 	$(WINDOWS_OBJCOPY) --subsystem windows:6.0 $(DIST)/$(3).exe
 endef
