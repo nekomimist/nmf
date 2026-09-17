@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.1.0 - 2026-09-16
+## 0.1.0 - 2026-09-18
 
 - Establish the first Semantic Versioning release, with the existing keyboard-driven
   file manager, local/SMB/archive browsing, background file operations, and
