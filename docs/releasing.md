@@ -116,3 +116,17 @@ fails if a module has no recognized license file; the pinned `koron/gelatin`
 module is an explicit exception because it declares its MIT license in
 `README.mkd`, which is included instead. Missing or empty required documents
 also fail packaging.
+
+## Scoop distribution
+
+The [nekomimist Scoop bucket](https://github.com/nekomimist/scoop-bucket)
+installs these same ZIPs, including their license documents. Its **Update
+manifests** workflow checks for stable releases every four hours and updates
+`bucket/nmf.json` with both architecture URLs and their published SHA-256
+checksums. Prereleases are excluded.
+
+After publishing a release, run **Update manifests** from the bucket's Actions
+tab for immediate availability, or wait for the scheduled check. Confirm that
+the manifest version and both hashes match the release. The bucket README
+documents local checks and maintenance; installation and update instructions
+for users are in the root [README](../README.md#install-with-scoop-windows).

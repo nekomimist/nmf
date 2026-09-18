@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Install and update Windows x64 and ARM64 builds through the
+  [nekomimist Scoop bucket](https://github.com/nekomimist/scoop-bucket).
+
 ## 0.1.0 - 2026-09-18
 
 - Establish the first Semantic Versioning release, with the existing keyboard-driven

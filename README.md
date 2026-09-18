@@ -124,6 +124,36 @@ there. Details and rationale live in
 
 ## Downloads and releases
 
+### Install with Scoop (Windows)
+
+With [Scoop](https://scoop.sh/) installed, add the
+[nekomimist bucket](https://github.com/nekomimist/scoop-bucket) and install nmf:
+
+```powershell
+scoop bucket add nekomimist https://github.com/nekomimist/scoop-bucket
+scoop install nekomimist/nmf
+nmf
+```
+
+Scoop selects the x64 or ARM64 package and creates a **Nekomimist Filer**
+shortcut in the Start menu's **Scoop Apps** folder.
+
+To update, wait for file operations to finish and close all nmf windows and
+processes. Run these commands from a separate PowerShell window, then launch
+`nmf` again:
+
+```powershell
+scoop update
+scoop update nmf
+```
+
+The standard configuration and runtime state in `%APPDATA%\nekomimist\nmf\`
+are shared with manual ZIP installations. When switching to Scoop, update old
+shortcuts to use the Scoop installation and preserve any `-profile`,
+`-config-dir`, or `-state-dir` options you use.
+
+### Manual ZIP download
+
 Download Windows x64 or ARM64 ZIPs from [GitHub Releases](https://github.com/nekomimist/nmf/releases).
 Extract the entire ZIP and run `nmf.exe`; license documents are included alongside
 the executable. Checksums are supplied as `.zip.sha256` files.
