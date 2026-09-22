@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.1 - 2026-09-22
+
 - Install and update Windows x64 and ARM64 builds through the
   [nekomimist Scoop bucket](https://github.com/nekomimist/scoop-bucket).
 - Refresh the file list immediately after changing sort order, including from
