@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -15,6 +16,64 @@ import (
 	"nmf/internal/fileinfo"
 	customtheme "nmf/internal/theme"
 )
+
+func TestApplyTemporarySortRefreshesVisibleRows(t *testing.T) {
+	for _, sortBy := range []string{"name", "modified", "size"} {
+		for _, cursor := range []struct {
+			name  string
+			index int
+		}{
+			{name: "parent", index: 0},
+			{name: "stationary_file", index: 2},
+			{name: "moving_file", index: 1},
+		} {
+			t.Run(sortBy+"/"+cursor.name, func(t *testing.T) {
+				app := test.NewApp()
+				defer app.Quit()
+
+				files := []fileinfo.FileInfo{
+					{Name: "..", Path: "/tmp", IsDir: true},
+					{Name: "alpha.txt", Path: "/tmp/sort/alpha.txt", Size: 10, Modified: time.Unix(1, 0)},
+					{Name: "beta.txt", Path: "/tmp/sort/beta.txt", Size: 20, Modified: time.Unix(2, 0)},
+					{Name: "gamma.txt", Path: "/tmp/sort/gamma.txt", Size: 30, Modified: time.Unix(3, 0)},
+				}
+				fm, _ := newTrackedCursorTestFileManager(0, 0)
+				fm.browser = newTestBrowser(testBrowserOptions{files: files})
+				fm.SetCursorByIndex(cursor.index)
+				window := test.NewWindow(fm.fileList)
+				defer window.Close()
+				window.Resize(fyne.NewSize(900, 300))
+				fm.RefreshCursor()
+
+				assertVisibleNames := func(want []string) {
+					t.Helper()
+					for index, name := range want {
+						row := fm.fileListRows[index]
+						if row == nil || !fm.fileListItemVisible(index) {
+							t.Fatalf("row %d is not visible", index)
+						}
+						label := test.WidgetRenderer(row.NameLabel).Objects()[0].(*canvas.Text)
+						if label.Text != name {
+							t.Errorf("visible row %d = %q, want %q", index, label.Text, name)
+						}
+					}
+					if got := fm.cursorAnchor.path; got != files[cursor.index].Path {
+						t.Errorf("cursor anchor = %q, want %q", got, files[cursor.index].Path)
+					}
+				}
+				assertVisibleNames([]string{"..", "alpha.txt", "beta.txt", "gamma.txt"})
+
+				// Read the rendered labels immediately, without moving the cursor
+				// or refreshing the list as part of the assertion.
+				fm.ApplyTemporarySort(config.SortConfig{SortBy: sortBy, SortOrder: "desc", DirectoriesFirst: true})
+				assertVisibleNames([]string{"..", "gamma.txt", "beta.txt", "alpha.txt"})
+
+				fm.ApplyTemporarySort(config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true})
+				assertVisibleNames([]string{"..", "alpha.txt", "beta.txt", "gamma.txt"})
+			})
+		}
+	}
+}
 
 func TestUpdateFilesUsesActiveTemporarySort(t *testing.T) {
 	app := test.NewApp()

@@ -68,9 +68,10 @@ on Fyne upgrades at the named locations in the Fyne source):
    callbacks must assign each key spec to exactly one of the two paths;
    matching the same binding list on both makes one press fire twice.
 7. `widget.List.ScrollTo` unconditionally ends with a full `Refresh()`
-   (`widget/list.go` `ScrollTo`). `RefreshCursor` relies on this to repaint
-   with a single render pass; adding an explicit `Refresh()` next to a
-   `ScrollTo` doubles the per-keypress render cost.
+   (`widget/list.go` `ScrollTo`). `RefreshCursor` updates tracked row
+   decorations and uses `ScrollToOffset` to avoid a full list refresh during
+   normal cursor movement. Its `ScrollTo` fallback refreshes the list only
+   when the cursor row is not tracked; content changes cannot rely on it.
 8. `ScrollTo`'s offset is clamped against the scroller's *current* content
    size, which only updates during a refresh/layout pass
    (`internal/widget/scroller.go` `updateOffset` resets the offset to zero
@@ -460,8 +461,9 @@ directory comparisons share this controller.
   `Dismiss()`; never rely on `widget.PopUp`'s built-in outside-tap `Hide()`.
 - For list cursor UX, unselect default list selection and keep a single visual cursor model.
 - Cursor-only moves end in exactly one Refresh-family call
-  (`RefreshCursor()`), per driver fact 7. Operations that replace the files
-  slice with different content (load, filter) must use
+  (`RefreshCursor()`), per driver fact 7. Operations that change list content
+  or order (load, filter, sort) must use
   `refreshListAndCursor()` instead — its leading `Refresh()` is required by
   driver fact 8, and nothing further may be added after it. Same-length
-  mutations (sort, rename, watcher modify) may keep `RefreshCursor()`.
+  mutations also need an explicit list refresh; `RefreshCursor()` only
+  updates cursor decorations when the cursor row remains tracked.

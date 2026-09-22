@@ -711,5 +711,7 @@ func (fm *FileManager) applySort(sortConfig config.SortConfig) {
 		fm.SetCursorByIndex(0)
 	}
 
-	fm.RefreshCursor()
+	// Sorting changes row assignments even when the cursor stays at the same
+	// index (for example, on ".."). Refresh every visible row before restoring it.
+	fm.refreshListAndCursor()
 }

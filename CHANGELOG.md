@@ -4,6 +4,8 @@
 
 - Install and update Windows x64 and ARM64 builds through the
   [nekomimist Scoop bucket](https://github.com/nekomimist/scoop-bucket).
+- Refresh the file list immediately after changing sort order, including from
+  Starlark menus, when the cursor stays on `..` or another unchanged row.
 
 ## 0.1.0 - 2026-09-18
 
