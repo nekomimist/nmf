@@ -41,3 +41,11 @@ func newTestBrowser(options testBrowserOptions) *browser.Model {
 	}
 	return model
 }
+
+func namesOf(files []fileinfo.FileInfo) []string {
+	names := make([]string, len(files))
+	for i, f := range files {
+		names[i] = f.Name
+	}
+	return names
+}

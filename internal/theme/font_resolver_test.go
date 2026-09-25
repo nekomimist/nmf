@@ -1,15 +1,19 @@
 package theme
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 
+	"fyne.io/fyne/v2"
 	fynetheme "fyne.io/fyne/v2/theme"
 	"github.com/go-text/typesetting/font"
 	"github.com/go-text/typesetting/fontscan"
+
+	"nmf/internal/config"
 )
 
 func TestConfiguredFontNames(t *testing.T) {
@@ -111,18 +115,29 @@ func TestDefaultMonospaceFontNames(t *testing.T) {
 	}
 }
 
-func TestLoadFontResourceFromPath(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "font.ttf")
-	if err := os.WriteFile(path, fynetheme.DefaultTextFont().Content(), 0644); err != nil {
-		t.Fatalf("WriteFile failed: %v", err)
+func TestCustomThemeLoadsConfiguredFontPaths(t *testing.T) {
+	dir := t.TempDir()
+	fonts := []struct {
+		name  string
+		style fyne.TextStyle
+		font  fyne.Resource
+	}{
+		{"ui.ttf", fyne.TextStyle{}, fynetheme.DefaultTextFont()},
+		{"mono.ttf", fyne.TextStyle{Monospace: true}, fynetheme.DefaultTextMonospaceFont()},
 	}
-
-	res, err := loadFontResourceFromPath(path)
-	if err != nil {
-		t.Fatalf("loadFontResourceFromPath failed: %v", err)
+	for _, font := range fonts {
+		if err := os.WriteFile(filepath.Join(dir, font.name), font.font.Content(), 0644); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if res.Name() != "font.ttf" {
-		t.Fatalf("resource name = %q, want font.ttf", res.Name())
+	customTheme := NewCustomTheme(&config.Config{Theme: config.ThemeConfig{
+		FontPath: filepath.Join(dir, "ui.ttf"), MonospaceFontPath: filepath.Join(dir, "mono.ttf"),
+	}}, nil)
+	for _, font := range fonts {
+		got := customTheme.Font(font.style)
+		if got == nil || got.Name() != font.name || !bytes.Equal(got.Content(), font.font.Content()) {
+			t.Errorf("font for %+v did not load %s", font.style, font.name)
+		}
 	}
 }
 
@@ -278,17 +293,6 @@ func TestSortFontLocationsByRegularPreference(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("sorted locations = %#v, want %#v", got, want)
 		}
-	}
-}
-
-func TestScanFontLocationsByNameFindsUDEVWhenAvailable(t *testing.T) {
-	if _, err := os.Stat("/home/neko/.fonts/UDEVGothicJPDOC-Regular.ttf"); err != nil {
-		t.Skipf("UDEV Gothic JPDOC unavailable: %v", err)
-	}
-
-	locations := scanFontLocationsByName("UDEV Gothic JPDOC")
-	if len(locations) == 0 {
-		t.Fatal("scanFontLocationsByName did not find UDEV Gothic JPDOC")
 	}
 }
 

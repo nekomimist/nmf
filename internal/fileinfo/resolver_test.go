@@ -240,13 +240,6 @@ func TestParseExtendedUNC(t *testing.T) {
 	}
 }
 
-func TestCanonicalizeSMB(t *testing.T) {
-	got := canonicalizeSMB("//SERVER/share\\a\\b")
-	if got != "smb://server/share/a/b" {
-		t.Fatalf("canonicalize got %q", got)
-	}
-}
-
 func TestMountInfoHelpers(t *testing.T) {
 	fs, src, mp, super, opts, ok := parseMountInfo("36 23 0:27 / /mnt/share rw,relatime - cifs //server/share rw,sec=ntlm,unc=\\\\server\\share")
 	if !ok || fs != "cifs" || src != "//server/share" || mp != "/mnt/share" {

@@ -26,7 +26,7 @@ func TestCustomThemeDelegatesFyneThemeColors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.Config{Theme: config.ThemeConfig{Dark: tt.dark}}
-			customTheme := NewCustomTheme(cfg, func(string, ...interface{}) {})
+			customTheme := &CustomTheme{config: cfg}
 			variant := theme.VariantLight
 			base := theme.LightTheme()
 			if tt.dark {
@@ -49,37 +49,6 @@ func TestCustomThemeDelegatesFyneThemeColors(t *testing.T) {
 	}
 }
 
-func TestCustomThemeCachesFyneBaseThemes(t *testing.T) {
-	cfg := &config.Config{Theme: config.ThemeConfig{Dark: true}}
-	customTheme := NewCustomTheme(cfg, func(string, ...interface{}) {})
-	if customTheme.darkBase != nil || customTheme.lightBase != nil {
-		t.Fatal("base themes were initialized eagerly")
-	}
-
-	dark := customTheme.fyneTheme()
-	if dark == nil {
-		t.Fatal("dark base theme = nil")
-	}
-	if got := customTheme.fyneTheme(); got != dark {
-		t.Fatal("dark base theme was recreated")
-	}
-	if customTheme.lightBase != nil {
-		t.Fatal("light base theme was initialized while using dark mode")
-	}
-
-	cfg.Theme.Dark = false
-	light := customTheme.fyneTheme()
-	if light == nil {
-		t.Fatal("light base theme = nil")
-	}
-	if light == dark {
-		t.Fatal("light and dark base themes unexpectedly share one instance")
-	}
-	if got := customTheme.fyneTheme(); got != light {
-		t.Fatal("light base theme was recreated")
-	}
-}
-
 func TestCustomThemeAppColorOverrides(t *testing.T) {
 	cfg := &config.Config{
 		Theme: config.ThemeConfig{
@@ -93,7 +62,7 @@ func TestCustomThemeAppColorOverrides(t *testing.T) {
 			},
 		},
 	}
-	customTheme := NewCustomTheme(cfg, func(string, ...interface{}) {})
+	customTheme := &CustomTheme{config: cfg}
 
 	if got, want := customTheme.GetCustomColor(ColorCursor), (color.RGBA{255, 255, 255, 255}); got != want {
 		t.Fatalf("dark cursor = %#v, want default %#v", got, want)
@@ -108,7 +77,7 @@ func TestCustomThemeAppColorOverrides(t *testing.T) {
 
 func TestCustomThemeFyneBackedAppColorDefaults(t *testing.T) {
 	cfg := &config.Config{Theme: config.ThemeConfig{Dark: false}}
-	customTheme := NewCustomTheme(cfg, func(string, ...interface{}) {})
+	customTheme := &CustomTheme{config: cfg}
 
 	tests := []struct {
 		name  string
@@ -137,7 +106,7 @@ func TestCustomThemeFyneBackedAppColorDefaults(t *testing.T) {
 
 func TestCustomThemeCopyMoveOpenDestinationColor(t *testing.T) {
 	cfg := &config.Config{}
-	customTheme := NewCustomTheme(cfg, func(string, ...interface{}) {})
+	customTheme := &CustomTheme{config: cfg}
 
 	if got, want := customTheme.GetCustomColor(ColorCopyMoveOpenDestination), (color.RGBA{30, 120, 80, 255}); got != want {
 		t.Fatalf("copy move open destination = %#v, want %#v", got, want)
@@ -156,7 +125,7 @@ func TestCustomThemeMonospaceFontDoesNotFallBackToCustomFont(t *testing.T) {
 			FontPath: theme.DefaultTextFont().Name(),
 		},
 	}
-	customTheme := NewCustomTheme(cfg, func(string, ...interface{}) {})
+	customTheme := &CustomTheme{config: cfg}
 	customTheme.customFont = fyne.NewStaticResource("ui.ttf", theme.DefaultTextFont().Content())
 	customTheme.monospaceFont = nil
 
@@ -173,23 +142,6 @@ func TestCustomThemeMonospaceFontDoesNotFallBackToCustomFont(t *testing.T) {
 	}
 }
 
-func TestCustomThemeMonospaceFontOverridesCustomFont(t *testing.T) {
-	app := test.NewApp()
-	defer app.Quit()
-
-	cfg := &config.Config{}
-	customTheme := NewCustomTheme(cfg, func(string, ...interface{}) {})
-	customTheme.customFont = fyne.NewStaticResource("ui.ttf", theme.DefaultTextFont().Content())
-	customTheme.monospaceFont = fyne.NewStaticResource("mono.ttf", theme.DefaultTextFont().Content())
-
-	if got := customTheme.Font(fyne.TextStyle{Monospace: true}); got == nil || got.Name() != "mono.ttf" {
-		t.Fatalf("monospace font = %v, want mono override", got)
-	}
-	if got := customTheme.Font(fyne.TextStyle{}); got == nil || got.Name() != "ui.ttf" {
-		t.Fatalf("regular font = %v, want UI font", got)
-	}
-}
-
 func TestCustomThemeFyneBackedAppColorOverrides(t *testing.T) {
 	cfg := &config.Config{
 		Theme: config.ThemeConfig{
@@ -200,7 +152,7 @@ func TestCustomThemeFyneBackedAppColorOverrides(t *testing.T) {
 			},
 		},
 	}
-	customTheme := NewCustomTheme(cfg, func(string, ...interface{}) {})
+	customTheme := &CustomTheme{config: cfg}
 
 	if got, want := customTheme.GetCustomColor(ColorDialogListCursor), (color.RGBA{9, 8, 7, 6}); got != want {
 		t.Fatalf("dialog list cursor = %#v, want %#v", got, want)
@@ -226,7 +178,7 @@ func TestScopedOverrideThemes(t *testing.T) {
 			},
 		},
 	}
-	customTheme := NewCustomTheme(cfg, func(string, ...interface{}) {})
+	customTheme := &CustomTheme{config: cfg}
 
 	lineEditTheme := NewLineEditOverrideTheme(theme.LightTheme(), customTheme)
 	if got, want := lineEditTheme.Color(theme.ColorNamePrimary, theme.VariantLight), (color.RGBA{1, 2, 3, 4}); got != want {

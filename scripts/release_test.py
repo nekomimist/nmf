@@ -84,8 +84,13 @@ class ReleaseTest(unittest.TestCase):
         binary = bytearray(128)
         binary[:2] = b"MZ"
         struct.pack_into("<I", binary, 0x3C, 64)
-        struct.pack_into("<4sH", binary, 64, b"PE\0\0", release.ARCHITECTURES[arch][1])
-        (dist / release.ARCHITECTURES[arch][0]).write_bytes(binary)
+        # Keep the PE fixture independent of the production architecture map.
+        executable, machine = {
+            "amd64": ("nmf.exe", 0x8664),
+            "arm64": ("nmf-arm64.exe", 0xAA64),
+        }[arch]
+        struct.pack_into("<4sH", binary, 64, b"PE\0\0", machine)
+        (dist / executable).write_bytes(binary)
         for name in ("LICENSE", "THIRD_PARTY_LICENSES.txt", "README.md"):
             (self.root / name).write_text(name + " contents")
         # Nix store license documents have timestamps before ZIP's minimum year.

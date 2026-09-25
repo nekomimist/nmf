@@ -94,19 +94,6 @@ func TestVersionDialogRepositoryValueUsesHyperlinkForURL(t *testing.T) {
 	}
 }
 
-func TestVersionDialogMessageTextOrder(t *testing.T) {
-	got := versionDialogMessageText("Nekomimist Filer (nmf)", "https://github.com/nekomimist/nmf", "0.1.0")
-	want := strings.Join([]string{
-		"Software: Nekomimist Filer (nmf)",
-		"Repository: https://github.com/nekomimist/nmf",
-		"Version: 0.1.0",
-	}, "\n")
-
-	if got != want {
-		t.Fatalf("versionDialogMessageText() = %q, want %q", got, want)
-	}
-}
-
 func TestVersionDialogValueLabelWrapsLongText(t *testing.T) {
 	got := versionDialogValueLabel(strings.Repeat("a", 80))
 

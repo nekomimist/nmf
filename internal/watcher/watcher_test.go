@@ -1,6 +1,7 @@
 package watcher
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -14,7 +15,7 @@ type mockFM struct {
 	path            string
 	files           []fileinfo.FileInfo
 	unfilteredFiles []fileinfo.FileInfo
-	selectedFiles   map[string]bool
+	applied         []PendingChanges
 }
 
 func (m *mockFM) GetCurrentPath() string { return m.path }
@@ -35,49 +36,10 @@ func (m *mockFM) GetUnfilteredFiles() []fileinfo.FileInfo {
 func (m *mockFM) UpdateFiles(files []fileinfo.FileInfo) {
 	m.files = append([]fileinfo.FileInfo{}, files...)
 }
-func (m *mockFM) RemoveFromSelections(path string) {
-	delete(m.selectedFiles, path)
-}
+func (m *mockFM) RemoveFromSelections(string) {}
 
-// ApplyChanges mirrors FileManager.ApplyChanges (file_manager.go) against the
-// mock's own files field, so tests exercise the same merge semantics.
 func (m *mockFM) ApplyChanges(added, deleted, modified []fileinfo.FileInfo) {
-	files := m.GetFiles()
-
-	for _, deletedFile := range deleted {
-		for i, file := range files {
-			if file.Path == deletedFile.Path {
-				files[i].Status = fileinfo.StatusDeleted
-				m.RemoveFromSelections(deletedFile.Path)
-				break
-			}
-		}
-	}
-
-	for _, modifiedFile := range modified {
-		for i, file := range files {
-			if file.Path == modifiedFile.Path {
-				files[i] = modifiedFile
-				break
-			}
-		}
-	}
-
-	for _, addedFile := range added {
-		replaced := false
-		for i, file := range files {
-			if file.Path == addedFile.Path {
-				files[i] = addedFile
-				replaced = true
-				break
-			}
-		}
-		if !replaced {
-			files = append(files, addedFile)
-		}
-	}
-
-	m.UpdateFiles(files)
+	m.applied = append(m.applied, PendingChanges{Added: added, Deleted: deleted, Modified: modified})
 }
 
 func dummyDebug(format string, args ...interface{}) {}
@@ -247,8 +209,8 @@ func TestApplyPendingChanges_IgnoresStaleRun(t *testing.T) {
 		},
 	})
 
-	if len(m.files) != 0 {
-		t.Fatalf("stale run changes should be ignored, got %d files", len(m.files))
+	if len(m.applied) != 0 {
+		t.Fatalf("stale run dispatched changes: %+v", m.applied)
 	}
 }
 
@@ -262,8 +224,8 @@ func TestApplyDataChangesOnUIRechecksRunGeneration(t *testing.T) {
 		Added: []fileinfo.FileInfo{fi("./stale.txt", "stale.txt", 1, time.Now())},
 	})
 
-	if len(m.files) != 0 {
-		t.Fatalf("stale UI callback changed files: %#v", m.files)
+	if len(m.applied) != 0 {
+		t.Fatalf("stale UI callback dispatched changes: %+v", m.applied)
 	}
 }
 
@@ -293,77 +255,37 @@ func TestQueueSnapshotChangesAdvancesExpectedBaseline(t *testing.T) {
 	}
 }
 
-// TestApplyDataChanges_MergesAddedDeletedModified exercises applyDataChanges'
-// new path (fyne.DoAndWait -> fm.ApplyChanges). It runs the call
-// from a spawned goroutine (not the test's own goroutine) so the fyne test
-// driver treats it as an off-main-thread call and executes it synchronously,
-// matching how applyLoop invokes it in production.
-func TestApplyDataChanges_MergesAddedDeletedModified(t *testing.T) {
+func TestApplyDataChangesDispatchesCurrentChanges(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
-	now := time.Now()
-	m := &mockFM{
-		path:          "/tmp",
-		selectedFiles: map[string]bool{"/tmp/b.txt": true},
-		files: []fileinfo.FileInfo{
-			fi("/tmp/a.txt", "a.txt", 10, now),
-			fi("/tmp/b.txt", "b.txt", 5, now),
-		},
-	}
+	m := &mockFM{path: "/tmp"}
 	dw := NewDirectoryWatcher(m, nil, dummyDebug)
 	dw.running = true
 	dw.runID = 1
-
-	added := []fileinfo.FileInfo{fi("/tmp/c.txt", "c.txt", 1, now)}
-	deleted := []fileinfo.FileInfo{fi("/tmp/b.txt", "b.txt", 5, now)}
-	modified := []fileinfo.FileInfo{fi("/tmp/a.txt", "a.txt", 99, now)}
-
+	dw.updateSnapshot()
+	now := time.Unix(1, 0)
+	want := PendingChanges{
+		Added:    []fileinfo.FileInfo{fi("/tmp/new", "new", 1, now)},
+		Deleted:  []fileinfo.FileInfo{fi("/tmp/gone", "gone", 2, now)},
+		Modified: []fileinfo.FileInfo{fi("/tmp/changed", "changed", 3, now)},
+	}
+	changes := PendingChanges{
+		Added:       append([]fileinfo.FileInfo(nil), want.Added...),
+		Deleted:     append([]fileinfo.FileInfo(nil), want.Deleted...),
+		Modified:    append([]fileinfo.FileInfo(nil), want.Modified...),
+		BaselineGen: dw.baselineGen,
+	}
+	// Exercise the same UI dispatch used by the watcher worker.
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		dw.applyDataChanges(1, &PendingChanges{Added: added, Deleted: deleted, Modified: modified})
+		dw.applyDataChanges(1, &changes)
+		dw.applyDataChanges(1, &PendingChanges{BaselineGen: dw.baselineGen})
 	}()
 	<-done
-
-	if len(m.files) != 3 {
-		t.Fatalf("merged files = %#v, want 3 entries", m.files)
-	}
-	var gotA, gotB, gotC bool
-	for _, f := range m.files {
-		switch f.Path {
-		case "/tmp/a.txt":
-			gotA = true
-			if f.Size != 99 {
-				t.Fatalf("modified a.txt not replaced: %#v", f)
-			}
-		case "/tmp/b.txt":
-			gotB = true
-			if f.Status != fileinfo.StatusDeleted {
-				t.Fatalf("deleted b.txt should have StatusDeleted: %#v", f)
-			}
-		case "/tmp/c.txt":
-			gotC = true
-		}
-	}
-	if !gotA || !gotB || !gotC {
-		t.Fatalf("merged files missing expected entries: %#v", m.files)
-	}
-	if m.selectedFiles["/tmp/b.txt"] {
-		t.Fatalf("deleted file should be removed from selections")
-	}
-}
-
-func TestApplyDataChanges_NoopWhenAllEmpty(t *testing.T) {
-	m := &mockFM{path: "/tmp", files: []fileinfo.FileInfo{fi("/tmp/a.txt", "a.txt", 1, time.Now())}}
-	dw := NewDirectoryWatcher(m, nil, dummyDebug)
-
-	// All three slices empty: must return before reaching fyne.Do, so this is
-	// safe to call directly without a running app.
-	dw.applyDataChanges(0, &PendingChanges{})
-
-	if len(m.files) != 1 {
-		t.Fatalf("files should be untouched, got %#v", m.files)
+	if !reflect.DeepEqual(m.applied, []PendingChanges{want}) {
+		t.Fatalf("dispatched changes = %+v, want exactly %+v", m.applied, want)
 	}
 }
 
@@ -464,36 +386,7 @@ func TestApplyDataChangesOnUIDropsChangesFromAResetBaseline(t *testing.T) {
 
 	dw.applyDataChangesOnUI(1, queued)
 
-	if len(m.files) != 2 {
-		t.Fatalf("files = %#v, want 2 entries", m.files)
-	}
-	for _, f := range m.files {
-		if f.Path == "/tmp/new.txt" && f.Status != fileinfo.StatusNormal {
-			t.Fatalf("stale change set restamped the UI's entry: status = %v", f.Status)
-		}
-	}
-}
-
-// The steady state still applies: a change set whose baseline is unchanged
-// reaches the file manager.
-func TestApplyDataChangesOnUIAppliesCurrentBaseline(t *testing.T) {
-	now := time.Now()
-	existing := fi("/tmp/a.txt", "a.txt", 10, now)
-	m := &mockFM{path: "/tmp", files: []fileinfo.FileInfo{existing}}
-	dw := NewDirectoryWatcher(m, nil, dummyDebug)
-	dw.running = true
-	dw.runID = 1
-	dw.updateSnapshot()
-
-	created := fi("/tmp/new.txt", "new.txt", 3, now)
-	read := Snapshot{"/tmp/a.txt": existing, "/tmp/new.txt": created}
-	added, deleted, modified, baselineGen := dw.detectChanges(read)
-
-	dw.applyDataChangesOnUI(1, &PendingChanges{
-		Added: added, Deleted: deleted, Modified: modified, BaselineGen: baselineGen,
-	})
-
-	if len(m.files) != 2 {
-		t.Fatalf("files = %#v, want the added entry merged", m.files)
+	if len(m.applied) != 0 {
+		t.Fatalf("reset baseline dispatched stale changes: %+v", m.applied)
 	}
 }

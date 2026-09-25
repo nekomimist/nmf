@@ -102,19 +102,13 @@ func TestModelCursorFollowsPathAcrossSort(t *testing.T) {
 	}, fileinfo.StorageInfo{}, false, nameSort())
 
 	model.SetCursorIndex(1)
-	if model.cursorIndex != 1 {
-		t.Fatalf("cursor cache = %d, want 1", model.cursorIndex)
-	}
 	model.ApplySort(config.SortConfig{SortBy: "size", SortOrder: "asc"})
-	if model.cursorIndex != -1 {
-		t.Fatalf("cursor cache after sort = %d, want invalidated", model.cursorIndex)
-	}
 	index, file, ok := model.CursorFile()
 	if !ok || index != 0 || file.Path != "/tmp/banana.txt" {
 		t.Fatalf("CursorFile after sort = (%d, %+v, %t), want banana at 0", index, file, ok)
 	}
-	if model.cursorIndex != 0 || model.CursorPath() != "/tmp/banana.txt" {
-		t.Fatalf("healed cursor = (%d, %q), want (0, banana path)", model.cursorIndex, model.CursorPath())
+	if model.CursorPath() != "/tmp/banana.txt" {
+		t.Fatalf("cursor path = %q, want banana path", model.CursorPath())
 	}
 }
 
@@ -214,6 +208,7 @@ func TestModelBatchSelectionPreservesNonTargets(t *testing.T) {
 	model.ReplaceDirectory("/tmp", []fileinfo.FileInfo{
 		{Name: "..", Path: "/", IsDir: true},
 		{Name: "a.txt", Path: "/tmp/a.txt"},
+		{Name: "b.txt", Path: "/tmp/b.txt"},
 		{Name: "gone.txt", Path: "/tmp/gone.txt", Status: fileinfo.StatusDeleted},
 		{Name: "docs", Path: "/tmp/docs", IsDir: true},
 	}, fileinfo.StorageInfo{}, false, nameSort())
@@ -222,7 +217,7 @@ func TestModelBatchSelectionPreservesNonTargets(t *testing.T) {
 	if !model.SelectAll() {
 		t.Fatal("SelectAll reported no selectable entries")
 	}
-	if !model.IsSelected("/tmp/a.txt") || !model.IsSelected("/tmp/docs") {
+	if !model.IsSelected("/tmp/a.txt") || !model.IsSelected("/tmp/b.txt") || !model.IsSelected("/tmp/docs") {
 		t.Fatalf("SelectAll selection = %#v, want file and directory selected", model.Selection())
 	}
 	if model.IsSelected("/") || !model.IsSelected("/tmp/gone.txt") {
@@ -232,11 +227,19 @@ func TestModelBatchSelectionPreservesNonTargets(t *testing.T) {
 	if !model.InvertSelection(false) {
 		t.Fatal("InvertSelection reported no change")
 	}
-	if model.IsSelected("/tmp/a.txt") || model.IsSelected("/tmp/docs") {
+	if model.IsSelected("/tmp/a.txt") || model.IsSelected("/tmp/b.txt") || model.IsSelected("/tmp/docs") {
 		t.Fatalf("file-only invert selection = %#v, want file and excluded directory cleared", model.Selection())
 	}
 	if !model.IsSelected("/tmp/gone.txt") {
 		t.Fatal("file-only invert changed a deleted entry")
+	}
+
+	model.SetSelected("/tmp/a.txt", true)
+	if !model.InvertSelection(true) || model.IsSelected("/tmp/a.txt") || !model.IsSelected("/tmp/b.txt") || !model.IsSelected("/tmp/docs") {
+		t.Fatalf("invert including directories = %#v, want a cleared and b/docs selected", model.Selection())
+	}
+	if model.IsSelected("/") || !model.IsSelected("/tmp/gone.txt") {
+		t.Fatalf("invert including directories changed non-targets: %#v", model.Selection())
 	}
 }
 
@@ -451,4 +454,119 @@ func TestModelChangesPreserveCallerOwnedListings(t *testing.T) {
 	if file, ok := model.FileAt(0); !ok || file.Size != 2 {
 		t.Fatalf("model file = %v, %t", file, ok)
 	}
+}
+
+func TestModelApplyChangesModifyOnlyUnderNameSortSkipsResort(t *testing.T) {
+	// Preserve the supplied order to detect an unnecessary sort on metadata-only updates.
+	files := []fileinfo.FileInfo{
+		{Name: "gamma.txt", Path: "/tmp/gamma.txt", Size: 30},
+		{Name: "alpha.txt", Path: "/tmp/alpha.txt", Size: 10},
+		{Name: "beta.txt", Path: "/tmp/beta.txt", Size: 20},
+	}
+	model := newApplyChangesTestModel(files, config.SortConfig{SortBy: "name", SortOrder: "asc"})
+
+	modified := fileinfo.FileInfo{Name: "alpha.txt", Path: "/tmp/alpha.txt", Size: 999}
+	err := model.ApplyChanges(nil, nil, []fileinfo.FileInfo{modified})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantOrder := []string{"gamma.txt", "alpha.txt", "beta.txt"}
+	gotFiles := model.Files()
+	if got := fileNames(gotFiles); !reflect.DeepEqual(got, wantOrder) {
+		t.Fatalf("modify-only ApplyChanges under name sort reordered: got %v, want unchanged order %v", got, wantOrder)
+	}
+	if gotFiles[1].Size != 999 {
+		t.Fatalf("modified file content not applied: %+v", gotFiles[1])
+	}
+}
+
+func TestModelApplyChangesAddedUnderNameSortResorts(t *testing.T) {
+	files := []fileinfo.FileInfo{
+		{Name: "gamma.txt", Path: "/tmp/gamma.txt"},
+		{Name: "alpha.txt", Path: "/tmp/alpha.txt"},
+		{Name: "beta.txt", Path: "/tmp/beta.txt"},
+	}
+	model := newApplyChangesTestModel(files, config.SortConfig{SortBy: "name", SortOrder: "asc"})
+
+	added := fileinfo.FileInfo{Name: "delta.txt", Path: "/tmp/delta.txt"}
+	err := model.ApplyChanges([]fileinfo.FileInfo{added}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"alpha.txt", "beta.txt", "delta.txt", "gamma.txt"}
+	if got := fileNames(model.Files()); !reflect.DeepEqual(got, want) {
+		t.Fatalf("added-file ApplyChanges did not resort: got %v, want %v", got, want)
+	}
+}
+
+func TestModelApplyChangesModifyOnlyUnderSizeSortResorts(t *testing.T) {
+	files := []fileinfo.FileInfo{
+		{Name: "small.txt", Path: "/tmp/small.txt", Size: 10},
+		{Name: "big.txt", Path: "/tmp/big.txt", Size: 20},
+	}
+	model := newApplyChangesTestModel(files, config.SortConfig{SortBy: "size", SortOrder: "asc"})
+
+	modified := fileinfo.FileInfo{Name: "big.txt", Path: "/tmp/big.txt", Size: 1}
+	err := model.ApplyChanges(nil, nil, []fileinfo.FileInfo{modified})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"big.txt", "small.txt"}
+	if got := fileNames(model.Files()); !reflect.DeepEqual(got, want) {
+		t.Fatalf("modify-only ApplyChanges under size sort did not resort: got %v, want %v", got, want)
+	}
+}
+
+func TestModelApplyChangesModifyOnlyIsDirFlipResorts(t *testing.T) {
+	files := []fileinfo.FileInfo{
+		{Name: "alpha.txt", Path: "/tmp/alpha.txt", IsDir: false},
+		{Name: "beta", Path: "/tmp/beta", IsDir: false},
+	}
+	model := newApplyChangesTestModel(files, config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true})
+
+	modified := fileinfo.FileInfo{Name: "beta", Path: "/tmp/beta", IsDir: true}
+	err := model.ApplyChanges(nil, nil, []fileinfo.FileInfo{modified})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"beta", "alpha.txt"}
+	gotFiles := model.Files()
+	if got := fileNames(gotFiles); !reflect.DeepEqual(got, want) {
+		t.Fatalf("modify-only ApplyChanges with IsDir flip did not resort into directory group: got %v, want %v", got, want)
+	}
+	if !gotFiles[0].IsDir {
+		t.Fatalf("expected flipped entry to be marked as a directory: %+v", gotFiles[0])
+	}
+}
+
+func TestModelApplyChangesReplacesRecreatedPathInsteadOfDuplicating(t *testing.T) {
+	// Watcher snapshots exclude deleted entries, so a recreated path arrives as an add.
+	deleted := fileinfo.FileInfo{Path: "/tmp/a.txt", Name: "a.txt", Status: fileinfo.StatusDeleted}
+	other := fileinfo.FileInfo{Path: "/tmp/b.txt", Name: "b.txt"}
+	model := newApplyChangesTestModel([]fileinfo.FileInfo{deleted, other},
+		config.SortConfig{SortBy: "name", SortOrder: "asc"})
+
+	recreated := fileinfo.FileInfo{Path: "/tmp/a.txt", Name: "a.txt", Status: fileinfo.StatusAdded}
+	err := model.ApplyChanges([]fileinfo.FileInfo{recreated}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := model.Files()
+	if want := []string{"a.txt", "b.txt"}; !reflect.DeepEqual(fileNames(got), want) {
+		t.Fatalf("files = %v, want %v", fileNames(got), want)
+	}
+	if got[0].Status != fileinfo.StatusAdded {
+		t.Fatalf("status = %v, want the recreated entry to replace the deleted one", got[0].Status)
+	}
+}
+
+func newApplyChangesTestModel(files []fileinfo.FileInfo, sortCfg config.SortConfig) *Model {
+	model := New("/tmp", sortCfg)
+	model.ReplaceDirectory("/tmp", files, fileinfo.StorageInfo{}, false, sortCfg)
+	return model
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"testing"
-	"time"
 
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
@@ -31,22 +30,29 @@ func TestJobsButtonText(t *testing.T) {
 	}
 }
 
-func TestJobsBlinkDropsTicksAfterWindowClose(t *testing.T) {
+func TestJobsBlinkQueuedUpdateHonorsLifecycle(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
-	fm := &FileManager{
-		window:     app.NewWindow("closed"),
-		jobsButton: widget.NewButton("Jobs", nil),
-		closed:     true,
-	}
-	fm.jobsButton.Importance = widget.MediumImportance
-
-	fm.startJobsBlink()
-	time.Sleep(650 * time.Millisecond)
-	fm.stopJobsBlink()
-
-	if fm.jobsButton.Importance != widget.MediumImportance {
-		t.Fatalf("closed window jobs importance = %v, want unchanged", fm.jobsButton.Importance)
+	for _, state := range []string{"active", "closed", "stopped"} {
+		t.Run(state, func(t *testing.T) {
+			fm := &FileManager{jobsButton: widget.NewButton("Jobs", nil)}
+			fm.jobsButton.Importance = widget.HighImportance
+			stop := make(chan struct{})
+			queued := fm.jobsBlinkUpdate(stop, false)
+			want := widget.HighImportance
+			switch state {
+			case "active":
+				want = widget.MediumImportance
+			case "closed":
+				fm.closed = true
+			case "stopped":
+				close(stop)
+			}
+			queued()
+			if got := fm.jobsButton.Importance; got != want {
+				t.Fatalf("queued blink importance = %v, want %v", got, want)
+			}
+		})
 	}
 }
 

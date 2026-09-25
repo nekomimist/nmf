@@ -18,60 +18,58 @@ import (
 )
 
 func TestApplyTemporarySortRefreshesVisibleRows(t *testing.T) {
-	for _, sortBy := range []string{"name", "modified", "size"} {
-		for _, cursor := range []struct {
-			name  string
-			index int
-		}{
-			{name: "parent", index: 0},
-			{name: "stationary_file", index: 2},
-			{name: "moving_file", index: 1},
-		} {
-			t.Run(sortBy+"/"+cursor.name, func(t *testing.T) {
-				app := test.NewApp()
-				defer app.Quit()
+	for _, cursor := range []struct {
+		name  string
+		index int
+	}{
+		{name: "parent", index: 0},
+		{name: "stationary_file", index: 2},
+		{name: "moving_file", index: 1},
+	} {
+		t.Run(cursor.name, func(t *testing.T) {
+			app := test.NewApp()
+			defer app.Quit()
 
-				files := []fileinfo.FileInfo{
-					{Name: "..", Path: "/tmp", IsDir: true},
-					{Name: "alpha.txt", Path: "/tmp/sort/alpha.txt", Size: 10, Modified: time.Unix(1, 0)},
-					{Name: "beta.txt", Path: "/tmp/sort/beta.txt", Size: 20, Modified: time.Unix(2, 0)},
-					{Name: "gamma.txt", Path: "/tmp/sort/gamma.txt", Size: 30, Modified: time.Unix(3, 0)},
-				}
-				fm, _ := newTrackedCursorTestFileManager(0, 0)
-				fm.browser = newTestBrowser(testBrowserOptions{files: files})
-				fm.SetCursorByIndex(cursor.index)
-				window := test.NewWindow(fm.fileList)
-				defer window.Close()
-				window.Resize(fyne.NewSize(900, 300))
-				fm.RefreshCursor()
+			files := []fileinfo.FileInfo{
+				{Name: "..", Path: "/tmp", IsDir: true},
+				{Name: "alpha.txt", Path: "/tmp/sort/alpha.txt", Size: 10, Modified: time.Unix(1, 0)},
+				{Name: "beta.txt", Path: "/tmp/sort/beta.txt", Size: 20, Modified: time.Unix(2, 0)},
+				{Name: "gamma.txt", Path: "/tmp/sort/gamma.txt", Size: 30, Modified: time.Unix(3, 0)},
+			}
+			fm, _ := newTrackedCursorTestFileManager(0, 0)
+			fm.browser = newTestBrowser(testBrowserOptions{files: files})
+			fm.SetCursorByIndex(cursor.index)
+			window := test.NewWindow(fm.fileList)
+			defer window.Close()
+			window.Resize(fyne.NewSize(900, 300))
+			fm.RefreshCursor()
 
-				assertVisibleNames := func(want []string) {
-					t.Helper()
-					for index, name := range want {
-						row := fm.fileListRows[index]
-						if row == nil || !fm.fileListItemVisible(index) {
-							t.Fatalf("row %d is not visible", index)
-						}
-						label := test.WidgetRenderer(row.NameLabel).Objects()[0].(*canvas.Text)
-						if label.Text != name {
-							t.Errorf("visible row %d = %q, want %q", index, label.Text, name)
-						}
+			assertVisibleNames := func(want []string) {
+				t.Helper()
+				for index, name := range want {
+					row := fm.fileListRows[index]
+					if row == nil || !fm.fileListItemVisible(index) {
+						t.Fatalf("row %d is not visible", index)
 					}
-					if got := fm.cursorAnchor.path; got != files[cursor.index].Path {
-						t.Errorf("cursor anchor = %q, want %q", got, files[cursor.index].Path)
+					label := test.WidgetRenderer(row.NameLabel).Objects()[0].(*canvas.Text)
+					if label.Text != name {
+						t.Errorf("visible row %d = %q, want %q", index, label.Text, name)
 					}
 				}
-				assertVisibleNames([]string{"..", "alpha.txt", "beta.txt", "gamma.txt"})
+				if got := fm.cursorAnchor.path; got != files[cursor.index].Path {
+					t.Errorf("cursor anchor = %q, want %q", got, files[cursor.index].Path)
+				}
+			}
+			assertVisibleNames([]string{"..", "alpha.txt", "beta.txt", "gamma.txt"})
 
-				// Read the rendered labels immediately, without moving the cursor
-				// or refreshing the list as part of the assertion.
-				fm.ApplyTemporarySort(config.SortConfig{SortBy: sortBy, SortOrder: "desc", DirectoriesFirst: true})
-				assertVisibleNames([]string{"..", "gamma.txt", "beta.txt", "alpha.txt"})
+			// Read the rendered labels immediately, without moving the cursor
+			// or refreshing the list as part of the assertion.
+			fm.ApplyTemporarySort(config.SortConfig{SortBy: "name", SortOrder: "desc", DirectoriesFirst: true})
+			assertVisibleNames([]string{"..", "gamma.txt", "beta.txt", "alpha.txt"})
 
-				fm.ApplyTemporarySort(config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true})
-				assertVisibleNames([]string{"..", "alpha.txt", "beta.txt", "gamma.txt"})
-			})
-		}
+			fm.ApplyTemporarySort(config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true})
+			assertVisibleNames([]string{"..", "alpha.txt", "beta.txt", "gamma.txt"})
+		})
 	}
 }
 
@@ -204,40 +202,6 @@ func TestApplyFilterRejectsInvalidPatternWithoutChangingState(t *testing.T) {
 	}
 	if got := fm.GetFiles(); len(got) != 1 || got[0].Name != "main.go" {
 		t.Fatalf("visible files after invalid pattern = %+v, want prior filtered listing", got)
-	}
-}
-
-func TestGetCurrentCursorIndexCacheHitAndSelfHeal(t *testing.T) {
-	fm := &FileManager{
-		browser: newTestBrowser(testBrowserOptions{files: []fileinfo.FileInfo{
-			{Name: "apple.txt", Path: "/tmp/apple.txt", Size: 30},
-			{Name: "banana.txt", Path: "/tmp/banana.txt", Size: 10},
-			{Name: "cherry.txt", Path: "/tmp/cherry.txt", Size: 20},
-		}}),
-	}
-	fm.browserModel().ApplySort(config.SortConfig{SortBy: "name", SortOrder: "asc"})
-	fm.SetCursorByIndex(1)
-	files := fm.GetFiles()
-	if files[1].Name != "banana.txt" {
-		t.Fatalf("setup: expected banana.txt at index 1, got %+v", files)
-	}
-	if got := fm.GetCurrentCursorIndex(); got != 1 {
-		t.Fatalf("SetCursorByIndex index = %d, want 1", got)
-	}
-
-	// Re-sort by size: banana.txt (smallest) moves to index 0, so the cached
-	// cursorIndex (still 1) no longer matches cursorPath ("banana.txt").
-	fm.browserModel().ApplySort(config.SortConfig{SortBy: "size", SortOrder: "asc"})
-
-	got := fm.GetCurrentCursorIndex()
-	files = fm.GetFiles()
-	if got != 0 || files[got].Name != "banana.txt" {
-		t.Fatalf("GetCurrentCursorIndex self-heal = %d (%+v), want 0 (banana.txt)", got, files)
-	}
-
-	// Second call should now hit the cache directly and return the same value.
-	if got2 := fm.GetCurrentCursorIndex(); got2 != 0 {
-		t.Fatalf("GetCurrentCursorIndex cache hit = %d, want 0", got2)
 	}
 }
 

@@ -470,6 +470,9 @@ type mainScreenFakeFileManager struct {
 	files                    []fileinfo.FileInfo
 	selectedFiles            map[string]bool
 	allSelectedFiles         []fileinfo.FileInfo
+	selectAllCount           int
+	invertCalls              []bool
+	selectionChanged         bool
 	refreshFileListCount     int
 }
 
@@ -662,39 +665,12 @@ func (f *mainScreenFakeFileManager) ToggleFileSelection(path string) {
 	f.selectedFiles[path] = !f.selectedFiles[path]
 }
 func (f *mainScreenFakeFileManager) SelectAllFiles() bool {
-	if f.selectedFiles == nil {
-		f.selectedFiles = make(map[string]bool)
-	}
-	found := false
-	for _, file := range f.files {
-		if file.Name == ".." || file.Status == fileinfo.StatusDeleted {
-			continue
-		}
-		f.selectedFiles[file.Path] = true
-		found = true
-	}
-	return found
+	f.selectAllCount++
+	return f.selectionChanged
 }
 func (f *mainScreenFakeFileManager) InvertFileSelection(includeDirectories bool) bool {
-	if f.selectedFiles == nil {
-		f.selectedFiles = make(map[string]bool)
-	}
-	changed := false
-	for _, file := range f.files {
-		if file.Name == ".." || file.Status == fileinfo.StatusDeleted {
-			continue
-		}
-		if file.IsDir && !includeDirectories {
-			if f.selectedFiles[file.Path] {
-				f.selectedFiles[file.Path] = false
-				changed = true
-			}
-			continue
-		}
-		f.selectedFiles[file.Path] = !f.selectedFiles[file.Path]
-		changed = true
-	}
-	return changed
+	f.invertCalls = append(f.invertCalls, includeDirectories)
+	return f.selectionChanged
 }
 func (f *mainScreenFakeFileManager) RefreshFileList()                  { f.refreshFileListCount++ }
 func (f *mainScreenFakeFileManager) SaveCursorPosition(dirPath string) { f.saveCursorPath = dirPath }
@@ -1322,104 +1298,41 @@ func TestMainScreenShiftCShowsCompareDialog(t *testing.T) {
 	}
 }
 
-func TestMainScreenCtrlAMarksAllSelectableFiles(t *testing.T) {
-	fm := &mainScreenFakeFileManager{
-		files: []fileinfo.FileInfo{
-			{Name: "..", Path: "/parent"},
-			{Name: "a.txt", Path: "/dir/a.txt"},
-			{Name: "gone.txt", Path: "/dir/gone.txt", Status: fileinfo.StatusDeleted},
-			{Name: "sub", Path: "/dir/sub", IsDir: true},
-		},
-	}
-	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
-
-	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyA}, ModifierState{CtrlPressed: true})
-
-	if !handled {
-		t.Fatal("Ctrl+A should be handled")
-	}
-	if got := fm.selectedFiles; !got["/dir/a.txt"] || !got["/dir/sub"] {
-		t.Fatalf("selected files = %+v, want selectable files marked", got)
-	}
-	if fm.selectedFiles["/parent"] || fm.selectedFiles["/dir/gone.txt"] {
-		t.Fatalf("selected files = %+v, should skip parent and deleted entries", fm.selectedFiles)
-	}
-	if fm.refreshFileListCount != 1 {
-		t.Fatalf("RefreshFileList count = %d, want 1", fm.refreshFileListCount)
-	}
-}
-
-func TestMainScreenIInvertsFileMarksOnly(t *testing.T) {
-	fm := &mainScreenFakeFileManager{
-		files: []fileinfo.FileInfo{
-			{Name: "..", Path: "/parent"},
-			{Name: "a.txt", Path: "/dir/a.txt"},
-			{Name: "b.txt", Path: "/dir/b.txt"},
-			{Name: "gone.txt", Path: "/dir/gone.txt", Status: fileinfo.StatusDeleted},
-			{Name: "sub", Path: "/dir/sub", IsDir: true},
-		},
-		selectedFiles: map[string]bool{
-			"/dir/a.txt":    true,
-			"/dir/gone.txt": true,
-			"/dir/sub":      true,
-		},
-	}
-	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
-
-	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyI}, ModifierState{})
-
-	if !handled {
-		t.Fatal("I should be handled")
-	}
-	if fm.selectedFiles["/dir/a.txt"] {
-		t.Fatalf("selected files = %+v, want a.txt unmarked", fm.selectedFiles)
-	}
-	if !fm.selectedFiles["/dir/b.txt"] {
-		t.Fatalf("selected files = %+v, want b.txt marked", fm.selectedFiles)
-	}
-	if fm.selectedFiles["/dir/sub"] {
-		t.Fatalf("selected files = %+v, want directory unmarked by file-only invert", fm.selectedFiles)
-	}
-	if !fm.selectedFiles["/dir/gone.txt"] {
-		t.Fatalf("selected files = %+v, deleted existing mark should be untouched", fm.selectedFiles)
-	}
-	if fm.refreshFileListCount != 1 {
-		t.Fatalf("RefreshFileList count = %d, want 1", fm.refreshFileListCount)
-	}
-}
-
-func TestMainScreenShiftIInvertsMarksIncludingDirectories(t *testing.T) {
-	fm := &mainScreenFakeFileManager{
-		files: []fileinfo.FileInfo{
-			{Name: "..", Path: "/parent"},
-			{Name: "a.txt", Path: "/dir/a.txt"},
-			{Name: "b.txt", Path: "/dir/b.txt"},
-			{Name: "gone.txt", Path: "/dir/gone.txt", Status: fileinfo.StatusDeleted},
-			{Name: "sub", Path: "/dir/sub", IsDir: true},
-		},
-		selectedFiles: map[string]bool{
-			"/dir/a.txt":    true,
-			"/dir/gone.txt": true,
-		},
-	}
-	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
-
-	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyI}, ModifierState{ShiftPressed: true})
-
-	if !handled {
-		t.Fatal("Shift+I should be handled")
-	}
-	if fm.selectedFiles["/dir/a.txt"] {
-		t.Fatalf("selected files = %+v, want a.txt unmarked", fm.selectedFiles)
-	}
-	if !fm.selectedFiles["/dir/b.txt"] || !fm.selectedFiles["/dir/sub"] {
-		t.Fatalf("selected files = %+v, want b.txt and sub marked", fm.selectedFiles)
-	}
-	if !fm.selectedFiles["/dir/gone.txt"] {
-		t.Fatalf("selected files = %+v, deleted existing mark should be untouched", fm.selectedFiles)
-	}
-	if fm.refreshFileListCount != 1 {
-		t.Fatalf("RefreshFileList count = %d, want 1", fm.refreshFileListCount)
+func TestMainScreenSelectionCommands(t *testing.T) {
+	for _, tt := range []struct {
+		name               string
+		key                fyne.KeyName
+		modifiers          ModifierState
+		selectAll          bool
+		includeDirectories bool
+	}{
+		{"select all", fyne.KeyA, ModifierState{CtrlPressed: true}, true, false},
+		{"invert files", fyne.KeyI, ModifierState{}, false, false},
+		{"invert including directories", fyne.KeyI, ModifierState{ShiftPressed: true}, false, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, changed := range []bool{false, true} {
+				fm := &mainScreenFakeFileManager{selectionChanged: changed}
+				handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
+				if !handler.OnKeyActivated(&fyne.KeyEvent{Name: tt.key}, tt.modifiers) {
+					t.Fatal("selection key was not handled")
+				}
+				if tt.selectAll {
+					if fm.selectAllCount != 1 || len(fm.invertCalls) != 0 {
+						t.Fatalf("selection calls = all %d, invert %v", fm.selectAllCount, fm.invertCalls)
+					}
+				} else if fm.selectAllCount != 0 || len(fm.invertCalls) != 1 || fm.invertCalls[0] != tt.includeDirectories {
+					t.Fatalf("selection calls = all %d, invert %v, want invert(%t)", fm.selectAllCount, fm.invertCalls, tt.includeDirectories)
+				}
+				wantRefresh := 0
+				if changed {
+					wantRefresh = 1
+				}
+				if fm.refreshFileListCount != wantRefresh {
+					t.Fatalf("changed=%t: refresh count = %d, want %d", changed, fm.refreshFileListCount, wantRefresh)
+				}
+			}
+		})
 	}
 }
 
@@ -1728,11 +1641,7 @@ func TestMainScreenProvidesClipboardWriterToExtraCommand(t *testing.T) {
 
 func TestMainScreenDoesNotDeferNonTransitionCommand(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
-	fm := &mainScreenFakeFileManager{
-		files: []fileinfo.FileInfo{
-			{Name: "a.txt", Path: "/dir/a.txt"},
-		},
-	}
+	fm := &mainScreenFakeFileManager{selectionChanged: true}
 	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
 	handler.SetTransitionGate(km.BeginOwnerTransition)
 	km.PushHandler(handler)

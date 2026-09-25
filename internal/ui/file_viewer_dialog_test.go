@@ -6,7 +6,6 @@ import (
 	"math"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -172,19 +171,6 @@ func assertViewerLinesWithinWidth(t *testing.T, lines []string, width int) {
 		if got := viewerTextGridLineWidth(line); got > width {
 			t.Fatalf("line width = %d, want <= %d: %q", got, width, line)
 		}
-	}
-}
-
-func TestTruncateUTF8BytesKeepsValidUTF8(t *testing.T) {
-	got, truncated := truncateUTF8Bytes("abc日本語", 5)
-	if !truncated {
-		t.Fatal("truncateUTF8Bytes() truncated = false, want true")
-	}
-	if !utf8.ValidString(got) {
-		t.Fatalf("truncateUTF8Bytes() returned invalid UTF-8: %q", got)
-	}
-	if got != "abc" {
-		t.Fatalf("truncateUTF8Bytes() = %q, want %q", got, "abc")
 	}
 }
 

@@ -70,31 +70,35 @@ func (fm *FileManager) startJobsBlink() {
 			select {
 			case <-ticker.C:
 				blinkOn = !blinkOn
-				importanceOn := blinkOn
-				// Toggle importance to create a blink effect
-				fyne.Do(func() {
-					select {
-					case <-stop:
-						return
-					default:
-					}
-					if fm.isWindowClosed() {
-						return
-					}
-					if fm.jobsButton != nil {
-						if importanceOn {
-							fm.jobsButton.Importance = widget.HighImportance
-						} else {
-							fm.jobsButton.Importance = widget.MediumImportance
-						}
-						fm.jobsButton.Refresh()
-					}
-				})
+				fyne.Do(fm.jobsBlinkUpdate(stop, blinkOn))
 			case <-stop:
 				return
 			}
 		}
 	}(fm.jobsBlinkStop)
+}
+
+// jobsBlinkUpdate captures a tick for the UI queue. Lifecycle guards must run
+// when the queued update executes, since the window may close in the meantime.
+func (fm *FileManager) jobsBlinkUpdate(stop <-chan struct{}, importanceOn bool) func() {
+	return func() {
+		select {
+		case <-stop:
+			return
+		default:
+		}
+		if fm.isWindowClosed() {
+			return
+		}
+		if fm.jobsButton != nil {
+			if importanceOn {
+				fm.jobsButton.Importance = widget.HighImportance
+			} else {
+				fm.jobsButton.Importance = widget.MediumImportance
+			}
+			fm.jobsButton.Refresh()
+		}
+	}
 }
 
 func (fm *FileManager) stopJobsBlink() {

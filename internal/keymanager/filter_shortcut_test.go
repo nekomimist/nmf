@@ -9,6 +9,7 @@ import (
 )
 
 type fakeFilterSearchDialog struct {
+	actions   []string
 	backspace int
 	search    string
 	right     int
@@ -21,31 +22,35 @@ type fakeFilterSearchDialog struct {
 	paste     int
 }
 
-func (f *fakeFilterSearchDialog) MoveUp()                       {}
-func (f *fakeFilterSearchDialog) MoveDown()                     {}
-func (f *fakeFilterSearchDialog) MoveToTop()                    {}
-func (f *fakeFilterSearchDialog) MoveToBottom()                 {}
-func (f *fakeFilterSearchDialog) ClearSearch()                  {}
-func (f *fakeFilterSearchDialog) AppendToSearch(char string)    { f.search += char }
-func (f *fakeFilterSearchDialog) BackspaceSearch()              { f.backspace++ }
-func (f *fakeFilterSearchDialog) PasteFromClipboard()           { f.paste++ }
-func (f *fakeFilterSearchDialog) GetSearchText() string         { return "" }
-func (f *fakeFilterSearchDialog) IsSearchFocused() bool         { return false }
-func (f *fakeFilterSearchDialog) FocusList()                    {}
-func (f *fakeFilterSearchDialog) SelectCurrentItem()            {}
-func (f *fakeFilterSearchDialog) AcceptSelection()              {}
-func (f *fakeFilterSearchDialog) AcceptDirectInput()            { f.direct++ }
-func (f *fakeFilterSearchDialog) DeleteSelectedEntry()          { f.deleted++ }
-func (f *fakeFilterSearchDialog) UnpinSelectedPath()            { f.unpinned++ }
-func (f *fakeFilterSearchDialog) ToggleHistoryOrder()           { f.order++ }
-func (f *fakeFilterSearchDialog) AcceptDirectPathNavigation()   { f.direct++ }
-func (f *fakeFilterSearchDialog) AcceptDirectPath()             {}
-func (f *fakeFilterSearchDialog) OpenDestination()              { f.open++ }
-func (f *fakeFilterSearchDialog) CancelDialog()                 {}
-func (f *fakeFilterSearchDialog) CopySelectedPathToSearch()     {}
-func (f *fakeFilterSearchDialog) CopySelectedShortcutToSearch() {}
-func (f *fakeFilterSearchDialog) ScrollSelectedRight()          { f.right++ }
-func (f *fakeFilterSearchDialog) ResetHorizontalScroll()        { f.left++ }
+func (f *fakeFilterSearchDialog) MoveUp()                     { f.actions = append(f.actions, "up") }
+func (f *fakeFilterSearchDialog) MoveDown()                   { f.actions = append(f.actions, "down") }
+func (f *fakeFilterSearchDialog) MoveToTop()                  { f.actions = append(f.actions, "top") }
+func (f *fakeFilterSearchDialog) MoveToBottom()               { f.actions = append(f.actions, "bottom") }
+func (f *fakeFilterSearchDialog) ClearSearch()                {}
+func (f *fakeFilterSearchDialog) AppendToSearch(char string)  { f.search += char }
+func (f *fakeFilterSearchDialog) BackspaceSearch()            { f.backspace++ }
+func (f *fakeFilterSearchDialog) PasteFromClipboard()         { f.paste++ }
+func (f *fakeFilterSearchDialog) GetSearchText() string       { return "" }
+func (f *fakeFilterSearchDialog) IsSearchFocused() bool       { return false }
+func (f *fakeFilterSearchDialog) FocusList()                  {}
+func (f *fakeFilterSearchDialog) SelectCurrentItem()          {}
+func (f *fakeFilterSearchDialog) AcceptSelection()            { f.actions = append(f.actions, "accept") }
+func (f *fakeFilterSearchDialog) AcceptDirectInput()          { f.direct++ }
+func (f *fakeFilterSearchDialog) DeleteSelectedEntry()        { f.deleted++ }
+func (f *fakeFilterSearchDialog) UnpinSelectedPath()          { f.unpinned++ }
+func (f *fakeFilterSearchDialog) ToggleHistoryOrder()         { f.order++ }
+func (f *fakeFilterSearchDialog) AcceptDirectPathNavigation() { f.direct++ }
+func (f *fakeFilterSearchDialog) AcceptDirectPath()           { f.actions = append(f.actions, "direct path") }
+func (f *fakeFilterSearchDialog) OpenDestination()            { f.open++ }
+func (f *fakeFilterSearchDialog) CancelDialog()               { f.actions = append(f.actions, "cancel") }
+func (f *fakeFilterSearchDialog) CopySelectedPathToSearch() {
+	f.actions = append(f.actions, "copy path")
+}
+func (f *fakeFilterSearchDialog) CopySelectedShortcutToSearch() {
+	f.actions = append(f.actions, "copy shortcut")
+}
+func (f *fakeFilterSearchDialog) ScrollSelectedRight()   { f.right++ }
+func (f *fakeFilterSearchDialog) ResetHorizontalScroll() { f.left++ }
 
 func TestFilteringDialogsTreatCtrlHAsBackspace(t *testing.T) {
 	tests := []struct {

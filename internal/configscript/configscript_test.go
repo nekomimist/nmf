@@ -1870,34 +1870,6 @@ func TestClipboardRequiresCommandContext(t *testing.T) {
 	}
 }
 
-func TestClipboardRejectsNonString(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, FileName)
-	src := `
-def copy_text(ctx):
-    nmf.clipboard(1)
-nmf.command("user.copy_text", copy_text)
-`
-	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
-		t.Fatalf("WriteFile failed: %v", err)
-	}
-	rt, err := Load(path, testConfig(), Options{})
-	if err != nil {
-		t.Fatalf("Load returned error: %v", err)
-	}
-
-	var logs []string
-	rt.debugPrint = func(format string, args ...interface{}) {
-		logs = append(logs, fmt.Sprintf(format, args...))
-	}
-	rt.Commands["user.copy_text"](keymanager.CommandContext{
-		SetClipboard: func(text string) bool { return true },
-	})
-	if len(logs) == 0 {
-		t.Fatal("command should log clipboard argument failure")
-	}
-}
-
 func TestCustomCommandCanSaveClipboardTextFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, FileName)
@@ -2152,34 +2124,40 @@ nmf.command("user.save", save)
 	}
 }
 
-func TestExecRejectsInvalidArguments(t *testing.T) {
-	tests := []struct {
-		name string
-		src  string
+func TestCommandRejectsInvalidArgumentsBeforeSideEffects(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		expression string
+		wantError  string
 	}{
-		{
-			name: "empty command",
-			src:  `nmf.exec(" ")`,
-		},
-		{
-			name: "non string arg",
-			src:  `nmf.exec("vim", args = [1])`,
-		},
-		{
-			name: "non string cwd",
-			src:  `nmf.exec("vim", cwd = 1)`,
-		},
-	}
-
-	for _, tt := range tests {
+		{"empty command", `nmf.exec(" ")`, "exec command must not be empty"},
+		{"non string arg", `nmf.exec("vim", args = [1])`, "args must contain only strings"},
+		{"non string clipboard", `nmf.set_clipboard(1)`, "got int, want string"},
+	} {
 		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			path := filepath.Join(dir, FileName)
-			if err := os.WriteFile(path, []byte(tt.src), 0644); err != nil {
-				t.Fatalf("WriteFile failed: %v", err)
+			path := filepath.Join(t.TempDir(), FileName)
+			src := "def invalid(ctx):\n    " + tt.expression + "\nnmf.command(\"user.invalid\", invalid)\n"
+			if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+				t.Fatal(err)
 			}
-			if _, err := Load(path, testConfig(), Options{}); err == nil {
-				t.Fatal("Load should reject invalid nmf.exec arguments")
+			rt, err := Load(path, testConfig(), Options{})
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			var failures []string
+			rt.debugPrint = func(format string, args ...interface{}) {
+				failures = append(failures, fmt.Sprintf(format, args...))
+			}
+			calls := 0
+			rt.Commands["user.invalid"](keymanager.CommandContext{
+				RunExternalCommand: func(string, []string, bool, string) bool { calls++; return true },
+				SetClipboard:       func(string) bool { calls++; return true },
+			})
+			if calls != 0 {
+				t.Fatalf("invalid command performed %d side effects", calls)
+			}
+			if len(failures) != 1 || !strings.Contains(failures[0], tt.wantError) {
+				t.Fatalf("command errors = %q, want %q", failures, tt.wantError)
 			}
 		})
 	}
