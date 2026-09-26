@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.2 - 2026-09-27
+
 - Show Starlark command errors in a dismissible dialog with the source location,
   call history, and a Copy details action, even when debug logging is disabled.
 
