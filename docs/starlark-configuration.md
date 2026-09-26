@@ -414,8 +414,20 @@ NMF embeds the official Go Starlark interpreter:
   without an extension gets `.star` appended.
 
 Errors during `init.star` loading stop startup and include a Starlark backtrace.
-Errors during a custom command are logged through debug logging and do not crash
-the process.
+Errors during a custom command, a callable key binding, or a callable menu item
+open a **Starlark command error** dialog, even when debug logging is disabled.
+The dialog identifies the command, key binding, or menu item and shows the error,
+source file/line/column, function name, and Starlark call history when available.
+Locations can refer to modules loaded by `init.star` as well as `init.star` itself.
+Long details scroll within the dialog (Up/Down and Page Up/Page Down also scroll).
+**Copy details** or Ctrl+C copies the complete report. OK, Enter, or Escape
+closes the dialog and returns focus to the file list; NMF keeps running. Errors
+reported while the dialog is open are appended to the same report.
+
+The failed script invocation stops at the error; actions already completed are
+not rolled back. The full error continues to be written to the debug log when
+logging is enabled. `nmf.run()` retains its existing dispatch-result semantics:
+it can return `True` even if the invoked `user.*` command encounters an error.
 
 ## Persistence Model
 

@@ -8,6 +8,26 @@ func (fm *FileManager) ShowMessageDialog(title string, message string) {
 	})
 }
 
+func (fm *FileManager) ShowCommandError(action, details string) {
+	fm.showMessageDialog(func() {
+		if fm.isWindowClosed() || fm.window == nil {
+			return
+		}
+		if fm.commandErrorDialog != nil {
+			fm.commandErrorDialog.Append(action, details)
+			return
+		}
+		d := ui.NewCommandErrorDialog(action, details, fm.keyManager)
+		fm.commandErrorDialog = d
+		d.Show(fm.window, func() {
+			fm.commandErrorDialog = nil
+			if !fm.isWindowClosed() {
+				fm.focusFileList("command-error-closed")
+			}
+		})
+	})
+}
+
 func (fm *FileManager) ShowVersionDialog() {
 	fm.showMessageDialog(func() {
 		ui.ShowCompactVersionDialog(fm.window, appFullName, appRepository, appVersion())

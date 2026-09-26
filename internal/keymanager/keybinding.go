@@ -40,6 +40,7 @@ type CommandContext struct {
 	// commands; see mainscreen_handler.go's executeBinding.
 	ShowCommandMenu             func(title string, items []CommandMenuItem)
 	ShowMessageDialog           func(title string, message string)
+	ShowCommandError            func(action string, details string)
 	ShowCreateDirectoryDialog   func()
 	ShowClipboardTextFileDialog func()
 }

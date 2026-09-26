@@ -23,6 +23,9 @@ func (fm *FileManager) closeWindow() {
 	if fm.busy != nil {
 		fm.busy.End()
 	}
+	if fm.commandErrorDialog != nil {
+		fm.commandErrorDialog.Dismiss()
+	}
 
 	if registry := fm.windowRegistry(); registry != nil {
 		registry.recordReopenPath(fm.GetCurrentPath())

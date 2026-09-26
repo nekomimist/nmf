@@ -58,6 +58,7 @@ type FileManager struct {
 	closed                bool
 	quitConfirmationOpen  bool
 	busy                  *ui.BusyController
+	commandErrorDialog    *ui.CommandErrorDialog
 	compareGeneration     uint64             // UI thread only
 	compareCancel         context.CancelFunc // UI thread only
 	directoryLoader       *browser.DirectoryLoader

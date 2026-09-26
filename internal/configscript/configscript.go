@@ -779,7 +779,7 @@ func (rt *Runtime) appendKeyBinding(fnName string, args starlark.Tuple, kwargs [
 		return nil, fmt.Errorf("fn key bindings are only supported for target main")
 	}
 	if hasCallable {
-		command = rt.registerGeneratedKeyCommand(callable)
+		command = rt.registerGeneratedKeyCommand(key, callable)
 	}
 	if strings.TrimSpace(key) == "" {
 		return nil, fmt.Errorf("key must not be empty")
@@ -798,13 +798,11 @@ func (rt *Runtime) appendKeyBinding(fnName string, args starlark.Tuple, kwargs [
 	return starlark.None, nil
 }
 
-func (rt *Runtime) registerGeneratedKeyCommand(callable starlark.Callable) string {
+func (rt *Runtime) registerGeneratedKeyCommand(key string, callable starlark.Callable) string {
 	rt.keyCommandSeq++
 	id := commandPrefix + "__key." + strconv.Itoa(rt.keyCommandSeq)
 	rt.Commands[id] = func(ctx keymanager.CommandContext) {
-		if err := rt.callCommand(id, callable, ctx); err != nil {
-			rt.debugPrint("ConfigScript: command failed id=%s err=%s", id, formatStarlarkError(err))
-		}
+		rt.runCommand(id, "Key "+key, callable, ctx)
 	}
 	return id
 }
@@ -937,9 +935,7 @@ func (rt *Runtime) builtinCommand(thread *starlark.Thread, fn *starlark.Builtin,
 		return nil, fmt.Errorf("command fn must be callable, got %s", value.Type())
 	}
 	rt.Commands[id] = func(ctx keymanager.CommandContext) {
-		if err := rt.callCommand(id, callable, ctx); err != nil {
-			rt.debugPrint("ConfigScript: command failed id=%s err=%s", id, formatStarlarkError(err))
-		}
+		rt.runCommand(id, "Command "+id, callable, ctx)
 	}
 	return starlark.None, nil
 }
@@ -1108,9 +1104,8 @@ func (rt *Runtime) builtinShowMenu(thread *starlark.Thread, fn *starlark.Builtin
 					}
 					return
 				}
-				if err := rt.callCommand("menu."+name+"."+entry.Label, entry.Callable, ctx); err != nil {
-					rt.debugPrint("ConfigScript: menu item failed menu=%s label=%s err=%s", name, entry.Label, formatStarlarkError(err))
-				}
+				rt.runCommand("menu."+name+"."+entry.Label,
+					fmt.Sprintf("Menu %q > %q", menu.Title, entry.Label), entry.Callable, ctx)
 			},
 		})
 	}

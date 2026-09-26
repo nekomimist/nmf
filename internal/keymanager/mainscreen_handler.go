@@ -216,6 +216,7 @@ func (mh *MainScreenKeyHandler) executeBinding(ev *fyne.KeyEvent, modifiers Modi
 
 			ShowCommandMenu:             mh.actions.ShowCommandMenu,
 			ShowMessageDialog:           mh.actions.ShowMessageDialog,
+			ShowCommandError:            mh.actions.ShowCommandError,
 			ShowCreateDirectoryDialog:   mh.actions.ShowCreateDirectoryDialog,
 			ShowClipboardTextFileDialog: mh.actions.ShowClipboardTextFileDialog,
 		}

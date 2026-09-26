@@ -87,6 +87,7 @@ func NewFileManager(runtime *ApplicationRuntime, path string) *FileManager {
 		ShowCreateDirectoryDialog:   fm.ShowCreateDirectoryDialog,
 		ShowClipboardTextFileDialog: fm.ShowClipboardTextFileDialog,
 		ShowMessageDialog:           fm.ShowMessageDialog,
+		ShowCommandError:            fm.ShowCommandError,
 		ShowCopyDialog:              fm.ShowCopyDialog,
 		ShowMoveDialog:              fm.ShowMoveDialog,
 		ShowExtractArchiveDialog:    fm.ShowExtractArchiveDialog,

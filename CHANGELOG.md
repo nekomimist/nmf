@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Show Starlark command errors in a dismissible dialog with the source location,
+  call history, and a Copy details action, even when debug logging is disabled.
+
 ## 0.1.1 - 2026-09-22
 
 - Install and update Windows x64 and ARM64 builds through the

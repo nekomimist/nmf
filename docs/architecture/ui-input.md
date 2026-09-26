@@ -241,6 +241,15 @@ Text entries that must not steal Tab:
 
 ## Dialog Handler Lifecycle Pattern
 
+Starlark runtime failures use a shared report path for registered commands,
+callable key bindings, and callable menu items. `CommandContext.ShowCommandError`
+is a UI launcher wired by bootstrap; configscript formats source locations and
+backtraces without importing UI widgets. The error dialog owns a handler token
+and `KeySink`, and both opening and dismissal use the owner-transition gate.
+Copying details restores sink focus. Dismissal removes the handler exactly once
+and restores the main file-list focus; window close also releases the dialog.
+Multiple reports for the same window share one scrollable dialog.
+
 Dialog key dispatch:
 
 - Per-dialog handlers (compare/conflict/copy-move/delete-confirm/directory-jump/

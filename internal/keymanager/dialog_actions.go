@@ -21,6 +21,7 @@ type DialogActions struct {
 	ShowCreateDirectoryDialog   func()
 	ShowClipboardTextFileDialog func()
 	ShowMessageDialog           func(title string, message string)
+	ShowCommandError            func(action string, details string)
 
 	ShowCopyDialog           func()
 	ShowMoveDialog           func()
