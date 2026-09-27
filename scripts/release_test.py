@@ -3,6 +3,8 @@ import json
 import os
 from pathlib import Path
 import struct
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -128,6 +130,109 @@ class ReleaseTest(unittest.TestCase):
                 (self.root / name).write_text("")
                 with self.assertRaisesRegex(ValueError, "missing or empty release file"):
                     release.write_archive(self.root, "arm64", licenses)
+
+    def prepare_verified_assets(self):
+        for arch in ("amd64", "arm64"):
+            licenses = self.prepare_archive(arch)
+            licenses["licenses/example.com/dependency@v1.0.0/LICENSE"] = licenses.pop("licenses/dependency/LICENSE")
+            for name in ("licenses/go/LICENSE", "licenses/go/PATENTS", "licenses/mingw-w64/COPYING"):
+                licenses[name] = self.root / "LICENSE"
+            release.write_archive(self.root, arch, licenses)
+        return self.root / "dist"
+
+    def replace_archive_entry(self, path, name, content):
+        with zipfile.ZipFile(path) as archive:
+            entries = {entry: archive.read(entry) for entry in archive.namelist()}
+        if content is None:
+            del entries[name]
+        else:
+            entries[name] = content
+        with zipfile.ZipFile(path, "w") as archive:
+            for entry, data in entries.items():
+                archive.writestr(entry, data)
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        path.with_suffix(".zip.sha256").write_text(f"{digest}  {path.name}\n")
+
+    def test_verify_assets_uses_explicit_tag_and_detects_corruption(self):
+        directory = self.prepare_verified_assets()
+        (self.root / "VERSION").write_text("9.9.9\n")
+        hashes = release.verify_assets(directory, "v0.1.0")
+        for arch in ("amd64", "arm64"):
+            path = directory / f"nmf-v0.1.0-windows-{arch}.zip"
+            self.assertEqual(hashes[arch], hashlib.sha256(path.read_bytes()).hexdigest())
+        path = directory / "nmf-v0.1.0-windows-arm64.zip"
+        original = path.read_bytes()
+        path.write_bytes(original + b"changed after publication")
+        with self.assertRaisesRegex(ValueError, "SHA-256 mismatch"):
+            release.verify_assets(directory, "v0.1.0")
+        path.write_bytes(original)
+        path.with_suffix(".zip.sha256").write_text(f"{hashes['arm64']}  different.zip\n")
+        with self.assertRaisesRegex(ValueError, "invalid checksum file"):
+            release.verify_assets(directory, "v0.1.0")
+        for tag in ("0.1.0", "v../0.1.0", "v0.1.0/extra"):
+            with self.subTest(tag=tag), self.assertRaisesRegex(ValueError, "invalid release tag"):
+                release.verify_assets(directory, tag)
+
+    def test_verify_assets_checks_contents_even_with_matching_checksums(self):
+        for name, content, error in (
+            ("LICENSE", None, "missing release files"),
+            ("licenses/go/PATENTS", None, "missing release files"),
+            ("licenses/example.com/dependency@v1.0.0/LICENSE", None, "missing module license"),
+            ("THIRD_PARTY_LICENSES.txt", b"", "empty release file"),
+            ("CHANGELOG.md", self.changelog.replace("0.1.0", "0.0.9").encode(), "newest CHANGELOG"),
+            ("nmf.exe", b"not a PE executable", "not a Windows executable"),
+        ):
+            with self.subTest(name=name):
+                directory = self.prepare_verified_assets()
+                path = directory / "nmf-v0.1.0-windows-amd64.zip"
+                self.replace_archive_entry(path, name, content)
+                with self.assertRaisesRegex(ValueError, error):
+                    release.verify_assets(directory, "v0.1.0")
+        directory = self.prepare_verified_assets()
+        path = directory / "nmf-v0.1.0-windows-amd64.zip"
+        with zipfile.ZipFile(directory / "nmf-v0.1.0-windows-arm64.zip") as archive:
+            self.replace_archive_entry(path, "nmf.exe", archive.read("nmf.exe"))
+        with self.assertRaisesRegex(ValueError, "not a Windows amd64 executable"):
+            release.verify_assets(directory, "v0.1.0")
+
+    def test_scoop_candidate_preserves_input_and_rejects_invalid_updates(self):
+        directory = self.prepare_verified_assets()
+        manifest_path = self.root / "nmf.json"
+        manifest = {
+            "version": "0.0.9",
+            "homepage": "https://github.com/nekomimist/nmf",
+            "architecture": {"64bit": {"url": "old64", "hash": "old"}, "arm64": {"url": "oldarm", "hash": "old"}},
+            "bin": "nmf.exe", "autoupdate": {"hash": {"url": "$url.sha256"}},
+        }
+        raw = (json.dumps(manifest, indent=4) + "\n").replace("\n", "\r\n").encode()
+        manifest_path.write_bytes(raw)
+        command = [sys.executable, str(Path(release.__file__).resolve()), "verify", "v0.1.0", str(directory),
+                   "--scoop-manifest", str(manifest_path)]
+        result = subprocess.run(command, capture_output=True, check=True)
+        self.assertEqual(manifest_path.read_bytes(), raw)
+        self.assertIn(b"\r\n", result.stdout)
+        self.assertNotIn(b"\n", result.stdout.replace(b"\r\n", b""))
+        candidate = json.loads(result.stdout)
+        self.assertEqual(candidate["version"], "0.1.0")
+        for key, arch in (("64bit", "amd64"), ("arm64", "arm64")):
+            filename = f"nmf-v0.1.0-windows-{arch}.zip"
+            self.assertEqual(candidate["architecture"][key], {
+                "url": f"https://github.com/nekomimist/nmf/releases/download/v0.1.0/{filename}",
+                "hash": hashlib.sha256((directory / filename).read_bytes()).hexdigest(),
+            })
+        for key in ("homepage", "bin", "autoupdate"):
+            self.assertEqual(candidate[key], manifest[key])
+        hashes = release.verify_assets(directory, "v0.1.0")
+        manifest_path.write_bytes(result.stdout)
+        self.assertEqual(release.scoop_manifest(manifest_path, "v0.1.0", hashes), result.stdout)
+        for tag, message in (("v0.0.9", "downgrade"), ("v0.2.0-rc.1", "stable releases")):
+            with self.subTest(tag=tag), self.assertRaisesRegex(ValueError, message):
+                release.scoop_manifest(manifest_path, tag, hashes)
+        (directory / "nmf-v0.1.0-windows-arm64.zip").unlink()
+        failed = subprocess.run(command, capture_output=True)
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertEqual(failed.stdout, b"")
+        self.assertEqual(manifest_path.read_bytes(), result.stdout)
 
 
 if __name__ == "__main__":

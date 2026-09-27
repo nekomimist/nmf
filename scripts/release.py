@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate release metadata and package the Windows builds (standard library only)."""
+"""Prepare and verify NMF releases (standard library only)."""
 
 import argparse
 import datetime
@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import struct
 import subprocess
+import sys
 import zipfile
 
 
@@ -30,6 +31,7 @@ ARCHITECTURES = {
     "amd64": ("nmf.exe", 0x8664),
     "arm64": ("nmf-arm64.exe", 0xAA64),
 }
+RELEASE_DOCUMENTS = ("LICENSE", "THIRD_PARTY_LICENSES.txt", "README.md", "CHANGELOG.md")
 
 
 def read_version(root):
@@ -44,6 +46,10 @@ def release_notes(root, tag):
     if tag != f"v{version}":
         raise ValueError(f"tag {tag!r} does not match VERSION (v{version})")
     changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
+    return notes_for_version(version, changelog)
+
+
+def notes_for_version(version, changelog):
     headings = list(re.finditer(r"^## (.+)$", changelog, re.M))
     if len(headings) < 2 or headings[0][1] != "Unreleased":
         raise ValueError("CHANGELOG.md must start with an Unreleased section")
@@ -107,13 +113,17 @@ def dependency_licenses(root, arch):
 
 def check_executable(binary, arch):
     with binary.open("rb") as stream:
-        if stream.read(2) != b"MZ":
-            raise ValueError(f"{binary} is not a Windows executable")
-        stream.seek(0x3C)
-        stream.seek(struct.unpack("<I", stream.read(4))[0])
-        signature, machine = struct.unpack("<4sH", stream.read(6))
+        check_pe(stream, arch, binary)
+
+
+def check_pe(stream, arch, label):
+    if stream.read(2) != b"MZ":
+        raise ValueError(f"{label} is not a Windows executable")
+    stream.seek(0x3C)
+    stream.seek(struct.unpack("<I", stream.read(4))[0])
+    signature, machine = struct.unpack("<4sH", stream.read(6))
     if signature != b"PE\0\0" or machine != ARCHITECTURES[arch][1]:
-        raise ValueError(f"{binary} is not a Windows {arch} executable")
+        raise ValueError(f"{label} is not a Windows {arch} executable")
 
 
 def write_archive(root, arch, licenses):
@@ -121,7 +131,7 @@ def write_archive(root, arch, licenses):
     binary = root / "dist" / ARCHITECTURES[arch][0]
     check_executable(binary, arch)
     files = {"nmf.exe": binary, **licenses}
-    for name in ("LICENSE", "THIRD_PARTY_LICENSES.txt", "README.md", "CHANGELOG.md"):
+    for name in RELEASE_DOCUMENTS:
         files[name] = root / name
     for source in files.values():
         if not source.is_file() or source.stat().st_size == 0:
@@ -139,6 +149,77 @@ def write_archive(root, arch, licenses):
     return destination
 
 
+def version_from_tag(tag):
+    if not tag.startswith("v") or not SEMVER.fullmatch(tag[1:]):
+        raise ValueError(f"invalid release tag: {tag!r}")
+    return tag[1:]
+
+
+def verify_assets(directory, tag):
+    """Check both downloaded ZIPs without extracting or executing their contents."""
+    version = version_from_tag(tag)
+    hashes = {}
+    for arch in ARCHITECTURES:
+        path = directory / f"nmf-{tag}-windows-{arch}.zip"
+        fields = path.with_suffix(".zip.sha256").read_text(encoding="utf-8").split()
+        if len(fields) != 2 or not re.fullmatch(r"[0-9a-fA-F]{64}", fields[0]) or fields[1] != path.name:
+            raise ValueError(f"invalid checksum file for {path.name}")
+        with path.open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        if digest != fields[0].lower():
+            raise ValueError(f"SHA-256 mismatch: {path.name}")
+        with zipfile.ZipFile(path) as archive:
+            damaged = archive.testzip()
+            if damaged:
+                raise ValueError(f"damaged ZIP entry: {path.name}/{damaged}")
+            names = set(archive.namelist())
+            required = {"nmf.exe", *RELEASE_DOCUMENTS,
+                        "licenses/go/LICENSE", "licenses/go/PATENTS", "licenses/mingw-w64/COPYING"}
+            missing = required - names
+            if missing:
+                raise ValueError(f"missing release files in {path.name}: {sorted(missing)}")
+            licenses = [name for name in names if name.startswith("licenses/") and not name.endswith("/")]
+            if not any("@" in name for name in licenses):
+                raise ValueError(f"missing module license documents in {path.name}")
+            for name in required | set(licenses):
+                if archive.getinfo(name).file_size == 0:
+                    raise ValueError(f"empty release file: {path.name}/{name}")
+            with archive.open("nmf.exe") as stream:
+                check_pe(stream, arch, path.name)
+            notes_for_version(version, archive.read("CHANGELOG.md").decode("utf-8"))
+        hashes[arch] = digest
+    return hashes
+
+
+def scoop_manifest(manifest_path, tag, hashes):
+    """Render a candidate manifest; never write to the bucket."""
+    version = version_from_tag(tag)
+    if "-" in version.split("+", 1)[0]:
+        raise ValueError("Scoop only tracks stable releases")
+    raw = manifest_path.read_bytes()
+    manifest = json.loads(raw)
+    if manifest.get("homepage") != "https://github.com/nekomimist/nmf":
+        raise ValueError("expected the nmf Scoop manifest")
+    current = manifest.get("version", "")
+    if not SEMVER.fullmatch(current) or "-" in current.split("+", 1)[0]:
+        raise ValueError(f"invalid stable Scoop version: {current!r}")
+    current_core = tuple(map(int, current.split("+", 1)[0].split(".")))
+    target_core = tuple(map(int, version.split("+", 1)[0].split(".")))
+    if current_core > target_core:
+        raise ValueError(f"refusing to downgrade Scoop from {current} to {version}")
+    for key, arch in (("64bit", "amd64"), ("arm64", "arm64")):
+        entry = manifest.get("architecture", {}).get(key)
+        if not isinstance(entry, dict):
+            raise ValueError(f"missing Scoop architecture: {key}")
+        entry["url"] = f"https://github.com/nekomimist/nmf/releases/download/{tag}/nmf-{tag}-windows-{arch}.zip"
+        entry["hash"] = hashes[arch]
+    manifest["version"] = version
+    text = json.dumps(manifest, indent=4, ensure_ascii=False) + "\n"
+    if b"\r\n" in raw:
+        text = text.replace("\n", "\r\n")
+    return text.encode("utf-8")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -146,13 +227,24 @@ def main():
     check.add_argument("tag")
     package = commands.add_parser("package", help="ZIP an existing Windows build with license documents")
     package.add_argument("arch", choices=ARCHITECTURES)
+    verify = commands.add_parser("verify", help="verify both ZIPs and checksums for an explicit tag")
+    verify.add_argument("tag")
+    verify.add_argument("directory", type=Path)
+    verify.add_argument("--scoop-manifest", type=Path,
+                        help="print an updated manifest instead of hashes; does not modify the input file")
     args = parser.parse_args()
     try:
         if args.command == "check":
             print(release_notes(ROOT, args.tag), end="")
-        else:
+        elif args.command == "package":
             print(write_archive(ROOT, args.arch, dependency_licenses(ROOT, args.arch)))
-    except (OSError, ValueError, struct.error, subprocess.CalledProcessError) as error:
+        else:
+            hashes = verify_assets(args.directory, args.tag)
+            if args.scoop_manifest:
+                sys.stdout.buffer.write(scoop_manifest(args.scoop_manifest, args.tag, hashes))
+            else:
+                print(json.dumps(hashes, indent=2))
+    except (OSError, ValueError, struct.error, zipfile.BadZipFile, subprocess.CalledProcessError) as error:
         parser.exit(1, f"release: {error}\n")
 
 

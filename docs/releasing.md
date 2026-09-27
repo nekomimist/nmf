@@ -87,6 +87,11 @@ using the matching CHANGELOG section as its release notes. No manual release
 creation or additional signing secret is required; publishing uses the workflow's
 `GITHUB_TOKEN` with `contents: write` permission.
 
+The repository's [nmf-release skill](../.agents/skills/nmf-release/SKILL.md)
+coordinates these steps, including resuming partial releases and optional Scoop
+updates. For example, ask Codex to use `$nmf-release` to publish a specified
+version and update Scoop, or to prepare a release without publishing it.
+
 ## Release contents and licenses
 
 Each release publishes these assets (with its own version in the filenames):
@@ -130,3 +135,36 @@ tab for immediate availability, or wait for the scheduled check. Confirm that
 the manifest version and both hashes match the release. The bucket README
 documents local checks and maintenance; installation and update instructions
 for users are in the root [README](../README.md#install-with-scoop-windows).
+
+For a manual bucket update, first confirm that the release workflow succeeded
+for the intended tag and commit, then download and verify the published assets.
+For example, from the nmf checkout:
+
+```sh
+nmf_release_tag=v0.1.2  # Replace with the requested release.
+nmf_release_dir=$(mktemp -d)
+gh release download "$nmf_release_tag" --repo nekomimist/nmf --dir "$nmf_release_dir"
+python3 scripts/release.py verify "$nmf_release_tag" "$nmf_release_dir"
+```
+
+Verification checks both SHA-256 files, ZIP integrity, PE architectures, release
+notes, and required license documents. It prints the hashes and does not extract
+or run executables. The explicit tag allows verification of an older release
+even when the checkout's `VERSION` has advanced. The same verifier can inspect
+local packages by passing `dist`, but Scoop must use the published downloads.
+
+Generate a manifest candidate using the verified downloads:
+
+```sh
+nmf_bucket_dir="$HOME/src/scoop-bucket"  # Or the user's chosen checkout.
+nmf_manifest_candidate=$(mktemp)
+python3 scripts/release.py verify "$nmf_release_tag" "$nmf_release_dir" \
+  --scoop-manifest "$nmf_bucket_dir/bucket/nmf.json" > "$nmf_manifest_candidate"
+diff -u "$nmf_bucket_dir/bucket/nmf.json" "$nmf_manifest_candidate"
+```
+
+The helper writes only to stdout, preserving unrelated manifest fields and its
+line endings. It rejects prereleases and version downgrades. After reviewing the
+candidate, apply it to `bucket/nmf.json` when the requested scope includes the
+bucket update, commit and push it, and confirm the bucket CI. If automation has
+already published matching URLs and hashes, no additional commit is needed.
