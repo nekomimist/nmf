@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.1.3 - 2026-10-27
+
+- Show the total size of marked files after the status bar's mark count when
+  entries are marked, counting directories as zero bytes.
+
 ## 0.1.2 - 2026-09-27
 
 - Show Starlark command errors in a dismissible dialog with the source location,

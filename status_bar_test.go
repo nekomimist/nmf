@@ -191,6 +191,42 @@ func TestStatusBarTextUsesDashForUnknownStorage(t *testing.T) {
 	}
 }
 
+func TestStatusBarTextMarkedSize(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		selected map[string]bool
+		want     string
+	}{
+		{name: "no marks", want: "Mark: 0 |"},
+		{name: "files and directory", selected: map[string]bool{"/tmp/a.txt": true, "/tmp/b.log": true, "/tmp/docs": true}, want: "Mark: 3 (3.0 KB) |"},
+		{name: "directory only", selected: map[string]bool{"/tmp/docs": true}, want: "Mark: 1 (0 B) |"},
+		{name: "empty file", selected: map[string]bool{"/tmp/empty.txt": true}, want: "Mark: 1 (0 B) |"},
+		{name: "unmarked file excluded", selected: map[string]bool{"/tmp/a.txt": true, "/tmp/b.log": false}, want: "Mark: 1 (1.0 KB) |"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fm := &FileManager{browser: newTestBrowser(testBrowserOptions{
+				files: []fileinfo.FileInfo{
+					{Name: "a.txt", Path: "/tmp/a.txt", Size: 1024},
+					{Name: "b.log", Path: "/tmp/b.log", Size: 2048},
+					{Name: "docs", Path: "/tmp/docs", IsDir: true, Size: 4096},
+					{Name: "empty.txt", Path: "/tmp/empty.txt"},
+				},
+				selected: tt.selected,
+			})}
+			if got := fm.statusBarText(); !strings.HasPrefix(got, tt.want) {
+				t.Fatalf("statusBarText() = %q, want prefix %q", got, tt.want)
+			}
+			// Filtering must preserve the size of marks hidden from the listing.
+			if _, _, err := fm.browserModel().ApplyFilter(&config.FilterEntry{Pattern: "*.txt"}); err != nil {
+				t.Fatal(err)
+			}
+			if got := fm.statusBarText(); !strings.HasPrefix(got, tt.want) {
+				t.Fatalf("filtered statusBarText() = %q, want prefix %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestUpdateStatusBarUsesOverlayForDirectoryCacheState(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()

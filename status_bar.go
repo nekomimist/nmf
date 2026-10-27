@@ -172,8 +172,12 @@ func (fm *FileManager) statusBarText() string {
 		total = fileinfo.FormatFileSize(int64(stats.Storage.Total))
 	}
 
-	return fmt.Sprintf("Mark: %d | Entry: %d/%d | Free: %s | Used: %s | Total: %s",
-		stats.MarkedEntries, stats.VisibleEntries, stats.TotalEntries, free, used, total)
+	marked := fmt.Sprintf("Mark: %d", stats.MarkedEntries)
+	if stats.MarkedEntries > 0 {
+		marked += fmt.Sprintf(" (%s)", fileinfo.FormatFileSize(stats.MarkedSize))
+	}
+	return fmt.Sprintf("%s | Entry: %d/%d | Free: %s | Used: %s | Total: %s",
+		marked, stats.VisibleEntries, stats.TotalEntries, free, used, total)
 }
 
 func (fm *FileManager) directoryCacheStatusText() string {

@@ -40,11 +40,12 @@ type CursorChange struct {
 }
 
 // ListingStats is the allocation-free summary needed by list/status UI.
-// Counts and storage data are captured under one model read lock.
+// Counts, marked file sizes, and storage data are captured under one model read lock.
 type ListingStats struct {
 	VisibleEntries int
 	TotalEntries   int
 	MarkedEntries  int
+	MarkedSize     int64
 	Storage        fileinfo.StorageInfo
 	StorageKnown   bool
 }
@@ -183,6 +184,17 @@ func (m *Model) ListingStats() ListingStats {
 	for _, marked := range m.selected {
 		if marked {
 			stats.MarkedEntries++
+		}
+	}
+	if stats.MarkedEntries > 0 {
+		files := m.originalFiles
+		if len(files) == 0 {
+			files = m.files
+		}
+		for _, file := range files {
+			if m.selected[file.Path] && !file.IsDir {
+				stats.MarkedSize += file.Size
+			}
 		}
 	}
 	return stats
