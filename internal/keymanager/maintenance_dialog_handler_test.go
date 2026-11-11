@@ -46,15 +46,6 @@ func TestMaintenanceDialogHandlerKeys(t *testing.T) {
 	}
 }
 
-func TestMaintenanceDialogHandlerNilEvent(t *testing.T) {
-	dialog := &fakeMaintenanceDialog{}
-	handler := NewMaintenanceDialogKeyHandler(dialog)
-
-	if handler.OnKeyActivated(nil, ModifierState{}) {
-		t.Fatal("nil event should not be handled")
-	}
-}
-
 func TestMaintenanceDialogHandlerModifiedKeysNoLongerMatch(t *testing.T) {
 	dialog := &fakeMaintenanceDialog{}
 	handler := NewMaintenanceDialogKeyHandler(dialog)

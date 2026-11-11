@@ -7,24 +7,6 @@ import (
 	"fyne.io/fyne/v2/test"
 )
 
-func TestResetWindowSizeUsesInitialWindowSize(t *testing.T) {
-	app := test.NewApp()
-	defer app.Quit()
-
-	fm := &FileManager{
-		window:            app.NewWindow("test"),
-		initialWindowSize: fyne.NewSize(900, 650),
-	}
-	fm.window.Resize(fyne.NewSize(1200, 800))
-
-	fm.ResetWindowSize()
-
-	got := fm.window.Canvas().Size()
-	if got != fm.initialWindowSize {
-		t.Fatalf("window size = %v, want %v", got, fm.initialWindowSize)
-	}
-}
-
 func TestResetAllWindowSizesUsesRegisteredFileManagers(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()

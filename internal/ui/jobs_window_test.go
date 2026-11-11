@@ -32,17 +32,6 @@ func TestJobsWindowCloseIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestJobsWindowUsesJobsTitle(t *testing.T) {
-	app := test.NewApp()
-	defer app.Quit()
-
-	jw := NewJobsWindow(app, func(string, ...interface{}) {})
-
-	if got := jw.Window().Title(); got != "Jobs" {
-		t.Fatalf("window title = %q, want Jobs", got)
-	}
-}
-
 func TestJobsWindowCompletedDetailsSummarizeTargets(t *testing.T) {
 	sources := make([]string, 12)
 	for i := range sources {

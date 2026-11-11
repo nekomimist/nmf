@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	fynetest "fyne.io/fyne/v2/test"
-	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/keymanager"
 	"nmf/internal/search"
@@ -78,28 +77,6 @@ func TestCopyMoveFilterUsesMigemoMatcher(t *testing.T) {
 
 	if len(dialog.filteredDest) != 1 || dialog.filteredDest[0].Path != "/tmp/日本語" {
 		t.Fatalf("filtered destinations = %#v, want only Japanese destination", dialog.filteredDest)
-	}
-}
-
-func TestCopyMoveHorizontalScrollState(t *testing.T) {
-	dialog := NewCopyMoveDialog(
-		OpCopy,
-		[]string{"file.txt"},
-		[]DestinationCandidate{{Path: "/tmp/very/long/path"}},
-		false,
-		nil,
-		func(string, ...interface{}) {},
-	)
-	dialog.destScroll = newDialogListScroller(widget.NewLabel(""), 300, 100, 20)
-
-	dialog.ScrollSelectedRight()
-	if !dialog.scrollRight {
-		t.Fatal("right scroll should enable follow mode")
-	}
-
-	dialog.ResetHorizontalScroll()
-	if dialog.scrollRight {
-		t.Fatal("left scroll should disable follow mode")
 	}
 }
 

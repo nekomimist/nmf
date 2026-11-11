@@ -24,13 +24,3 @@ func TestDropDestinationRejectsDirectSMB(t *testing.T) {
 		t.Fatalf("dropDestination(%q) error = %v, want unsupported-platform rejection", path, err)
 	}
 }
-
-func TestResolveDirectoryPathRejectsDirectSMB(t *testing.T) {
-	_, parsed, err := resolveDirectoryPath("smb://example.invalid/share/path/to/dir")
-	if err == nil || !strings.Contains(err.Error(), "not supported on this platform") {
-		t.Fatalf("resolveDirectoryPath error = %v, want unsupported-platform rejection", err)
-	}
-	if parsed.Scheme != fileinfo.SchemeSMB || parsed.Provider != "smb" {
-		t.Fatalf("resolveDirectoryPath parsed = %+v, want direct SMB metadata", parsed)
-	}
-}

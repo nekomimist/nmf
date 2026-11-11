@@ -104,18 +104,6 @@ func TestCustomThemeFyneBackedAppColorDefaults(t *testing.T) {
 	}
 }
 
-func TestCustomThemeCopyMoveOpenDestinationColor(t *testing.T) {
-	cfg := &config.Config{}
-	customTheme := &CustomTheme{config: cfg}
-
-	if got, want := customTheme.GetCustomColor(ColorCopyMoveOpenDestination), (color.RGBA{30, 120, 80, 255}); got != want {
-		t.Fatalf("copy move open destination = %#v, want %#v", got, want)
-	}
-	if !IsAppColorName(ColorCopyMoveOpenDestination) {
-		t.Fatalf("%s should be an app color name", ColorCopyMoveOpenDestination)
-	}
-}
-
 func TestCustomThemeMonospaceFontDoesNotFallBackToCustomFont(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()

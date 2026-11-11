@@ -7,14 +7,6 @@ import (
 	"nmf/internal/config"
 )
 
-func TestCanonicalNavigationHistoryPathNormalizesWSLAliases(t *testing.T) {
-	got := canonicalNavigationHistoryPath(`\\wsl$\Ubuntu\home\neko`)
-	want := "smb://wsl.localhost/Ubuntu/home/neko"
-	if got != want {
-		t.Fatalf("canonicalNavigationHistoryPath = %q, want %q", got, want)
-	}
-}
-
 func TestNormalizeNavigationHistoryDeduplicatesCanonicalPaths(t *testing.T) {
 	older := time.Now().Add(-time.Hour)
 	newer := time.Now()

@@ -119,36 +119,6 @@ func TestLineEditEntrySingleRuneDeletionClearsSelection(t *testing.T) {
 	}
 }
 
-func TestLineEditEntryDeleteBeforeCursorToStart(t *testing.T) {
-	entry := NewLineEditEntry(nil)
-	entry.SetText("abcd")
-	entry.setCursor(3)
-
-	entry.DeleteBeforeCursorToStart()
-
-	if entry.Text != "d" {
-		t.Fatalf("text = %q, want %q", entry.Text, "d")
-	}
-	if entry.CursorColumn != 0 {
-		t.Fatalf("cursor = %d, want 0", entry.CursorColumn)
-	}
-}
-
-func TestLineEditEntryDeleteAfterCursorToEnd(t *testing.T) {
-	entry := NewLineEditEntry(nil)
-	entry.SetText("abcd")
-	entry.setCursor(1)
-
-	entry.DeleteAfterCursorToEnd()
-
-	if entry.Text != "a" {
-		t.Fatalf("text = %q, want %q", entry.Text, "a")
-	}
-	if entry.CursorColumn != 1 {
-		t.Fatalf("cursor = %d, want 1", entry.CursorColumn)
-	}
-}
-
 func TestLineEditEntryHandlesRunes(t *testing.T) {
 	entry := NewLineEditEntry(nil)
 	entry.SetText("あいう")

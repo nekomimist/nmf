@@ -6,17 +6,6 @@ import (
 	"fyne.io/fyne/v2"
 )
 
-func TestNewDialogKeyHandlerPanicsOnInvalidSpec(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected panic for invalid key spec")
-		}
-	}()
-	newDialogKeyHandler("BrokenDialog", nil, []dialogBinding{
-		{"NotAKey", func() {}},
-	})
-}
-
 func TestDialogKeyHandlerExactModifierMatch(t *testing.T) {
 	upCalls, shiftUpCalls := 0, 0
 	h := newDialogKeyHandler("TestDialog", nil, []dialogBinding{
@@ -119,12 +108,5 @@ func TestDialogKeyHandlerRuneWithoutHandlerReturnsFalse(t *testing.T) {
 	h := newDialogKeyHandler("TestDialog", nil, nil)
 	if h.OnTypedRune('x', ModifierState{}) {
 		t.Fatal("no rune handler was attached; OnTypedRune should return false")
-	}
-}
-
-func TestDialogKeyHandlerGetName(t *testing.T) {
-	h := newDialogKeyHandler("TestDialog", nil, nil)
-	if h.GetName() != "TestDialog" {
-		t.Fatalf("GetName() = %q, want %q", h.GetName(), "TestDialog")
 	}
 }

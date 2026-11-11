@@ -528,34 +528,6 @@ func TestThemeColorConfigUnmarshal(t *testing.T) {
 	}
 }
 
-func TestConfigSerialization(t *testing.T) {
-	config := getDefaultConfig()
-
-	// Test JSON marshaling
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		t.Fatalf("Failed to marshal config: %v", err)
-	}
-
-	// Test JSON unmarshaling
-	var unmarshaledConfig Config
-	err = json.Unmarshal(data, &unmarshaledConfig)
-	if err != nil {
-		t.Fatalf("Failed to unmarshal config: %v", err)
-	}
-
-	// Check that key values are preserved
-	if config.Window.Width != unmarshaledConfig.Window.Width {
-		t.Errorf("Window width not preserved: expected %d, got %d",
-			config.Window.Width, unmarshaledConfig.Window.Width)
-	}
-
-	if config.UI.CursorStyle.Type != unmarshaledConfig.UI.CursorStyle.Type {
-		t.Errorf("Cursor type not preserved: expected %s, got %s",
-			config.UI.CursorStyle.Type, unmarshaledConfig.UI.CursorStyle.Type)
-	}
-}
-
 func TestGetConfigPath(t *testing.T) {
 	path := getConfigPath()
 

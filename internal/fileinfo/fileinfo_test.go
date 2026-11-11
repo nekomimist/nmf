@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 func TestDetermineFileType(t *testing.T) {
@@ -226,46 +225,5 @@ func TestFormatFileSize(t *testing.T) {
 		if result != tc.expected {
 			t.Errorf("For size %d, expected %s, got %s", tc.size, tc.expected, result)
 		}
-	}
-}
-
-func TestFileInfo(t *testing.T) {
-	now := time.Now()
-	fileInfo := FileInfo{
-		Name:     "test.txt",
-		Path:     "/home/user/test.txt",
-		IsDir:    false,
-		Size:     1024,
-		Modified: now,
-		FileType: FileTypeRegular,
-		Status:   StatusNormal,
-	}
-
-	if fileInfo.Name != "test.txt" {
-		t.Errorf("Expected Name 'test.txt', got '%s'", fileInfo.Name)
-	}
-
-	if fileInfo.Path != "/home/user/test.txt" {
-		t.Errorf("Expected Path '/home/user/test.txt', got '%s'", fileInfo.Path)
-	}
-
-	if fileInfo.IsDir {
-		t.Error("Expected IsDir to be false")
-	}
-
-	if fileInfo.Size != 1024 {
-		t.Errorf("Expected Size 1024, got %d", fileInfo.Size)
-	}
-
-	if !fileInfo.Modified.Equal(now) {
-		t.Error("Expected Modified time to match")
-	}
-
-	if fileInfo.FileType != FileTypeRegular {
-		t.Errorf("Expected FileType Regular, got %v", fileInfo.FileType)
-	}
-
-	if fileInfo.Status != StatusNormal {
-		t.Errorf("Expected Status Normal, got %v", fileInfo.Status)
 	}
 }

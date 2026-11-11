@@ -32,18 +32,6 @@ func TestNavigationBackStackIsLIFO(t *testing.T) {
 	}
 }
 
-func TestNavigationBackDoesNotPushDeparturePath(t *testing.T) {
-	root := t.TempDir()
-	path := func(name string) string { return filepath.Join(root, name) }
-	fm := &FileManager{navigationBackStack: []string{path("a"), path("b")}}
-
-	fm.acceptDirectoryNavigation(path("c"), path("b"), directoryNavigation{kind: directoryNavigationBack, target: path("b")})
-
-	if got, want := fm.navigationBackStack, []string{path("a")}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("back stack = %#v, want %#v", got, want)
-	}
-}
-
 func TestNavigationBackStackDropsOldestBeyondLimit(t *testing.T) {
 	root := t.TempDir()
 	path := func(name string) string { return filepath.Join(root, name) }

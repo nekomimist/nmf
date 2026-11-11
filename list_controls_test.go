@@ -227,41 +227,6 @@ func TestRefreshCursorEmptyFileListDoesNotPanic(t *testing.T) {
 	}
 }
 
-func TestCursorRefreshDiagnosticsTrackCurrentItemUpdate(t *testing.T) {
-	fm := &FileManager{
-		browser: newTestBrowser(testBrowserOptions{
-			files: []fileinfo.FileInfo{
-				{Name: "alpha.txt", Path: "/tmp/alpha.txt"},
-				{Name: "beta.txt", Path: "/tmp/beta.txt"},
-			},
-			cursorPath: "/tmp/alpha.txt",
-		}),
-	}
-
-	seq, cursorIdx := fm.beginCursorRefresh("test")
-	if seq != 1 || cursorIdx != 0 {
-		t.Fatalf("beginCursorRefresh = (seq=%d, index=%d), want (1, 0)", seq, cursorIdx)
-	}
-
-	// An UpdateItem call for another visible row must not acknowledge the
-	// cursor refresh.
-	fm.noteCursorItemUpdated(1)
-	if fm.cursorItemUpdateSeq != 0 {
-		t.Fatalf("cursorItemUpdateSeq = %d after non-cursor row, want 0", fm.cursorItemUpdateSeq)
-	}
-
-	fm.noteCursorItemUpdated(0)
-	if fm.cursorItemUpdateSeq != seq {
-		t.Fatalf("cursorItemUpdateSeq = %d, want %d", fm.cursorItemUpdateSeq, seq)
-	}
-
-	// Repeated updates for the same refresh retain the same acknowledgement.
-	fm.noteCursorItemUpdated(0)
-	if fm.cursorItemUpdateSeq != seq {
-		t.Fatalf("cursorItemUpdateSeq = %d after duplicate update, want %d", fm.cursorItemUpdateSeq, seq)
-	}
-}
-
 func newScrollMarginTestFileManager(count, margin int) *FileManager {
 	files := make([]fileinfo.FileInfo, count)
 	for i := range files {

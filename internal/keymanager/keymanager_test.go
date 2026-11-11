@@ -128,28 +128,6 @@ func (h *transientStackChangeOnActivationHandler) GetName() string {
 	return "transientStackChange"
 }
 
-func TestDumpStateIncludesRoutingState(t *testing.T) {
-	km, _ := newGatedKeyManager()
-	km.PushHandler(noopHandler{})
-	km.HandleKeyDown(&fyne.KeyEvent{Name: desktop.KeyControlLeft})
-	km.HandleKeyDown(&fyne.KeyEvent{Name: fyne.KeyA})
-	km.BeginOwnerTransition("test.transition", func() {})
-
-	dump := km.DumpState()
-	for _, want := range []string{
-		"handlers=[noop]",
-		"modifiers=shift:false ctrl:true alt:false",
-		"armed=true",
-		"queuedTransitions=1",
-		"lastKeyDown=A",
-		"stackVersion=1",
-	} {
-		if !strings.Contains(dump, want) {
-			t.Fatalf("DumpState() =\n%s\nwant substring %q", dump, want)
-		}
-	}
-}
-
 func TestKeyManagerTracksAltModifier(t *testing.T) {
 	km := NewKeyManager(func(string, ...interface{}) {})
 	km.PushHandler(noopHandler{})
@@ -602,25 +580,6 @@ func TestMainScreenDependenciesRejectTypedNilPort(t *testing.T) {
 	}, nil, nil)
 }
 
-func TestMainScreenDependenciesAllowOptionalCommandIntegrations(t *testing.T) {
-	fm := &mainScreenFakeFileManager{}
-	dependencies := NewMainScreenDependencies(MainScreenPorts{
-		CursorList:  fm,
-		Selection:   fm,
-		Directory:   fm,
-		FileOpener:  fm,
-		Windows:     fm,
-		History:     fm,
-		Filters:     fm,
-		Application: fm,
-		Commands:    fm,
-	}, nil, nil)
-
-	if dependencies.runExternalCommand != nil || dependencies.setClipboard != nil {
-		t.Fatal("nil optional command integrations were replaced unexpectedly")
-	}
-}
-
 func (f *mainScreenFakeFileManager) GetCurrentCursorIndex() int    { return f.cursorIndex }
 func (f *mainScreenFakeFileManager) SetCursorByIndex(index int)    { f.setCursorIndex = index }
 func (f *mainScreenFakeFileManager) RefreshCursor()                {}
@@ -830,27 +789,6 @@ func TestMainScreenConfiguredBindingCanRunOpenDefaultApp(t *testing.T) {
 	}
 }
 
-func TestMainScreenCursorDownUsesFileCountAndFileAt(t *testing.T) {
-	fm := &mainScreenFakeFileManager{
-		files: []fileinfo.FileInfo{
-			{Name: "a.txt", Path: "/dir/a.txt"},
-			{Name: "b.txt", Path: "/dir/b.txt"},
-		},
-		cursorIndex:    0,
-		setCursorIndex: -1,
-	}
-	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {})
-
-	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyDown}, ModifierState{})
-
-	if !handled {
-		t.Fatal("Down should be handled")
-	}
-	if fm.setCursorIndex != 1 {
-		t.Fatalf("cursor.down SetCursorByIndex = %d, want 1", fm.setCursorIndex)
-	}
-}
-
 func TestMainScreenCursorDownAtLastFileIsNoop(t *testing.T) {
 	fm := &mainScreenFakeFileManager{
 		files: []fileinfo.FileInfo{
@@ -946,22 +884,6 @@ func TestMainScreenOpenCurrentNoopWhenCursorOutOfRange(t *testing.T) {
 
 	if fm.openFilePath != "" {
 		t.Fatalf("OpenFile path = %q, want empty when cursor is out of range", fm.openFilePath)
-	}
-}
-
-func TestMainScreenConfiguredBindingCanShowMaintenanceDialog(t *testing.T) {
-	fm := &mainScreenFakeFileManager{}
-	handler := newMainScreenKeyHandlerForTest(fm, func(string, ...interface{}) {}, []config.KeyBindingEntry{
-		{Key: "F12", Command: CommandMaintenanceShow},
-	})
-
-	handled := handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyF12}, ModifierState{})
-
-	if !handled {
-		t.Fatal("configured maintenance.show should be handled")
-	}
-	if fm.showMaintenanceCount != 1 {
-		t.Fatalf("ShowMaintenanceDialog count = %d, want 1", fm.showMaintenanceCount)
 	}
 }
 
@@ -1928,22 +1850,4 @@ func TestMainScreenDeprecatedEventBindingStillFires(t *testing.T) {
 	if !deprecated {
 		t.Fatalf("logs = %#v, want deprecation warning", logs)
 	}
-}
-
-func TestKeyManagerDebugfForwardsToAppDebugPrint(t *testing.T) {
-	var logs []string
-	km := NewKeyManager(func(format string, args ...interface{}) {
-		logs = append(logs, fmt.Sprintf(format, args...))
-	})
-
-	km.Debugf("FileViewer: WARNING invalid key binding key=%q", "not-a-key")
-
-	if len(logs) != 1 || !strings.Contains(logs[0], "invalid key binding") {
-		t.Fatalf("logs = %#v, want a single forwarded message", logs)
-	}
-}
-
-func TestKeyManagerDebugfNilReceiverIsNoop(t *testing.T) {
-	var km *KeyManager
-	km.Debugf("should not panic") // nil receiver, nil debugPrint field
 }

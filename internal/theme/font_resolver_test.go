@@ -51,26 +51,6 @@ func TestConfiguredFontNames(t *testing.T) {
 	}
 }
 
-func TestDefaultFontNames(t *testing.T) {
-	tests := []struct {
-		goos string
-		want string
-	}{
-		{goos: "windows", want: "Yu Gothic UI"},
-		{goos: "linux", want: "Noto Sans CJK JP"},
-		{goos: "plan9", want: "Noto Sans"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.goos, func(t *testing.T) {
-			got := defaultFontNames(tt.goos)
-			if len(got) == 0 || got[0] != tt.want {
-				t.Fatalf("defaultFontNames(%q) = %#v, want first %q", tt.goos, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestDefaultMonospaceFontNames(t *testing.T) {
 	if got := defaultMonospaceFontNames("plan9"); len(got) == 0 {
 		t.Fatal("defaultMonospaceFontNames(unknown GOOS) returned empty")

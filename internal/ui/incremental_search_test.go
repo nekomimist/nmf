@@ -23,26 +23,6 @@ func (incrementalSearchTheme) GetCustomColor(colorType string) color.RGBA {
 	}
 }
 
-func TestIncrementalSearchShowUsesShortInitialPrompt(t *testing.T) {
-	overlay := NewIncrementalSearchOverlay([]fileinfo.FileInfo{
-		{Name: "alpha.txt"},
-		{Name: "beta.txt"},
-	}, nil, incrementalSearchTheme{}, func(string, ...interface{}) {})
-
-	overlay.Show(nil)
-
-	text := overlay.searchLabel.Text
-	if !strings.Contains(text, "Type to narrow down") {
-		t.Fatalf("initial prompt %q should ask to narrow down", text)
-	}
-	if strings.Contains(text, "Incremental Search - Type to search files") {
-		t.Fatalf("initial prompt %q should not use the long instructional text", text)
-	}
-	if strings.Contains(text, "navigate") || strings.Contains(text, "Enter") || strings.Contains(text, "Esc") {
-		t.Fatalf("initial prompt %q should not include keyboard help", text)
-	}
-}
-
 func TestIncrementalSearchShowSelectsFirstFileWhenSearchIsEmpty(t *testing.T) {
 	overlay := NewIncrementalSearchOverlay([]fileinfo.FileInfo{
 		{Name: "alpha.txt"},

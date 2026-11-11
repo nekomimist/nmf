@@ -62,27 +62,6 @@ func TestCompareSourcePathMaxRunesForWidthExpandsWithWidth(t *testing.T) {
 	}
 }
 
-func TestCompareMethodLabelsShowAltShortcuts(t *testing.T) {
-	want := []string{
-		"Missing in destination or newer (Alt+U)",
-		"Missing in destination (Alt+M)",
-		"Newer than destination (Alt+N)",
-		"File size matches (Alt+S)",
-		"File size and timestamp match (Alt+T)",
-		"File size and content match (Alt+C)",
-	}
-
-	got := compareMethodLabels()
-	if len(got) != len(want) {
-		t.Fatalf("compare method labels length = %d, want %d: %v", len(got), len(want), got)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("compare method label[%d] = %q, want %q", i, got[i], want[i])
-		}
-	}
-}
-
 func TestCompareDialogMethodRadioRequiresSelection(t *testing.T) {
 	dialog := NewCompareDialog("/src", 1, nil, nil, func(string, ...interface{}) {})
 

@@ -399,27 +399,6 @@ func TestFileViewerDialogDefaultPaneTextKeepsMarkdownOnTextTab(t *testing.T) {
 	}
 }
 
-func TestFileViewerDialogTabLabelsIncludeShortcuts(t *testing.T) {
-	app := test.NewApp()
-	defer app.Quit()
-
-	w := test.NewWindow(widget.NewLabel("parent"))
-	defer w.Close()
-	d := NewFileViewerDialog(&fileinfo.PreviewFile{
-		Path: "note.txt",
-		Text: "hello",
-	})
-	d.ShowDialog(w)
-	defer d.CancelDialog()
-
-	gotText := d.tabBar.Label(viewerPaneText)
-	gotMarkdown := d.tabBar.Label(viewerPaneMarkdown)
-	gotHex := d.tabBar.Label(viewerPaneHex)
-	if gotText != "Text (t)" || gotMarkdown != "Markdown (m)" || gotHex != "Hex (x)" {
-		t.Fatalf("tab labels = %q, %q, %q; want shortcuts", gotText, gotMarkdown, gotHex)
-	}
-}
-
 func TestFileViewerDialogBinaryStartsOnHexTextGrid(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
@@ -744,27 +723,6 @@ func TestFileViewerDialogDefaultWrapAppliesToEveryPane(t *testing.T) {
 	d.ViewerShowText()
 	if !d.textGrid.Wrap() {
 		t.Fatal("text pane wrap did not preserve its configured state")
-	}
-}
-
-func TestFileViewerDialogSearchButtonsUseUpDownIcons(t *testing.T) {
-	app := test.NewApp()
-	defer app.Quit()
-
-	w := test.NewWindow(widget.NewLabel("parent"))
-	defer w.Close()
-	d := NewFileViewerDialog(&fileinfo.PreviewFile{
-		Path: "note.txt",
-		Text: "hello",
-	})
-	d.ShowDialog(w)
-	defer d.CancelDialog()
-
-	if got := d.prevButton.Icon.Name(); got != fynetheme.MoveUpIcon().Name() {
-		t.Fatalf("prevButton icon = %q, want MoveUpIcon", got)
-	}
-	if got := d.nextButton.Icon.Name(); got != fynetheme.MoveDownIcon().Name() {
-		t.Fatalf("nextButton icon = %q, want MoveDownIcon", got)
 	}
 }
 

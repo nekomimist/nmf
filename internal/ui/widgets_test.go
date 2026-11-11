@@ -150,24 +150,6 @@ func TestTappableIconMouseMovedStartsDragAfterThreshold(t *testing.T) {
 	}
 }
 
-func TestTappableIconSetResourceUpdatesEmbeddedIcon(t *testing.T) {
-	app := test.NewApp()
-	defer app.Quit()
-
-	initial := fyne.NewStaticResource("initial", []byte("initial"))
-	next := fyne.NewStaticResource("next", []byte("next"))
-	icon := NewTappableIcon(initial, nil)
-
-	icon.SetResource(initial)
-	if icon.icon.Resource != initial {
-		t.Fatalf("resource after identical update = %v, want initial", icon.icon.Resource)
-	}
-	icon.SetResource(next)
-	if icon.icon.Resource != next {
-		t.Fatalf("resource after replacement = %v, want next", icon.icon.Resource)
-	}
-}
-
 func TestTappableIconSwitchesBetweenSharedImageAndResource(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()

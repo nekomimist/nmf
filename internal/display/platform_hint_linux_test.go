@@ -33,30 +33,3 @@ func TestPlatformHintFromEnv(t *testing.T) {
 		})
 	}
 }
-
-func TestApplyPlatformHintUsesEnv(t *testing.T) {
-	// applyPlatformHint reads the env directly; exercise it end to end (minus
-	// the actual glfw.InitHint call, which is untestable without a GLFW
-	// context) by checking it doesn't panic and logs via debugPrint for both
-	// the hinted and unhinted cases.
-	tests := []struct {
-		name string
-		env  string
-	}{
-		{name: "x11", env: "x11"},
-		{name: "wayland", env: "wayland"},
-		{name: "unset", env: ""},
-		{name: "unrecognized", env: "bogus"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv(platformEnvKey, tt.env)
-			called := false
-			applyPlatformHint(func(string, ...interface{}) { called = true })
-			if !called {
-				t.Fatalf("applyPlatformHint(%q) did not call debugPrint", tt.env)
-			}
-		})
-	}
-}

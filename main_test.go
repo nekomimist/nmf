@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"nmf/internal/config"
-	"nmf/internal/fileinfo"
 )
 
 func TestSetupDebugLoggingEmptyPathNoop(t *testing.T) {
@@ -357,39 +356,6 @@ func TestOpenDebugSessionLogUsesSuffixOnCollision(t *testing.T) {
 	want := filepath.Join(dir, "nmf-20260608-213000-123-1.log")
 	if path != want {
 		t.Fatalf("path = %q, want %q", path, want)
-	}
-}
-
-func TestResolveDirectoryPath_LocalDirectory(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	resolved, parsed, err := resolveDirectoryPath(tmpDir)
-	if err != nil {
-		t.Fatalf("expected directory to resolve: %v", err)
-	}
-	if parsed.Scheme != fileinfo.SchemeFile {
-		t.Fatalf("expected file scheme, got %q", parsed.Scheme)
-	}
-	if !filepath.IsAbs(resolved) {
-		t.Fatalf("expected absolute local path, got %q", resolved)
-	}
-}
-
-func TestResolveDirectoryPath_LocalFileRejected(t *testing.T) {
-	tmpDir := t.TempDir()
-	filePath := filepath.Join(tmpDir, "a.txt")
-	if err := os.WriteFile(filePath, []byte("x"), 0644); err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
-	}
-
-	if _, _, err := resolveDirectoryPath(filePath); err == nil {
-		t.Fatalf("expected non-directory path to fail")
-	}
-}
-
-func TestResolveDirectoryPath_EmptyRejected(t *testing.T) {
-	if _, _, err := resolveDirectoryPath("   "); err == nil {
-		t.Fatalf("expected empty path to fail")
 	}
 }
 

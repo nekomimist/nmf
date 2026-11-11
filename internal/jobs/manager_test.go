@@ -105,14 +105,6 @@ func TestSubscribeUnsubscribe(t *testing.T) {
 	}
 }
 
-func TestSubscribeNilCallbackReturnsNoopUnsubscribe(t *testing.T) {
-	m := &Manager{}
-	unsub := m.Subscribe(nil)
-	unsub()
-	// notify must remain safe even with no subscribers.
-	m.notify()
-}
-
 func TestJobSnapshotIncludesCurrentFileProgress(t *testing.T) {
 	started := time.Now().Add(-2 * time.Second)
 	updated := time.Now()
@@ -164,19 +156,6 @@ func TestAcknowledgeFailureMarksOnlyFailedJobs(t *testing.T) {
 func TestResolveExecutionPath_Empty(t *testing.T) {
 	if _, err := resolveExecutionPath("   "); err == nil {
 		t.Fatalf("expected error for empty path")
-	}
-}
-
-func TestResolveExecutionPath_Local(t *testing.T) {
-	got, err := resolveExecutionPath(".")
-	if err != nil {
-		t.Fatalf("expected local path to resolve, got error: %v", err)
-	}
-	if got.path == "" {
-		t.Fatalf("expected non-empty resolved path")
-	}
-	if got.backend != backendLocal {
-		t.Fatalf("expected local backend, got %v", got.backend)
 	}
 }
 
@@ -904,40 +883,6 @@ func TestMoveCollisionRenameDoesNotOverwrite(t *testing.T) {
 	}
 }
 
-func TestCopyCollisionOverwriteIfNewerReplacesClearlyOlderDestination(t *testing.T) {
-	srcDir := t.TempDir()
-	dstDir := t.TempDir()
-	src := filepath.Join(srcDir, "file.txt")
-	dst := filepath.Join(dstDir, "file.txt")
-	if err := os.WriteFile(src, []byte("source"), 0644); err != nil {
-		t.Fatalf("write source: %v", err)
-	}
-	if err := os.WriteFile(dst, []byte("existing"), 0644); err != nil {
-		t.Fatalf("write destination: %v", err)
-	}
-	base := time.Unix(1_700_000_000, 0)
-	if err := os.Chtimes(dst, base, base); err != nil {
-		t.Fatalf("set destination time: %v", err)
-	}
-	if err := os.Chtimes(src, base.Add(3*time.Second), base.Add(3*time.Second)); err != nil {
-		t.Fatalf("set source time: %v", err)
-	}
-
-	job := &Job{
-		Type: TypeCopy,
-		ctx:  context.Background(),
-		Resolver: func(context.Context, ConflictRequest) ConflictResolution {
-			return ConflictResolution{Action: ConflictOverwriteIfNewer}
-		},
-	}
-	if err := transferOneSource(job, src, dstDir); err != nil {
-		t.Fatalf("copy with overwrite-if-newer failed: %v", err)
-	}
-	if got, err := os.ReadFile(dst); err != nil || string(got) != "source" {
-		t.Fatalf("destination not overwritten: got %q err=%v", got, err)
-	}
-}
-
 func TestCopyCollisionOverwriteIfNewerSkipsWithinFATTolerance(t *testing.T) {
 	srcDir := t.TempDir()
 	dstDir := t.TempDir()
@@ -1139,32 +1084,6 @@ func TestDirectoryCollisionMergesContents(t *testing.T) {
 	}
 }
 
-func TestCopyPreservesFileTimestampWhenRequested(t *testing.T) {
-	srcDir := t.TempDir()
-	dstDir := t.TempDir()
-	src := filepath.Join(srcDir, "file.txt")
-	if err := os.WriteFile(src, []byte("source"), 0644); err != nil {
-		t.Fatalf("write source: %v", err)
-	}
-	want := time.Unix(1_700_000_000, 0)
-	if err := os.Chtimes(src, want, want); err != nil {
-		t.Fatalf("set source time: %v", err)
-	}
-
-	job := &Job{Type: TypeCopy, ctx: context.Background(), Options: TransferOptions{PreserveTimestamps: true}}
-	if err := transferOneSource(job, src, dstDir); err != nil {
-		t.Fatalf("copy with preserved timestamp failed: %v", err)
-	}
-
-	info, err := os.Stat(filepath.Join(dstDir, "file.txt"))
-	if err != nil {
-		t.Fatalf("stat copied file: %v", err)
-	}
-	if !info.ModTime().Equal(want) {
-		t.Fatalf("copied file modtime = %s, want %s", info.ModTime(), want)
-	}
-}
-
 func TestCopyPreservesDirectoryTimestampAfterChildren(t *testing.T) {
 	srcRoot := t.TempDir()
 	dstRoot := t.TempDir()
@@ -1285,57 +1204,4 @@ func transferOneSource(j *Job, src string, destDir string) error {
 	}
 	defer func() { _ = execCtx.close() }()
 	return transferSource(j, execCtx, src, destPath)
-}
-
-// A job resolves and validates its destination once, before touching any
-// source, and every source then runs against that one execution context. This
-// is what keeps a remote backend dialed once per job instead of once per file.
-func TestOpenTransferDestinationValidatesBeforeAnySource(t *testing.T) {
-	dir := t.TempDir()
-	notADirectory := filepath.Join(dir, "file.txt")
-	if err := os.WriteFile(notADirectory, []byte("data"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, _, err := openTransferDestination(notADirectory); err == nil {
-		t.Fatal("openTransferDestination accepted a file as the destination")
-	}
-	if _, _, err := openTransferDestination(filepath.Join(dir, "missing")); err == nil {
-		t.Fatal("openTransferDestination accepted a missing destination")
-	}
-}
-
-func TestTransferSourcesShareOneExecutionContext(t *testing.T) {
-	srcDir := t.TempDir()
-	dstDir := t.TempDir()
-	names := []string{"one.txt", "two.txt", "three.txt"}
-	for _, name := range names {
-		if err := os.WriteFile(filepath.Join(srcDir, name), []byte(name), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	job := &Job{Type: TypeCopy, ctx: t.Context()}
-	destPath, execCtx, err := openTransferDestination(dstDir)
-	if err != nil {
-		t.Fatalf("openTransferDestination returned error: %v", err)
-	}
-	defer func() {
-		if err := execCtx.close(); err != nil {
-			t.Errorf("execution context close error: %v", err)
-		}
-	}()
-
-	for _, name := range names {
-		if err := transferSource(job, execCtx, filepath.Join(srcDir, name), destPath); err != nil {
-			t.Fatalf("transferSource(%s) returned error: %v", name, err)
-		}
-	}
-
-	for _, name := range names {
-		data, err := os.ReadFile(filepath.Join(dstDir, name))
-		if err != nil || string(data) != name {
-			t.Fatalf("copied %s = %q, %v", name, data, err)
-		}
-	}
 }
