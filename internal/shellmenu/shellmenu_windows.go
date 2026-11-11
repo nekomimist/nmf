@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"unsafe"
@@ -81,8 +82,6 @@ const (
 	fofxRecycleOnDelete = 0x00080000
 )
 
-const gwlUserData = ^uintptr(20)
-
 var (
 	iidIUnknown        = windows.GUID{Data1: 0x00000000, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
 	iidIDataObject     = windows.GUID{Data1: 0x0000010E, Data2: 0x0000, Data3: 0x0000, Data4: [8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
@@ -113,23 +112,24 @@ var (
 	procOleUninitialize  = modOle32.NewProc("OleUninitialize")
 	procDoDragDrop       = modOle32.NewProc("DoDragDrop")
 
-	procCreatePopupMenu   = modUser32.NewProc("CreatePopupMenu")
-	procDestroyMenu       = modUser32.NewProc("DestroyMenu")
-	procTrackPopupMenuEx  = modUser32.NewProc("TrackPopupMenuEx")
-	procGetMenuItemCount  = modUser32.NewProc("GetMenuItemCount")
-	procGetMenuItemInfoW  = modUser32.NewProc("GetMenuItemInfoW")
-	procDeleteMenu        = modUser32.NewProc("DeleteMenu")
-	procGetCursorPos      = modUser32.NewProc("GetCursorPos")
-	procClientToScreen    = modUser32.NewProc("ClientToScreen")
-	procSetForegroundWnd  = modUser32.NewProc("SetForegroundWindow")
-	procRegisterClassExW  = modUser32.NewProc("RegisterClassExW")
-	procCreateWindowExW   = modUser32.NewProc("CreateWindowExW")
-	procDestroyWindow     = modUser32.NewProc("DestroyWindow")
-	procDefWindowProcW    = modUser32.NewProc("DefWindowProcW")
-	procSetWindowLongPtrW = modUser32.NewProc("SetWindowLongPtrW")
-	procGetWindowLongPtrW = modUser32.NewProc("GetWindowLongPtrW")
+	procCreatePopupMenu  = modUser32.NewProc("CreatePopupMenu")
+	procDestroyMenu      = modUser32.NewProc("DestroyMenu")
+	procTrackPopupMenuEx = modUser32.NewProc("TrackPopupMenuEx")
+	procGetMenuItemCount = modUser32.NewProc("GetMenuItemCount")
+	procGetMenuItemInfoW = modUser32.NewProc("GetMenuItemInfoW")
+	procDeleteMenu       = modUser32.NewProc("DeleteMenu")
+	procGetCursorPos     = modUser32.NewProc("GetCursorPos")
+	procClientToScreen   = modUser32.NewProc("ClientToScreen")
+	procSetForegroundWnd = modUser32.NewProc("SetForegroundWindow")
+	procRegisterClassExW = modUser32.NewProc("RegisterClassExW")
+	procCreateWindowExW  = modUser32.NewProc("CreateWindowExW")
+	procDestroyWindow    = modUser32.NewProc("DestroyWindow")
+	procDefWindowProcW   = modUser32.NewProc("DefWindowProcW")
 
 	menuOwnerWndProcPtr = syscall.NewCallback(menuOwnerWndProc)
+	// Keep Go pointers in Go memory, keyed by the native HWND. Entries are
+	// removed both by owner cleanup and by WM_NCDESTROY.
+	menuOwnerDataByWindow sync.Map // map[uintptr]*menuOwnerData
 
 	dropSourceVtblInst = dropSourceVtbl{
 		queryInterface:    syscall.NewCallback(dropSourceQueryInterface),
@@ -405,7 +405,7 @@ func StartFileDrag(hwnd uintptr, paths []string) error {
 	defer releaseUnknown((*unknown)(unsafe.Pointer(data)))
 
 	source := newDropSource()
-	defer dropSourceRelease(uintptr(unsafe.Pointer(source)))
+	defer dropSourceRelease(source)
 	var effect uint32
 	hr, _, _ := procDoDragDrop.Call(
 		uintptr(unsafe.Pointer(data)),
@@ -1180,17 +1180,17 @@ func newDropSource() *dropSource {
 	return &dropSource{vtbl: &dropSourceVtblInst, refs: 1}
 }
 
-func dropSourceQueryInterface(this uintptr, riid uintptr, ppv uintptr) uintptr {
-	if ppv == 0 {
+// NewCallback accepts pointer arguments directly, preserving their Go types
+// while translating the native calling convention.
+func dropSourceQueryInterface(this *dropSource, riid *windows.GUID, out **dropSource) uintptr {
+	if out == nil {
 		return uintptr(ePointer)
 	}
-	out := (*uintptr)(unsafe.Pointer(ppv))
-	*out = 0
-	if riid == 0 {
+	*out = nil
+	if riid == nil {
 		return uintptr(eNoInterface)
 	}
-	guid := (*windows.GUID)(unsafe.Pointer(riid))
-	if *guid == iidIUnknown || *guid == iidIDropSource {
+	if *riid == iidIUnknown || *riid == iidIDropSource {
 		*out = this
 		dropSourceAddRef(this)
 		return sOK
@@ -1198,20 +1198,18 @@ func dropSourceQueryInterface(this uintptr, riid uintptr, ppv uintptr) uintptr {
 	return uintptr(eNoInterface)
 }
 
-func dropSourceAddRef(this uintptr) uintptr {
-	if this == 0 {
+func dropSourceAddRef(this *dropSource) uintptr {
+	if this == nil {
 		return 0
 	}
-	source := (*dropSource)(unsafe.Pointer(this))
-	return uintptr(atomic.AddUint32(&source.refs, 1))
+	return uintptr(atomic.AddUint32(&this.refs, 1))
 }
 
-func dropSourceRelease(this uintptr) uintptr {
-	if this == 0 {
+func dropSourceRelease(this *dropSource) uintptr {
+	if this == nil {
 		return 0
 	}
-	source := (*dropSource)(unsafe.Pointer(this))
-	return uintptr(atomic.AddUint32(&source.refs, ^uint32(0)))
+	return uintptr(atomic.AddUint32(&this.refs, ^uint32(0)))
 }
 
 func dropSourceQueryContinueDrag(_ uintptr, escapePressed uintptr, keyState uintptr) uintptr {
@@ -1270,11 +1268,7 @@ func (o *menuOwner) destroy() {
 	if o == nil || o.hwnd == 0 {
 		return
 	}
-	data := getMenuOwnerData(o.hwnd)
-	if data != nil {
-		data.free()
-		setMenuOwnerData(o.hwnd, nil)
-	}
+	setMenuOwnerData(o.hwnd, nil)
 	procDestroyWindow.Call(o.hwnd)
 	o.data = nil
 	o.hwnd = 0
@@ -1285,24 +1279,20 @@ type menuOwnerData struct {
 	menu3 *contextMenu3
 }
 
-func (d *menuOwnerData) free() {
-	// The COM objects are owned and released by Show; this just drops the Go wrapper.
-}
-
 func setMenuOwnerData(hwnd uintptr, data *menuOwnerData) {
-	var ptr uintptr
-	if data != nil {
-		ptr = uintptr(unsafe.Pointer(data))
+	if data == nil {
+		menuOwnerDataByWindow.Delete(hwnd)
+		return
 	}
-	procSetWindowLongPtrW.Call(hwnd, gwlUserData, ptr)
+	menuOwnerDataByWindow.Store(hwnd, data)
 }
 
 func getMenuOwnerData(hwnd uintptr) *menuOwnerData {
-	ptr, _, _ := procGetWindowLongPtrW.Call(hwnd, gwlUserData)
-	if ptr == 0 {
+	data, ok := menuOwnerDataByWindow.Load(hwnd)
+	if !ok {
 		return nil
 	}
-	return (*menuOwnerData)(unsafe.Pointer(ptr))
+	return data.(*menuOwnerData)
 }
 
 func menuOwnerWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
@@ -1311,6 +1301,11 @@ func menuOwnerWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr 
 		if data := getMenuOwnerData(hwnd); data != nil {
 			if data.menu3 != nil {
 				var result uintptr
+				// A COM handler can reenter Go and grow the goroutine stack.
+				// Keep the native out parameter at a stable address until return.
+				var pin runtime.Pinner
+				pin.Pin(&result)
+				defer pin.Unpin()
 				hr, _, _ := syscall.SyscallN(
 					data.menu3.vtbl.handleMenuMsg2,
 					uintptr(unsafe.Pointer(data.menu3)),

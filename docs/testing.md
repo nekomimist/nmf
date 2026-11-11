@@ -28,15 +28,15 @@ Go and Zig caches live under `.cache/go-build-windows`,
 paths are computed from the checkout location and used only while the script
 runs; inherited cross-compilation settings and cache paths are restored on exit.
 Go modules still use the normal module cache. Windows CI uses the same script
-to execute all tests and build `dist/nmf-dev.exe`. Its Go version comes
-from `go.mod`; Zig 0.16.0 is downloaded with a pinned SHA-256 checksum, matching
-the Zig release in the current Linux Flake. Review both pins when upgrading.
+to execute all tests, vet all packages, and build `dist/nmf-dev.exe`. Its Go
+version comes from `go.mod`; Zig 0.16.0 is downloaded with a pinned SHA-256
+checksum, matching the Zig release in the current Linux Flake. Review both pins
+when upgrading.
 
-The `vet` command runs the full analyzer set and propagates failures. It currently
-reports five existing `unsafeptr` diagnostics in `internal/shellmenu` for COM
-callback and window-user-data pointer conversions. Windows vet is not a CI gate
-until those conversions have been reviewed; no analyzer is disabled by the
-script. Linux CI continues to require repository-wide vetting.
+The `vet` command runs the full analyzer set and propagates failures. Both
+Windows and Linux CI require repository-wide vetting; no analyzer is disabled
+by the script. Windows Shell tests invoke the COM callback ABI and exercise
+hidden native window message forwarding and cleanup without opening a menu.
 
 If Windows PowerShell 5.1 blocks local scripts under its execution policy, invoke
 the script in a child process without changing the machine's policy:

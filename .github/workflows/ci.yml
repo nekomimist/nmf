@@ -81,6 +81,8 @@ jobs:
           zig version
       - name: Run all native Windows tests
         run: ./scripts/dev-windows.ps1 test -Arguments @('-v', './...')
+      - name: Vet native Windows packages
+        run: ./scripts/dev-windows.ps1 vet
       - name: Build native Windows development executable
         run: ./scripts/dev-windows.ps1 build
 
