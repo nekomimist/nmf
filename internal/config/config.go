@@ -289,7 +289,7 @@ func (v *ThemeColorValue) UnmarshalJSON(data []byte) error {
 
 func (v ThemeColorValue) MarshalJSON() ([]byte, error) {
 	if v.IsRGBA {
-		return json.Marshal([]uint8{v.RGBA[0], v.RGBA[1], v.RGBA[2], v.RGBA[3]})
+		return json.Marshal(v.RGBA)
 	}
 	return json.Marshal(v.Name)
 }

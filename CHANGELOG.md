@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Serialize RGBA theme colors as JSON arrays instead of Base64 strings so they
+  retain their values when encoded and decoded.
+
 ## 0.1.3 - 2026-10-27
 
 - Show the total size of marked files after the status bar's mark count when
