@@ -2,8 +2,47 @@ package fileinfo
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
+
+func TestWindowsReadPathForms(t *testing.T) {
+	for _, input := range []string{
+		`\\server\share\dir`,
+		`\\?\UNC\server\share\dir`,
+		"//server/share/dir",
+		"SMB://server/share/dir",
+		" smb://alice:secret@server/share/dir ",
+	} {
+		t.Run(input, func(t *testing.T) {
+			vfs, parsed, err := resolveWindowsRead(input, strings.TrimSpace(input))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer CloseVFS(vfs)
+			if parsed.Scheme != SchemeSMB || parsed.Provider != "local" || parsed.Display != "smb://server/share/dir" || parsed.Raw != input {
+				t.Fatalf("unexpected parsed path: %#v", parsed)
+			}
+			if parsed.Native != `\\server\share\dir` && parsed.Native != `\\?\UNC\server\share\dir` {
+				t.Fatalf("unexpected native path: %q", parsed.Native)
+			}
+		})
+	}
+	for _, input := range []string{`\\server\share\..\outside`, "//server/share/../outside", "smb://server/share/../outside"} {
+		if _, _, err := resolveWindowsRead(input, input); err == nil {
+			t.Fatalf("parent traversal accepted: %q", input)
+		}
+	}
+	const local = ` C:\local\file `
+	vfs, parsed, err := resolveWindowsRead(local, strings.TrimSpace(local))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer CloseVFS(vfs)
+	if parsed.Scheme != SchemeFile || parsed.Display != local || parsed.Native != local {
+		t.Fatalf("local path spelling changed: %#v", parsed)
+	}
+}
 
 func TestParseSMBURLBasic(t *testing.T) {
 	host, share, segs, user, pass, domain := parseSMBURL("smb://server/share/a/b")

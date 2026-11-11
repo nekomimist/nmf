@@ -95,94 +95,113 @@ func copyOrMovePathResolved(j *Job, execCtx *executionContext, src executionPath
 		return nil
 	}
 
+	return transferResolvedPath(j, execCtx, src, dst, fi, overwrite)
+}
+
+// transferResolvedPath runs only after conflict resolution and same-path checks.
+func transferResolvedPath(j *Job, execCtx *executionContext, src, dst executionPath, fi os.FileInfo, overwrite bool) error {
 	if fi.IsDir() && !isLinkLikeForTraversal(execCtx, src, fi) {
 		if err := validateDirectoryTransfer(src, dst, j.Type); err != nil {
 			return err
 		}
 	}
-
-	if moved, err := tryFastMovePath(j, execCtx, src, dst, fi, overwrite); err != nil {
+	moved, err := tryFastMovePath(j, execCtx, src, dst, fi, overwrite)
+	if err != nil || moved {
 		return err
-	} else if moved {
-		return nil
 	}
 
-	if target, isLink, err := linkTargetForCopy(execCtx, src, fi); err != nil {
+	target, isLink, err := linkTargetForCopy(execCtx, src, fi)
+	if err != nil {
 		return wrapPath(src.displayPath(), err)
-	} else if isLink {
-		if err := copySymlink(execCtx, j, target, dst, overwrite); err != nil {
-			return wrapPath(dst.displayPath(), err)
-		}
-		if j.Type == TypeMove {
-			dbg("job %d: unlink %s", j.ID, src.displayPath())
-			if err := removePath(execCtx, src); err != nil {
-				return wrapPath(src.displayPath(), err)
-			}
-		}
-		return nil
 	}
-
+	if isLink {
+		return transferSymlink(j, execCtx, src, dst, target, overwrite)
+	}
 	if fi.IsDir() {
-		dbg("job %d: mkdir %s (mode=%v)", j.ID, dst.displayPath(), fi.Mode())
-		if err := ensureDir(execCtx, dst, fi.Mode()); err != nil {
-			return wrapPath(dst.displayPath(), err)
-		}
-		entries, err := readDir(execCtx, src)
-		if err != nil {
+		return transferDirectory(j, execCtx, src, dst, fi)
+	}
+	return transferFile(j, execCtx, src, dst, fi, overwrite)
+}
+
+func transferSymlink(j *Job, execCtx *executionContext, src, dst executionPath, target string, overwrite bool) error {
+	if err := copySymlink(execCtx, j, target, dst, overwrite); err != nil {
+		return wrapPath(dst.displayPath(), err)
+	}
+	if j.Type == TypeMove {
+		dbg("job %d: unlink %s", j.ID, src.displayPath())
+		if err := removePath(execCtx, src); err != nil {
 			return wrapPath(src.displayPath(), err)
 		}
-		skippedChild := false
-		for _, e := range entries {
-			if canceled(j) {
-				return errCanceled
-			}
-			if err := validateArchiveSourceName(src, e.Name()); err != nil {
-				return wrapPath(src.displayPath(), err)
-			}
-			child := joinPath(src, e.Name())
-			dbg("job %d: recurse %s -> %s", j.ID, child.displayPath(), dst.displayPath())
-			if err := copyOrMovePathResolved(j, execCtx, child, dst, nil); err != nil {
-				if errors.Is(err, errSkipped) {
-					skippedChild = true
-					continue
-				}
-				return err
-			}
-		}
-		if skippedChild {
-			return errSkipped
-		}
-		if shouldPreserveTimestamps(j) {
-			if err := chtimesPath(execCtx, dst, fi.ModTime(), fi.ModTime()); err != nil {
-				return wrapPath(dst.displayPath(), err)
-			}
-		}
-		if j.Type == TypeMove {
-			if canceled(j) {
-				return errCanceled
-			}
-			// remove empty dir after moving children
-			dbg("job %d: rmdir %s", j.ID, src.displayPath())
-			if err := removePath(execCtx, src); err != nil {
-				return wrapPath(src.displayPath(), err)
-			}
-		}
-		return nil
 	}
+	return nil
+}
 
-	// regular file
+func transferDirectory(j *Job, execCtx *executionContext, src, dst executionPath, fi os.FileInfo) error {
+	dbg("job %d: mkdir %s (mode=%v)", j.ID, dst.displayPath(), fi.Mode())
+	if err := ensureDir(execCtx, dst, fi.Mode()); err != nil {
+		return wrapPath(dst.displayPath(), err)
+	}
+	if err := transferDirectoryChildren(j, execCtx, src, dst); err != nil {
+		return err
+	}
+	// Finish only when every child transferred. A skipped child keeps its
+	// source directory, and timestamp preservation waits for a complete copy.
+	if shouldPreserveTimestamps(j) {
+		if err := chtimesPath(execCtx, dst, fi.ModTime(), fi.ModTime()); err != nil {
+			return wrapPath(dst.displayPath(), err)
+		}
+	}
+	return removeTransferredSource(j, execCtx, src, "rmdir")
+}
+
+func transferDirectoryChildren(j *Job, execCtx *executionContext, src, dst executionPath) error {
+	entries, err := readDir(execCtx, src)
+	if err != nil {
+		return wrapPath(src.displayPath(), err)
+	}
+	skippedChild := false
+	for _, e := range entries {
+		if canceled(j) {
+			return errCanceled
+		}
+		if err := validateArchiveSourceName(src, e.Name()); err != nil {
+			return wrapPath(src.displayPath(), err)
+		}
+		child := joinPath(src, e.Name())
+		dbg("job %d: recurse %s -> %s", j.ID, child.displayPath(), dst.displayPath())
+		err := copyOrMovePathResolved(j, execCtx, child, dst, nil)
+		if errors.Is(err, errSkipped) {
+			skippedChild = true
+			continue
+		}
+		if err != nil {
+			return err
+		}
+	}
+	if skippedChild {
+		return errSkipped
+	}
+	return nil
+}
+
+func transferFile(j *Job, execCtx *executionContext, src, dst executionPath, fi os.FileInfo, overwrite bool) error {
 	dbg("job %d: file %s -> %s", j.ID, src.displayPath(), dst.displayPath())
 	if err := copyFileWithCancel(j, execCtx, src, dst, fi, overwrite); err != nil {
 		return err
 	}
-	if j.Type == TypeMove {
-		if canceled(j) {
-			return errCanceled
-		}
-		dbg("job %d: remove %s", j.ID, src.displayPath())
-		if err := removePath(execCtx, src); err != nil {
-			return wrapPath(src.displayPath(), err)
-		}
+	return removeTransferredSource(j, execCtx, src, "remove")
+}
+
+func removeTransferredSource(j *Job, execCtx *executionContext, src executionPath, operation string) error {
+	if j.Type != TypeMove {
+		return nil
+	}
+	if canceled(j) {
+		return errCanceled
+	}
+	dbg("job %d: %s %s", j.ID, operation, src.displayPath())
+	if err := removePath(execCtx, src); err != nil {
+		return wrapPath(src.displayPath(), err)
 	}
 	return nil
 }

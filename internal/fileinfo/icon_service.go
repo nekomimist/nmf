@@ -208,32 +208,8 @@ func (s *IconService) worker() {
 		if s.closed() {
 			return
 		}
-		var img *image.RGBA
-		var err error
-		stored := false
-		switch job.scope {
-		case "ext":
-			img, err = platformFetchExtIcon(job.key, job.size)
-			if err == nil && img != nil {
-				s.mu.Lock()
-				if !s.closed() {
-					putBoundedIcon(s.extCache, &s.extOrder, &s.extNext, iconCacheKey{name: job.key, size: job.size}, img, maxExtensionIconCacheEntries)
-					stored = true
-				}
-				s.mu.Unlock()
-			}
-		case "file":
-			img, err = platformFetchFileIcon(job.key, job.size)
-			if err == nil && img != nil {
-				s.mu.Lock()
-				if !s.closed() {
-					putBoundedIcon(s.fileCache, &s.fileOrder, &s.fileNext, iconCacheKey{name: job.key, size: job.size}, img, maxFileIconCacheEntries)
-					stored = true
-				}
-				s.mu.Unlock()
-			}
-		}
-		if stored {
+		img, err := fetchJobIcon(job)
+		if err == nil && s.storeFetchedIcon(job, img) {
 			s.flagUpdated()
 		}
 		// clear pending marker
@@ -241,6 +217,40 @@ func (s *IconService) worker() {
 		delete(s.pending, job)
 		s.mu.Unlock()
 	}
+}
+
+func fetchJobIcon(job iconJob) (*image.RGBA, error) {
+	switch job.scope {
+	case "ext":
+		return platformFetchExtIcon(job.key, job.size)
+	case "file":
+		return platformFetchFileIcon(job.key, job.size)
+	default:
+		return nil, nil
+	}
+}
+
+// storeFetchedIcon checks shutdown under the cache lock so a fetch completing
+// after Close cannot repopulate the released caches.
+func (s *IconService) storeFetchedIcon(job iconJob, img *image.RGBA) bool {
+	if img == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed() {
+		return false
+	}
+	key := iconCacheKey{name: job.key, size: job.size}
+	switch job.scope {
+	case "ext":
+		putBoundedIcon(s.extCache, &s.extOrder, &s.extNext, key, img, maxExtensionIconCacheEntries)
+	case "file":
+		putBoundedIcon(s.fileCache, &s.fileOrder, &s.fileNext, key, img, maxFileIconCacheEntries)
+	default:
+		return false
+	}
+	return true
 }
 
 func iconPixelSize(size int) int {

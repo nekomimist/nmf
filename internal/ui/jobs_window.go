@@ -199,29 +199,36 @@ func jobDetailsText(it jobs.JobSnapshot) string {
 		target = string(it.DeleteMode)
 	}
 	fmt.Fprintf(b, "Job #%d %s → %s\nStatus: %s, %d/%d completed\n", it.ID, string(it.Type), target, string(it.Status), it.DoneFiles, it.TotalFiles)
-	if it.Status == jobs.StatusRunning {
+	switch it.Status {
+	case jobs.StatusRunning:
 		writeRunningProgress(b, it)
-	} else if it.Status == jobs.StatusFailed {
-		if len(it.Failures) > 0 {
-			fmt.Fprintln(b, "Failures:")
-			for _, f := range it.Failures {
-				if f.TopSource != "" {
-					fmt.Fprintf(b, "  - item: %s\n", f.TopSource)
-				}
-				if f.Path != "" {
-					fmt.Fprintf(b, "    path: %s\n", f.Path)
-				}
-				if f.Error != "" {
-					fmt.Fprintf(b, "    error: %s\n", f.Error)
-				}
-			}
-		} else if it.Error != "" {
-			fmt.Fprintf(b, "Error: %s\n", it.Error)
-		}
-	} else if it.Status == jobs.StatusCompleted {
+	case jobs.StatusFailed:
+		writeJobFailures(b, it)
+	case jobs.StatusCompleted:
 		writeCompletedTargets(b, it.Sources)
 	}
 	return b.String()
+}
+
+func writeJobFailures(b *strings.Builder, it jobs.JobSnapshot) {
+	if len(it.Failures) == 0 {
+		if it.Error != "" {
+			fmt.Fprintf(b, "Error: %s\n", it.Error)
+		}
+		return
+	}
+	fmt.Fprintln(b, "Failures:")
+	for _, f := range it.Failures {
+		if f.TopSource != "" {
+			fmt.Fprintf(b, "  - item: %s\n", f.TopSource)
+		}
+		if f.Path != "" {
+			fmt.Fprintf(b, "    path: %s\n", f.Path)
+		}
+		if f.Error != "" {
+			fmt.Fprintf(b, "    error: %s\n", f.Error)
+		}
+	}
 }
 
 func runningProgressSummary(it jobs.JobSnapshot) string {

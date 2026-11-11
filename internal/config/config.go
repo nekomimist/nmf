@@ -209,37 +209,37 @@ func (c *ThemeColorConfig) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("unknown theme color field %q", key)
 		}
 	}
-	if data, ok := raw["value"]; ok && string(data) != "null" {
-		var value ThemeColorValue
-		if err := json.Unmarshal(data, &value); err != nil {
-			return err
-		}
-		parsed.Value = &value
+	var err error
+	parsed.Value, _, err = parseOptionalThemeColor(raw["value"])
+	if err != nil {
+		return err
 	}
-	if data, ok := raw["dark"]; ok {
-		if string(data) == "null" {
-			parsed.DarkDefault = true
-		} else {
-			var value ThemeColorValue
-			if err := json.Unmarshal(data, &value); err != nil {
-				return err
-			}
-			parsed.Dark = &value
-		}
+	parsed.Dark, parsed.DarkDefault, err = parseOptionalThemeColor(raw["dark"])
+	if err != nil {
+		return err
 	}
-	if data, ok := raw["light"]; ok {
-		if string(data) == "null" {
-			parsed.LightDefault = true
-		} else {
-			var value ThemeColorValue
-			if err := json.Unmarshal(data, &value); err != nil {
-				return err
-			}
-			parsed.Light = &value
-		}
+	parsed.Light, parsed.LightDefault, err = parseOptionalThemeColor(raw["light"])
+	if err != nil {
+		return err
 	}
 	*c = parsed
 	return nil
+}
+
+// parseOptionalThemeColor distinguishes an absent field from an explicit null.
+// Only variant fields use the null flag to override the common color.
+func parseOptionalThemeColor(data json.RawMessage) (value *ThemeColorValue, explicitDefault bool, err error) {
+	if len(data) == 0 {
+		return nil, false, nil
+	}
+	if string(data) == "null" {
+		return nil, true, nil
+	}
+	var parsed ThemeColorValue
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return nil, false, err
+	}
+	return &parsed, false, nil
 }
 
 func (c ThemeColorConfig) MarshalJSON() ([]byte, error) {
@@ -617,212 +617,6 @@ func getConfigPath() string {
 	}
 
 	return filepath.Join(configDir, "config.json")
-}
-
-// mergeConfigs merges file config values into default config
-func mergeConfigs(defaultConfig *Config, fileConfig *rawConfig) error {
-	if err := validateRawConfig(fileConfig); err != nil {
-		return err
-	}
-	// Merge Window config
-	if fileConfig.Window.Width != nil {
-		defaultConfig.Window.Width = *fileConfig.Window.Width
-	}
-	if fileConfig.Window.Height != nil {
-		defaultConfig.Window.Height = *fileConfig.Window.Height
-	}
-	if fileConfig.Window.X != nil {
-		x := *fileConfig.Window.X
-		defaultConfig.Window.X = &x
-	}
-	if fileConfig.Window.Y != nil {
-		y := *fileConfig.Window.Y
-		defaultConfig.Window.Y = &y
-	}
-	if fileConfig.Window.BringAllToFront != nil {
-		defaultConfig.Window.BringAllToFront = *fileConfig.Window.BringAllToFront
-	}
-	if fileConfig.Window.MoveSourceOnNewWindow != nil {
-		defaultConfig.Window.MoveSourceOnNewWindow = *fileConfig.Window.MoveSourceOnNewWindow
-	}
-
-	// Merge Startup config
-	if fileConfig.Startup.Directory != nil {
-		defaultConfig.Startup.Directory = strings.TrimSpace(*fileConfig.Startup.Directory)
-	}
-
-	// Merge Theme config
-	if fileConfig.Theme.Dark != nil {
-		defaultConfig.Theme.Dark = *fileConfig.Theme.Dark
-	}
-	if fileConfig.Theme.FontSize != nil {
-		defaultConfig.Theme.FontSize = *fileConfig.Theme.FontSize
-	}
-	if fileConfig.Theme.FontName != nil {
-		defaultConfig.Theme.FontName = strings.TrimSpace(*fileConfig.Theme.FontName)
-	}
-	if fileConfig.Theme.FontPath != nil && *fileConfig.Theme.FontPath != "" {
-		defaultConfig.Theme.FontPath = *fileConfig.Theme.FontPath
-	}
-	if fileConfig.Theme.MonospaceFontName != nil {
-		defaultConfig.Theme.MonospaceFontName = strings.TrimSpace(*fileConfig.Theme.MonospaceFontName)
-	}
-	if fileConfig.Theme.MonospaceFontPath != nil && *fileConfig.Theme.MonospaceFontPath != "" {
-		defaultConfig.Theme.MonospaceFontPath = *fileConfig.Theme.MonospaceFontPath
-	}
-	if fileConfig.Theme.Colors != nil {
-		defaultConfig.Theme.Colors = make(map[string]ThemeColorConfig, len(fileConfig.Theme.Colors))
-		for k, v := range fileConfig.Theme.Colors {
-			defaultConfig.Theme.Colors[strings.TrimSpace(k)] = cloneThemeColorConfig(v)
-		}
-	}
-
-	// Merge Debug config
-	if fileConfig.Debug.Enabled != nil {
-		defaultConfig.Debug.Enabled = *fileConfig.Debug.Enabled
-	}
-	if fileConfig.Debug.LogDirectory != nil {
-		defaultConfig.Debug.LogDirectory = strings.TrimSpace(*fileConfig.Debug.LogDirectory)
-	}
-	if fileConfig.Debug.MaxLogFiles != nil && *fileConfig.Debug.MaxLogFiles > 0 {
-		defaultConfig.Debug.MaxLogFiles = *fileConfig.Debug.MaxLogFiles
-	}
-
-	// Merge UI config
-	if fileConfig.UI.ShowHiddenFiles != nil {
-		defaultConfig.UI.ShowHiddenFiles = *fileConfig.UI.ShowHiddenFiles
-	}
-	if fileConfig.UI.Sort.SortBy != nil && *fileConfig.UI.Sort.SortBy != "" {
-		defaultConfig.UI.Sort.SortBy = *fileConfig.UI.Sort.SortBy
-	}
-	if fileConfig.UI.Sort.SortOrder != nil && *fileConfig.UI.Sort.SortOrder != "" {
-		defaultConfig.UI.Sort.SortOrder = *fileConfig.UI.Sort.SortOrder
-	}
-	if fileConfig.UI.Sort.DirectoriesFirst != nil {
-		defaultConfig.UI.Sort.DirectoriesFirst = *fileConfig.UI.Sort.DirectoriesFirst
-	}
-	if fileConfig.UI.ItemSpacing != nil && *fileConfig.UI.ItemSpacing != 0 {
-		defaultConfig.UI.ItemSpacing = *fileConfig.UI.ItemSpacing
-	}
-	if fileConfig.UI.ScrollMargin != nil {
-		defaultConfig.UI.ScrollMargin = *fileConfig.UI.ScrollMargin
-	}
-	if fileConfig.UI.Copy.PreserveTimestamps != nil {
-		defaultConfig.UI.Copy.PreserveTimestamps = *fileConfig.UI.Copy.PreserveTimestamps
-	}
-	if fileConfig.UI.Viewer.MaxWidth != nil && *fileConfig.UI.Viewer.MaxWidth >= 0 {
-		defaultConfig.UI.Viewer.MaxWidth = *fileConfig.UI.Viewer.MaxWidth
-	}
-	if fileConfig.UI.Viewer.MaxHeight != nil && *fileConfig.UI.Viewer.MaxHeight >= 0 {
-		defaultConfig.UI.Viewer.MaxHeight = *fileConfig.UI.Viewer.MaxHeight
-	}
-	if fileConfig.UI.Viewer.DefaultPane != nil {
-		if pane := NormalizeViewerDefaultPane(*fileConfig.UI.Viewer.DefaultPane); pane != "" {
-			defaultConfig.UI.Viewer.DefaultPane = pane
-		}
-	}
-	if fileConfig.UI.Viewer.DefaultWrap != nil {
-		defaultConfig.UI.Viewer.DefaultWrap = *fileConfig.UI.Viewer.DefaultWrap
-	}
-	if fileConfig.UI.Archive.ZipNameEncoding != nil && strings.TrimSpace(*fileConfig.UI.Archive.ZipNameEncoding) != "" {
-		defaultConfig.UI.Archive.ZipNameEncoding = strings.TrimSpace(*fileConfig.UI.Archive.ZipNameEncoding)
-	}
-	if fileConfig.UI.IME.Enabled != nil {
-		defaultConfig.UI.IME.Enabled = *fileConfig.UI.IME.Enabled
-	}
-
-	// Merge CursorStyle config
-	if fileConfig.UI.CursorStyle.Type != nil && *fileConfig.UI.CursorStyle.Type != "" {
-		defaultConfig.UI.CursorStyle.Type = *fileConfig.UI.CursorStyle.Type
-	}
-	if fileConfig.UI.CursorStyle.Thickness != nil && *fileConfig.UI.CursorStyle.Thickness != 0 {
-		defaultConfig.UI.CursorStyle.Thickness = *fileConfig.UI.CursorStyle.Thickness
-	}
-
-	// Merge CursorMemory config
-	if fileConfig.UI.CursorMemory.MaxEntries != nil && *fileConfig.UI.CursorMemory.MaxEntries != 0 {
-		defaultConfig.UI.CursorMemory.MaxEntries = *fileConfig.UI.CursorMemory.MaxEntries
-	}
-
-	// Merge NavigationHistory config
-	if fileConfig.UI.NavigationHistory.MaxEntries != nil && *fileConfig.UI.NavigationHistory.MaxEntries != 0 {
-		defaultConfig.UI.NavigationHistory.MaxEntries = *fileConfig.UI.NavigationHistory.MaxEntries
-	}
-
-	// Merge FileFilter config
-	if fileConfig.UI.FileFilter.MaxEntries != nil && *fileConfig.UI.FileFilter.MaxEntries != 0 {
-		defaultConfig.UI.FileFilter.MaxEntries = *fileConfig.UI.FileFilter.MaxEntries
-	}
-
-	// Merge DirectoryJumps config
-	if fileConfig.UI.DirectoryJumps.Entries != nil {
-		defaultConfig.UI.DirectoryJumps.Entries = fileConfig.UI.DirectoryJumps.Entries
-	}
-	if fileConfig.UI.KeyBindings != nil {
-		defaultConfig.UI.KeyBindings = fileConfig.UI.KeyBindings
-	}
-	if fileConfig.UI.ExternalCommands != nil {
-		defaultConfig.UI.ExternalCommands = fileConfig.UI.ExternalCommands
-	}
-	return nil
-}
-
-func validateRawConfig(cfg *rawConfig) error {
-	if cfg == nil {
-		return nil
-	}
-	if cfg.Window.Width != nil && *cfg.Window.Width <= 0 {
-		return fmt.Errorf("window.width must be positive")
-	}
-	if cfg.Window.Height != nil && *cfg.Window.Height <= 0 {
-		return fmt.Errorf("window.height must be positive")
-	}
-	if cfg.Theme.FontSize != nil && *cfg.Theme.FontSize < 0 {
-		return fmt.Errorf("theme.fontSize must be zero or positive")
-	}
-	if cfg.Debug.MaxLogFiles != nil && *cfg.Debug.MaxLogFiles <= 0 {
-		return fmt.Errorf("debug.maxLogFiles must be positive")
-	}
-	if cfg.UI.Sort.SortBy != nil && !IsValidSortBy(*cfg.UI.Sort.SortBy) {
-		return fmt.Errorf("ui.sort.sortBy must be name, size, modified, or extension")
-	}
-	if cfg.UI.Sort.SortOrder != nil && !IsValidSortOrder(*cfg.UI.Sort.SortOrder) {
-		return fmt.Errorf("ui.sort.sortOrder must be asc or desc")
-	}
-	if cfg.UI.ItemSpacing != nil && *cfg.UI.ItemSpacing < 0 {
-		return fmt.Errorf("ui.itemSpacing must be zero or positive")
-	}
-	if cfg.UI.ScrollMargin != nil && *cfg.UI.ScrollMargin < 0 {
-		return fmt.Errorf("ui.scrollMargin must be zero or positive")
-	}
-	if cfg.UI.Viewer.MaxWidth != nil && *cfg.UI.Viewer.MaxWidth < 0 {
-		return fmt.Errorf("ui.viewer.maxWidth must be zero or positive")
-	}
-	if cfg.UI.Viewer.MaxHeight != nil && *cfg.UI.Viewer.MaxHeight < 0 {
-		return fmt.Errorf("ui.viewer.maxHeight must be zero or positive")
-	}
-	if cfg.UI.Viewer.DefaultPane != nil && NormalizeViewerDefaultPane(*cfg.UI.Viewer.DefaultPane) == "" {
-		return fmt.Errorf("ui.viewer.defaultPane must be auto, text, markdown, or hex")
-	}
-	if cfg.UI.Archive.ZipNameEncoding != nil && strings.TrimSpace(*cfg.UI.Archive.ZipNameEncoding) == "" {
-		return fmt.Errorf("ui.archive.zipNameEncoding must not be empty")
-	}
-	if cfg.UI.CursorStyle.Type != nil && !IsValidCursorStyleType(*cfg.UI.CursorStyle.Type) {
-		return fmt.Errorf("ui.cursorStyle.type must be underline, border, or background")
-	}
-	if cfg.UI.CursorStyle.Thickness != nil && *cfg.UI.CursorStyle.Thickness < 0 {
-		return fmt.Errorf("ui.cursorStyle.thickness must be zero or positive")
-	}
-	if cfg.UI.CursorMemory.MaxEntries != nil && *cfg.UI.CursorMemory.MaxEntries <= 0 {
-		return fmt.Errorf("ui.cursorMemory.maxEntries must be positive")
-	}
-	if cfg.UI.NavigationHistory.MaxEntries != nil && *cfg.UI.NavigationHistory.MaxEntries <= 0 {
-		return fmt.Errorf("ui.navigationHistory.maxEntries must be positive")
-	}
-	if cfg.UI.FileFilter.MaxEntries != nil && *cfg.UI.FileFilter.MaxEntries <= 0 {
-		return fmt.Errorf("ui.fileFilter.maxEntries must be positive")
-	}
-	return nil
 }
 
 // IsValidSortBy reports whether value is a supported sort field.

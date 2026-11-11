@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"image"
 	"image/gif"
@@ -196,6 +197,60 @@ func TestReadPreviewFileContextCanceled(t *testing.T) {
 		t.Fatal("ReadPreviewFileContext should return cancellation")
 	}
 }
+
+func TestPreviewImageDecodeFailureAndCancellation(t *testing.T) {
+	var encoded bytes.Buffer
+	if err := bmp.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	// Keep a valid BMP header, but make the pixel stream fail. The viewer
+	// should retain image metadata on ordinary failure and propagate cancel.
+	header := encoded.Bytes()[:54]
+	for _, cancelRead := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cancel=%t", cancelRead), func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			preview := &PreviewFile{}
+			rest := previewReaderFunc(func([]byte) (int, error) {
+				if cancelRead {
+					cancel()
+				}
+				return 0, io.ErrUnexpectedEOF
+			})
+			err := decodePreviewImage(ctx, preview, "BMP", header, rest, nil)
+			if cancelRead {
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("decode error = %v, want cancellation", err)
+				}
+				return
+			}
+			if err != nil || preview.ImageError != "failed to decode BMP image" || preview.Image != nil {
+				t.Fatalf("decode error=%v image error=%q image=%v", err, preview.ImageError, preview.Image)
+			}
+			if preview.ImageWidth != 2 || preview.ImageHeight != 2 || !preview.Binary {
+				t.Fatalf("image metadata lost: %#v", preview)
+			}
+		})
+	}
+
+	oversized := bytes.Clone(header)
+	binary.LittleEndian.PutUint32(oversized[18:22], ImagePreviewEdgeLimit+1)
+	preview := &PreviewFile{}
+	rest := previewReaderFunc(func([]byte) (int, error) {
+		t.Fatal("oversized image must be rejected before reading pixels")
+		return 0, io.EOF
+	})
+	if err := decodePreviewImage(context.Background(), preview, "BMP", oversized, rest, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(preview.ImageError, "image too large:") || preview.Image != nil {
+		t.Fatalf("oversized image result: %#v", preview)
+	}
+}
+
+type previewReaderFunc func([]byte) (int, error)
+
+func (f previewReaderFunc) Read(p []byte) (int, error) { return f(p) }
 
 func TestValidatePreviewImageDimensions(t *testing.T) {
 	for _, tt := range []struct {

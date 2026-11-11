@@ -420,58 +420,9 @@ func (fm *FileManager) applyDirectoryListing(path string, files []fileinfo.FileI
 	fm.setPathDisplay(path)
 	loadedFiles := fm.GetFiles()
 
-	cursorSet := false
-	if preferredCursorPath != "" {
-		for i, file := range loadedFiles {
-			if file.Path == preferredCursorPath {
-				fm.SetCursorByIndex(i)
-				cursorSet = true
-				break
-			}
-		}
-	}
-	if len(loadedFiles) > 0 && !cursorSet {
-		if isParentDirectoryNavigation(previousPath, path) {
-			dirName := fileinfo.BaseName(previousPath)
-			for i, file := range loadedFiles {
-				if file.Name == dirName {
-					fm.SetCursorByIndex(i)
-					cursorSet = true
-					break
-				}
-			}
-		} else {
-			saved := fm.restoreCursorPosition(path)
-			if saved != "" {
-				for i, file := range loadedFiles {
-					if file.Name == saved {
-						fm.SetCursorByIndex(i)
-						cursorSet = true
-						break
-					}
-				}
-			}
-			if !cursorSet {
-				for _, neighborPath := range cursorNeighbors {
-					for i, file := range loadedFiles {
-						if file.Path != neighborPath {
-							continue
-						}
-						fm.SetCursorByIndex(i)
-						cursorSet = true
-						debugPrint("FileManager: refresh cursor fallback path=%s index=%d", neighborPath, i)
-						break
-					}
-					if cursorSet {
-						break
-					}
-				}
-			}
-		}
-		if !cursorSet {
-			fm.SetCursorByIndex(0)
-		}
-	} else if len(loadedFiles) == 0 {
+	if index := fm.directoryCursorIndex(loadedFiles, path, previousPath, cursorNeighbors, preferredCursorPath); index >= 0 {
+		fm.SetCursorByIndex(index)
+	} else {
 		fm.browserModel().SetCursorPath("")
 	}
 
@@ -479,6 +430,58 @@ func (fm *FileManager) applyDirectoryListing(path string, files []fileinfo.FileI
 	// refreshListAndCursor) and re-query the list length even when empty.
 	fm.refreshListAndCursor()
 	fm.updateStatusBar()
+}
+
+// directoryCursorIndex chooses a row without changing the list or cursor.
+// Cursor memory is touched only when neither a preferred path nor parent
+// navigation determines the position, matching normal history restoration.
+func (fm *FileManager) directoryCursorIndex(files []fileinfo.FileInfo, path, previousPath string, neighbors []string, preferredPath string) int {
+	if len(files) == 0 {
+		return -1
+	}
+	if index := directoryFilePathIndex(files, preferredPath); index >= 0 {
+		return index
+	}
+	if isParentDirectoryNavigation(previousPath, path) {
+		if index := directoryFileNameIndex(files, fileinfo.BaseName(previousPath)); index >= 0 {
+			return index
+		}
+		return 0
+	}
+	if index := directoryFileNameIndex(files, fm.restoreCursorPosition(path)); index >= 0 {
+		return index
+	}
+	for _, neighbor := range neighbors {
+		if index := directoryFilePathIndex(files, neighbor); index >= 0 {
+			debugPrint("FileManager: refresh cursor fallback path=%s index=%d", neighbor, index)
+			return index
+		}
+	}
+	return 0
+}
+
+func directoryFilePathIndex(files []fileinfo.FileInfo, path string) int {
+	if path == "" {
+		return -1
+	}
+	for i, file := range files {
+		if file.Path == path {
+			return i
+		}
+	}
+	return -1
+}
+
+func directoryFileNameIndex(files []fileinfo.FileInfo, name string) int {
+	if name == "" {
+		return -1
+	}
+	for i, file := range files {
+		if file.Name == name {
+			return i
+		}
+	}
+	return -1
 }
 
 func isParentDirectoryNavigation(previousPath, path string) bool {

@@ -2,6 +2,7 @@ package fileinfo
 
 import (
 	"image"
+	"sync"
 	"testing"
 	"time"
 )
@@ -120,5 +121,62 @@ func TestIconServiceCloseReleasesSubscribers(t *testing.T) {
 	defer service.updMu.Unlock()
 	if len(service.subscribers) != 0 {
 		t.Fatalf("subscriber count = %d, want 0 after Close", len(service.subscribers))
+	}
+}
+
+func TestIconServiceStoresOnlyUsableFetchResults(t *testing.T) {
+	service := &IconService{
+		extCache:  make(map[iconCacheKey]*image.RGBA),
+		fileCache: make(map[iconCacheKey]*image.RGBA),
+		done:      make(chan struct{}),
+	}
+	defer service.Close()
+	img := image.NewRGBA(image.Rect(0, 0, 16, 16))
+	for _, scope := range []string{"ext", "file"} {
+		job := iconJob{scope: scope, key: "test", size: 16}
+		if service.storeFetchedIcon(job, nil) {
+			t.Fatal("nil icon was stored")
+		}
+		if !service.storeFetchedIcon(job, img) {
+			t.Fatalf("valid %s icon was rejected", scope)
+		}
+	}
+	if service.storeFetchedIcon(iconJob{scope: "unknown"}, img) {
+		t.Fatal("unknown icon scope was stored")
+	}
+	key := iconCacheKey{name: "test", size: 16}
+	if len(service.extCache) != 1 || len(service.fileCache) != 1 || service.extCache[key] != img || service.fileCache[key] != img {
+		t.Fatal("icons were not stored under their scope and pixel size")
+	}
+	service.Close()
+	if service.storeFetchedIcon(iconJob{scope: "ext", key: "late", size: 16}, img) {
+		t.Fatal("late fetch repopulated the closed service")
+	}
+}
+
+func TestIconServiceCloseConcurrentWithFetchCompletion(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 16, 16))
+	for range 50 {
+		service := &IconService{
+			extCache:  make(map[iconCacheKey]*image.RGBA),
+			fileCache: make(map[iconCacheKey]*image.RGBA),
+			done:      make(chan struct{}),
+		}
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		for _, scope := range []string{"ext", "file"} {
+			wg.Go(func() {
+				<-start
+				if service.storeFetchedIcon(iconJob{scope: scope, key: "late", size: 16}, img) {
+					service.flagUpdated()
+				}
+			})
+		}
+		close(start)
+		service.Close()
+		wg.Wait()
+		if len(service.extCache) != 0 || len(service.fileCache) != 0 || service.updatedAny {
+			t.Fatal("closed service retained a late icon or update notification")
+		}
 	}
 }

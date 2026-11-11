@@ -133,35 +133,8 @@ func ReadPreviewFileWithDebugContext(ctx context.Context, p string, debugPrint f
 	}
 
 	if format := supportedPreviewImageFormat(rawPrefix); format != "" {
-		preview.Binary = true
-		preview.ImageFormat = format
-		stepStart = time.Now()
-		cfg, _, cfgErr := image.DecodeConfig(bytes.NewReader(rawPrefix))
-		previewDebug(debugPrint, "FileViewer: image-config elapsed=%s format=%s width=%d height=%d err=%v",
-			time.Since(stepStart), format, cfg.Width, cfg.Height, cfgErr)
-		if cfgErr != nil {
-			preview.ImageError = fmt.Sprintf("invalid %s image", format)
-		} else {
-			preview.ImageWidth = cfg.Width
-			preview.ImageHeight = cfg.Height
-			if err := validatePreviewImageDimensions(cfg.Width, cfg.Height); err != nil {
-				preview.ImageError = err.Error()
-			} else {
-				stepStart = time.Now()
-				decoded, _, decodeErr := image.Decode(io.MultiReader(
-					bytes.NewReader(rawPrefix),
-					&contextReader{ctx: ctx, reader: rc},
-				))
-				previewDebug(debugPrint, "FileViewer: image-decode elapsed=%s format=%s err=%v", time.Since(stepStart), format, decodeErr)
-				if decodeErr != nil {
-					if err := ctx.Err(); err != nil {
-						return nil, err
-					}
-					preview.ImageError = fmt.Sprintf("failed to decode %s image", format)
-				} else {
-					preview.Image = decoded
-				}
-			}
+		if err := decodePreviewImage(ctx, preview, format, rawPrefix, rc, debugPrint); err != nil {
+			return nil, err
 		}
 	} else {
 		stepStart = time.Now()
@@ -175,6 +148,43 @@ func ReadPreviewFileWithDebugContext(ctx context.Context, p string, debugPrint f
 	previewDebug(debugPrint, "FileViewer: preview-ready elapsed=%s bytes=%d text_bytes=%d binary=%t truncated=%t",
 		time.Since(totalStart), len(preview.Data), len(preview.Text), preview.Binary, preview.Truncated)
 	return preview, nil
+}
+
+// decodePreviewImage records image failures in the preview so the hex pane
+// remains available. Cancellation is the only decoding failure returned.
+func decodePreviewImage(ctx context.Context, preview *PreviewFile, format string, prefix []byte, rest io.Reader, debugPrint func(format string, args ...interface{})) error {
+	preview.Binary = true
+	preview.ImageFormat = format
+	stepStart := time.Now()
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(prefix))
+	previewDebug(debugPrint, "FileViewer: image-config elapsed=%s format=%s width=%d height=%d err=%v",
+		time.Since(stepStart), format, cfg.Width, cfg.Height, err)
+	if err != nil {
+		preview.ImageError = fmt.Sprintf("invalid %s image", format)
+		return nil
+	}
+	preview.ImageWidth = cfg.Width
+	preview.ImageHeight = cfg.Height
+	if err := validatePreviewImageDimensions(cfg.Width, cfg.Height); err != nil {
+		preview.ImageError = err.Error()
+		return nil
+	}
+
+	stepStart = time.Now()
+	decoded, _, err := image.Decode(io.MultiReader(
+		bytes.NewReader(prefix),
+		&contextReader{ctx: ctx, reader: rest},
+	))
+	previewDebug(debugPrint, "FileViewer: image-decode elapsed=%s format=%s err=%v", time.Since(stepStart), format, err)
+	if err != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		preview.ImageError = fmt.Sprintf("failed to decode %s image", format)
+		return nil
+	}
+	preview.Image = decoded
+	return nil
 }
 
 func validatePreviewImageDimensions(width, height int) error {

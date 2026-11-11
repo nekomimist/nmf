@@ -41,8 +41,6 @@ type Parsed struct {
 }
 
 // ResolveRead maps input into a VFS provider and native path for ReadDir.
-// Minimal implementation: Windows supports UNC and smb:// to UNC conversion.
-// Other OS: only local paths are supported for now.
 func ResolveRead(input string) (VFS, Parsed, error) {
 	return ResolveReadContext(context.Background(), input)
 }
@@ -61,119 +59,96 @@ func ResolveReadContext(ctx context.Context, input string) (VFS, Parsed, error) 
 	}
 
 	if archiveFile, inner, ok := SplitArchivePath(raw); ok {
-		vfs, err := NewArchiveVFSContext(ctx, archiveFile)
-		if err != nil {
-			return nil, Parsed{Raw: input, Scheme: SchemeArchive, Display: raw, Provider: "archive", Archive: archiveFile, Inner: inner}, err
-		}
-		native := archiveNativePath(inner)
-		return vfs, Parsed{
-			Scheme:   SchemeArchive,
-			Raw:      input,
-			Display:  ArchiveDisplayPath(archiveFile, inner),
-			Native:   native,
-			Provider: "archive",
-			Archive:  archiveFile,
-			Inner:    inner,
-		}, nil
+		return resolveArchiveRead(ctx, input, raw, archiveFile, inner)
 	}
-
-	// Windows: support UNC and smb://
 	if runtime.GOOS == "windows" {
-		if isUNC(raw) {
-			p := parseUNC(raw)
-			p.Raw = input
-			p.Provider = "local"
-			if err := normalizeParsedSMBPath(&p); err != nil {
-				return nil, p, err
-			}
-			return LocalFS{}, p, nil
-		}
-		if strings.HasPrefix(raw, "//") {
-			unc := smbURLToUNC(raw)
-			p := parseUNC(unc)
-			p.Raw = input
-			p.Provider = "local"
-			if err := normalizeParsedSMBPath(&p); err != nil {
-				return nil, p, err
-			}
-			return LocalFS{}, p, nil
-		}
-		if isSMBURL(raw) {
-			unc := smbURLToUNC(raw)
-			p := parseUNC(unc)
-			p.Raw = input
-			p.Provider = "local"
-			if err := normalizeParsedSMBPath(&p); err != nil {
-				return nil, p, err
-			}
-			return LocalFS{}, p, nil
-		}
-		// Fallback: treat as local path
-		return LocalFS{}, Parsed{Raw: input, Scheme: SchemeFile, Display: input, Native: input, Provider: "local"}, nil
+		return resolveWindowsRead(input, raw)
 	}
-
-	// Non-Windows: support smb:// (and //) via existing CIFS mounts if present.
-	// If no mount found, fall back to SMBFS provider (direct SMB access).
 	if isSMBURL(raw) || strings.HasPrefix(raw, "//") {
-		host, share, segs, user, pass, domain := parseSMBURL(raw)
-		if host != "" && share != "" {
-			var err error
-			segs, err = normalizeSMBPathComponents(host, share, segs)
-			if err != nil {
-				return nil, Parsed{Raw: input, Scheme: SchemeSMB, Host: host, Share: share, Provider: "smb"}, err
-			}
-			if mp, ok := findSMBMount(host, share); ok {
-				native, err := mountedSMBNativePath(mp, segs)
-				if err != nil {
-					return nil, Parsed{Raw: input, Scheme: SchemeSMB, Host: host, Share: share, Segments: segs, Provider: "local"}, err
-				}
-				disp := smbDisplayPath(host, share, segs)
-				return LocalFS{}, Parsed{
-					Scheme:   SchemeSMB,
-					Host:     host,
-					Share:    share,
-					Segments: segs,
-					Raw:      input,
-					Display:  disp,
-					Native:   native,
-					Provider: "local",
-					User:     user,
-					Password: pass,
-					Domain:   domain,
-				}, nil
-			}
-			// Fallback: provide SMBFS with native path relative to share
-			native := "/"
-			if len(segs) > 0 {
-				native = "/" + path.Join(segs...)
-			}
-			disp := smbDisplayPath(host, share, segs)
-			var credentials *Credentials
-			if user != "" || pass != "" || domain != "" {
-				credentials = &Credentials{Domain: domain, Username: user, Password: pass}
-			}
-			parsed := Parsed{
-				Scheme:   SchemeSMB,
-				Host:     host,
-				Share:    share,
-				Segments: segs,
-				Raw:      input,
-				Display:  disp,
-				Native:   native,
-				Provider: "smb",
-				User:     user,
-				Password: pass,
-				Domain:   domain,
-			}
-			vfs, err := newSMBProvider(host, share, credentials)
-			if err != nil {
-				return nil, parsed, err
-			}
-			return vfs, parsed, nil
-		}
-		return nil, Parsed{Raw: input, Scheme: SchemeSMB, Provider: "smb"}, errors.New("invalid smb path")
+		return resolveSMBRead(input, raw)
 	}
 	return LocalFS{}, Parsed{Raw: input, Scheme: SchemeFile, Display: input, Native: input, Provider: "local"}, nil
+}
+
+func resolveArchiveRead(ctx context.Context, input, raw, archiveFile, inner string) (VFS, Parsed, error) {
+	vfs, err := NewArchiveVFSContext(ctx, archiveFile)
+	if err != nil {
+		return nil, Parsed{Raw: input, Scheme: SchemeArchive, Display: raw, Provider: "archive", Archive: archiveFile, Inner: inner}, err
+	}
+	return vfs, Parsed{
+		Scheme:   SchemeArchive,
+		Raw:      input,
+		Display:  ArchiveDisplayPath(archiveFile, inner),
+		Native:   archiveNativePath(inner),
+		Provider: "archive",
+		Archive:  archiveFile,
+		Inner:    inner,
+	}, nil
+}
+
+// resolveWindowsRead uses the native filesystem for both local and SMB paths.
+func resolveWindowsRead(input, raw string) (VFS, Parsed, error) {
+	unc := raw
+	if !isUNC(raw) {
+		if !strings.HasPrefix(raw, "//") && !isSMBURL(raw) {
+			return LocalFS{}, Parsed{Raw: input, Scheme: SchemeFile, Display: input, Native: input, Provider: "local"}, nil
+		}
+		unc = smbURLToUNC(raw)
+	}
+	parsed := parseUNC(unc)
+	parsed.Raw = input
+	parsed.Provider = "local"
+	if err := normalizeParsedSMBPath(&parsed); err != nil {
+		return nil, parsed, err
+	}
+	return LocalFS{}, parsed, nil
+}
+
+// resolveSMBRead prefers an existing CIFS mount and otherwise opens a direct
+// SMB provider. Only non-Windows resolution uses this path.
+func resolveSMBRead(input, raw string) (VFS, Parsed, error) {
+	host, share, segs, user, pass, domain := parseSMBURL(raw)
+	if host == "" || share == "" {
+		return nil, Parsed{Raw: input, Scheme: SchemeSMB, Provider: "smb"}, errors.New("invalid smb path")
+	}
+	segs, err := normalizeSMBPathComponents(host, share, segs)
+	if err != nil {
+		return nil, Parsed{Raw: input, Scheme: SchemeSMB, Host: host, Share: share, Provider: "smb"}, err
+	}
+	parsed := Parsed{
+		Scheme:   SchemeSMB,
+		Host:     host,
+		Share:    share,
+		Segments: segs,
+		Raw:      input,
+		Display:  smbDisplayPath(host, share, segs),
+		Native:   "/",
+		Provider: "smb",
+		User:     user,
+		Password: pass,
+		Domain:   domain,
+	}
+	if mp, ok := findSMBMount(host, share); ok {
+		native, err := mountedSMBNativePath(mp, segs)
+		if err != nil {
+			return nil, Parsed{Raw: input, Scheme: SchemeSMB, Host: host, Share: share, Segments: segs, Provider: "local"}, err
+		}
+		parsed.Native = native
+		parsed.Provider = "local"
+		return LocalFS{}, parsed, nil
+	}
+	if len(segs) > 0 {
+		parsed.Native = "/" + path.Join(segs...)
+	}
+	var credentials *Credentials
+	if user != "" || pass != "" || domain != "" {
+		credentials = &Credentials{Domain: domain, Username: user, Password: pass}
+	}
+	vfs, err := newSMBProvider(host, share, credentials)
+	if err != nil {
+		return nil, parsed, err
+	}
+	return vfs, parsed, nil
 }
 
 // ReadDirPortable lists a directory using ResolveRead and LocalFS/other providers.

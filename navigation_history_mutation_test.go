@@ -2,6 +2,7 @@ package main
 
 import (
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -93,6 +94,105 @@ func TestApplyJobNavigationHistoryUsesOnlyTopLevelDirectoryResults(t *testing.T)
 	}
 	if containsNavigationPath(entries, filepath.Join(parent, "file.txt")) || containsNavigationPath(entries, existingExtractRoot) {
 		t.Fatalf("entries = %#v, included a non-directory or existing extract root", entries)
+	}
+}
+
+func TestRewriteNavigationHistoryMergesDestinationStatistics(t *testing.T) {
+	parent := t.TempDir()
+	oldRoot, newRoot := filepath.Join(parent, "old"), filepath.Join(parent, "new")
+	oldChild, newChild := filepath.Join(oldRoot, "child"), filepath.Join(newRoot, "child")
+	older, newer := time.Unix(100, 0), time.Unix(200, 0)
+	for _, destinationFirst := range []bool{false, true} {
+		name := "source first"
+		entries := []string{oldRoot, oldChild, newRoot, newChild}
+		if destinationFirst {
+			name = "destination first"
+			entries = []string{newRoot, newChild, oldRoot, oldChild}
+		}
+		t.Run(name, func(t *testing.T) {
+			state := navigationHistoryTestState(entries...)
+			state.NavigationHistory.UseCount = map[string]int{oldRoot: 3, newRoot: 4, oldChild: 2, newChild: 5}
+			state.NavigationHistory.LastUsed = map[string]time.Time{oldRoot: older, newRoot: newer, oldChild: older, newChild: newer}
+			state.NavigationHistory.Pinned = []string{oldChild, newChild, oldRoot, newRoot}
+			if !rewriteNavigationHistoryTree(state, oldRoot, newRoot, 20) {
+				t.Fatal("history was not rewritten")
+			}
+			history := state.NavigationHistory
+			if len(history.Entries) != 2 || !containsNavigationPath(history.Entries, newRoot) || !containsNavigationPath(history.Entries, newChild) {
+				t.Fatalf("merged entries = %v", history.Entries)
+			}
+			if want := map[string]int{newRoot: 8, newChild: 7}; !reflect.DeepEqual(history.UseCount, want) {
+				t.Fatalf("merged counts = %v, want %v", history.UseCount, want)
+			}
+			if len(history.LastUsed) != 2 || !history.LastUsed[newChild].Equal(newer) || !history.LastUsed[newRoot].After(newer) {
+				t.Fatalf("merged timestamps = %v", history.LastUsed)
+			}
+			if want := []string{newChild, newRoot}; !reflect.DeepEqual(history.Pinned, want) {
+				t.Fatalf("merged pins = %v, want %v", history.Pinned, want)
+			}
+		})
+	}
+}
+
+func TestRewriteNavigationHistoryPreservesLegacyStatistics(t *testing.T) {
+	parent := t.TempDir()
+	oldRoot, newRoot := filepath.Join(parent, "old"), filepath.Join(parent, "new")
+	oldChild, newChild := filepath.Join(oldRoot, "child"), filepath.Join(newRoot, "child")
+	for _, tt := range []struct {
+		name                           string
+		oldCount, canonicalCount, want int
+	}{
+		{"canonical fallback", 0, 5, 5},
+		{"missing statistics", 0, 0, 1},
+		{"negative count", -2, 5, 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			state := navigationHistoryTestState(oldChild)
+			state.NavigationHistory.UseCount = map[string]int{oldChild: tt.oldCount, newChild: tt.canonicalCount}
+			newer := time.Unix(200, 0)
+			state.NavigationHistory.LastUsed[newChild] = newer
+			rewriteNavigationHistoryTree(state, oldRoot, newRoot, 20)
+			if got := state.NavigationHistory.UseCount[newChild]; got != tt.want {
+				t.Fatalf("rebased count = %d, want %d", got, tt.want)
+			}
+			if got := state.NavigationHistory.LastUsed[newChild]; !got.Equal(newer) {
+				t.Fatalf("rebased timestamp = %v, want %v", got, newer)
+			}
+		})
+	}
+}
+
+func TestApplyJobNavigationHistoryNotifiesOncePerBatch(t *testing.T) {
+	parent := t.TempDir()
+	first, second := filepath.Join(parent, "first"), filepath.Join(parent, "second")
+	target := filepath.Join(parent, "target")
+	for _, jobType := range []jobs.Type{jobs.TypeCopy, jobs.TypeExtract, jobs.TypeMove, jobs.TypeDelete} {
+		t.Run(string(jobType), func(t *testing.T) {
+			hub := newNavigationHistoryEventHub()
+			fm := &FileManager{
+				runtime: &ApplicationRuntime{navigationHistoryEvents: hub},
+				state:   navigationHistoryTestState(first, second),
+			}
+			var notifications []string
+			hub.subscribe(func(path string) { notifications = append(notifications, path) })
+			fm.applyJobNavigationHistory(jobs.JobSnapshot{Type: jobType, Results: []jobs.Result{
+				{Source: first, Destination: target, SourceIsDir: true, DestinationCreated: true},
+				{Source: second, Destination: target + "2", SourceIsDir: true, DestinationCreated: true},
+				{Source: "ignored", Destination: "ignored"},
+			}})
+			preferred := canonicalNavigationHistoryPath(target + "2")
+			if jobType == jobs.TypeDelete {
+				preferred = ""
+			}
+			if want := []string{preferred}; !reflect.DeepEqual(notifications, want) {
+				t.Fatalf("notifications = %v, want %v", notifications, want)
+			}
+			notifications = nil
+			fm.applyJobNavigationHistory(jobs.JobSnapshot{Type: jobType, Results: []jobs.Result{{Source: "ignored"}}})
+			if len(notifications) != 0 {
+				t.Fatalf("ignored results notified listeners: %v", notifications)
+			}
+		})
 	}
 }
 

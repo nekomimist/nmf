@@ -86,28 +86,64 @@ func copyReaderWithCancel(j *Job, execCtx *executionContext, in io.Reader, srcDi
 		return wrapPath(tmp.displayPath(), err)
 	}
 
-	totalBytes := fi.Size()
+	closed, published := false, false
+	defer func() {
+		if !closed {
+			_ = out.Close()
+		}
+		if !published {
+			_ = removePath(execCtx, tmp)
+		}
+	}()
+
+	if err := copyTransferData(j, execCtx, in, out, srcDisplay, tmp.displayPath(), fi.Size()); err != nil {
+		return err
+	}
+	if local, ok := out.(*os.File); ok {
+		if err := local.Chmod(fi.Mode().Perm()); err != nil {
+			return wrapPath(tmp.displayPath(), err)
+		}
+	}
+	// Close before publishing, including on Windows. Record the attempt so
+	// cleanup does not close the handle twice if Close returns an error.
+	err = out.Close()
+	closed = true
+	if err != nil {
+		return wrapPath(tmp.displayPath(), err)
+	}
+
+	dbg("job %d: rename %s -> %s", j.ID, tmp.displayPath(), dst.displayPath())
+	if err := replacePath(j, execCtx, tmp, dst, overwrite); err != nil {
+		return wrapPath(dst.displayPath(), err)
+	}
+	published = true
+	if shouldPreserveTimestamps(j) {
+		if err := chtimesPath(execCtx, dst, fi.ModTime(), fi.ModTime()); err != nil {
+			return wrapPath(dst.displayPath(), err)
+		}
+	}
+	return nil
+}
+
+// copyTransferData owns progress accounting but leaves output cleanup and
+// publication to the caller. Read and write errors retain their own paths.
+func copyTransferData(j *Job, execCtx *executionContext, in io.Reader, out io.Writer, srcDisplay, tmpDisplay string, totalBytes int64) error {
 	if totalBytes < 0 {
 		totalBytes = 0
 	}
 	j.beginFileProgress(srcDisplay, totalBytes)
-
 	if execCtx.copyBuffer == nil {
 		execCtx.copyBuffer = make([]byte, 1<<20)
 	}
 	buf := execCtx.copyBuffer
 	for {
 		if canceled(j) {
-			out.Close()
-			_ = removePath(execCtx, tmp)
 			return errCanceled
 		}
 		n, rerr := in.Read(buf)
 		if n > 0 {
 			if _, werr := out.Write(buf[:n]); werr != nil {
-				out.Close()
-				_ = removePath(execCtx, tmp)
-				return wrapPath(tmp.displayPath(), werr)
+				return wrapPath(tmpDisplay, werr)
 			}
 			j.addFileProgress(int64(n), false)
 		}
@@ -115,33 +151,9 @@ func copyReaderWithCancel(j *Job, execCtx *executionContext, in io.Reader, srcDi
 			break
 		}
 		if rerr != nil {
-			out.Close()
-			_ = removePath(execCtx, tmp)
 			return wrapPath(srcDisplay, rerr)
 		}
 	}
 	j.completeFileProgress()
-	if local, ok := out.(*os.File); ok {
-		if err := local.Chmod(fi.Mode().Perm()); err != nil {
-			out.Close()
-			_ = removePath(execCtx, tmp)
-			return wrapPath(tmp.displayPath(), err)
-		}
-	}
-	if err := out.Close(); err != nil {
-		_ = removePath(execCtx, tmp)
-		return wrapPath(tmp.displayPath(), err)
-	}
-
-	dbg("job %d: rename %s -> %s", j.ID, tmp.displayPath(), dst.displayPath())
-	if err := replacePath(j, execCtx, tmp, dst, overwrite); err != nil {
-		_ = removePath(execCtx, tmp)
-		return wrapPath(dst.displayPath(), err)
-	}
-	if shouldPreserveTimestamps(j) {
-		if err := chtimesPath(execCtx, dst, fi.ModTime(), fi.ModTime()); err != nil {
-			return wrapPath(dst.displayPath(), err)
-		}
-	}
 	return nil
 }
