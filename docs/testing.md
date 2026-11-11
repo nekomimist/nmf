@@ -1,7 +1,62 @@
 # Testing
 
-Run `make test-all` for the native suite and `make test-race` for concurrency
-checks. Use `go vet -tags migrated_fynedo ./...` for repository-wide vetting.
+On Linux/WSL, run `make test-all` for the native suite and `make test-race` for
+concurrency checks. Use `go vet -tags migrated_fynedo ./...` for repository-wide
+vetting.
+
+## Native Windows development
+
+With Windows Go (at least the version in `go.mod`) and Zig on `PATH`, run:
+
+```powershell
+.\scripts\dev-windows.ps1 test
+.\scripts\dev-windows.ps1 test -Arguments @('-v', './...')
+.\scripts\dev-windows.ps1 test -Arguments @('-run', 'TestResolve', './internal/fileinfo')
+.\scripts\dev-windows.ps1 vet
+.\scripts\dev-windows.ps1 build
+```
+
+The script enables cgo and configures Zig for the Windows Go host architecture.
+Without arguments, `test` and `vet` cover `./...`. When supplying `-Arguments`,
+include the package paths as well as any Go flags. `run` forwards these
+arguments to NMF; `build` forwards them as Go build flags. Commands run from
+the repository root, and native command failures propagate as nonzero exit
+codes. Use `-Zig` to select an executable outside `PATH`.
+
+Go and Zig caches live under `.cache/go-build-windows`,
+`.cache/zig-local-windows`, and `.cache/zig-global-windows`. These absolute
+paths are computed from the checkout location and used only while the script
+runs; inherited cross-compilation settings and cache paths are restored on exit.
+Go modules still use the normal module cache. Windows CI uses the same script
+to execute all tests and build `dist/nmf-dev.exe`. Its Go version comes
+from `go.mod`; Zig 0.16.0 is downloaded with a pinned SHA-256 checksum, matching
+the Zig release in the current Linux Flake. Review both pins when upgrading.
+
+The `vet` command runs the full analyzer set and propagates failures. It currently
+reports five existing `unsafeptr` diagnostics in `internal/shellmenu` for COM
+callback and window-user-data pointer conversions. Windows vet is not a CI gate
+until those conversions have been reviewed; no analyzer is disabled by the
+script. Linux CI continues to require repository-wide vetting.
+
+If Windows PowerShell 5.1 blocks local scripts under its execution policy, invoke
+the script in a child process without changing the machine's policy:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev-windows.ps1 test
+```
+
+The existing Fyne tests use a headless test driver. Passing them does not
+validate native rendering, IME, DPI, focus, or Explorer interactions. Review
+skips as well: junction and symlink tests need filesystem support and suitable
+privileges. The Windows CI runner is x64; native ARM64 execution is not covered
+by this job.
+
+Keep race checks on Linux for now. Windows Go 1.27.3 with Zig 0.18.0-dev failed
+to link the race runtime's synchronization APIs; explicitly linking those APIs
+then exposed a ThreadSanitizer address-allocation failure before tests ran.
+Windows `-race` is not a supported part of this script's workflow yet. This
+does not affect the ordinary Windows suite. See the
+[Go race detector requirements](https://go.dev/doc/articles/race_detector#Requirements).
 
 ## Windows execution from WSL
 
@@ -22,8 +77,8 @@ temporary directory.
 Review skipped tests as well as failures. In particular, junction and symlink
 regressions should run on a host with suitable filesystem support and privileges.
 `make test-windows-compile` and `make test-windows-compile-arm64` only compile;
-they do not execute tests. CI additionally runs filesystem, job, comparison,
-and browser tests on a Windows runner without requiring the GUI C toolchain.
+they do not execute tests. CI additionally runs the full suite with the native
+Windows Go/Zig toolchain described above.
 
 ## Disposable SMB integration tests
 

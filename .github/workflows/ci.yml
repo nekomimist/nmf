@@ -51,7 +51,10 @@ jobs:
 
   windows-native:
     runs-on: windows-2025
-    timeout-minutes: 20
+    timeout-minutes: 30
+    env:
+      # Match dev-windows.ps1 so setup-go caches the directory actually used.
+      GOCACHE: ${{ github.workspace }}\.cache\go-build-windows
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -60,10 +63,26 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Run native Windows filesystem and browser tests
-        env:
-          CGO_ENABLED: "0"
-        run: go test -tags migrated_fynedo -count=1 -v ./internal/fileinfo ./internal/jobs ./internal/filecompare ./internal/browser
+      - name: Install Zig 0.16.0
+        # Same Zig release as the current flake.lock; verify the official archive.
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'zig-x86_64-windows-0.16.0.zip'
+          Invoke-WebRequest 'https://ziglang.org/download/0.16.0/zig-x86_64-windows-0.16.0.zip' -OutFile $archive
+          $expected = '68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e'
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $expected) {
+            throw 'Zig archive checksum mismatch'
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath $env:RUNNER_TEMP
+          Join-Path $env:RUNNER_TEMP 'zig-x86_64-windows-0.16.0' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      - name: Show native toolchain versions
+        run: |
+          go version
+          zig version
+      - name: Run all native Windows tests
+        run: ./scripts/dev-windows.ps1 test -Arguments @('-v', './...')
+      - name: Build native Windows development executable
+        run: ./scripts/dev-windows.ps1 build
 
   macos-smoke:
     # macOS is not a supported release target yet. Keep this diagnostic until

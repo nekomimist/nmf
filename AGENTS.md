@@ -20,6 +20,7 @@ Go and module versions are declared in `go.mod`.
 
 ## Build, Test, and Development Commands
 - Development shell: `.envrc` contains comments only and does not activate direnv or Nix. Run native Go/Fyne commands from the host shell; use `nix develop` explicitly when a pinned Flake environment is needed.
+- On Windows, use `./scripts/dev-windows.ps1 build`, `run`, `test`, or `vet` with Windows Go and Zig on `PATH`. The development build is `dist/nmf-dev.exe`; the script scopes cgo and Windows cache settings to its invocation. For targeted tests, pass `-Arguments @('./internal/config')`; see `docs/testing.md`. Keep race checks on Linux for now.
 - Run app from the native host environment: `go run -tags migrated_fynedo .` (flags: `-d` for debug, `-path /some/dir`).
 - On Linux, build the native binary with `make build` or `make build-linux` (outputs `dist/nmf`). The Makefile rejects `NMF_NIX_DEV_SHELL=1` for this target so WSLg can use the host GL/EGL libraries.
 - Build Windows amd64 from Linux with `make build-windows` (outputs `dist/nmf.exe`) or Windows arm64 with `make build-windows-arm64` (outputs `dist/nmf-arm64.exe`). These targets enter the pinned Nix shell automatically when invoked outside it.

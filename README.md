@@ -118,8 +118,9 @@ there. Details and rationale live in
 
 ## Requirements
 
-- Go 1.26 or newer for native Linux/macOS development.
+- Go 1.26 or newer for native development.
 - Fyne build requirements for the target platform.
+- Zig for native Windows development (CI uses 0.16.0).
 - Nix with Flakes enabled for reproducible Windows cross-builds.
 
 ## Downloads and releases
@@ -164,6 +165,31 @@ NMF uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html), starting at
 
 ## Build and run
 
+### Native Windows development
+
+Install Windows Go and Zig and put both executables on `PATH`. PowerShell 5.1
+or newer can run the development commands; MSYS2, Make, Nix, and the Fyne CLI
+are not required for this workflow.
+
+```powershell
+.\scripts\dev-windows.ps1 build    # dist/nmf-dev.exe
+.\scripts\dev-windows.ps1 run
+.\scripts\dev-windows.ps1 test     # all packages, including UI tests
+.\scripts\dev-windows.ps1 vet
+.\scripts\dev-windows.ps1 test -Arguments @('./internal/config', './internal/jobs')
+.\scripts\dev-windows.ps1 run -Arguments @('-d', '-profile', '.cache/gui-profile', '-path', '.')
+```
+
+Use `-Zig C:\path\to\zig.exe` to select a particular Zig installation. The
+script targets the Windows Go host architecture, uses separate caches under
+`.cache/`, and restores the caller's environment and working directory on exit.
+The development executable retains console logging and does not include the
+release package's Windows icon/version resources. Release binaries continue
+to use the pinned Linux cross-build below. See [Testing](docs/testing.md) for
+Windows test coverage and the current race-detector limitation.
+
+### Linux/WSL development and Windows release builds
+
 ```sh
 go run -tags migrated_fynedo .                    # run
 go run -tags migrated_fynedo . -d                 # run with debug logging
@@ -189,6 +215,11 @@ toolchain upgrade points; use `nix flake lock --update-input nixpkgs`, run the
 build and test targets for both Windows architectures, and commit the
 resulting lock file. Go module versions remain pinned by `go.mod` and
 `go.sum`.
+
+Repository Codex settings do not override Go or Zig cache directories with
+host-specific paths. Linux/WSL commands use the tools' normal cache locations
+unless the caller sets them explicitly. Windows development commands select
+their own Windows-only workspace caches.
 
 Formatting and vetting:
 
