@@ -1,0 +1,7 @@
+{
+  "name": "nmf-gui-windows",
+  "private": true,
+  "dependencies": {
+    "@microsoft/mxc-sdk": "1.0.1"
+  }
+}

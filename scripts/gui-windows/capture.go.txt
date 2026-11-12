@@ -1,0 +1,69 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"image/png"
+	"os"
+	"path/filepath"
+	"time"
+
+	"fyne.io/fyne/v2"
+)
+
+// Only added to the package through the GUI runner's build overlay. Capture
+// reads the native OpenGL front buffer; it does not use Fyne's test driver.
+func startGUICapture(fm *FileManager) {
+	dir := os.Getenv("NMF_GUI_TEST_DIR")
+	if dir == "" {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for sequence := 1; ; sequence++ {
+			name := fmt.Sprintf("capture-%06d", sequence)
+			for range ticker.C {
+				if _, err := os.Stat(filepath.Join(dir, name+".request")); err == nil {
+					break
+				}
+			}
+			fyne.DoAndWait(func() {
+				handler := ""
+				if current := fm.keyManager.GetCurrentHandler(); current != nil {
+					handler = current.GetName()
+				}
+				state := map[string]any{
+					"cursor": fm.GetCurrentCursorIndex(), "count": fm.FileCount(),
+					"path": fm.GetCurrentPath(), "cursorPath": fm.browserModel().CursorPath(),
+					"handler": handler, "focused": focusedObjectLabel(fm.window),
+				}
+				img := fm.window.Canvas().Capture()
+				file, err := os.Create(filepath.Join(dir, name+".png"))
+				if err == nil {
+					err = png.Encode(file, img)
+					if closeErr := file.Close(); err == nil {
+						err = closeErr
+					}
+				}
+				if err != nil {
+					state["error"] = err.Error()
+				}
+				debugPrint("GUI: capture=%s cursor=%d handler=%s error=%v", name, fm.GetCurrentCursorIndex(), handler, err)
+				data, err := json.Marshal(state)
+				if err == nil {
+					// Publish completion only after the image is closed. The reader
+					// never sees a partially written JSON document.
+					tmp := filepath.Join(dir, name+".json.tmp")
+					err = os.WriteFile(tmp, data, 0600)
+					if err == nil {
+						err = os.Rename(tmp, filepath.Join(dir, name+".json"))
+					}
+				}
+				if err != nil {
+					debugPrint("GUI: completion failed capture=%s error=%v", name, err)
+				}
+			})
+		}
+	}()
+}
