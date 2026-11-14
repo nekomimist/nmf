@@ -7,6 +7,7 @@ import (
 )
 
 type fakeCompareDialog struct {
+	order          int
 	missingOrNewer int
 	missing        int
 	newer          int
@@ -25,6 +26,7 @@ func (f *fakeCompareDialog) BackspaceSearch()          {}
 func (f *fakeCompareDialog) CopySelectedPathToSearch() {}
 func (f *fakeCompareDialog) ScrollSelectedRight()      {}
 func (f *fakeCompareDialog) ResetHorizontalScroll()    {}
+func (f *fakeCompareDialog) ToggleHistoryOrder()       { f.order++ }
 func (f *fakeCompareDialog) SelectCurrentItem()        {}
 func (f *fakeCompareDialog) AcceptSelection()          {}
 func (f *fakeCompareDialog) AcceptDirectPath()         {}
@@ -37,6 +39,20 @@ func (f *fakeCompareDialog) SelectNewer()              { f.newer++ }
 func (f *fakeCompareDialog) SelectSizeEqual()          { f.size++ }
 func (f *fakeCompareDialog) SelectSizeTimeEqual()      { f.sizeTime++ }
 func (f *fakeCompareDialog) SelectSizeContentEqual()   { f.sizeContent++ }
+
+func TestCompareDialogHandlerCtrlRTogglesHistoryOrder(t *testing.T) {
+	dialog := &fakeCompareDialog{}
+	handler := NewCompareDialogKeyHandler(dialog, nil)
+	if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{CtrlPressed: true}) {
+		t.Fatal("Ctrl+R should be handled")
+	}
+	if dialog.order != 1 {
+		t.Fatalf("order toggles = %d, want 1", dialog.order)
+	}
+	if handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyR}, ModifierState{CtrlPressed: true, ShiftPressed: true}) {
+		t.Fatal("Ctrl+Shift+R should not match Ctrl+R")
+	}
+}
 
 func TestCompareDialogAltShortcutsSelectMethods(t *testing.T) {
 	dialog := &fakeCompareDialog{}

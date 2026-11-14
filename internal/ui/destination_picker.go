@@ -2,6 +2,8 @@ package ui
 
 import (
 	"image/color"
+	"sort"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -18,6 +20,7 @@ import (
 type DestinationCandidate struct {
 	Path         string
 	OpenInWindow bool
+	LastUsed     time.Time // Navigation-history timestamp, not filesystem access time.
 }
 
 // destinationPicker owns filtering, selection, and scrolling shared by the
@@ -25,6 +28,8 @@ type DestinationCandidate struct {
 // key-handler lifecycle.
 type destinationPicker struct {
 	searchEntry           *CustomSearchEntry
+	orderRadio            *widget.RadioGroup
+	orderMode             string
 	destList              *widget.List
 	filteredDest, allDest []DestinationCandidate
 	openDest              map[string]bool
@@ -85,16 +90,32 @@ func (d *destinationPicker) createWidgets(focus func()) {
 			}
 		}
 	}
+	d.orderRadio = newHistoryOrderRadio(func(mode string) {
+		if d.orderMode == mode {
+			return
+		}
+		d.orderMode = mode
+		d.updateFiltered(d.GetSearchText())
+		if focus != nil {
+			focus()
+		}
+	})
 }
 
 // updateFiltered updates destination list
 func (d *destinationPicker) updateFiltered(q string) {
+	ordered := append([]DestinationCandidate(nil), d.allDest...)
+	if d.orderMode == navigationHistoryOrderLastUsed {
+		sort.SliceStable(ordered, func(i, j int) bool {
+			return ordered[i].LastUsed.After(ordered[j].LastUsed)
+		})
+	}
 	if q == "" {
-		d.filteredDest = d.allDest
+		d.filteredDest = ordered
 	} else {
 		matcher := d.matchers.Build(q)
 		d.filteredDest = d.filteredDest[:0:0]
-		for _, p := range d.allDest {
+		for _, p := range ordered {
 			if matcher.Match(p.Path) {
 				d.filteredDest = append(d.filteredDest, p)
 			}
@@ -116,6 +137,11 @@ func (d *destinationPicker) updateFiltered(q string) {
 	d.updateDestinationEmptyState()
 }
 
+// ToggleHistoryOrder switches between frecency and last-access ordering.
+func (d *destinationPicker) ToggleHistoryOrder() {
+	toggleHistoryOrder(d.orderRadio)
+}
+
 // SetOnSelectedPathChanged sets a callback for destination selection changes.
 func (d *destinationPicker) SetOnSelectedPathChanged(callback func(string)) {
 	d.onPathChanged = callback
@@ -128,7 +154,7 @@ func (d *destinationPicker) notifySelectedPathChanged() {
 	}
 }
 
-// SetDestinations replaces destination candidates while preserving the current search.
+// SetDestinations replaces destination candidates while preserving order mode and search.
 func (d *destinationPicker) SetDestinations(candidates []DestinationCandidate, preferredPath string) {
 	previousPath := d.selectedPath
 	query := d.GetSearchText()

@@ -3,6 +3,7 @@ package ui
 import (
 	"testing"
 
+	"fyne.io/fyne/v2"
 	fynetest "fyne.io/fyne/v2/test"
 
 	"nmf/internal/keymanager"
@@ -209,5 +210,14 @@ func TestCopyMoveDialogOwnerFrameKeepsSinkFocused(t *testing.T) {
 	}
 	if focused := window.Canvas().Focused(); focused != dialog.sink {
 		t.Fatalf("focused object = %T, want copy dialog sink", focused)
+	}
+	lastAccess := fynetest.WidgetRenderer(dialog.orderRadio).Objects()[1]
+	window.Canvas().Focus(lastAccess.(fyne.Focusable))
+	fynetest.Tap(lastAccess.(fyne.Tappable))
+	if dialog.orderRadio.Selected != navigationHistoryOrderLastUsed {
+		t.Fatal("tapping Last Access should change the order mode")
+	}
+	if focused := window.Canvas().Focused(); focused != dialog.sink {
+		t.Fatalf("focus after order change = %T, want copy dialog sink", focused)
 	}
 }

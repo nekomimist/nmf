@@ -1,12 +1,15 @@
 package main
 
 import (
+	"slices"
 	"testing"
+	"time"
 
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/config"
+	"nmf/internal/ui"
 )
 
 func TestJobsButtonText(t *testing.T) {
@@ -27,6 +30,44 @@ func TestJobsButtonText(t *testing.T) {
 				t.Fatalf("jobsButtonText(%d) = %q, want %q", tt.remainingJobs, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestBuildDestinationCandidatesIncludesHistoryTimestampsForOpenPaths(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	now := time.Now()
+	state := &config.State{NavigationHistory: config.NavigationHistoryState{
+		Entries: []string{"/current", "/other", "/frequent", "/recent"},
+		LastUsed: map[string]time.Time{
+			"/current":  now.Add(-time.Hour),
+			"/other":    now.Add(-2 * time.Hour),
+			"/frequent": now.Add(-24 * time.Hour),
+			"/recent":   now,
+		},
+		UseCount: map[string]int{"/current": 1, "/other": 1, "/frequent": 100, "/recent": 1},
+	}}
+	fm := &FileManager{browser: newTestBrowser(testBrowserOptions{path: "/current"}), state: state, window: app.NewWindow("current")}
+	other := &FileManager{browser: newTestBrowser(testBrowserOptions{path: "/other"}), window: app.NewWindow("other")}
+	fm.runtime = &ApplicationRuntime{windows: &fileManagerWindowRegistry{windows: []*FileManager{fm, other}}}
+
+	candidates := fm.buildDestinationCandidates()
+	wantPaths := []string{"/other", "/current", "/frequent", "/recent"}
+	gotPaths := make([]string, len(candidates))
+	for i, candidate := range candidates {
+		gotPaths[i] = candidate.Path
+		if want := state.NavigationHistory.LastUsed[candidate.Path]; !candidate.LastUsed.Equal(want) {
+			t.Fatalf("timestamp for %s = %v, want %v", candidate.Path, candidate.LastUsed, want)
+		}
+	}
+	if !slices.Equal(gotPaths, wantPaths) {
+		t.Fatalf("candidate paths = %v, want %v", gotPaths, wantPaths)
+	}
+	if !candidates[0].OpenInWindow || !candidates[1].OpenInWindow {
+		t.Fatal("open paths should retain their metadata when deduplicated against history")
+	}
+	if candidates[2] != (ui.DestinationCandidate{Path: "/frequent", LastUsed: state.NavigationHistory.LastUsed["/frequent"]}) {
+		t.Fatalf("history candidate = %#v, want path and timestamp only", candidates[2])
 	}
 }
 

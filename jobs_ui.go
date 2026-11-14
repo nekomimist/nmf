@@ -360,6 +360,9 @@ func (fm *FileManager) buildDestinationCandidates() []ui.DestinationCandidate {
 		seen[p] = len(candidates)
 		candidates = append(candidates, ui.DestinationCandidate{Path: p})
 	}
+	for i := range candidates {
+		candidates[i].LastUsed = fm.state.NavigationHistory.LastUsed[candidates[i].Path]
+	}
 	return candidates
 }
 

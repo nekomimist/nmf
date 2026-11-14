@@ -369,9 +369,15 @@ Shape of `state.json`:
   directory, and its LRU timestamp. The entry limit is
   `ui.cursorMemory.maxEntries` (in `config.json`).
 - `navigationHistory.entries`/`lastUsed`/`useCount`: visited-path history,
-  shown by default in zoxide-style frecency order. History Jump's order radio
-  can switch the view to newest `lastUsed` first; `Ctrl+R` toggles the same
-  mode. `useCount` stores usage counters; missing values are migrated to `1`.
+  shown by default in zoxide-style frecency order. History Jump, Copy, Move,
+  Extract, and Compare Directories have an order radio that switches the view
+  to newest `lastUsed` first; `Ctrl+R` toggles the same mode. This is the time
+  recorded in nmf's navigation history, not the filesystem access time.
+  Each dialog starts in Frecency mode when opened. Copy, Move, Extract, and
+  Compare keep open-window destinations before regular history in Frecency
+  mode; Last Access sorts all candidates by `lastUsed`, with missing times
+  last and ties preserving the Frecency view's order.
+  `useCount` stores usage counters; missing values are migrated to `1`.
   The entry limit is
   `ui.navigationHistory.maxEntries` (in `config.json`).
 - `navigationHistory.pinned`: saved History Jump paths. They are shown before

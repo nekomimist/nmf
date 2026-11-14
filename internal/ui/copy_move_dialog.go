@@ -145,6 +145,7 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveRe
 		targetsScroll,
 		overflowLabel,
 		widget.NewSeparator(),
+		historyOrderSection(d.orderRadio),
 		searchSection,
 		fixed,
 	}

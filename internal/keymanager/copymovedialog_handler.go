@@ -20,6 +20,7 @@ type CopyMoveDialogInterface interface {
 	CopySelectedPathToSearch()
 	ScrollSelectedRight()
 	ResetHorizontalScroll()
+	ToggleHistoryOrder()
 
 	// Selection
 	SelectCurrentItem()
@@ -41,6 +42,7 @@ func NewCopyMoveDialogKeyHandler(d CopyMoveDialogInterface, debugPrint func(form
 	base := newDialogKeyHandler("CopyMoveDialog", debugPrint, []dialogBinding{
 		{"C-H", d.BackspaceSearch},
 		{"C-N", d.OpenDestination},
+		{"C-R", d.ToggleHistoryOrder},
 
 		{"Up", d.MoveUp},
 		{"S-Up", d.MoveToTop},

@@ -107,6 +107,7 @@ func (d *CompareDialog) ShowDialog(parent fyne.Window, onAccept func(CompareResu
 		widget.NewSeparator(),
 		methodBox,
 		widget.NewSeparator(),
+		historyOrderSection(d.orderRadio),
 		searchSection,
 		fixed,
 		dialogButtonBar(dialogCancelButton("Cancel", d.CancelDialog), dialogConfirmButton("Compare", d.AcceptSelection)),

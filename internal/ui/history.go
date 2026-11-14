@@ -20,11 +20,6 @@ import (
 	customtheme "nmf/internal/theme"
 )
 
-const (
-	navigationHistoryOrderFrecency = "Frecency"
-	navigationHistoryOrderLastUsed = "Last Access"
-)
-
 // CustomSearchEntry is a custom entry that redirects focus to KeySink
 type CustomSearchEntry struct {
 	widget.Entry
@@ -192,15 +187,7 @@ func (nhd *NavigationHistoryDialog) createWidgets() {
 	// Keep frecency as the default while allowing a chronological view of the
 	// same candidates. Required prevents clicking the selected option from
 	// leaving the dialog without an active ordering mode.
-	nhd.orderRadio = widget.NewRadioGroup([]string{
-		navigationHistoryOrderFrecency,
-		navigationHistoryOrderLastUsed,
-	}, func(selected string) {
-		nhd.setOrderMode(selected)
-	})
-	nhd.orderRadio.Horizontal = true
-	nhd.orderRadio.Required = true
-	nhd.orderRadio.SetSelected(navigationHistoryOrderFrecency)
+	nhd.orderRadio = newHistoryOrderRadio(nhd.setOrderMode)
 }
 
 // updateFilteredPaths updates the filtered paths based on query
@@ -300,8 +287,7 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 	// Create search section
 	searchLabel := widget.NewLabel("Filter:")
 	searchSection := container.NewBorder(nil, nil, searchLabel, nil, nhd.searchEntry)
-	orderLabel := widget.NewLabel("Order (Ctrl+R):")
-	orderSection := container.NewBorder(nil, nil, orderLabel, nil, nhd.orderRadio)
+	orderSection := historyOrderSection(nhd.orderRadio)
 
 	// Create scrollable list container
 	listScroll := newDialogListScroller(nhd.historyList, dialogTextWidth(nhd.allPaths, listWidth), listWidth, searchDialogListHeight)
@@ -446,14 +432,7 @@ func (nhd *NavigationHistoryDialog) SelectCurrentItem() {
 
 // ToggleHistoryOrder switches between frecency and last-access ordering.
 func (nhd *NavigationHistoryDialog) ToggleHistoryOrder() {
-	if nhd.orderRadio == nil {
-		return
-	}
-	if nhd.orderMode == navigationHistoryOrderLastUsed {
-		nhd.orderRadio.SetSelected(navigationHistoryOrderFrecency)
-		return
-	}
-	nhd.orderRadio.SetSelected(navigationHistoryOrderLastUsed)
+	toggleHistoryOrder(nhd.orderRadio)
 }
 
 // AcceptSelection accepts the current selection and closes the dialog

@@ -17,6 +17,7 @@ type CompareDialogInterface interface {
 	CopySelectedPathToSearch()
 	ScrollSelectedRight()
 	ResetHorizontalScroll()
+	ToggleHistoryOrder()
 
 	SelectCurrentItem()
 	AcceptSelection()
@@ -48,6 +49,7 @@ func NewCompareDialogKeyHandler(d CompareDialogInterface, debugPrint func(format
 		{"A-C", d.SelectSizeContentEqual},
 
 		{"C-H", d.BackspaceSearch},
+		{"C-R", d.ToggleHistoryOrder},
 
 		{"Up", d.MoveUp},
 		{"S-Up", d.MoveToTop},

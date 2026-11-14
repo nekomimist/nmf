@@ -5,13 +5,42 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"fyne.io/fyne/v2"
+	fynetest "fyne.io/fyne/v2/test"
+
 	"nmf/internal/filecompare"
+	"nmf/internal/keymanager"
 )
 
 func TestCompactComparePathKeepsShortPath(t *testing.T) {
 	path := "smb://host/share/data"
 	if got := compactComparePath(path, 72); got != path {
 		t.Fatalf("compactComparePath(%q) = %q, want unchanged", path, got)
+	}
+}
+
+func TestCompareDialogOrderChangeKeepsMethodAndSinkFocus(t *testing.T) {
+	app := fynetest.NewApp()
+	defer app.Quit()
+	window := app.NewWindow("compare")
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	d := NewCompareDialog("/src", 1, nil, km, func(string, ...interface{}) {})
+	d.SelectSizeContentEqual()
+	d.ShowDialog(window, func(CompareResult) {})
+	defer d.dialog.Hide()
+	defer km.RemoveHandler(d.kmToken)
+
+	lastAccess := fynetest.WidgetRenderer(d.orderRadio).Objects()[1]
+	window.Canvas().Focus(lastAccess.(fyne.Focusable))
+	fynetest.Tap(lastAccess.(fyne.Tappable))
+	if d.orderRadio.Selected != navigationHistoryOrderLastUsed {
+		t.Fatal("tapping Last Access should change the order mode even with no candidates")
+	}
+	if d.selectedMethod() != filecompare.SizeContentEqual {
+		t.Fatal("changing destination order should preserve the comparison method")
+	}
+	if focused := window.Canvas().Focused(); focused != d.sink {
+		t.Fatalf("focus after order change = %T, want compare dialog sink", focused)
 	}
 }
 

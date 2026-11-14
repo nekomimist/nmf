@@ -408,8 +408,15 @@ Filter-style text input:
   clears the active filter without becoming history and `Ctrl+D` cannot delete it.
 - Navigation History and Apply Filter use `Ctrl+Enter` to apply the current
   input directly. Apply Filter uses `Ctrl+D` to delete the selected history
-  entry; Navigation History uses `Ctrl+D` to unpin a saved path and `Ctrl+R`
-  to toggle between frecency and last-access ordering.
+  entry; Navigation History uses `Ctrl+D` to unpin a saved path.
+- Navigation History, Copy/Move, Extract, and Compare Directories share an
+  order radio and `Ctrl+R` to toggle between frecency and last-access ordering.
+  Switching retains the query and selects the first reordered match, then
+  returns focus to the dialog's `KeySink`. The mode resets to Frecency when
+  opened. The destination picker sorts copies of its candidates by their
+  navigation-history timestamps; it preserves the original open-window-first
+  order for Frecency. Candidate refreshes retain the mode and query, preferring
+  the requested path, then the previous selection, then the first match.
 - Directory Jump keeps shortcut-prefix matching separate from migemo so its
   unique-match auto-jump behavior stays deterministic.
 
