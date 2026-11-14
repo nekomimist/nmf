@@ -18,8 +18,9 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
     throw 'dev-windows.ps1 requires Windows. Use the Makefile on Linux/WSL.'
 }
 
-$goCommand = (Get-Command go -CommandType Application -ErrorAction Stop).Source
-$zigCommand = (Get-Command $Zig -CommandType Application -ErrorAction Stop).Source
+# Multiple installed versions can match; use the first application on PATH.
+$goCommand = (Get-Command go -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+$zigCommand = (Get-Command $Zig -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $savedEnvironment = @{}
 $environmentNames = @(
