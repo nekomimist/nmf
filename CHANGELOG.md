@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.4 - 2026-11-15
+
 - Switch destination lists in Copy, Move, Extract, and Compare Directories
   between Frecency and Last Access order using the order radio or Ctrl+R.
 - Serialize RGBA theme colors as JSON arrays instead of Base64 strings so they
