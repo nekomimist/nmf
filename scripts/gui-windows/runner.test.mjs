@@ -69,8 +69,8 @@ test('artifact collection preserves failed evidence and rejects false success', 
     writeFileSync(path.join(workspace, 'out/evidence.txt'), 'failed frame');
     assert.throws(() => collectArtifacts(workspace, runDir), /missing successful assertions/);
     assert.ok(existsSync(path.join(runDir, 'artifacts/evidence.txt')));
-    writeFileSync(path.join(workspace, 'out/result.json'), JSON.stringify({ passed: true, steps: Array.from({ length: 6 }, () => ({ passed: true })) }));
-    assert.deepEqual(collectArtifacts(workspace, runDir), { passed: true, steps: 6 });
+    writeFileSync(path.join(workspace, 'out/result.json'), JSON.stringify({ passed: true, steps: Array.from({ length: 17 }, () => ({ passed: true })) }));
+    assert.deepEqual(collectArtifacts(workspace, runDir), { passed: true, steps: 17 });
   } finally {
     // mkdtemp owns this exact absolute directory; never remove a caller path.
     assert.equal(path.dirname(path.resolve(temp)), path.resolve(os.tmpdir()));

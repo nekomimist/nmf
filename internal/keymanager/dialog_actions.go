@@ -32,6 +32,7 @@ type DialogActions struct {
 	ShowExplorerContextMenu  func()
 	ShowExternalCommandMenu  func()
 	ShowFileViewer           func()
+	ShowBindingHelp          func()
 	ShowMaintenanceDialog    func()
 	ShowCommandMenu          func(title string, items []CommandMenuItem)
 }

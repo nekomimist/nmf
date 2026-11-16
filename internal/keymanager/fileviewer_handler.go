@@ -84,6 +84,7 @@ type FileViewerKeyHandler struct {
 	runeBindings []keyBinding
 	commands     map[string]func()
 	debugPrint   func(format string, args ...interface{})
+	onHelp       func()
 }
 
 func NewFileViewerKeyHandler(viewer FileViewerInterface, debugPrint func(format string, args ...interface{}), configuredBindings ...[]config.KeyBindingEntry) *FileViewerKeyHandler {
@@ -98,17 +99,7 @@ func NewFileViewerKeyHandler(viewer FileViewerInterface, debugPrint func(format 
 		h.debugPrint = func(string, ...interface{}) {}
 	}
 	h.commands = h.defaultCommands()
-	bindings := buildTargetKeyBindings(
-		"FileViewer",
-		KeyBindingTargetFileViewer,
-		configured,
-		defaultFileViewerBindings(),
-		func(command string) bool {
-			_, ok := h.commands[command]
-			return ok
-		},
-		h.debugPrint,
-	)
+	bindings := buildFileViewerBindings(configured, h.debugPrint)
 	for _, binding := range bindings {
 		if fileViewerRunePathSpec(binding.spec) {
 			h.runeBindings = append(h.runeBindings, binding)
@@ -119,6 +110,17 @@ func NewFileViewerKeyHandler(viewer FileViewerInterface, debugPrint func(format 
 	return h
 }
 
+// SetHelpAction supplies the host's input-owner transition and help presenter.
+func (h *FileViewerKeyHandler) SetHelpAction(action func()) { h.onHelp = action }
+
+func buildFileViewerBindings(configured []config.KeyBindingEntry, debugPrint func(string, ...interface{})) []keyBinding {
+	return buildTargetKeyBindings("FileViewer", KeyBindingTargetFileViewer,
+		configured, defaultFileViewerBindings(), func(command string) bool {
+			_, ok := fileViewerCommands[command]
+			return ok || command == CommandDescribeBindings
+		}, debugPrint)
+}
+
 func (h *FileViewerKeyHandler) GetName() string { return "FileViewer" }
 
 func (h *FileViewerKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
@@ -126,6 +128,21 @@ func (h *FileViewerKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers Modif
 		return false
 	}
 	return h.executeBinding(h.keyBindings, ev, modifiers)
+}
+
+// OnHelpKeyActivated allows viewer text inputs to request help without taking
+// over their native editing keys. Printable rune bindings stay with text entry.
+func (h *FileViewerKeyHandler) OnHelpKeyActivated(ev *fyne.KeyEvent, modifiers ModifierState) bool {
+	for _, binding := range h.keyBindings {
+		if binding.matches(ev, modifiers) {
+			if binding.command != CommandDescribeBindings {
+				return false
+			}
+			h.commands[binding.command]()
+			return true
+		}
+	}
+	return false
 }
 
 func (h *FileViewerKeyHandler) OnTypedRune(r rune, modifiers ModifierState) bool {
@@ -175,40 +192,53 @@ func fileViewerRunePathSpec(spec keySpec) bool {
 }
 
 func (h *FileViewerKeyHandler) defaultCommands() map[string]func() {
-	return map[string]func(){
-		CommandFileViewerClose:          h.viewer.CloseViewer,
-		CommandFileViewerLineDown:       h.viewer.ViewerLineDown,
-		CommandFileViewerLineUp:         h.viewer.ViewerLineUp,
-		CommandFileViewerPageDown:       h.viewer.ViewerPageDown,
-		CommandFileViewerPageUp:         h.viewer.ViewerPageUp,
-		CommandFileViewerHome:           h.viewer.ViewerHome,
-		CommandFileViewerEnd:            h.viewer.ViewerEnd,
-		CommandFileViewerColumnLeft:     h.viewer.ViewerColumnLeft,
-		CommandFileViewerColumnRight:    h.viewer.ViewerColumnRight,
-		CommandFileViewerToggleWrap:     h.viewer.ViewerToggleWrap,
-		CommandFileViewerShowImage:      h.viewer.ViewerShowImage,
-		CommandFileViewerShowText:       h.viewer.ViewerShowText,
-		CommandFileViewerShowMarkdown:   h.viewer.ViewerShowMarkdown,
-		CommandFileViewerShowHex:        h.viewer.ViewerShowHex,
-		CommandFileViewerSearchNext:     h.viewer.ViewerSearchNext,
-		CommandFileViewerSearchPrevious: h.viewer.ViewerSearchPrevious,
-		CommandFileViewerFocusSearch:    h.viewer.ViewerFocusSearch,
-		CommandFileViewerFocusLine:      h.viewer.ViewerFocusLine,
-		CommandFileViewerCopySelection:  h.viewer.ViewerCopySelection,
-		CommandFileViewerSelectAll:      h.viewer.ViewerSelectAll,
-		CommandFileViewerClearSelection: h.viewer.ViewerClearSelection,
-		CommandFileViewerImageToggleFit: h.viewer.ViewerImageToggleFit,
-		CommandFileViewerImageZoomIn:    h.viewer.ViewerImageZoomIn,
-		CommandFileViewerImageZoomOut:   h.viewer.ViewerImageZoomOut,
-		CommandFileViewerFilePrevious:   h.viewer.ViewerFilePrevious,
-		CommandFileViewerFileNext:       h.viewer.ViewerFileNext,
-		CommandFileViewerMarkToggle:     h.viewer.ViewerMarkToggle,
-		CommandNoop:                     func() {},
+	commands := map[string]func(){
+		CommandDescribeBindings: func() {
+			if h.onHelp != nil {
+				h.onHelp()
+			}
+		},
 	}
+	for id, command := range fileViewerCommands {
+		commands[id] = func() { command(h.viewer) }
+	}
+	return commands
+}
+
+var fileViewerCommands = map[string]func(FileViewerInterface){
+	CommandFileViewerClose:          FileViewerInterface.CloseViewer,
+	CommandFileViewerLineDown:       FileViewerInterface.ViewerLineDown,
+	CommandFileViewerLineUp:         FileViewerInterface.ViewerLineUp,
+	CommandFileViewerPageDown:       FileViewerInterface.ViewerPageDown,
+	CommandFileViewerPageUp:         FileViewerInterface.ViewerPageUp,
+	CommandFileViewerHome:           FileViewerInterface.ViewerHome,
+	CommandFileViewerEnd:            FileViewerInterface.ViewerEnd,
+	CommandFileViewerColumnLeft:     FileViewerInterface.ViewerColumnLeft,
+	CommandFileViewerColumnRight:    FileViewerInterface.ViewerColumnRight,
+	CommandFileViewerToggleWrap:     FileViewerInterface.ViewerToggleWrap,
+	CommandFileViewerShowImage:      FileViewerInterface.ViewerShowImage,
+	CommandFileViewerShowText:       FileViewerInterface.ViewerShowText,
+	CommandFileViewerShowMarkdown:   FileViewerInterface.ViewerShowMarkdown,
+	CommandFileViewerShowHex:        FileViewerInterface.ViewerShowHex,
+	CommandFileViewerSearchNext:     FileViewerInterface.ViewerSearchNext,
+	CommandFileViewerSearchPrevious: FileViewerInterface.ViewerSearchPrevious,
+	CommandFileViewerFocusSearch:    FileViewerInterface.ViewerFocusSearch,
+	CommandFileViewerFocusLine:      FileViewerInterface.ViewerFocusLine,
+	CommandFileViewerCopySelection:  FileViewerInterface.ViewerCopySelection,
+	CommandFileViewerSelectAll:      FileViewerInterface.ViewerSelectAll,
+	CommandFileViewerClearSelection: FileViewerInterface.ViewerClearSelection,
+	CommandFileViewerImageToggleFit: FileViewerInterface.ViewerImageToggleFit,
+	CommandFileViewerImageZoomIn:    FileViewerInterface.ViewerImageZoomIn,
+	CommandFileViewerImageZoomOut:   FileViewerInterface.ViewerImageZoomOut,
+	CommandFileViewerFilePrevious:   FileViewerInterface.ViewerFilePrevious,
+	CommandFileViewerFileNext:       FileViewerInterface.ViewerFileNext,
+	CommandFileViewerMarkToggle:     FileViewerInterface.ViewerMarkToggle,
+	CommandNoop:                     func(FileViewerInterface) {},
 }
 
 func defaultFileViewerBindings() []config.KeyBindingEntry {
 	return []config.KeyBindingEntry{
+		{Key: "F1", Command: CommandDescribeBindings},
 		{Key: "Up", Command: CommandFileViewerLineUp},
 		{Key: "Down", Command: CommandFileViewerLineDown},
 		{Key: "Left", Command: CommandFileViewerColumnLeft},

@@ -114,11 +114,7 @@ func (d *LineEditDialog) ShowDialog(parent fyne.Window, onAccept func(string) bo
 	content.Add(lineEditThemeOverride(d.entry))
 	content.Add(dialogButtonRow("Cancel", d.CancelDialog, d.opts.ConfirmText, d.AcceptEdit))
 
-	var debugPrint func(format string, args ...interface{})
-	if d.keyManager != nil {
-		debugPrint = d.keyManager.Debugf
-	}
-	handler := keymanager.NewLineEditDialogKeyHandler(d, debugPrint, d.bindings)
+	handler := newLineEditKeyHandler(d, d.keyManager, d.bindings)
 	d.kmToken = d.keyManager.PushHandler(handler)
 
 	title := d.opts.Title

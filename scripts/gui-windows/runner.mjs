@@ -107,7 +107,7 @@ export function collectArtifacts(workspace, runDir) {
   const output = path.join(workspace, 'out');
   if (existsSync(output)) cpSync(output, path.join(runDir, 'artifacts'), { recursive: true });
   const report = json(path.join(runDir, 'artifacts/result.json'));
-  if (report.passed !== true || !Array.isArray(report.steps) || report.steps.length !== 6 || report.steps.some(step => step.passed !== true)) {
+  if (report.passed !== true || !Array.isArray(report.steps) || report.steps.length !== 17 || report.steps.some(step => step.passed !== true)) {
     throw new Error('GUI result is missing successful assertions; inspect artifacts/result.json');
   }
   return { passed: true, steps: report.steps.length };

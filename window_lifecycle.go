@@ -26,6 +26,10 @@ func (fm *FileManager) closeWindow() {
 	if fm.commandErrorDialog != nil {
 		fm.commandErrorDialog.Dismiss()
 	}
+	if fm.bindingHelp != nil {
+		fm.bindingHelp.CloseViewer()
+	}
+	fm.keyManager.SetBindingHelpAction(nil)
 
 	if registry := fm.windowRegistry(); registry != nil {
 		registry.recordReopenPath(fm.GetCurrentPath())

@@ -125,7 +125,7 @@ func (d *archivePasswordDialog) show() {
 	)
 
 	if d.km != nil {
-		handler := keymanager.NewLineEditDialogKeyHandler(d, d.km.Debugf, d.bindings)
+		handler := newLineEditKeyHandler(d, d.km, d.bindings)
 		d.kmToken = d.km.PushHandler(handler)
 	}
 

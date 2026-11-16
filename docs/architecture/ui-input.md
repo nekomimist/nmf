@@ -167,6 +167,23 @@ Configurable bindings:
 - Optional `init.star` configuration can append bindings and register `user.*`
   commands for the main target. Line-edit and file-viewer targets bind only
   built-in command IDs.
+- `help.bindings` is bound to `F1` in all three targets. Help descriptions use
+  the same validated binding resolver and mode command tables as dispatch;
+  only the first binding for each canonical key/modifier combination is
+  shown, including explicit `noop` overrides. Callable Starlark bindings
+  retain their function name as display metadata beside their generated ID.
+- The host builds an in-memory Markdown preview with all three mode sections,
+  starting with the originating mode. Main invokes the presenter through its
+  normal transition command; standalone and embedded line-edit handlers and
+  the viewer explicitly connect their help action to KeyManager's gated host
+  callback. Viewer search/line inputs forward non-text help activations while
+  preserving native text editing and clipboard shortcuts.
+- Help opens a separate viewer with no file-list action callbacks or shared
+  preview search state. Its Escape override always permits closing, and a
+  per-window reference prevents recursive help overlays. The viewer's
+  `SetAfterClosed` hook restores the original focus only after handler removal
+  and overlay hiding, and only if the original input handler is still current.
+  Window close releases the help viewer and its host callback.
 
 ## Focus Ownership Rules
 

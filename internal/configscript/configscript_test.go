@@ -546,6 +546,9 @@ nmf.key("C-E", fn = edit, event = "down")
 	if first.Command == second.Command {
 		t.Fatalf("generated commands should be unique, got %q", first.Command)
 	}
+	if rt.CommandNames[first.Command] != "edit" || rt.CommandNames[second.Command] != "edit" {
+		t.Fatalf("generated command names = %#v, want callable names for help", rt.CommandNames)
+	}
 	if _, ok := rt.Commands[first.Command]; !ok {
 		t.Fatalf("missing generated command %q", first.Command)
 	}

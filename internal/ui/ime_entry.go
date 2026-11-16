@@ -5,16 +5,21 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
+
+	"nmf/internal/keymanager"
 )
 
 // IMEEntry is a normal Fyne Entry that updates the native IME candidate anchor.
 type IMEEntry struct {
 	widget.Entry
-	imeWindow fyne.Window
-	OnEscape  func()
-	focused   bool
-	disabled  bool
+	imeWindow      fyne.Window
+	OnEscape       func()
+	focused        bool
+	disabled       bool
+	keyManager     *keymanager.KeyManager
+	onKeyActivated func(*fyne.KeyEvent, keymanager.ModifierState) bool
 }
 
 func NewIMEEntry(window fyne.Window) *IMEEntry {
@@ -27,6 +32,42 @@ func NewIMEEntry(window fyne.Window) *IMEEntry {
 func (e *IMEEntry) SetIMEWindow(window fyne.Window) {
 	e.imeWindow = window
 	e.UpdateIMEAnchor()
+}
+
+// SetKeyActivationHandler supplies optional non-text actions, such as help.
+// Native clipboard shortcuts and printable text keep their Entry behavior.
+func (e *IMEEntry) SetKeyActivationHandler(km *keymanager.KeyManager, handler func(*fyne.KeyEvent, keymanager.ModifierState) bool) {
+	e.keyManager = km
+	e.onKeyActivated = handler
+}
+
+func (e *IMEEntry) KeyDown(ev *fyne.KeyEvent) {
+	if e.keyManager != nil {
+		e.keyManager.HandleKeyDown(ev)
+	}
+	e.Entry.KeyDown(ev)
+}
+
+func (e *IMEEntry) KeyUp(ev *fyne.KeyEvent) {
+	if e.keyManager != nil {
+		e.keyManager.HandleKeyUp(ev)
+	}
+	e.Entry.KeyUp(ev)
+}
+
+func (e *IMEEntry) TypedShortcut(shortcut fyne.Shortcut) {
+	defer e.UpdateIMEAnchor()
+	if custom, ok := shortcut.(*desktop.CustomShortcut); ok && e.onKeyActivated != nil {
+		mod := keymanager.ModifierState{
+			CtrlPressed:  custom.Modifier&fyne.KeyModifierControl != 0,
+			AltPressed:   custom.Modifier&fyne.KeyModifierAlt != 0,
+			ShiftPressed: custom.Modifier&fyne.KeyModifierShift != 0,
+		}
+		if e.onKeyActivated(&fyne.KeyEvent{Name: custom.KeyName}, mod) {
+			return
+		}
+	}
+	e.Entry.TypedShortcut(shortcut)
 }
 
 func (e *IMEEntry) SetText(text string) {
@@ -56,6 +97,10 @@ func (e *IMEEntry) Enable() {
 }
 
 func (e *IMEEntry) TypedKey(ev *fyne.KeyEvent) {
+	if e.keyManager != nil && e.onKeyActivated != nil && e.onKeyActivated(ev, e.keyManager.GetModifierState()) {
+		e.UpdateIMEAnchor()
+		return
+	}
 	if ev != nil && ev.Name == fyne.KeyEscape && e.OnEscape != nil {
 		e.OnEscape()
 		e.UpdateIMEAnchor()

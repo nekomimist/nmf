@@ -94,6 +94,8 @@ type FileViewerDialog struct {
 	onFileNext      func()
 	onMarkToggle    func()
 	onClosed        func()
+	afterClosed     func()
+	keyHandler      *keymanager.FileViewerKeyHandler
 }
 
 func NewFileViewerDialog(preview *fileinfo.PreviewFile, km ...*keymanager.KeyManager) *FileViewerDialog {
@@ -166,6 +168,12 @@ func (d *FileViewerDialog) SetOnClosed(callback func()) {
 	d.onClosed = callback
 }
 
+// SetAfterClosed runs after the handler and overlay have been removed. It may
+// restore the input owner underneath a nested viewer without racing Hide.
+func (d *FileViewerDialog) SetAfterClosed(callback func()) {
+	d.afterClosed = callback
+}
+
 func (d *FileViewerDialog) newViewerTextGrid(text string) *fileViewerTextGrid {
 	grid := newFileViewerTextGrid(text, d.km, d.updateLineDisplay, d.debugPrint)
 	grid.SetWrap(d.defaultWrap)
@@ -191,7 +199,10 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	stepStart = time.Now()
 
 	if d.km != nil {
-		d.kmToken = d.km.PushHandler(keymanager.NewFileViewerKeyHandler(d, d.km.Debugf, d.bindings))
+		handler := keymanager.NewFileViewerKeyHandler(d, d.km.Debugf, d.bindings)
+		handler.SetHelpAction(func() { d.km.ShowBindingHelp(keymanager.KeyBindingTargetFileViewer) })
+		d.keyHandler = handler
+		d.kmToken = d.km.PushHandler(handler)
 		d.handlerSet = true
 	}
 	d.debug("FileViewer: handler elapsed=%s", time.Since(stepStart))
@@ -423,6 +434,11 @@ func (d *FileViewerDialog) buildViewerToolbar(parent fyne.Window) fyne.CanvasObj
 	d.jump.SetPlaceHolder("Line")
 	d.jump.OnEscape = d.focusActiveViewer
 	d.jump.OnSubmitted = func(_ string) { d.jumpToLine() }
+	for _, entry := range []*IMEEntry{d.search, d.jump} {
+		entry.SetKeyActivationHandler(d.km, func(ev *fyne.KeyEvent, mods keymanager.ModifierState) bool {
+			return d.keyHandler != nil && d.keyHandler.OnHelpKeyActivated(ev, mods)
+		})
+	}
 	d.prevButton = widget.NewButtonWithIcon("", theme.MoveUpIcon(), d.findPrevious)
 	d.nextButton = widget.NewButtonWithIcon("", theme.MoveDownIcon(), d.findNext)
 	confirmBtn := widget.NewButtonWithIcon("", theme.ConfirmIcon(), d.jumpToLine)
@@ -1201,6 +1217,9 @@ func (d *FileViewerDialog) CancelDialog() {
 			d.dialog.Hide()
 		}
 		unfocusIfDialogOwned(d.parent, d.inputSink, d.imageView, d.textGrid, d.hexGrid, d.mdGrid, d.search, d.jump)
+		if d.afterClosed != nil {
+			d.afterClosed()
+		}
 	})
 }
 

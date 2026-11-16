@@ -44,6 +44,7 @@ type LineEditDialogKeyHandler struct {
 	bindings   []keyBinding
 	commands   map[string]func()
 	debugPrint func(format string, args ...interface{})
+	onHelp     func()
 }
 
 // NewLineEditDialogKeyHandler creates a line edit dialog key handler.
@@ -59,18 +60,25 @@ func NewLineEditDialogKeyHandler(d LineEditDialogInterface, debugPrint func(form
 		h.debugPrint = func(string, ...interface{}) {}
 	}
 	h.commands = h.defaultCommands()
-	h.bindings = buildTargetKeyBindings(
+	h.bindings = buildLineEditBindings(configured, h.debugPrint)
+	return h
+}
+
+// SetHelpAction supplies the host's input-owner transition and help presenter.
+func (h *LineEditDialogKeyHandler) SetHelpAction(action func()) { h.onHelp = action }
+
+func buildLineEditBindings(configured []config.KeyBindingEntry, debugPrint func(string, ...interface{})) []keyBinding {
+	return buildTargetKeyBindings(
 		"LineEditDialog",
 		KeyBindingTargetLineEdit,
 		configured,
 		defaultLineEditBindings(),
 		func(command string) bool {
-			_, ok := h.commands[command]
-			return ok
+			_, ok := lineEditCommands[command]
+			return ok || command == CommandDescribeBindings
 		},
-		h.debugPrint,
+		debugPrint,
 	)
-	return h
 }
 
 // GetName returns the handler name.
@@ -98,24 +106,37 @@ func (h *LineEditDialogKeyHandler) OnTypedRune(r rune, _ ModifierState) bool {
 }
 
 func (h *LineEditDialogKeyHandler) defaultCommands() map[string]func() {
-	return map[string]func(){
-		CommandLineEditAccept:            h.dialog.AcceptEdit,
-		CommandLineEditCancel:            h.dialog.CancelDialog,
-		CommandLineEditCursorStart:       h.dialog.MoveCursorStart,
-		CommandLineEditCursorEnd:         h.dialog.MoveCursorEnd,
-		CommandLineEditCursorLeft:        h.dialog.MoveCursorLeft,
-		CommandLineEditCursorRight:       h.dialog.MoveCursorRight,
-		CommandLineEditDeleteBefore:      h.dialog.DeleteBeforeCursor,
-		CommandLineEditDeleteAt:          h.dialog.DeleteAtCursor,
-		CommandLineEditDeleteBeforeStart: h.dialog.DeleteBeforeCursorToStart,
-		CommandLineEditDeleteAfterEnd:    h.dialog.DeleteAfterCursorToEnd,
-		CommandLineEditPaste:             h.dialog.PasteFromClipboard,
-		CommandNoop:                      func() {},
+	commands := map[string]func(){
+		CommandDescribeBindings: func() {
+			if h.onHelp != nil {
+				h.onHelp()
+			}
+		},
 	}
+	for id, command := range lineEditCommands {
+		commands[id] = func() { command(h.dialog) }
+	}
+	return commands
+}
+
+var lineEditCommands = map[string]func(LineEditDialogInterface){
+	CommandLineEditAccept:            LineEditDialogInterface.AcceptEdit,
+	CommandLineEditCancel:            LineEditDialogInterface.CancelDialog,
+	CommandLineEditCursorStart:       LineEditDialogInterface.MoveCursorStart,
+	CommandLineEditCursorEnd:         LineEditDialogInterface.MoveCursorEnd,
+	CommandLineEditCursorLeft:        LineEditDialogInterface.MoveCursorLeft,
+	CommandLineEditCursorRight:       LineEditDialogInterface.MoveCursorRight,
+	CommandLineEditDeleteBefore:      LineEditDialogInterface.DeleteBeforeCursor,
+	CommandLineEditDeleteAt:          LineEditDialogInterface.DeleteAtCursor,
+	CommandLineEditDeleteBeforeStart: LineEditDialogInterface.DeleteBeforeCursorToStart,
+	CommandLineEditDeleteAfterEnd:    LineEditDialogInterface.DeleteAfterCursorToEnd,
+	CommandLineEditPaste:             LineEditDialogInterface.PasteFromClipboard,
+	CommandNoop:                      func(LineEditDialogInterface) {},
 }
 
 func defaultLineEditBindings() []config.KeyBindingEntry {
 	return []config.KeyBindingEntry{
+		{Key: "F1", Command: CommandDescribeBindings},
 		{Key: "Return", Command: CommandLineEditAccept},
 		{Key: "KP_Enter", Command: CommandLineEditAccept},
 		{Key: "Escape", Command: CommandLineEditCancel},

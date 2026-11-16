@@ -269,7 +269,7 @@ type smbLoginKeyHandler struct {
 func newSMBLoginKeyHandler(d *smbLoginDialog, bindings []config.KeyBindingEntry, debugPrint func(format string, args ...interface{})) *smbLoginKeyHandler {
 	return &smbLoginKeyHandler{
 		dialog:   d,
-		lineEdit: keymanager.NewLineEditDialogKeyHandler(d, debugPrint, bindings),
+		lineEdit: newLineEditKeyHandler(d, d.km, bindings),
 	}
 }
 

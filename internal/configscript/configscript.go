@@ -36,6 +36,8 @@ const (
 type Runtime struct {
 	Commands keymanager.CommandRegistry
 	Menus    map[string]*Menu
+	// CommandNames preserves callable names for generated key-command help.
+	CommandNames map[string]string
 
 	cfg        *config.Config
 	configDir  string
@@ -110,15 +112,16 @@ func newRuntime(path string, cfg *config.Config, displayInfo display.Info, debug
 		debugPrint = func(string, ...interface{}) {}
 	}
 	return &Runtime{
-		Commands:    make(keymanager.CommandRegistry),
-		Menus:       make(map[string]*Menu),
-		cfg:         cfg,
-		configDir:   configDir,
-		display:     displayInfo,
-		debugPrint:  debugPrint,
-		moduleCache: make(map[string]starlark.StringDict),
-		loading:     make(map[string]bool),
-		deprecated:  make(map[string]bool),
+		Commands:     make(keymanager.CommandRegistry),
+		CommandNames: make(map[string]string),
+		Menus:        make(map[string]*Menu),
+		cfg:          cfg,
+		configDir:    configDir,
+		display:      displayInfo,
+		debugPrint:   debugPrint,
+		moduleCache:  make(map[string]starlark.StringDict),
+		loading:      make(map[string]bool),
+		deprecated:   make(map[string]bool),
 	}
 }
 
@@ -801,6 +804,7 @@ func (rt *Runtime) appendKeyBinding(fnName string, args starlark.Tuple, kwargs [
 func (rt *Runtime) registerGeneratedKeyCommand(key string, callable starlark.Callable) string {
 	rt.keyCommandSeq++
 	id := commandPrefix + "__key." + strconv.Itoa(rt.keyCommandSeq)
+	rt.CommandNames[id] = callable.Name()
 	rt.Commands[id] = func(ctx keymanager.CommandContext) {
 		rt.runCommand(id, "Key "+key, callable, ctx)
 	}
@@ -934,6 +938,7 @@ func (rt *Runtime) builtinCommand(thread *starlark.Thread, fn *starlark.Builtin,
 	if !ok {
 		return nil, fmt.Errorf("command fn must be callable, got %s", value.Type())
 	}
+	delete(rt.CommandNames, id)
 	rt.Commands[id] = func(ctx keymanager.CommandContext) {
 		rt.runCommand(id, "Command "+id, callable, ctx)
 	}

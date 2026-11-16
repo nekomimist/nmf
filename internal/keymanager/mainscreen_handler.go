@@ -295,6 +295,7 @@ func (mh *MainScreenKeyHandler) buildBindings(configured []config.KeyBindingEntr
 
 func defaultMainScreenBindings() []config.KeyBindingEntry {
 	return []config.KeyBindingEntry{
+		{Key: "F1", Command: CommandDescribeBindings},
 		{Key: "Up", Command: CommandCursorUp},
 		{Key: "S-Up", Command: CommandCursorPageUp},
 		{Key: "Down", Command: CommandCursorDown},
@@ -346,6 +347,9 @@ func defaultMainScreenBindings() []config.KeyBindingEntry {
 
 func (mh *MainScreenKeyHandler) defaultCommands() map[string]commandSpec {
 	return map[string]commandSpec{
+		CommandDescribeBindings: {fn: func(CommandContext) {
+			mh.showDialogAction("ShowBindingHelp", mh.actions.ShowBindingHelp)
+		}, transition: true},
 		CommandCursorUp:            {fn: mh.cursorUp},
 		CommandCursorDown:          {fn: mh.cursorDown},
 		CommandCursorPageUp:        {fn: mh.cursorPageUp},

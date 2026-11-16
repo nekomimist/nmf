@@ -62,6 +62,7 @@ type CommandMenuItem struct {
 type keyBinding struct {
 	spec    keySpec
 	command string
+	custom  bool
 }
 
 type keySpec struct {
@@ -96,9 +97,10 @@ func buildTargetKeyBindings(
 	debugPrint func(format string, args ...interface{}),
 ) []keyBinding {
 	target = normalizeKeyBindingTarget(target)
-	entries := append(targetKeyBindingEntries(configured, target), defaults...)
+	custom := targetKeyBindingEntries(configured, target)
+	entries := append(custom, defaults...)
 	bindings := make([]keyBinding, 0, len(entries))
-	for _, entry := range entries {
+	for i, entry := range entries {
 		spec, err := parseKeySpec(entry.Key)
 		if err != nil {
 			debugPrint("%s: WARNING invalid key binding target=%s key=%q command=%s err=%v", handlerName, target, entry.Key, entry.Command, err)
@@ -111,7 +113,7 @@ func buildTargetKeyBindings(
 			debugPrint("%s: WARNING invalid key binding target=%s unknown command=%s key=%q", handlerName, target, entry.Command, entry.Key)
 			continue
 		}
-		bindings = append(bindings, keyBinding{spec: spec, command: entry.Command})
+		bindings = append(bindings, keyBinding{spec: spec, command: entry.Command, custom: i < len(custom)})
 	}
 	return bindings
 }

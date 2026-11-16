@@ -73,6 +73,34 @@ type KeyManager struct {
 	queuedTransitions int
 	queueOnMain       func(func())
 	onInputActivity   func()
+	onBindingHelp     func(target string)
+}
+
+// SetBindingHelpAction connects mode handlers to the host's help presenter.
+// The host owns the document and window; KeyManager only schedules the transition.
+func (km *KeyManager) SetBindingHelpAction(action func(target string)) {
+	if km == nil {
+		return
+	}
+	km.mutex.Lock()
+	km.onBindingHelp = action
+	km.mutex.Unlock()
+}
+
+// ShowBindingHelp requests help after draining the activating input event batch.
+func (km *KeyManager) ShowBindingHelp(target string) {
+	if km == nil {
+		return
+	}
+	if open, _ := km.gateOpen(); !open {
+		return
+	}
+	km.mutex.RLock()
+	action := km.onBindingHelp
+	km.mutex.RUnlock()
+	if action != nil {
+		km.BeginOwnerTransition("bindings.help", func() { action(target) })
+	}
 }
 
 // SetInputActivityCallback sets a callback invoked when this KeyManager

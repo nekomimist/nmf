@@ -75,6 +75,7 @@ func NewFileManager(runtime *ApplicationRuntime, path string) *FileManager {
 	mainHandler := keymanager.NewMainScreenKeyHandlerWithCommands(mainDependencies, debugPrint, config.UI.KeyBindings, scriptCommands)
 	mainHandler.SetTransitionGate(fm.keyManager.BeginOwnerTransition)
 	mainHandler.SetCommandGate(fm.mainScreenCommandAllowed)
+	fm.keyManager.SetBindingHelpAction(fm.showBindingHelp)
 	mainHandler.SetActions(keymanager.DialogActions{
 		ShowDirectoryTreeDialog:     fm.ShowDirectoryTreeDialog,
 		ShowNavigationHistoryDialog: fm.ShowNavigationHistoryDialog,
@@ -97,6 +98,7 @@ func NewFileManager(runtime *ApplicationRuntime, path string) *FileManager {
 		ShowExplorerContextMenu:     fm.ShowExplorerContextMenu,
 		ShowExternalCommandMenu:     fm.ShowExternalCommandMenu,
 		ShowFileViewer:              fm.ShowFileViewer,
+		ShowBindingHelp:             func() { fm.showBindingHelp(keymanager.KeyBindingTargetMain) },
 		ShowMaintenanceDialog:       fm.ShowMaintenanceDialog,
 		ShowCommandMenu:             fm.ShowCommandMenu,
 	})

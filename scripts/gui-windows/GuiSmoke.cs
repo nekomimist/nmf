@@ -172,6 +172,28 @@ class GuiSmoke
             Expect("05-enter-directory", "folder-a", 2, 0, "..", "MainScreen");
             Press(0x0e, false, false); // Backspace
             Expect("06-parent-directory", ".", 4, 1, "folder-a", "MainScreen");
+            Press(0x3b, false, false); // F1
+            Expect("07-help-main", ".", 4, 1, "folder-a", "FileViewer");
+            Press(0x01, false, false); // Escape
+            Expect("08-help-main-closed", ".", 4, 1, "folder-a", "MainScreen");
+            Press(0x3c, false, false); // F2: rename
+            Expect("09-rename-open", ".", 4, 1, "folder-a", "LineEditDialog");
+            Press(0x3b, false, false); // F1 while the entry has focus
+            Expect("10-help-line-edit", ".", 4, 1, "folder-a", "FileViewer");
+            Press(0x01, false, false); // Escape: resume rename
+            Expect("11-help-line-edit-closed", ".", 4, 1, "folder-a", "LineEditDialog");
+            Press(0x01, false, false); // Escape: cancel rename
+            Expect("12-rename-closed", ".", 4, 1, "folder-a", "MainScreen");
+            Press(0x50, true, false); // Down to alpha.txt
+            Expect("13-select-text-file", ".", 4, 2, "alpha.txt", "MainScreen");
+            Press(0x2f, false, false); // V: file viewer
+            Expect("14-viewer-open", ".", 4, 2, "alpha.txt", "FileViewer");
+            Press(0x3b, false, false); // F1 over an existing viewer
+            Expect("15-help-file-viewer", ".", 4, 2, "alpha.txt", "FileViewer");
+            Press(0x01, false, false); // Escape: resume the file preview
+            Expect("16-help-file-viewer-closed", ".", 4, 2, "alpha.txt", "FileViewer");
+            Press(0x01, false, false); // Escape: close the original preview
+            Expect("17-viewer-closed", ".", 4, 2, "alpha.txt", "MainScreen");
             Report["passed"] = true;
         } catch (Exception error) {
             Report["error"] = error.ToString(); Console.Error.WriteLine(error.Message);

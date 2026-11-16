@@ -83,7 +83,7 @@ Each invocation creates a fresh SDK-owned user/session, profile, and fixture
 containing a directory, an ASCII filename, and a Japanese filename. A helper
 checks its user and session before launching NMF or calling any desktop API;
 it checks window ownership and foreground state before each `SendInput` call.
-The smoke test asserts six states and captures a PNG at each one:
+The smoke test asserts seventeen states and captures a PNG at each one:
 
 1. Startup with the parent entry selected.
 2. Down selects `folder-a`.
@@ -91,6 +91,17 @@ The smoke test asserts six states and captures a PNG at each one:
 4. Escape closes it and restores the main key handler.
 5. Enter opens `folder-a`.
 6. Backspace returns to the fixture and restores its cursor.
+7. F1 opens key-binding help from the main screen.
+8. Escape closes help and restores the main screen.
+9. F2 opens Rename with its entry focused.
+10. F1 opens help while editing.
+11. Escape restores Rename and its entry focus.
+12. Escape cancels Rename.
+13. Down selects `alpha.txt`.
+14. V opens the text file in the built-in viewer.
+15. F1 opens help over the existing viewer.
+16. Escape restores the original preview.
+17. Escape closes the original viewer and restores the main screen.
 
 Assertions poll application state with deadlines. Missing or nearly uniform
 images, and an unchanged canvas after an input step, fail the run. These are
@@ -101,7 +112,7 @@ and session cleanup. Failures and SDK timeouts return nonzero.
 
 Artifacts are retained in a unique `.cache/gui-windows/runs/<timestamp>-<id>`:
 
-- `artifacts/01-startup.png` through `06-parent-directory.png`, with matching
+- `artifacts/01-startup.png` through `17-viewer-closed.png`, with matching
   state JSON; intermediate numbered captures also remain for diagnosis.
 - `artifacts/result.json`, the NMF debug log, stdout, and stderr.
 - `lifecycle.json`, including SDK results and whether deprovisioning completed.

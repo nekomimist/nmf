@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Show effective key bindings for Main, Line Edit, and File Viewer with F1,
+  including command descriptions and default/custom assignments. Close help
+  to resume the previous input or preview.
 - Scroll wrapped Text, Markdown, and Hex previews by displayed rows, including
   within long lines, and limit paging to one row in a one-row viewport.
 - Reveal search matches in wrapped lines even when they occur beyond the first

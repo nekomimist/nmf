@@ -521,8 +521,34 @@ inside the current archive.
 The built-in History Jump save binding is `S-B`, which pins the current
 directory in `navigationHistory.pinned`.
 
+Press `F1` in the main screen, a line-edit input, or the File Viewer to open
+key-binding help. It shows all three modes, with the originating mode first.
+Each row contains the key, command ID, short English description, and
+`Default` or `Custom` source. The list reflects validated effective bindings:
+configured overrides replace defaults, equivalent key names are combined,
+and `noop` overrides appear as disabled actions. Named user commands show
+their registered ID; callable bindings show their Starlark function name.
+
+Help uses the built-in Markdown viewer without creating a temporary file.
+Viewer navigation, selection, copy, and search work there. File-list
+navigation and marking are inactive, and repeated help requests do not stack
+viewers. `Escape` leaves a search/line input or closes help; closing restores
+the previous mode and focus. Help always retains `Escape` as its close key
+even if normal viewer bindings remap it. Its search state is separate from
+normal previews.
+
+`help.bindings` is available in all three targets and can be rebound like
+other commands. To replace `F1`, bind it to `noop` and assign `help.bindings`
+to the desired key for each target. Standard text-entry and clipboard
+shortcuts retain their widget behavior in the viewer's search/line inputs;
+non-text help keys such as `F1` also work while these inputs have focus.
+The line-edit section lists common configurable bindings; native widget
+editing and composite-dialog shortcuts are described separately from that
+table.
+
 Available main-screen commands:
 
+- `help.bindings`
 - `cursor.up`, `cursor.down`, `cursor.pageUp`, `cursor.pageDown`
 - `cursor.first`, `cursor.last`
 - `open`, `open.defaultApp`, `selection.toggle`, `selection.markAll`
@@ -549,6 +575,7 @@ prefix and bind them through the same key binding mechanism.
 
 Available line-edit commands:
 
+- `help.bindings`
 - `lineEdit.accept`, `lineEdit.cancel`
 - `lineEdit.cursor.start`, `lineEdit.cursor.end`
 - `lineEdit.cursor.left`, `lineEdit.cursor.right`
@@ -559,6 +586,7 @@ Available line-edit commands:
 
 Available file-viewer commands:
 
+- `help.bindings`
 - `fileViewer.close`
 - `fileViewer.line.down`, `fileViewer.line.up`
 - `fileViewer.page.down`, `fileViewer.page.up`
