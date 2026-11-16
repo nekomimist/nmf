@@ -368,6 +368,14 @@ Built-in file viewer:
   copy, and literal current-match search. Keyboard range selection is
   intentionally not wired. The first pane starts from `viewer.defaultWrap`;
   replacement previews inherit the active text pane's wrap choice.
+- Vertical movement in wrapped panes counts displayed rows, including rows
+  within a single physical line. Arrows, `j/k`, and the mouse wheel move one
+  displayed row; Page Up/Down, `f/b`, and Space move one screen minus one row,
+  with a minimum of one row. Line labels and line jumps still use physical
+  lines. Home starts at the first row; End places the final displayed row at
+  the top. Width changes preserve the wrapped row containing the old start
+  position, while toggling wrap returns to the same physical line's start.
+  Search reveals the wrapped row containing the start of the match.
 - Markdown files open on the Markdown pane by default unless
   `viewer.defaultPane` is set to `text`. The Markdown tab converts
   Markdown AST to simplified text, including fixed-width pipe tables and

@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"math"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -39,14 +40,18 @@ type fileViewerTextGrid struct {
 	maxLineWidth int
 	visible      []viewerVisibleLine
 	topLine      int
-	leftCol      int
-	visibleRows  int
-	visibleCols  int
-	wrap         bool
-	cellSize     fyne.Size
-	selection    viewerTextSelection
-	selecting    bool
-	search       viewerTextSearch
+	// topWrapCol is a display-cell offset at a wrap boundary in topLine.
+	// Keeping a cell offset lets resizes preserve the content at the top.
+	topWrapCol  int
+	leftCol     int
+	visibleRows int
+	visibleCols int
+	wrap        bool
+	wrapLayout  *viewerWrappedLineLayout
+	cellSize    fyne.Size
+	selection   viewerTextSelection
+	selecting   bool
+	search      viewerTextSearch
 
 	km         *keymanager.KeyManager
 	onMoved    func()
@@ -86,6 +91,14 @@ type viewerVisibleLine struct {
 	cellToCol  []int
 	startCol   int
 	displayLen int
+}
+
+// viewerWrappedLineLayout caches only the most recently needed physical line.
+// Its display map is independent of width; resizing rebuilds just boundaries.
+type viewerWrappedLineLayout struct {
+	line, cols int
+	display    viewerDisplayLineMap
+	starts     []int
 }
 
 func newFileViewerTextGrid(text string, km *keymanager.KeyManager, onMoved func(), debugPrint func(format string, args ...interface{})) *fileViewerTextGrid {
@@ -308,7 +321,43 @@ func (v *fileViewerTextGrid) Scrolled(ev *fyne.ScrollEvent) {
 }
 
 func (v *fileViewerTextGrid) MoveRows(delta int) {
-	v.setTopLine(v.topLine + delta)
+	if !v.wrap {
+		v.setTopLine(v.topLine + delta)
+		return
+	}
+	line := v.topLine
+	starts := v.wrappedLineLayout(line).starts
+	row := viewerWrappedRowIndex(starts, v.topWrapCol)
+	for delta > 0 {
+		remaining := len(starts) - 1 - row
+		if delta <= remaining {
+			row += delta
+			break
+		}
+		row = len(starts) - 1
+		if line == v.maxTopLine() {
+			break
+		}
+		delta -= remaining + 1
+		line++
+		starts = v.wrappedLineLayout(line).starts
+		row = 0
+	}
+	for delta < 0 {
+		if delta >= -row {
+			row += delta
+			break
+		}
+		delta += row + 1
+		row = 0
+		if line == 0 {
+			break
+		}
+		line--
+		starts = v.wrappedLineLayout(line).starts
+		row = len(starts) - 1
+	}
+	v.setTopPosition(line, starts[row])
 }
 
 func (v *fileViewerTextGrid) PageDown() {
@@ -332,6 +381,8 @@ func (v *fileViewerTextGrid) SetWrap(wrapped bool) {
 	}
 	v.wrap = wrapped
 	v.leftCol = 0
+	v.topWrapCol = 0
+	v.wrapLayout = nil
 	v.refreshGrid()
 }
 
@@ -356,7 +407,12 @@ func (v *fileViewerTextGrid) Home() {
 }
 
 func (v *fileViewerTextGrid) End() {
-	v.setTopLine(v.maxTopLine())
+	line := v.maxTopLine()
+	col := 0
+	if v.wrap {
+		col = viewerTextGridLineWidth(v.lines[line])
+	}
+	v.setTopPosition(line, col)
 }
 
 func (v *fileViewerTextGrid) JumpToLine(line int) int {
@@ -473,10 +529,11 @@ func (v *fileViewerTextGrid) searchStart(query string, matchCase bool, direction
 }
 
 func (v *fileViewerTextGrid) pageRows() int {
-	if v.visibleRows > 1 {
-		return v.visibleRows - 1
+	rows := v.visibleRows
+	if rows < 1 {
+		rows = fileViewerTextGridFallbackRows
 	}
-	return fileViewerTextGridFallbackRows
+	return max(1, rows-1)
 }
 
 func (v *fileViewerTextGrid) updateVisibleRows(size fyne.Size) {
@@ -507,11 +564,15 @@ func (v *fileViewerTextGrid) updateVisibleRows(size fyne.Size) {
 	}
 	v.visibleRows = rows
 	v.visibleCols = cols
+	v.setTopPosition(v.topLine, v.topWrapCol)
 	v.setLeftCol(v.leftCol)
-	v.setTopLine(v.topLine)
 }
 
 func (v *fileViewerTextGrid) setTopLine(line int) {
+	v.setTopPosition(line, 0)
+}
+
+func (v *fileViewerTextGrid) setTopPosition(line, wrapCol int) {
 	maxTop := v.maxTopLine()
 	if line < 0 {
 		line = 0
@@ -519,13 +580,17 @@ func (v *fileViewerTextGrid) setTopLine(line int) {
 	if line > maxTop {
 		line = maxTop
 	}
-	if line == v.topLine {
-		v.refreshGrid()
-		return
+	if v.wrap {
+		starts := v.wrappedLineLayout(line).starts
+		wrapCol = starts[viewerWrappedRowIndex(starts, wrapCol)]
+	} else {
+		wrapCol = 0
 	}
+	changed := line != v.topLine || wrapCol != v.topWrapCol
 	v.topLine = line
+	v.topWrapCol = wrapCol
 	v.refreshGrid()
-	if v.onMoved != nil {
+	if changed && v.onMoved != nil {
 		v.onMoved()
 	}
 }
@@ -592,8 +657,8 @@ func (v *fileViewerTextGrid) refreshGrid() {
 	v.updateSelectionBackground()
 	v.applySearchStyle()
 	v.grid.Refresh()
-	v.debug("FileViewer: text-grid-refresh elapsed=%s top=%d col=%d rows=%d cols=%d wrap=%t",
-		time.Since(start), v.topLine+1, v.leftCol+1, rows, cols, v.wrap)
+	v.debug("FileViewer: text-grid-refresh elapsed=%s top=%d wrapCol=%d col=%d rows=%d cols=%d wrap=%t",
+		time.Since(start), v.topLine+1, v.topWrapCol, v.leftCol+1, rows, cols, v.wrap)
 }
 
 func (v *fileViewerTextGrid) debug(format string, args ...interface{}) {
@@ -605,14 +670,39 @@ func (v *fileViewerTextGrid) debug(format string, args ...interface{}) {
 func (v *fileViewerTextGrid) renderVisibleLines(rows, cols int) []viewerVisibleLine {
 	visible := make([]viewerVisibleLine, 0, rows)
 	for i := v.topLine; i < len(v.lines) && len(visible) < rows; i++ {
-		lineMap := newViewerDisplayLineMap(v.lines[i])
 		if v.wrap {
-			visible = append(visible, lineMap.wrap(i, cols, rows-len(visible))...)
+			startCol := 0
+			var lineMap viewerDisplayLineMap
+			if i == v.topLine {
+				startCol = v.topWrapCol
+				lineMap = v.wrappedLineLayout(i).display
+			} else {
+				lineMap = newViewerDisplayLineMap(v.lines[i])
+			}
+			visible = append(visible, lineMap.wrap(i, startCol, cols, rows-len(visible))...)
 			continue
 		}
+		lineMap := newViewerDisplayLineMap(v.lines[i])
 		visible = append(visible, lineMap.slice(i, v.leftCol, cols))
 	}
 	return visible
+}
+
+func (v *fileViewerTextGrid) wrappedLineLayout(line int) *viewerWrappedLineLayout {
+	layout := v.wrapLayout
+	if layout == nil || layout.line != line {
+		layout = &viewerWrappedLineLayout{line: line, display: newViewerDisplayLineMap(v.lines[line])}
+		v.wrapLayout = layout
+	}
+	cols := v.visibleCols
+	if cols < 1 {
+		cols = fileViewerTextGridFallbackCols
+	}
+	if layout.cols != cols {
+		layout.cols = cols
+		layout.starts = layout.display.wrapStarts(cols)
+	}
+	return layout
 }
 
 func (v *fileViewerTextGrid) textGridCellSize() fyne.Size {
@@ -718,7 +808,16 @@ func (v *fileViewerTextGrid) revealSearchMatch() {
 		v.topLine = v.search.start.line
 		changed = true
 	}
-	if !v.wrap {
+	if v.wrap {
+		layout := v.wrappedLineLayout(v.search.start.line)
+		col := layout.display.displayColumnForLogicalCol(v.search.start.col)
+		starts := layout.starts
+		wrapCol := starts[viewerWrappedRowIndex(starts, col)]
+		if wrapCol != v.topWrapCol {
+			v.topWrapCol = wrapCol
+			changed = true
+		}
+	} else {
 		col := viewerDisplayColumnForLogicalCol(v.lines[v.search.start.line], v.search.start.col)
 		endCol := viewerDisplayColumnForLogicalCol(v.lines[v.search.end.line], v.search.end.col)
 		cols := v.visibleCols
@@ -1004,10 +1103,44 @@ func (m viewerDisplayLineMap) textForRange(start, end int) string {
 	return b.String()
 }
 
-func (m viewerDisplayLineMap) wrap(line, width, limit int) []viewerVisibleLine {
+// wrapEnd is shared by rendering and navigation so wide runes always move
+// intact to the same row, even when the viewport is narrower than a rune.
+func (m viewerDisplayLineMap) wrapEnd(start, width int) int {
 	if width < 1 {
 		width = fileViewerTextGridFallbackCols
 	}
+	end := min(start+width, len(m.text))
+	if end < len(m.text) && m.continuation[end] {
+		runeStart := end
+		for runeStart > start && m.continuation[runeStart] {
+			runeStart--
+		}
+		if runeStart > start {
+			end = runeStart
+		} else {
+			for end < len(m.text) && m.continuation[end] {
+				end++
+			}
+		}
+	}
+	return end
+}
+
+// wrapStarts stores only boundaries for one physical line, not rendered rows
+// for the entire file. Tabs retain their physical-line display columns.
+func (m viewerDisplayLineMap) wrapStarts(width int) []int {
+	starts := []int{0}
+	for end := m.wrapEnd(0, width); end < len(m.text); end = m.wrapEnd(end, width) {
+		starts = append(starts, end)
+	}
+	return starts
+}
+
+func viewerWrappedRowIndex(starts []int, col int) int {
+	return max(0, sort.Search(len(starts), func(i int) bool { return starts[i] > col })-1)
+}
+
+func (m viewerDisplayLineMap) wrap(line, startCol, width, limit int) []viewerVisibleLine {
 	if limit < 1 {
 		return nil
 	}
@@ -1019,21 +1152,8 @@ func (m viewerDisplayLineMap) wrap(line, width, limit int) []viewerVisibleLine {
 		}}
 	}
 	rows := make([]viewerVisibleLine, 0, limit)
-	for start := 0; start < len(m.text) && len(rows) < limit; {
-		end := min(start+width, len(m.text))
-		if end < len(m.text) && m.continuation[end] {
-			runeStart := end
-			for runeStart > start && m.continuation[runeStart] {
-				runeStart--
-			}
-			if runeStart > start {
-				end = runeStart
-			} else {
-				for end < len(m.text) && m.continuation[end] {
-					end++
-				}
-			}
-		}
+	for start := startCol; start < len(m.text) && len(rows) < limit; {
+		end := m.wrapEnd(start, width)
 		rows = append(rows, m.slice(line, start, end-start))
 		start = end
 	}

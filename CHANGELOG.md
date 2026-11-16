@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Scroll wrapped Text, Markdown, and Hex previews by displayed rows, including
+  within long lines, and limit paging to one row in a one-row viewport.
+- Reveal search matches in wrapped lines even when they occur beyond the first
+  screen of the line.
+
 ## 0.1.4 - 2026-11-15
 
 - Switch destination lists in Copy, Move, Extract, and Compare Directories
