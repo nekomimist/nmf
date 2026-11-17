@@ -45,37 +45,61 @@ history remains in Git.
 
 ## Preparing a release
 
+Choose one checkout for the entire release, including metadata edits, commits,
+tags, builds, and verification. When operating from Windows, use the Windows
+checkout through WSL as described in [Releasing from Windows](releasing-windows.md).
+Do not switch to a separate Linux checkout partway through the release.
+
 1. Update `VERSION` and move the `Unreleased` entries into a new dated release
    section, leaving an empty `Unreleased` heading at the top. Use the release date.
 2. Validate the release metadata and run the checks:
 
    ```sh
-   python3 scripts/release.py check v0.1.0
-   python3 -m unittest discover -s scripts -p '*_test.py'
-   make test-all
-   go vet -tags migrated_fynedo ./...
+   nix develop --command python3 scripts/release.py check v0.1.0
+   nix develop --command python3 -m unittest discover -s scripts -p '*_test.py'
+   nix develop --command make test-all
+   nix develop --command go vet -tags migrated_fynedo ./...
    git diff --check
    ```
 
 3. Build both Windows architectures and inspect their ZIPs locally:
 
    ```sh
+   nmf_packaging_inputs=$(sha256sum FyneApp.toml flake.lock)
    make build-windows
    nix develop --command python3 scripts/release.py package amd64
    make build-windows-arm64
    nix develop --command python3 scripts/release.py package arm64
+   nix develop --command python3 scripts/release.py verify v0.1.0 dist
+   if [ "$nmf_packaging_inputs" != "$(sha256sum FyneApp.toml flake.lock)" ]; then
+       echo "Packaging changed FyneApp.toml or flake.lock; inspect the diff." >&2
+       exit 1
+   fi
    ```
 
    Release tooling requires Python 3.11 or newer; the Flake includes a pinned
    Python alongside Go, Zig, and Fyne. Packaging uses that environment to collect
    the licenses for each architecture's dependencies.
-4. Commit and merge the release preparation. After CI passes on that commit,
-   create and push the matching annotated tag (replace the example version for
-   later releases):
+
+For preparation-only requests, stop here with validated uncommitted changes and
+local artifacts. Record the base HEAD and the prepared diff; that HEAD does not
+yet identify the uncommitted release source. Preserve any pre-existing changes,
+including intentional changes to packaging inputs.
+
+## Publishing a release
+
+Continue only when publication is requested.
+
+1. Review the intended release diff, including that `FyneApp.toml` was restored
+   to its pre-build contents and `flake.lock` was not unexpectedly changed.
+   Commit and merge the release preparation through the publication branch
+   workflow. Record the full release commit SHA and wait for `ci.yml` to pass
+   on that exact commit, then create and push the matching annotated tag.
+   Replace the example version and use the recorded SHA below:
 
    ```sh
-   git tag -a v0.1.0 -m "Release v0.1.0"
-   git push origin v0.1.0
+   git tag -a v0.1.0 CHECKED_COMMIT_SHA -m "Release v0.1.0"
+   git push origin refs/tags/v0.1.0
    ```
 
 Pushing a `v*` tag starts [.github/workflows/release.yml](../.github/workflows/release.yml).
