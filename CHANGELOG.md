@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.5 - 2026-11-17
+
 - Show effective key bindings for Main, Line Edit, and File Viewer with F1,
   including command descriptions and default/custom assignments. Close help
   to resume the previous input or preview.
