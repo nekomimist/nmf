@@ -723,7 +723,6 @@ func shellDataObject(hwnd uintptr, folder *shellFolder, childPIDLs []uintptr) (*
 func normalizePaths(paths []string) []string {
 	out := make([]string, 0, len(paths))
 	for _, p := range paths {
-		p = strings.TrimSpace(p)
 		if p == "" {
 			continue
 		}
@@ -1060,6 +1059,10 @@ func findChildPIDLByName(folder *shellFolder, name string) (uintptr, error) {
 	if failed(hr) {
 		return 0, fmt.Errorf("IShellFolder.EnumObjects failed: 0x%x", uint32(hr))
 	}
+	// Empty Shell folders may return S_FALSE with a nil enumerator.
+	if enumerator == nil {
+		return 0, fmt.Errorf("child %q was not found", name)
+	}
 	defer releaseUnknown((*unknown)(unsafe.Pointer(enumerator)))
 
 	var caseInsensitiveMatch uintptr
@@ -1073,14 +1076,14 @@ func findChildPIDLByName(folder *shellFolder, name string) (uintptr, error) {
 			uintptr(unsafe.Pointer(&pidl)),
 			uintptr(unsafe.Pointer(&fetched)),
 		)
-		if uint32(hr) == sFalse || fetched == 0 {
-			break
-		}
 		if failed(hr) {
 			if caseInsensitiveMatch != 0 {
 				procCoTaskMemFree.Call(caseInsensitiveMatch)
 			}
 			return 0, fmt.Errorf("IEnumIDList.Next failed: 0x%x", uint32(hr))
+		}
+		if uint32(hr) == sFalse || fetched == 0 {
+			break
 		}
 
 		displayName, err := childDisplayName(folder, pidl)

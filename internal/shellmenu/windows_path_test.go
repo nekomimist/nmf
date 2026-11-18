@@ -81,9 +81,9 @@ func TestNormalizeWindowsShellPath(t *testing.T) {
 			want:  `\\wsl.localhost\Ubuntu\home\neko`,
 		},
 		{
-			name:  "local path",
-			input: " C:\\Users\\hiro\\file.txt ",
-			want:  `C:\Users\hiro\file.txt`,
+			name:  "local path preserves trailing space",
+			input: "C:\\Users\\hiro\\file.txt ",
+			want:  `C:\Users\hiro\file.txt `,
 		},
 	}
 
@@ -132,5 +132,18 @@ func TestWindowsShellPathParentAndNameRejectsRoot(t *testing.T) {
 	}
 	if _, _, err := path.parentAndName(); err == nil {
 		t.Fatal("parentAndName() for a root path succeeded, want error")
+	}
+}
+
+func TestShellChildPreservesTrailingWhitespace(t *testing.T) {
+	for _, path := range []string{"C:\\folder\\report\u2003", "smb://host/share/report\u2003"} {
+		parsed, err := parseWindowsShellPath(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, got, err := parsed.parentAndName()
+		if err != nil || got != "report\u2003" {
+			t.Fatalf("Shell child for %q = %q, %v", path, got, err)
+		}
 	}
 }
