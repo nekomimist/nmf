@@ -145,9 +145,11 @@ Implemented VFS providers expose:
 
 ## File Opening Behavior
 
-Main-list `Return` uses the `open` command. It enters directories, enters
-supported archive files, and delegates other files to
-`fileinfo.OpenWithDefaultApp`.
+Main-list `Return` uses the `open` command. It enters directories directly.
+For files, a window-owned worker probes for an archive, resolves a shortcut
+when applicable, or calls `fileinfo.OpenWithDefaultAppContext`. Extract uses
+the same cancellable worker to probe the captured selection before showing
+destination choices.
 On Windows, `.lnk` shortcut files are resolved before default-app delegation:
 shortcuts to directories enter the target directory, and shortcuts to files
 enter the target file's parent directory. Shortcut COM reads and target
@@ -158,7 +160,7 @@ that worker, while an inaccessible parsed target is reported directly instead
 of invoking the same unreachable target again through `ShellExecuteW`.
 
 Main-list `Shift+Return` uses `open.defaultApp`. It enters directories but
-delegates files directly to `fileinfo.OpenWithDefaultApp`, so archive-like
+delegates files directly to `fileinfo.OpenWithDefaultAppContext`, so archive-like
 application formats such as `.xlsx` can be launched with the OS-associated app.
 
 - Windows: uses `ShellExecuteW("open")`; `smb://` is converted to UNC first.

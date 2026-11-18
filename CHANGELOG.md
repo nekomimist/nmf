@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+- **Breaking:** the file list now honors `ui.showHiddenFiles` on initial load,
+  cached navigation and live updates. To keep dotfiles and entries with the
+  Windows hidden attribute visible, set `"showHiddenFiles": true` inside
+  the `"ui"` object in `config.json`.
+- Copy, move, rename and delete preserve the exact selected filename, including
+  trailing whitespace. Renaming a conflict now checks the new destination's
+  type and modification time before applying an overwrite decision.
+- Copy and extraction populate read-only directories before applying their
+  final permissions and timestamps. Directory comparison reports unreadable
+  entries and partial read failures.
+- Keep password keystrokes out of debug logs, and omit credential-bearing SMB
+  addresses from path entry, configured directory jumps and startup errors.
+- Opening files and checking selections for extraction keep the window
+  responsive. Remote archive detection reads at most 64 KiB. Archives with
+  unusual extensions support navigation and parent jumps.
+- Canceling a preview or transfer interrupts direct SMB I/O. An interrupted
+  SMB replacement attempts to restore the previous destination and reports the
+  backup location if recovery fails.
+- Directory watches catch changes made during navigation and converge after
+  event bursts. Creating or renaming an entry respects the active listing
+  order and filter. Each window restores and toggles its own filter.
+- Collecting marked files for a drag, restoring the cursor after a refresh and
+  updating the Jobs window scale better with large listings. Moving a directory also updates
+  pinned and historical descendants across local and SMB paths.
+- Long text lines and hex previews render the visible range on demand.
+  BOM-marked UTF-16 text opens in the Text pane, and backward search wraps
+  correctly from the first match. Tree navigation and filtering long lists of
+  destinations also reuse previously computed rows.
+
 ## 0.1.5 - 2026-11-17
 
 - Show effective key bindings for Main, Line Edit, and File Viewer with F1,

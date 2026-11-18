@@ -204,7 +204,9 @@ temp directory), SMB credentials cached in the OS keyring (service
 
 `ui`
 
-- `showHiddenFiles`: show dotfiles and hidden files when supported.
+- `showHiddenFiles` defaults to false. Set it to true to show dotfiles and
+  entries with the Windows hidden attribute. Each window applies the setting
+  to its file list, including cached listings and watcher updates.
 - `sort.sortBy`: one of `name`, `size`, `modified`, or `extension`.
 - `sort.sortOrder`: `asc` or `desc`.
 - `sort.directoriesFirst`: keep directories before regular files.

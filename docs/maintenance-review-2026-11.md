@@ -2,6 +2,8 @@
 
 Reviewed NMF v0.1.5 at `e380029` on November 19, following the [September review](maintenance-review-2026-09.md). Findings below refer to that revision. The highest priorities are preserving the exact selected filesystem object, honoring overwrite decisions, and keeping credentials out of diagnostics. The largest measured interactive costs come from copying a whole collection for each selected item or rendering a whole preview to display a small viewport.
 
+The [implementation results](#implementation-results) cover the fixes and measurements after this review.
+
 ## Fix first
 
 | Finding | Evidence and scope | Suggested fix and acceptance check |
@@ -64,3 +66,37 @@ A separate history benchmark passed ten completed directory operations to the UI
 Linux passed `make test-all`, `make test-race`, and `go vet -tags migrated_fynedo ./...`. The separate temporary fixtures exercised ordinary jobs in disposable directories, model and Fyne test-driver behavior, and isolated computation. The Windows drag benchmark exercised the shared candidate selector on Linux. The packaging concurrency fixture used a stand-in packager. Live SMB, native Windows and macOS UI, blocking credential renewal on a real server, and end-to-end frame times remain unmeasured in this review.
 
 Suggested sequence is to protect name identity and conflict retries, remove sensitive logging, then fix blocking I/O and watcher convergence. The drag and cursor lookup changes are small independent performance wins. Viewer virtualization and watcher delivery each deserve separate changes with their own before/after fixtures.
+
+## Implementation results
+
+The maintenance branch implemented the findings above. The integrated application and its regression tests were validated at `8519387`. The main user-visible default change is hidden-file visibility. To retain the former listing, set `ui.showHiddenFiles` to true.
+
+### Repeated measurements
+
+These Linux amd64 measurements cover the operations and fixture sizes in the review. B/op includes all allocations in the timed operation. Filesystem latency, Fyne drawing and the Windows Shell run outside the selection, watcher and viewer measurements.
+
+| Operation | Before | After |
+| --- | ---: | ---: |
+| Collect 100 drag candidates among 10,000 visible files | 14.6 ms / 88,504,517 B | 0.160 ms / 9,472 B |
+| Render a viewport into an indexed 1 MiB text line | 18.2 ms / 68,019,098 B | 22.7 µs / 4,336 B |
+| Initialize the 1 MiB hex grid | 73.9 ms / 32,145,949 B | 1.23 ms / 2.96 MB |
+| Restore the cursor after all 10,000 neighbors disappeared | 303 ms / 0 B | 0.544 ms / 436,864 B |
+| Deliver one 100,000-entry watcher snapshot to one window | 25.1 ms / 14,687,218 B | 1.66 µs / 0 B |
+| Fetch the Jobs window rows and selected completed job details | 4.40 ms / 16,589,388 B | 19.2 µs / 41,120 B |
+| Read the empty selection after two inversions on 100,000 files | 3.02 ms / 8,806,400 B | 0.271 µs / 0 B |
+| Build an unmarked Starlark command context with 100,000 rows | 2.13 ms / 8,807,697 B | 1.12 µs / 1,248 B |
+| Schedule two state saves and update a 10,000-path history | 2.71 ms / 2,776,248 B | 0.953 ms / 344 B on the caller, plus one deferred 1.39 MB capture |
+| Resolve ten member paths of a 1,000-entry ZIP before copying | 3.50 ms / 5,068,629 B | 2.68 µs / 0 B |
+| Compare equal short readers, averaging 50 pairs | 65,696 B / 6 allocations | 1,406 B / 2 allocations |
+| Update 10,000 unrelated history entries after ten moves | 110 ms / 16.2 MB | 5.66 ms / 438,768 B |
+| Update the same history after ten deletions | 61.5 ms / 3.24 MB | 3.59 ms / 1,384 B |
+
+The cursor fallback builds its temporary path index after missing the nearest neighbor. The collection benchmark for archive members ends before the job opens its shared archive. Content comparison pays for two 32 KiB buffers once per comparison operation. On a 100-small-file copy, allocation fell from 1.30 MB to 259 KB while elapsed time in the ten-run sample rose from 10.45 ms to 12.78 ms.
+
+### Platform checks
+
+- Linux passed `make test-all`, `make test-race`, `go vet -tags migrated_fynedo ./...` and `make build-linux`. Release-tool and GUI-runner unit tests passed.
+- The disposable Samba fixture passed copy, overwrite, restoration and disconnect tests. Pausing the server verified cancellation through the preview entry point, an open reader and a reusable job session.
+- Windows x64 passed the native test suite, vet and all 17 steps of the isolated GUI smoke test, including cursor navigation, filtering, help, rename and the viewer. Platform-specific cases ran on the applicable OS.
+- Windows ARM64 compiled the full test suite. Running both Fyne packaging targets concurrently produced x86-64 and AArch64 GUI executables under the expected names and preserved the original build metadata.
+- The fileinfo, jobs and watcher packages cross-compiled for macOS amd64 and arm64. Runtime testing covered Linux and Windows x64.
