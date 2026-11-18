@@ -2,10 +2,9 @@
 
 ## Unreleased
 
-- **Breaking:** the file list now honors `ui.showHiddenFiles` on initial load,
-  cached navigation and live updates. To keep dotfiles and entries with the
-  Windows hidden attribute visible, set `"showHiddenFiles": true` inside
-  the `"ui"` object in `config.json`.
+- Hidden files remain visible by default. **Breaking:** an explicit
+  `ui.showHiddenFiles: false` now hides dotfiles and entries with the Windows
+  hidden attribute. Remove that setting or set it to `true` to keep them visible.
 - Copy, move, rename and delete preserve the exact selected filename, including
   trailing whitespace. Renaming a conflict now checks the new destination's
   type and modification time before applying an overwrite decision.

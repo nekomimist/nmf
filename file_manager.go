@@ -159,11 +159,11 @@ func (fm *FileManager) scheduleStateSave() error {
 
 func (fm *FileManager) browserModel() *browser.Model {
 	if fm.browser == nil {
-		sortConfig := config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}
-		if fm.state != nil && fm.config != nil {
-			sortConfig = fm.state.EffectiveSort(fm.config.UI.Sort)
+		cfg := fm.config
+		if cfg == nil {
+			cfg = config.Default()
 		}
-		fm.browser = browser.New("", sortConfig, fm.config != nil && fm.config.UI.ShowHiddenFiles)
+		fm.browser = browser.New("", fm.state.EffectiveSort(cfg.UI.Sort), cfg.UI.ShowHiddenFiles)
 	}
 	return fm.browser
 }

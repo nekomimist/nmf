@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"nmf/internal/constants"
 )
 
 // Config represents the application configuration
@@ -533,7 +535,7 @@ func getDefaultConfig() *Config {
 			MaxLogFiles:  10,
 		},
 		UI: UIConfig{
-			ShowHiddenFiles: false,
+			ShowHiddenFiles: constants.DefaultShowHiddenFiles,
 			Sort: SortConfig{
 				SortBy:           "name",
 				SortOrder:        "asc",

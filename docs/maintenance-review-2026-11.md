@@ -69,7 +69,7 @@ Suggested sequence is to protect name identity and conflict retries, remove sens
 
 ## Implementation results
 
-The maintenance branch implemented the findings above. The integrated application and its regression tests were validated at `8519387`. The main user-visible default change is hidden-file visibility. To retain the former listing, set `ui.showHiddenFiles` to true.
+The maintenance branch implemented the findings above. The integrated application and its regression tests were validated at `8519387`. A follow-up set the default for `ui.showHiddenFiles` to true to preserve the listing users saw in v0.1.5. An explicit false now hides those entries.
 
 ### Repeated measurements
 

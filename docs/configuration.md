@@ -101,7 +101,7 @@ temp directory), SMB credentials cached in the OS keyring (service
     "maxLogFiles": 10
   },
   "ui": {
-    "showHiddenFiles": false,
+    "showHiddenFiles": true,
     "sort": {
       "sortBy": "name",
       "sortOrder": "asc",
@@ -204,7 +204,7 @@ temp directory), SMB credentials cached in the OS keyring (service
 
 `ui`
 
-- `showHiddenFiles` defaults to false. Set it to true to show dotfiles and
+- `showHiddenFiles` defaults to true. Set it to false to hide dotfiles and
   entries with the Windows hidden attribute. Each window applies the setting
   to its file list, including cached listings and watcher updates.
 - `sort.sortBy`: one of `name`, `size`, `modified`, or `extension`.
