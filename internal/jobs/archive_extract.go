@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -76,6 +78,9 @@ func extractArchivePath(j *Job, execCtx *executionContext, src string, destDir e
 		root = anchored
 	}
 
+	// Headers may precede or follow children. Remember newly created
+	// directories, including implicit parents, until all entries are present.
+	directories := make(map[string]*archiveDirectory)
 	err = fileinfo.ExtractArchive(j.ctx, src, func(ctx context.Context, entry fileinfo.ArchiveEntry) error {
 		if canceled(j) {
 			return errCanceled
@@ -101,16 +106,23 @@ func extractArchivePath(j *Job, execCtx *executionContext, src string, destDir e
 		if err := ensureSMBArchiveParents(execCtx, root, parent); err != nil {
 			return err
 		}
+		if root.localRoot != nil {
+			workingMode := os.FileMode(0755)
+			if entry.Info.IsDir() {
+				workingMode = entry.Info.Mode().Perm() | 0700
+			}
+			if err := prepareLocalArchiveDirectories(execCtx, parent, workingMode, directories); err != nil {
+				return err
+			}
+		}
 		srcPath := extractSourcePath(src, entry.Name)
 		if entry.Info.IsDir() {
-			if err := ensureDir(execCtx, dst, entry.Info.Mode()); err != nil {
-				return wrapPath(dst.displayPath(), err)
+			record := directories[dst.path]
+			if record == nil { // SMB parents were created and checked above.
+				record = &archiveDirectory{path: dst}
+				directories[dst.path] = record
 			}
-			if shouldPreserveTimestamps(j) {
-				if err := chtimesPath(execCtx, dst, entry.Info.ModTime(), entry.Info.ModTime()); err != nil {
-					return wrapPath(dst.displayPath(), err)
-				}
-			}
+			record.info = entry.Info
 			return nil
 		}
 
@@ -134,8 +146,82 @@ func extractArchivePath(j *Job, execCtx *executionContext, src string, destDir e
 	if err != nil {
 		return wrapPath(src, err)
 	}
+	if err := finishArchiveDirectories(j, execCtx, root, directories); err != nil {
+		return err
+	}
 	if rootCreated {
 		j.addResult(Result{Source: src, Destination: root.displayPath(), DestinationCreated: true})
+	}
+	return nil
+}
+
+type archiveDirectory struct {
+	path     executionPath
+	created  bool
+	identity os.FileInfo // local directory when first seen
+	info     os.FileInfo // explicit archive directory header, if present
+}
+
+// The local extraction root uses relative paths. Install each implicit parent
+// once so a later explicit header can set the mode of a directory we created.
+func prepareLocalArchiveDirectories(execCtx *executionContext, dir executionPath, workingMode os.FileMode, directories map[string]*archiveDirectory) error {
+	if dir.path == "." || directories[dir.path] != nil {
+		return nil
+	}
+	if err := prepareLocalArchiveDirectories(execCtx, dirPath(dir), 0755, directories); err != nil {
+		return err
+	}
+	created, err := createDirectoryIfMissing(execCtx, dir, workingMode)
+	if err != nil {
+		return wrapPath(dir.displayPath(), err)
+	}
+	identity, err := dir.localRoot.Lstat(dir.path)
+	if err != nil {
+		return wrapPath(dir.displayPath(), err)
+	}
+	directories[dir.path] = &archiveDirectory{path: dir, created: created, identity: identity}
+	return nil
+}
+
+func finishArchiveDirectories(j *Job, execCtx *executionContext, root executionPath, directories map[string]*archiveDirectory) error {
+	ordered := make([]*archiveDirectory, 0, len(directories))
+	for _, dir := range directories {
+		if dir.info != nil && (dir.created || shouldPreserveTimestamps(j)) {
+			ordered = append(ordered, dir)
+		}
+	}
+	// A child's path is always longer than its parent's. Finish children
+	// first while every ancestor is still writable and traversable.
+	sort.Slice(ordered, func(i, j int) bool { return len(ordered[i].path.path) > len(ordered[j].path.path) })
+	for _, dir := range ordered {
+		if canceled(j) {
+			return errCanceled
+		}
+		if err := ensureSMBArchiveParents(execCtx, root, dir.path); err != nil {
+			return err
+		}
+		if dir.created && runtime.GOOS != "windows" {
+			// The header may follow the children of an implicit parent. Keep
+			// only permissions that both mkdir and the header granted.
+			f, err := openSameLocalDirectory(dir.path, dir.identity)
+			if err != nil {
+				return wrapPath(dir.path.displayPath(), err)
+			}
+			mode := dir.identity.Mode() &^ (os.ModePerm &^ dir.info.Mode().Perm())
+			if mode.Perm() != dir.identity.Mode().Perm() {
+				err = f.Chmod(mode)
+			}
+			f.Close()
+			if err != nil {
+				return wrapPath(dir.path.displayPath(), err)
+			}
+		}
+		if shouldPreserveTimestamps(j) {
+			mtime := dir.info.ModTime()
+			if err := chtimesPath(execCtx, dir.path, mtime, mtime); err != nil {
+				return wrapPath(dir.path.displayPath(), err)
+			}
+		}
 	}
 	return nil
 }

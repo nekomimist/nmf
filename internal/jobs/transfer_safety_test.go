@@ -299,13 +299,14 @@ func TestExclusivePublishFallbackPreservesDestination(t *testing.T) {
 }
 
 func TestOperationsPreserveSelectedTrailingSpace(t *testing.T) {
+	selectedName := "report "
 	if runtime.GOOS == "windows" {
-		t.Skip("ordinary Windows paths alias trailing ASCII spaces")
+		selectedName = "report\u3000"
 	}
 	for _, op := range []Type{TypeCopy, TypeMove, TypeDelete} {
 		t.Run(string(op), func(t *testing.T) {
 			dir, dst := t.TempDir(), t.TempDir()
-			sibling, selected := filepath.Join(dir, "report"), filepath.Join(dir, "report ")
+			sibling, selected := filepath.Join(dir, "report"), filepath.Join(dir, selectedName)
 			for _, name := range []string{sibling, selected} {
 				if err := os.WriteFile(name, []byte(name), 0600); err != nil {
 					t.Fatal(err)
@@ -324,7 +325,7 @@ func TestOperationsPreserveSelectedTrailingSpace(t *testing.T) {
 				}
 			}
 			if op != TypeDelete {
-				if got, err := os.ReadFile(filepath.Join(dst, "report ")); err != nil || string(got) != selected {
+				if got, err := os.ReadFile(filepath.Join(dst, selectedName)); err != nil || string(got) != selected {
 					t.Fatalf("destination = %q, %v", got, err)
 				}
 			}
