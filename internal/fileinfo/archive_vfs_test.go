@@ -2,6 +2,8 @@ package fileinfo
 
 import (
 	"archive/zip"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
@@ -397,7 +399,7 @@ func TestArchivePasswordPromptAnswerIsNotCachedBeforeValidation(t *testing.T) {
 func TestArchiveVFSRetryValidatesContentBeforeCachingPassword(t *testing.T) {
 	provider := setArchivePasswordProviderForTest(t, "wrong", "secret")
 	archivePath := filepath.Join("testdata", "encrypted-names-visible.7z")
-	format, err := identifyArchiveFormat(t.Context(), archivePath)
+	format, err := identifyArchiveFormat(t.Context(), archivePath, archivePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -738,7 +740,7 @@ func TestArchiveResolveBoundsPasswordPrompts(t *testing.T) {
 func TestArchiveVFSRetryKeepsResolveContext(t *testing.T) {
 	setArchivePasswordProviderForTest(t, "secret")
 	archivePath := filepath.Join("testdata", "encrypted-names-visible.7z")
-	format, err := identifyArchiveFormat(t.Context(), archivePath)
+	format, err := identifyArchiveFormat(t.Context(), archivePath, archivePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -901,5 +903,95 @@ func TestArchiveVFSOpenPropagatesCancelToPasswordPrompt(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("Open() did not return; the password prompt never saw the cancellation")
+	}
+}
+
+func TestArchiveWithUnusualNameRoundTrips(t *testing.T) {
+	p := writeTestZip(t, map[string]string{"folder/readme ": "entry"})
+	dir := filepath.Join(filepath.Dir(p), "ordinary!")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	archive := filepath.Join(dir, "backup%20.blob")
+	if err := os.Rename(p, archive); err != nil {
+		t.Fatal(err)
+	}
+	if !IsSupportedArchive(archive) {
+		t.Fatal("ZIP signature missed")
+	}
+	root := ArchiveRootPath(archive)
+	entry := JoinPath(root, "folder/readme ")
+	resolved, parsed, err := CanonicalDisplayPath(entry)
+	if err != nil || resolved != entry || parsed.Archive != archive || parsed.Inner != "folder/readme " {
+		t.Fatalf("parsed = %+v, canonical = %q, err = %v", parsed, resolved, err)
+	}
+	if got := ParentPath(ParentPath(entry)); got != root {
+		t.Fatalf("parent root = %q", got)
+	}
+	in, err := OpenPortable(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	data, err := io.ReadAll(in)
+	if err != nil || string(data) != "entry" {
+		t.Fatalf("data=%q err=%v", data, err)
+	}
+}
+
+func TestArchiveProbeLimitsInputAndIgnoresMisleadingSuffix(t *testing.T) {
+	source := &io.LimitedReader{R: repeatByteReader('x'), N: 10 << 20}
+	if probeArchiveFormat(t.Context(), "ordinary.zip", source) {
+		t.Fatal("text file classified by extension")
+	}
+	if used := (10 << 20) - source.N; used > archiveProbeLimit {
+		t.Fatalf("probe read %d bytes", used)
+	}
+}
+
+type repeatByteReader byte
+
+func (r repeatByteReader) Read(buf []byte) (int, error) {
+	for i := range buf {
+		buf[i] = byte(r)
+	}
+	return len(buf), nil
+}
+
+func TestArchiveProbeHandlesEmptyAndMisnamedArchives(t *testing.T) {
+	var zipData bytes.Buffer
+	if err := zip.NewWriter(&zipData).Close(); err != nil {
+		t.Fatal(err)
+	}
+	var tarGZ bytes.Buffer
+	gz := gzip.NewWriter(&tarGZ)
+	if _, err := gz.Write(make([]byte, 1024)); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		data []byte
+	}{
+		{"empty.zip", zipData.Bytes()},
+		{"empty.tar.gz", tarGZ.Bytes()},
+		{"empty.tgz", tarGZ.Bytes()},
+		{"zip-content.tar", zipData.Bytes()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := filepath.Join(t.TempDir(), tc.name)
+			if err := os.WriteFile(p, tc.data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if !IsSupportedArchive(p) {
+				t.Fatal("probe did not identify archive")
+			}
+			entries, err := ReadDirPortable(ArchiveRootPath(p))
+			if err != nil || len(entries) != 0 {
+				t.Fatalf("listing = %v, %v", entries, err)
+			}
+		})
 	}
 }

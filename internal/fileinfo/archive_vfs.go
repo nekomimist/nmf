@@ -1,6 +1,8 @@
 package fileinfo
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -128,14 +130,14 @@ func archiveFileSystem(ctx context.Context, archivePath, localPath string, opts 
 	return fsys, nil
 }
 
-func identifyArchiveFormat(ctx context.Context, localPath string) (archives.Format, error) {
+func identifyArchiveFormat(ctx context.Context, archivePath, localPath string) (archives.Format, error) {
 	file, err := os.Open(localPath)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	format, _, err := archives.Identify(ctx, filepath.Base(localPath), file)
+	format, err := identifyArchiveStream(ctx, archivePath, file)
 	if err != nil {
 		return nil, fmt.Errorf("identify format: %w", err)
 	}
@@ -143,7 +145,7 @@ func identifyArchiveFormat(ctx context.Context, localPath string) (archives.Form
 }
 
 func withArchivePasswordRetry(ctx context.Context, archivePath, localPath string, opts ArchiveOptions, probeReadable bool, op func(archives.Format) error) error {
-	format, err := identifyArchiveFormat(ctx, localPath)
+	format, err := identifyArchiveFormat(ctx, archivePath, localPath)
 	if err != nil {
 		return err
 	}
@@ -441,29 +443,79 @@ func ExtractArchive(ctx context.Context, archivePath string, handler func(contex
 	return nil
 }
 
-// IsSupportedArchive reports whether p can be opened as an archive-like FS.
+// IsSupportedArchive reports whether the file content identifies an archive.
 func IsSupportedArchive(p string) bool {
-	if strings.TrimSpace(p) == "" || IsArchivePath(p) {
+	return IsSupportedArchiveContext(context.Background(), p)
+}
+
+// IsSupportedArchiveContext probes the stream without staging a remote file.
+// A successful navigation or extraction owns the only full download.
+func IsSupportedArchiveContext(ctx context.Context, p string) bool {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if p == "" || IsArchivePath(p) {
 		return false
 	}
-	localPath, tempPath, err := archiveLocalPath(context.Background(), p)
+	in, err := OpenPortableContext(ctx, p)
 	if err != nil {
 		return false
 	}
-	if tempPath != "" {
-		defer os.Remove(tempPath)
-	}
-	file, err := os.Open(localPath)
-	if err != nil {
-		return false
-	}
-	defer file.Close()
-	format, _, err := archives.Identify(context.Background(), filepath.Base(localPath), file)
-	if err != nil {
-		return false
-	}
+	defer in.Close()
+	return probeArchiveFormat(ctx, p, in)
+}
+
+const archiveProbeLimit = 64 << 10
+
+func probeArchiveFormat(ctx context.Context, p string, in io.Reader) bool {
+	format, err := identifyArchiveStream(ctx, p, io.LimitReader(&contextReader{ctx: ctx, reader: in}, archiveProbeLimit))
 	_, ok := format.(archives.Extractor)
-	return ok
+	return ctx.Err() == nil && err == nil && ok
+}
+
+// Pass only content to Identify. Supplying the filename as well can pick the
+// wrong extractor for a ZIP renamed to .tar, depending on matcher order.
+func identifyArchiveStream(ctx context.Context, name string, in io.Reader) (archives.Format, error) {
+	reader := bufio.NewReader(in)
+	// archives.Zip.Match consumes the first signature before testing the
+	// second. Match the EOCD at offset zero for an empty ZIP.
+	if header, _ := reader.Peek(4); bytes.Equal(header, []byte("PK\x05\x06")) {
+		return archives.Zip{}, nil
+	}
+	lowerName := strings.ToLower(filepath.Base(name))
+	tarName := strings.Contains(lowerName, ".tar")
+	switch filepath.Ext(lowerName) {
+	case ".tgz", ".tbz", ".tbz2", ".txz", ".tlz", ".tzst":
+		tarName = true
+	}
+	if tarName && emptyTarHeader(reader) {
+		return archives.Tar{}, nil
+	}
+	format, rewound, err := archives.Identify(ctx, "", reader)
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := format.(archives.Extractor); ok || !tarName {
+		return format, nil
+	}
+	// With no member header, an empty compressed tar is identified as just
+	// its compression format. Check the decompressed end-of-archive blocks.
+	if comp, ok := format.(archives.Compression); ok {
+		decoded, err := comp.OpenReader(rewound)
+		if err != nil {
+			return nil, err
+		}
+		defer decoded.Close()
+		if emptyTarHeader(bufio.NewReader(decoded)) {
+			return archives.CompressedArchive{Compression: comp, Extraction: archives.Tar{}, Archival: archives.Tar{}}, nil
+		}
+	}
+	return format, nil
+}
+
+func emptyTarHeader(reader *bufio.Reader) bool {
+	blocks, err := reader.Peek(1024)
+	return err == nil && len(bytes.Trim(blocks, "\x00")) == 0
 }
 
 func (a *ArchiveVFS) ReadDir(p string) ([]os.DirEntry, error) {
@@ -558,7 +610,7 @@ func (a *ArchiveVFS) retryWithArchivePassword(ctx context.Context, retry bool) e
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	format, err := identifyArchiveFormat(ctx, a.localPath)
+	format, err := identifyArchiveFormat(ctx, a.archivePath, a.localPath)
 	if err != nil {
 		return err
 	}
@@ -680,11 +732,15 @@ func stageArchiveSource(ctx context.Context, vfs VFS, native, extension string) 
 }
 
 func ExtractArchiveEntryToTemp(displayPath string) (string, error) {
+	return extractArchiveEntryToTemp(context.Background(), displayPath)
+}
+
+func extractArchiveEntryToTemp(ctx context.Context, displayPath string) (string, error) {
 	archiveFile, inner, ok := SplitArchivePath(displayPath)
 	if !ok || inner == "." {
 		return "", fmt.Errorf("not an archive file entry: %s", displayPath)
 	}
-	vfs, err := NewArchiveVFS(archiveFile)
+	vfs, err := NewArchiveVFSContext(ctx, archiveFile)
 	if err != nil {
 		return "", err
 	}
@@ -721,7 +777,7 @@ func ExtractArchiveEntryToTemp(displayPath string) (string, error) {
 		_ = os.RemoveAll(dir)
 		return "", err
 	}
-	if _, err = io.Copy(out, in); err != nil {
+	if _, err = io.Copy(out, &contextReader{ctx: ctx, reader: in}); err != nil {
 		_ = out.Close()
 		_ = os.RemoveAll(dir)
 		return "", err

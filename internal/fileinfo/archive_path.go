@@ -1,15 +1,17 @@
 package fileinfo
 
 import (
-	"context"
+	"net/url"
 	"path"
 	"path/filepath"
 	"strings"
-
-	"github.com/mholt/archives"
 )
 
 const archivePathSeparator = "!/"
+
+// An explicit scheme disambiguates content-detected archives from real paths
+// with directories ending in "!". The escaped outer path contains no "/".
+const explicitArchivePrefix = "nmf-archive:"
 
 // IsArchivePath reports whether p is an nmf archive virtual path.
 func IsArchivePath(p string) bool {
@@ -20,18 +22,32 @@ func IsArchivePath(p string) bool {
 // SplitArchivePath splits "archive.ext!/inner/path" into the archive display path
 // and an archive-internal path. The root inside the archive is returned as ".".
 func SplitArchivePath(p string) (archiveFile, inner string, ok bool) {
-	p = strings.TrimSpace(p)
+	archiveFile, offset := archiveBoundary(p)
+	if offset < 0 {
+		return "", "", false
+	}
+	return archiveFile, cleanArchiveInnerPath(p[offset:]), true
+}
+
+// archiveBoundary returns the outer path and the byte offset of the member.
+// A negative offset denotes an ordinary filesystem path.
+func archiveBoundary(p string) (string, int) {
+	if encoded, explicit := strings.CutPrefix(p, explicitArchivePrefix); explicit {
+		outer, _, found := strings.Cut(encoded, archivePathSeparator)
+		if !found || outer == "" || strings.Contains(outer, "/") {
+			return "", -1
+		}
+		decoded, err := url.PathUnescape(outer)
+		if err != nil || decoded == "" {
+			return "", -1
+		}
+		return decoded, len(explicitArchivePrefix) + len(outer) + len(archivePathSeparator)
+	}
 	idx := archivePathSeparatorIndex(p)
 	if idx < 0 {
-		return "", "", false
+		return "", -1
 	}
-	archiveFile = p[:idx]
-	inner = p[idx+len(archivePathSeparator):]
-	if archiveFile == "" {
-		return "", "", false
-	}
-	inner = cleanArchiveInnerPath(inner)
-	return archiveFile, inner, true
+	return p[:idx], idx + len(archivePathSeparator)
 }
 
 // archivePathSeparatorIndex finds an archive virtual-path boundary while
@@ -56,7 +72,7 @@ func archivePathSeparatorIndex(p string) int {
 }
 
 func isArchiveFileName(p string) bool {
-	name := path.Base(strings.ReplaceAll(strings.TrimSpace(p), "\\", "/"))
+	name := path.Base(strings.ReplaceAll(p, "\\", "/"))
 	if name == "" || name == "." || name == "/" {
 		return false
 	}
@@ -72,12 +88,12 @@ func isArchiveFileName(p string) bool {
 		".jar", ".war", ".ear", ".apk", ".aab", ".epub", ".cbz":
 		return true
 	}
-	format, _, err := archives.Identify(context.Background(), name, nil)
-	if err != nil {
-		return false
-	}
-	_, ok := format.(archives.Extractor)
-	return ok
+	// These four archive formats also occur inside compound names such as
+	// .tar.gz. Keep the name-only matching semantics of archives.Identify
+	// without running every registered format matcher for each list entry.
+	name = strings.ToLower(name)
+	return strings.Contains(name, ".zip") || strings.Contains(name, ".tar") ||
+		strings.Contains(name, ".rar") || strings.Contains(name, ".7z")
 }
 
 // ArchiveRootPath returns the display path for the root of an archive.
@@ -87,6 +103,9 @@ func ArchiveRootPath(archiveFile string) string {
 
 // ArchiveDisplayPath joins an archive display path and an internal path.
 func ArchiveDisplayPath(archiveFile, inner string) string {
+	if !isArchiveFileName(archiveFile) {
+		archiveFile = explicitArchivePrefix + url.PathEscape(archiveFile)
+	}
 	inner = cleanArchiveInnerPath(inner)
 	if inner == "." {
 		return archiveFile + archivePathSeparator
@@ -95,7 +114,7 @@ func ArchiveDisplayPath(archiveFile, inner string) string {
 }
 
 func cleanArchiveInnerPath(inner string) string {
-	inner = strings.ReplaceAll(strings.TrimSpace(inner), "\\", "/")
+	inner = strings.ReplaceAll(inner, "\\", "/")
 	inner = strings.TrimPrefix(inner, "/")
 	if inner == "" || inner == "." {
 		return "."
@@ -113,17 +132,6 @@ func archiveNativePath(inner string) string {
 		return "."
 	}
 	return inner
-}
-
-func archiveJoinPath(base, name string) string {
-	archiveFile, inner, ok := SplitArchivePath(base)
-	if !ok {
-		return filepath.Join(base, name)
-	}
-	if inner == "." {
-		return ArchiveDisplayPath(archiveFile, name)
-	}
-	return ArchiveDisplayPath(archiveFile, path.Join(inner, name))
 }
 
 func archiveParentPath(p string) string {

@@ -8,15 +8,19 @@ import (
 
 // IsSMBDisplay reports whether the path is a canonical smb display path (smb://...).
 func IsSMBDisplay(p string) bool {
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(p)), "smb://")
+	return strings.HasPrefix(strings.ToLower(p), "smb://")
 }
 
 // JoinPath joins base and name for display paths.
 // - For smb:// display paths, it joins using forward slashes.
 // - Otherwise it uses filepath.Join.
 func JoinPath(base, name string) string {
-	if IsArchivePath(base) {
-		return archiveJoinPath(base, name)
+	if _, offset := archiveBoundary(base); offset >= 0 {
+		inner := cleanArchiveInnerPath(path.Join(base[offset:], name))
+		if inner == "." {
+			return base[:offset]
+		}
+		return base[:offset] + inner
 	}
 	if IsSMBDisplay(base) {
 		b := strings.TrimRight(base, "/")
