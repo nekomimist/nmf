@@ -5,7 +5,7 @@ APP_VERSION := $(shell cat VERSION)
 # Windows version resources accept only the numeric SemVer core.
 WINDOWS_VERSION := $(firstword $(subst +, ,$(subst -, ,$(APP_VERSION))))
 # Read the build number inside the packaging lock, before Fyne updates it.
-WINDOWS_APP_BUILD ?= $$(sed -n 's/^Build = //p' FyneApp.toml)
+WINDOWS_APP_BUILD = $$(sed -n 's/^Build = //p' FyneApp.toml)
 DIST := dist
 WINDOWS_ZIG ?= zig
 WINDOWS_OBJCOPY ?= llvm-objcopy

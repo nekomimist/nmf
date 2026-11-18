@@ -24,7 +24,7 @@
             zig
             fyne
             gnumake
-            util-linux # flock serializes Fyne packaging in a shared checkout.
+            (lib.getBin util-linuxMinimal) # flock for the shared packaging files.
             pkg-config
             python3
             llvmPackages.llvm

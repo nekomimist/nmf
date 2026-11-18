@@ -30,8 +30,8 @@ undo Fyne's automatic increment, keeping both architectures on the same number.
 Windows builds started in the same checkout share the Fyne output filename.
 Each build holds an advisory lock on `.cache/windows-package.lock` while it
 reads the build number, packages and moves the binary, and restores the metadata.
-This also applies to separate `make` processes using that checkout. The lock is
-released when the build exits; the lock file can stay in the checkout cache.
+This also applies to separate `make` processes using that checkout. The build
+releases the lock on exit. The lock file can stay in the checkout cache.
 Go's VCS build metadata remains available through `go version -m`.
 
 ## Changelog
