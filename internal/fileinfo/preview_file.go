@@ -313,35 +313,40 @@ func IsMarkdownPath(p string) bool {
 
 // FormatHexDump returns a classic offset/hex/ascii dump of data.
 func FormatHexDump(data []byte) string {
-	if len(data) == 0 {
-		return ""
-	}
 	var b strings.Builder
 	for offset := 0; offset < len(data); offset += 16 {
-		line := data[offset:]
-		if len(line) > 16 {
-			line = line[:16]
-		}
-		fmt.Fprintf(&b, "%08x  ", offset)
-		for i := 0; i < 16; i++ {
-			if i < len(line) {
-				fmt.Fprintf(&b, "%02x ", line[i])
-			} else {
-				b.WriteString("   ")
-			}
-			if i == 7 {
-				b.WriteByte(' ')
-			}
-		}
-		b.WriteString(" |")
-		for _, c := range line {
-			if c >= 0x20 && c <= 0x7e {
-				b.WriteByte(c)
-			} else {
-				b.WriteByte('.')
-			}
-		}
-		b.WriteString("|\n")
+		b.WriteString(FormatHexDumpLine(data, offset))
+		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+// FormatHexDumpLine formats up to 16 bytes beginning at offset without a newline.
+func FormatHexDumpLine(data []byte, offset int) string {
+	if offset < 0 || offset >= len(data) {
+		return ""
+	}
+	row := data[offset:][:min(16, len(data)-offset)]
+	const digits = "0123456789abcdef"
+	var buf [80]byte
+	out := fmt.Appendf(buf[:0], "%08x  ", offset)
+	for i := 0; i < 16; i++ {
+		if i < len(row) {
+			value := row[i]
+			out = append(out, digits[value>>4], digits[value&15], ' ')
+		} else {
+			out = append(out, ' ', ' ', ' ')
+		}
+		if i == 7 {
+			out = append(out, ' ')
+		}
+	}
+	out = append(out, ' ', '|')
+	for _, value := range row {
+		if value < 0x20 || value > 0x7e {
+			value = '.'
+		}
+		out = append(out, value)
+	}
+	return string(append(out, '|'))
 }

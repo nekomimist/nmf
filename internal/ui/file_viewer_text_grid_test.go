@@ -1,12 +1,16 @@
 package ui
 
 import (
+	"bytes"
+	"slices"
 	"strings"
 	"testing"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
+
+	"nmf/internal/fileinfo"
 )
 
 func TestFileViewerTextGridWrappedPageMovement(t *testing.T) {
@@ -325,5 +329,91 @@ func BenchmarkFileViewerTextGridWrappedPaging(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		grid.PageDown()
 		grid.PageUp()
+	}
+}
+
+func TestViewerUnwrappedCellsMatchCompleteLineMap(t *testing.T) {
+	text := strings.Repeat("a日\tß", 2300) + "end"
+	content := viewerLines{lines: []string{text}}
+	width := content.measureLine(0, text)
+	ref := newViewerDisplayLineMap(text)
+	for _, start := range []int{0, 1, 2, 5, 2039, 2048, 2053, 5000, width - 1, width, width + 1} {
+		for _, cols := range []int{1, 2, 8, 80} {
+			got := content.visibleLine(0, start, cols)
+			want := ref.slice(0, start, cols)
+			if got.text != want.text || !slices.Equal(got.cellToCol, want.cellToCol) || got.displayLen != want.displayLen {
+				t.Fatalf("slice at %d width %d = %+v, want %+v", start, cols, got, want)
+			}
+		}
+	}
+}
+
+func TestViewerSearchWrapFromFirstMatch(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	grid := newFileViewerTextGrid("日日日\n日日", nil, nil, nil)
+	for _, tc := range []struct {
+		direction, line, col int
+		wrapped              bool
+	}{
+		{1, 1, 1, false}, {-1, 2, 1, true}, {-1, 1, 2, false}, {-1, 1, 1, false}, {1, 1, 2, false}, {1, 2, 1, false}, {1, 1, 1, true},
+	} {
+		got := grid.Find("日日", tc.direction)
+		if !got.Matched || got.Line != tc.line || got.Column != tc.col || got.Wrapped != tc.wrapped {
+			t.Fatalf("Find direction=%d: %+v, want %+v", tc.direction, got, tc)
+		}
+	}
+}
+
+func TestHexViewerSearchCopyAndJump(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	data := append(bytes.Repeat([]byte{0xff}, 16*120), []byte("last")...)
+	grid := newViewerGrid(viewerLines{hexData: data}, nil, nil, nil)
+	if got := grid.TotalLines(); got != 122 {
+		t.Fatalf("lines=%d", got)
+	}
+	grid.JumpToLine(121)
+	if !strings.Contains(grid.grid.Text(), "00000780") {
+		t.Fatalf("jumped viewport=%q", grid.grid.Text())
+	}
+	if got := grid.Find("LAST", 1); !got.Matched || got.Line != 121 {
+		t.Fatalf("Find LAST=%+v", got)
+	}
+	want := fileinfo.FormatHexDump(data)
+	if n := grid.SelectAll(); n != len(want) {
+		t.Fatalf("select all length=%d want %d", n, len(want))
+	}
+	if got := grid.SelectedText(); got != want {
+		t.Fatal("selected hex dump differs from the classic representation")
+	}
+}
+
+func BenchmarkFileViewerUnwrappedViewport(b *testing.B) {
+	content := viewerLines{lines: []string{strings.Repeat("a", 1<<20)}}
+	content.measureLine(0, content.lines[0])
+	grid := fileViewerTextGrid{viewerLines: content}
+	for _, tc := range []struct {
+		name  string
+		start int
+	}{{"start", 0}, {"end", (1 << 20) - 100}} {
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				grid.leftCol = tc.start + i%10
+				grid.visible = grid.renderVisibleLines(30, 80)
+			}
+		})
+	}
+}
+
+func BenchmarkFileViewerHexGrid(b *testing.B) {
+	app := test.NewApp()
+	defer app.Quit()
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{Binary: true, Data: make([]byte, 1<<20)})
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		d.createHexGrid()
 	}
 }
