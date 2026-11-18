@@ -404,3 +404,27 @@ func utf16Bytes(text string, order binary.ByteOrder) []byte {
 	}
 	return out
 }
+
+func TestPreviewUTF16TextWithZeroBytes(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		data []byte
+	}{
+		{"UTF-16LE", []byte{0xff, 0xfe, 'A', 0, 'B', 0, 'C', 0}},
+		{"UTF-16BE", []byte{0xfe, 0xff, 0, 'A', 0, 'B', 0, 'C'}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := filepath.Join(t.TempDir(), "text.txt")
+			if err := os.WriteFile(p, tc.data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			preview, err := ReadPreviewFile(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if preview.Binary || preview.Encoding != tc.name || preview.Text != "ABC" {
+				t.Fatalf("preview binary=%t encoding=%q text=%q", preview.Binary, preview.Encoding, preview.Text)
+			}
+		})
+	}
+}

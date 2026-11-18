@@ -46,7 +46,7 @@ func (f *smbReadWriteFile) Close() error {
 		return nil
 	}
 	if f.stopCancel != nil {
-		f.stopCancel()
+		defer f.stopCancel()
 	}
 	var fileErr error
 	if f.file != nil {
@@ -370,18 +370,9 @@ func (s SMBFS) ReadDirContext(ctx context.Context, relPath string) ([]os.DirEntr
 	if err != nil {
 		return nil, err
 	}
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			_ = conn.Close()
-		case <-done:
-		}
-	}()
-	defer func() {
-		close(done)
-		_ = closeSMBSession(nil, share, sess, conn)
-	}()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	defer closeSMBSession(nil, share, sess, conn)
 
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -423,18 +414,9 @@ func (s SMBFS) StatContext(ctx context.Context, relPath string) (os.FileInfo, er
 	if err != nil {
 		return nil, err
 	}
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			_ = conn.Close()
-		case <-done:
-		}
-	}()
-	defer func() {
-		close(done)
-		_ = closeSMBSession(nil, share, sess, conn)
-	}()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	defer closeSMBSession(nil, share, sess, conn)
 
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -452,17 +434,19 @@ func (s SMBFS) StatContext(ctx context.Context, relPath string) (os.FileInfo, er
 	return fi, nil
 }
 
-// StorageInfo returns capacity information for the SMB share.
-func (s SMBFS) StorageInfo(relPath string) (StorageInfo, error) {
-	share, sess, conn, _, err := s.dialAndMount(relPath)
+// StorageInfoContext returns capacity information for the SMB share.
+func (s SMBFS) StorageInfoContext(ctx context.Context, relPath string) (StorageInfo, error) {
+	share, sess, conn, _, err := s.dialAndMountContext(ctx, relPath)
 	if err != nil {
 		return StorageInfo{}, err
 	}
-	defer func() {
-		_ = closeSMBSession(nil, share, sess, conn)
-	}()
-
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	defer closeSMBSession(nil, share, sess, conn)
 	info, err := share.Statfs(normalizeSMBPathForStat(relPath))
+	if ctx.Err() != nil {
+		return StorageInfo{}, ctx.Err()
+	}
 	if err != nil {
 		if isAuthError(err) {
 			ClearCachedCredentials(s.host, s.share)

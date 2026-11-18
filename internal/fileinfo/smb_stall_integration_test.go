@@ -45,7 +45,8 @@ func testSMBReadCancellation(t *testing.T, reusable bool) {
 	if !matched {
 		t.Fatal("SMB host must be the explicitly selected container's IP address")
 	}
-	path := smb.Join(parsed.Native, "nmf-cancel-"+rand.Text())
+	name := "nmf-cancel-" + rand.Text()
+	path := smb.Join(parsed.Native, name)
 	out, err := smb.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		t.Fatal(err)
@@ -93,6 +94,31 @@ func testSMBReadCancellation(t *testing.T, reusable bool) {
 			t.Errorf("unpause server: %v: %s", err, output)
 		}
 	})
+	if !reusable {
+		t.Run("preview", func(t *testing.T) {
+			previewCtx, cancelPreview := context.WithCancel(t.Context())
+			defer cancelPreview()
+			done := make(chan error, 1)
+			go func() {
+				_, err := ReadPreviewFileContext(previewCtx, JoinPath(url, name))
+				done <- err
+			}()
+			select {
+			case err := <-done:
+				t.Fatalf("preview completed while server was paused: %v", err)
+			case <-time.After(100 * time.Millisecond):
+			}
+			cancelPreview()
+			select {
+			case err := <-done:
+				if err == nil {
+					t.Fatal("canceled preview succeeded")
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("canceled preview remained blocked")
+			}
+		})
+	}
 	readDone := make(chan error, 1)
 	go func() { _, err := in.Read(make([]byte, 64)); readDone <- err }()
 	select {

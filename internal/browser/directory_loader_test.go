@@ -7,8 +7,10 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"nmf/internal/config"
+	"nmf/internal/fileinfo"
 )
 
 func TestDirectoryLoaderBuildsSortedWidgetFreeResult(t *testing.T) {
@@ -78,5 +80,33 @@ func TestDirectoryLoaderReportsFallbackCandidate(t *testing.T) {
 	}
 	if got, want := candidates, []string{filepath.Dir(requested), parent}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("fallback candidates = %#v, want %#v", got, want)
+	}
+}
+
+func TestDirectoryLoadCancellationInterruptsStorageLookup(t *testing.T) {
+	dir := t.TempDir()
+	loader := NewDirectoryLoader()
+	entered := make(chan struct{})
+	loader.statStorage = func(ctx context.Context, _ string) (fileinfo.StorageInfo, error) {
+		close(entered)
+		<-ctx.Done()
+		return fileinfo.StorageInfo{}, ctx.Err()
+	}
+	handle := loader.Begin()
+	done := make(chan error, 1)
+	go func() { _, err := loader.Load(handle, DirectoryLoadRequest{Path: dir}, nil); done <- err }()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("storage lookup did not start")
+	}
+	loader.Cancel(handle.ID)
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("load error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("storage lookup outlived its canceled load")
 	}
 }

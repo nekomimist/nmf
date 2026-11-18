@@ -26,6 +26,10 @@ func StatPortableContext(ctx context.Context, p string) (os.FileInfo, error) {
 	if native == "" {
 		native = p
 	}
+	return statVFSContext(ctx, vfs, native)
+}
+
+func statVFSContext(ctx context.Context, vfs VFS, native string) (os.FileInfo, error) {
 	if statter, ok := vfs.(interface {
 		StatContext(context.Context, string) (os.FileInfo, error)
 	}); ok {

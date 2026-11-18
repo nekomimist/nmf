@@ -87,7 +87,7 @@ func ReadPreviewFileWithDebugContext(ctx context.Context, p string, debugPrint f
 	}
 
 	stepStart = time.Now()
-	info, err := vfs.Stat(native)
+	info, err := statVFSContext(ctx, vfs, native)
 	previewDebug(debugPrint, "FileViewer: stat elapsed=%s path=%s err=%v", time.Since(stepStart), p, err)
 	if err != nil {
 		return nil, err
@@ -99,7 +99,7 @@ func ReadPreviewFileWithDebugContext(ctx context.Context, p string, debugPrint f
 		return nil, err
 	}
 	stepStart = time.Now()
-	rc, err := vfs.Open(native)
+	rc, err := openVFSContext(ctx, vfs, native)
 	previewDebug(debugPrint, "FileViewer: open elapsed=%s native=%s err=%v", time.Since(stepStart), native, err)
 	if err != nil {
 		return nil, err
@@ -142,7 +142,11 @@ func ReadPreviewFileWithDebugContext(ctx context.Context, p string, debugPrint f
 		previewDebug(debugPrint, "FileViewer: decode elapsed=%s bytes=%d text_bytes=%d encoding=%s",
 			time.Since(stepStart), len(data), len(preview.Text), preview.Encoding)
 		stepStart = time.Now()
-		preview.Binary = LooksBinary(data)
+		if preview.Encoding == "UTF-16LE" || preview.Encoding == "UTF-16BE" {
+			preview.Binary = LooksBinary([]byte(preview.Text))
+		} else {
+			preview.Binary = LooksBinary(data)
+		}
 		previewDebug(debugPrint, "FileViewer: binary-check elapsed=%s binary=%t", time.Since(stepStart), preview.Binary)
 	}
 	previewDebug(debugPrint, "FileViewer: preview-ready elapsed=%s bytes=%d text_bytes=%d binary=%t truncated=%t",

@@ -36,7 +36,7 @@ type DirectoryLoadResult struct {
 }
 
 type DirectoryReadFunc func(context.Context, string) ([]os.DirEntry, error)
-type storageStatFunc func(string) (fileinfo.StorageInfo, error)
+type storageStatFunc func(context.Context, string) (fileinfo.StorageInfo, error)
 type dirEntryInfoFunc func(string, os.DirEntry) (fileinfo.FileInfo, error)
 
 // DirectoryLoader owns directory-read cancellation/generation state and the
@@ -56,7 +56,7 @@ type DirectoryLoader struct {
 func NewDirectoryLoader() *DirectoryLoader {
 	return newDirectoryLoader(
 		fileinfo.ReadDirPortableContext,
-		fileinfo.StatStoragePortable,
+		fileinfo.StatStoragePortableContext,
 		fileinfo.FileInfoFromDirEntry,
 	)
 }
@@ -116,7 +116,7 @@ func (l *DirectoryLoader) Load(handle DirectoryLoadHandle, request DirectoryLoad
 
 	result.Path = loadedPath
 	result.UsedParentFallback = usedFallback
-	result.Storage, result.StorageErr = l.statStorage(loadedPath)
+	result.Storage, result.StorageErr = l.statStorage(ctx, loadedPath)
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
