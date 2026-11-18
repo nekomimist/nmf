@@ -141,7 +141,7 @@ func GetPlatformParent(path string) string {
 	}
 
 	// For SMB display paths, use fileinfo's logic
-	if fileinfo.IsSMBDisplay(path) {
+	if fileinfo.IsArchivePath(path) || fileinfo.IsSMBDisplay(path) {
 		return fileinfo.ParentPath(path)
 	}
 

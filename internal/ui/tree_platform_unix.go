@@ -3,11 +3,7 @@
 
 package ui
 
-import (
-	"path/filepath"
-
-	"nmf/internal/fileinfo"
-)
+import "nmf/internal/fileinfo"
 
 // GetSystemRoot returns the platform-specific root for tree navigation
 func GetSystemRoot() string {
@@ -39,8 +35,5 @@ func IsPlatformDirectory(path string) (bool, bool) {
 
 // GetPlatformParent returns the parent path using standard filepath.Dir on Unix
 func GetPlatformParent(path string) string {
-	if fileinfo.IsSMBDisplay(path) {
-		return fileinfo.ParentPath(path)
-	}
-	return filepath.Dir(path)
+	return fileinfo.ParentPath(path)
 }
