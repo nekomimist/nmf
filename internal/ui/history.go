@@ -9,7 +9,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -78,11 +77,11 @@ type NavigationHistoryDialog struct {
 	selectedIndex    int // Currently selected list index
 	filteredPaths    []string
 	allPaths         []string
+	recentPaths      []string
 	openPaths        map[string]bool
 	pinnedPaths      map[string]bool
 	unpinRemovesPath map[string]bool
 	lastUsed         map[string]time.Time
-	dataBinding      binding.StringList
 	debugPrint       func(format string, args ...interface{})
 	keyManager       *keymanager.KeyManager // Keyboard input manager
 	kmToken          keymanager.HandlerToken
@@ -139,24 +138,20 @@ func (nhd *NavigationHistoryDialog) createWidgets() {
 		nhd.updateFilteredPaths(query)
 	}
 
-	// Create data binding for the list
-	nhd.dataBinding = binding.NewStringList()
-
 	// Create history list
-	nhd.historyList = widget.NewListWithData(
-		nhd.dataBinding,
+	nhd.historyList = widget.NewList(
+		func() int { return len(nhd.filteredPaths) },
 		func() fyne.CanvasObject {
 			text := canvas.NewText("", currentAppThemeColor(fynetheme.ColorNameForeground))
 			text.TextStyle = fyne.TextStyle{Monospace: true}
 			text.TextSize = fynetheme.TextSize()
 			return text
 		},
-		func(item binding.DataItem, obj fyne.CanvasObject) {
-			path, _ := item.(binding.String).Get()
-			if path == "" {
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			if id < 0 || id >= len(nhd.filteredPaths) {
 				return
 			}
-
+			path := nhd.filteredPaths[id]
 			if text, ok := obj.(*canvas.Text); ok {
 				text.Text = nhd.displayPath(path)
 				text.TextSize = fynetheme.TextSize()
@@ -206,8 +201,6 @@ func (nhd *NavigationHistoryDialog) updateFilteredPaths(query string) {
 		}
 	}
 
-	// Update data binding with the filtered paths directly
-	nhd.dataBinding.Set(nhd.filteredPaths)
 	nhd.historyList.Refresh()
 
 	// Set initial selection to first item if available
@@ -225,15 +218,16 @@ func (nhd *NavigationHistoryDialog) updateFilteredPaths(query string) {
 }
 
 func (nhd *NavigationHistoryDialog) pathsInDisplayOrder() []string {
-	paths := append([]string(nil), nhd.allPaths...)
 	if nhd.orderMode != navigationHistoryOrderLastUsed {
-		return paths
+		return nhd.allPaths
 	}
-
-	sort.SliceStable(paths, func(i, j int) bool {
-		return nhd.lastUsed[paths[i]].After(nhd.lastUsed[paths[j]])
-	})
-	return paths
+	if nhd.recentPaths == nil {
+		nhd.recentPaths = append([]string(nil), nhd.allPaths...)
+		sort.SliceStable(nhd.recentPaths, func(i, j int) bool {
+			return nhd.lastUsed[nhd.recentPaths[i]].After(nhd.lastUsed[nhd.recentPaths[j]])
+		})
+	}
+	return nhd.recentPaths
 }
 
 func (nhd *NavigationHistoryDialog) setOrderMode(mode string) {
@@ -608,18 +602,14 @@ func (nhd *NavigationHistoryDialog) UnpinSelectedPath() {
 	}
 	delete(nhd.pinnedPaths, path)
 	if nhd.unpinRemovesPath[path] {
-		nhd.removePath(path)
+		nhd.allPaths = removeString(nhd.allPaths, path)
+		nhd.recentPaths = nil
 	}
 	query := ""
 	if nhd.searchEntry != nil {
 		query = nhd.searchEntry.Text
 	}
 	nhd.updateFilteredPaths(query)
-}
-
-func (nhd *NavigationHistoryDialog) removePath(path string) {
-	nhd.allPaths = removeString(nhd.allPaths, path)
-	nhd.filteredPaths = removeString(nhd.filteredPaths, path)
 }
 
 func (nhd *NavigationHistoryDialog) ScrollSelectedRight() {

@@ -75,8 +75,8 @@ func TestIncrementalSearchMatchesAllQueryTokens(t *testing.T) {
 	if match == nil || match.Name != "project archive.txt" {
 		t.Fatalf("current match got %+v, want project archive.txt", match)
 	}
-	if len(overlay.matchedFiles) != 1 {
-		t.Fatalf("matched files = %#v, want one match", overlay.matchedFiles)
+	if overlay.matchCount() != 1 {
+		t.Fatalf("matched files = %#v, want one match", overlay.matches)
 	}
 }
 
@@ -116,5 +116,20 @@ func TestIncrementalSearchTextUsesExplicitContrastColor(t *testing.T) {
 	want := color.RGBA{255, 255, 255, 255}
 	if got != want {
 		t.Fatalf("search text color = %#v, want explicit contrast color %#v", got, want)
+	}
+}
+
+func TestIncrementalSearchReleasesListingWhenHidden(t *testing.T) {
+	overlay := NewIncrementalSearchOverlay([]fileinfo.FileInfo{{Name: "old"}}, nil, incrementalSearchTheme{}, func(string, ...interface{}) {})
+	overlay.Show(nil)
+	overlay.AddCharacter('o')
+	overlay.HideAccepted()
+	if overlay.allFiles != nil || overlay.matches != nil {
+		t.Fatal("hidden overlay retained the previous directory listing")
+	}
+	overlay.UpdateFiles([]fileinfo.FileInfo{{Name: "new"}})
+	overlay.Show(nil)
+	if got := overlay.GetCurrentMatch(); got == nil || got.Name != "new" {
+		t.Fatalf("reopened match = %v", got)
 	}
 }
