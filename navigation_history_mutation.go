@@ -33,53 +33,51 @@ func (fm *FileManager) applyJobNavigationHistory(snapshot jobs.JobSnapshot) {
 		return
 	}
 
-	changed := false
-	notifyPath := ""
-	for _, result := range snapshot.Results {
-		resultChanged, preferredPath := fm.applyJobNavigationHistoryResult(snapshot.Type, result)
-		changed = changed || resultChanged
-		if preferredPath != "" {
-			notifyPath = preferredPath
+	var rules historyPathRules
+	var destinations []string
+	for i, result := range snapshot.Results {
+		if snapshot.Type == jobs.TypeExtract {
+			if !result.DestinationCreated {
+				continue
+			}
+		} else if !result.SourceIsDir {
+			continue
 		}
+		switch snapshot.Type {
+		case jobs.TypeDelete:
+			rules.add(i, result.Source, "")
+		case jobs.TypeMove, jobs.TypeCopy, jobs.TypeExtract:
+			dst := canonicalHistoryMutationPath(result.Destination)
+			if dst == "" {
+				continue
+			}
+			if snapshot.Type == jobs.TypeMove {
+				if result.Source == "" {
+					continue
+				}
+				rules.add(len(destinations), result.Source, dst)
+			}
+			destinations = append(destinations, dst)
+		}
+	}
+
+	changed := rules.apply(fm.state)
+	preferred := ""
+	if len(destinations) != 0 {
+		preferred = destinations[len(destinations)-1]
+		if snapshot.Type == jobs.TypeMove {
+			// A later result can move an earlier destination again. Each
+			// visit belongs to the final location of that directory.
+			for i, dst := range destinations {
+				destinations[i] = rules.rewrite(dst, i+1)
+			}
+		}
+		fm.state.AddNavigationHistoryPaths(destinations, fm.navigationHistoryMaxEntries())
+		changed = true
 	}
 	if changed {
-		fm.saveNavigationHistoryMutation(notifyPath)
+		fm.saveNavigationHistoryMutation(preferred)
 	}
-}
-
-// applyJobNavigationHistoryResult updates history for one top-level job result.
-// Saving and notifying other windows happen once, after the whole batch.
-func (fm *FileManager) applyJobNavigationHistoryResult(jobType jobs.Type, result jobs.Result) (changed bool, preferredPath string) {
-	switch jobType {
-	case jobs.TypeCopy:
-		if !result.SourceIsDir {
-			return false, ""
-		}
-	case jobs.TypeExtract:
-		if !result.DestinationCreated {
-			return false, ""
-		}
-	case jobs.TypeDelete:
-		if !result.SourceIsDir {
-			return false, ""
-		}
-		return removeNavigationHistoryTree(fm.state, result.Source), ""
-	case jobs.TypeMove:
-		if !result.SourceIsDir || result.Destination == "" {
-			return false, ""
-		}
-		if rewriteNavigationHistoryTree(fm.state, result.Source, result.Destination, fm.navigationHistoryMaxEntries()) {
-			return true, result.Destination
-		}
-		return false, ""
-	default:
-		return false, ""
-	}
-	if result.Destination == "" {
-		return false, ""
-	}
-	fm.state.AddToNavigationHistory(canonicalNavigationHistoryPath(result.Destination), fm.navigationHistoryMaxEntries())
-	return true, result.Destination
 }
 
 func (fm *FileManager) updateNavigationHistoryAfterRename(oldPath, newPath string) {
@@ -103,103 +101,170 @@ func (fm *FileManager) saveNavigationHistoryMutation(preferredPath string) {
 		return
 	}
 	if fm.stateManager != nil {
-		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+		if err := fm.scheduleStateSave(); err != nil {
 			debugPrint("FileManager: Error saving navigation history: %v", err)
 		}
 	}
 	fm.notifyNavigationHistoryChanged(canonicalNavigationHistoryPath(preferredPath))
 }
 
-// removeNavigationHistoryTree drops root and every path below it from both
-// frecency history and saved (pinned) history.
-func removeNavigationHistoryTree(state *config.State, root string) bool {
-	if state == nil {
-		return false
-	}
-	root = canonicalNavigationHistoryPath(root)
-	if root == "" {
-		return false
-	}
-	ensureNavigationHistoryStorage(state)
-
-	changed := false
-	entries := make([]string, 0, len(state.NavigationHistory.Entries))
-	for _, entry := range state.NavigationHistory.Entries {
-		if navigationHistoryPathWithin(entry, root) {
-			delete(state.NavigationHistory.LastUsed, entry)
-			delete(state.NavigationHistory.UseCount, entry)
-			changed = true
-			continue
-		}
-		entries = append(entries, entry)
-	}
-	if changed {
-		state.NavigationHistory.Entries = entries
-	}
-
-	pinned := make([]string, 0, len(state.NavigationHistory.Pinned))
-	for _, entry := range state.NavigationHistory.Pinned {
-		if navigationHistoryPathWithin(entry, root) {
-			changed = true
-			continue
-		}
-		pinned = append(pinned, entry)
-	}
-	if len(pinned) != len(state.NavigationHistory.Pinned) {
-		state.NavigationHistory.Pinned = pinned
-	}
-	return changed
+type historyPathRule struct {
+	order       int
+	destination string // Empty for deletion.
 }
 
-// rewriteNavigationHistoryTree rebases root and its descendants after a
-// directory rename or move. Pinned paths follow as well; otherwise the
-// History dialog would retain stale locations. The rebased root is always
-// registered as a new use, even when the old root was not already in history.
-func rewriteNavigationHistoryTree(state *config.State, oldRoot, newRoot string, maxEntries int) bool {
-	if state == nil {
-		return false
-	}
-	oldRoot = canonicalNavigationHistoryPath(oldRoot)
-	newRoot = canonicalNavigationHistoryPath(newRoot)
-	if oldRoot == "" || newRoot == "" {
-		return false
-	}
-	ensureNavigationHistoryStorage(state)
+// Index the old roots so a history entry only checks its own ancestors.
+// Rules are ordered to preserve chained and nested moves within a job.
+type historyPathRules map[string][]historyPathRule
 
-	history := rewriteNavigationHistoryEntries(state.NavigationHistory, oldRoot, newRoot)
-	history.Pinned = rewritePinnedNavigationHistory(state.NavigationHistory.Pinned, oldRoot, newRoot)
-	state.NavigationHistory = history
-	state.AddToNavigationHistory(newRoot, maxEntries)
-	return true
+func (r *historyPathRules) add(order int, oldPath, destination string) {
+	src := canonicalHistoryMutationPath(oldPath)
+	if src == "" {
+		return
+	}
+	if *r == nil {
+		*r = make(historyPathRules)
+	}
+	key := historyRootKey(src)
+	(*r)[key] = append((*r)[key], historyPathRule{order, destination})
 }
 
-func rewriteNavigationHistoryEntries(history config.NavigationHistoryState, oldRoot, newRoot string) config.NavigationHistoryState {
-	rewritten := config.NavigationHistoryState{
+func canonicalHistoryMutationPath(path string) string {
+	display, parsed, err := fileinfo.CanonicalDisplayPath(path)
+	if err != nil {
+		return path
+	}
+	if parsed.Scheme == fileinfo.SchemeFile {
+		return filepath.Clean(display)
+	}
+	return display
+}
+
+func historyRootKey(path string) string {
+	if runtime.GOOS == "windows" || fileinfo.IsSMBDisplay(path) {
+		return strings.ToLower(path)
+	}
+	return path
+}
+
+func (rules historyPathRules) rewrite(path string, start int) string {
+	// Directory jobs operate on the archive's backing path. An explicitly
+	// encoded archive address need not share its backing directory's prefix.
+	if outer, inner, ok := fileinfo.SplitArchivePath(path); ok {
+		updated := rules.rewrite(outer, start)
+		if updated == "" {
+			return ""
+		}
+		if updated == outer {
+			return path
+		}
+		return fileinfo.ArchiveDisplayPath(updated, inner)
+	}
+	for {
+		var rule *historyPathRule
+		var ancestor string
+		for probe := path; ; {
+			candidates := rules[historyRootKey(probe)]
+			for i := range candidates {
+				candidate := &candidates[i]
+				if candidate.order >= start {
+					if rule == nil || candidate.order < rule.order {
+						rule, ancestor = candidate, probe
+					}
+					break
+				}
+			}
+			parent := fileinfo.ParentPath(probe)
+			if parent == probe || len(parent) >= len(probe) {
+				break
+			}
+			probe = parent
+		}
+		if rule == nil {
+			return path
+		}
+		if rule.destination == "" {
+			return ""
+		}
+		// The suffix retains the source spelling, even on case-insensitive
+		// providers. Join using the destination's separator and namespace.
+		suffix := strings.TrimPrefix(filepath.ToSlash(path[len(ancestor):]), "/")
+		path = rule.destination
+		if suffix != "" {
+			path = fileinfo.JoinPath(path, suffix)
+		}
+		start = rule.order + 1
+	}
+}
+
+func (rules historyPathRules) apply(state *config.State) bool {
+	if len(rules) == 0 {
+		return false
+	}
+	history := &state.NavigationHistory
+	remapped := make(map[string]string)
+	for _, paths := range [][]string{history.Entries, history.Pinned} {
+		for _, entry := range paths {
+			if _, found := remapped[entry]; found {
+				continue
+			}
+			if dst := rules.rewrite(canonicalHistoryMutationPath(entry), 0); dst != entry {
+				remapped[entry] = dst
+			}
+		}
+	}
+	if len(remapped) == 0 {
+		return false
+	}
+
+	updated := config.NavigationHistoryState{
 		Entries:  make([]string, 0, len(history.Entries)),
+		Pinned:   make([]string, 0, len(history.Pinned)),
 		LastUsed: make(map[string]time.Time, len(history.LastUsed)),
 		UseCount: make(map[string]int, len(history.UseCount)),
 	}
 	for _, entry := range history.Entries {
-		canonical := canonicalNavigationHistoryPath(entry)
-		if updated, rebased := rebaseNavigationHistoryPath(canonical, oldRoot, newRoot); rebased {
-			canonical = updated
+		dst, changed := remapped[entry]
+		if !changed {
+			dst = entry
 		}
-		if canonical == "" {
+		if dst == "" {
 			continue
 		}
-		last, count := navigationHistoryUsage(history, entry, canonical)
-		if _, seen := rewritten.UseCount[canonical]; seen {
-			if last.After(rewritten.LastUsed[canonical]) {
-				rewritten.LastUsed[canonical] = last
-			}
-			rewritten.UseCount[canonical] += count
-			continue
+		last, count := navigationHistoryUsage(*history, entry, dst)
+		if _, exists := updated.UseCount[dst]; !exists {
+			updated.Entries = append(updated.Entries, dst)
 		}
-		rewritten.Entries = append(rewritten.Entries, canonical)
-		rewritten.LastUsed[canonical] = last
-		rewritten.UseCount[canonical] = count
+		updated.UseCount[dst] += count
+		if prev, exists := updated.LastUsed[dst]; !exists || last.After(prev) {
+			updated.LastUsed[dst] = last
+		}
 	}
-	return rewritten
+	seenPins := make(map[string]bool, len(history.Pinned))
+	for _, pin := range history.Pinned {
+		dst, changed := remapped[pin]
+		if !changed {
+			dst = pin
+		}
+		if dst != "" && !seenPins[dst] {
+			seenPins[dst] = true
+			updated.Pinned = append(updated.Pinned, dst)
+		}
+	}
+	*history = updated
+	return true
+}
+
+func rewriteNavigationHistoryTree(state *config.State, oldPath, newPath string, maxEntries int) bool {
+	dst := canonicalNavigationHistoryPath(newPath)
+	if state == nil || dst == "" || oldPath == "" {
+		return false
+	}
+	var rules historyPathRules
+	rules.add(0, oldPath, dst)
+	rules.apply(state)
+	state.AddToNavigationHistory(dst, maxEntries)
+	return true
 }
 
 // navigationHistoryUsage preserves legacy entries whose statistics were stored
@@ -217,105 +282,4 @@ func navigationHistoryUsage(history config.NavigationHistoryState, entry, canoni
 		count = 1
 	}
 	return last, count
-}
-
-func rewritePinnedNavigationHistory(paths []string, oldRoot, newRoot string) []string {
-	pinned := make([]string, 0, len(paths))
-	seen := make(map[string]bool, len(paths))
-	for _, entry := range paths {
-		canonical := canonicalNavigationHistoryPath(entry)
-		if updated, rebased := rebaseNavigationHistoryPath(canonical, oldRoot, newRoot); rebased {
-			canonical = updated
-		}
-		if canonical == "" || seen[canonical] {
-			continue
-		}
-		seen[canonical] = true
-		pinned = append(pinned, canonical)
-	}
-	return pinned
-}
-
-func ensureNavigationHistoryStorage(state *config.State) {
-	if state.NavigationHistory.Entries == nil {
-		state.NavigationHistory.Entries = make([]string, 0)
-	}
-	if state.NavigationHistory.LastUsed == nil {
-		state.NavigationHistory.LastUsed = make(map[string]time.Time)
-	}
-	if state.NavigationHistory.UseCount == nil {
-		state.NavigationHistory.UseCount = make(map[string]int)
-	}
-	if state.NavigationHistory.Pinned == nil {
-		state.NavigationHistory.Pinned = make([]string, 0)
-	}
-}
-
-func navigationHistoryPathWithin(path, root string) bool {
-	path = canonicalNavigationHistoryPath(path)
-	root = canonicalNavigationHistoryPath(root)
-	if path == "" || root == "" {
-		return false
-	}
-	if path == root {
-		return true
-	}
-
-	_, pathParsed, pathErr := fileinfo.CanonicalDisplayPath(path)
-	_, rootParsed, rootErr := fileinfo.CanonicalDisplayPath(root)
-	if pathErr != nil || rootErr != nil || pathParsed.Scheme != rootParsed.Scheme {
-		return false
-	}
-	if pathParsed.Scheme == fileinfo.SchemeSMB {
-		if !strings.EqualFold(pathParsed.Host, rootParsed.Host) || !strings.EqualFold(pathParsed.Share, rootParsed.Share) || len(pathParsed.Segments) < len(rootParsed.Segments) {
-			return false
-		}
-		for i, segment := range rootParsed.Segments {
-			if !strings.EqualFold(pathParsed.Segments[i], segment) {
-				return false
-			}
-		}
-		return true
-	}
-	if pathParsed.Scheme != fileinfo.SchemeFile {
-		return false
-	}
-	pathForCompare, rootForCompare := path, root
-	if runtime.GOOS == "windows" {
-		pathForCompare = strings.ToLower(pathForCompare)
-		rootForCompare = strings.ToLower(rootForCompare)
-	}
-	relative, err := filepath.Rel(rootForCompare, pathForCompare)
-	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
-}
-
-func rebaseNavigationHistoryPath(path, oldRoot, newRoot string) (string, bool) {
-	if !navigationHistoryPathWithin(path, oldRoot) {
-		return path, false
-	}
-	if path == oldRoot {
-		return newRoot, true
-	}
-
-	_, pathParsed, pathErr := fileinfo.CanonicalDisplayPath(path)
-	_, oldParsed, oldErr := fileinfo.CanonicalDisplayPath(oldRoot)
-	_, newParsed, newErr := fileinfo.CanonicalDisplayPath(newRoot)
-	if pathErr != nil || oldErr != nil || newErr != nil || pathParsed.Scheme != oldParsed.Scheme || oldParsed.Scheme != newParsed.Scheme {
-		return path, false
-	}
-	if pathParsed.Scheme == fileinfo.SchemeSMB {
-		suffix := pathParsed.Segments[len(oldParsed.Segments):]
-		if len(suffix) == 0 {
-			return newRoot, true
-		}
-		return strings.TrimRight(newRoot, "/") + "/" + strings.Join(suffix, "/"), true
-	}
-	if pathParsed.Scheme != fileinfo.SchemeFile {
-		return path, false
-	}
-	relative, err := filepath.Rel(oldRoot, path)
-	if err != nil || relative == "." {
-		return newRoot, err == nil
-	}
-	return filepath.Join(newRoot, relative), true
 }
