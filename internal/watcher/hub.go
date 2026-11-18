@@ -3,6 +3,7 @@ package watcher
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fswatcher/fswatcher"
@@ -14,9 +15,15 @@ const defaultDebounceInterval = 200 * time.Millisecond
 // Snapshot is a complete directory state keyed by portable display path.
 type Snapshot map[string]fileinfo.FileInfo
 
+type snapshotUpdate struct {
+	files    Snapshot // immutable after publication; shared by all subscribers
+	sequence uint64
+}
+
 // Subscription receives shared directory snapshots until Unsubscribe is called.
 type Subscription struct {
-	Updates     <-chan Snapshot
+	Updates     <-chan snapshotUpdate
+	reconcile   func()
 	unsubscribe func()
 }
 
@@ -26,7 +33,6 @@ func (s *Subscription) Unsubscribe() {
 		return
 	}
 	s.unsubscribe()
-	s.unsubscribe = nil
 }
 
 type watchBackend interface {
@@ -61,6 +67,8 @@ type watchPathFunc func(path string) (string, bool)
 
 // WatchHub shares one OS watcher or fallback poller per path across windows.
 type WatchHub struct {
+	// sequence orders read starts and per-window baseline resets, even within one clock tick.
+	sequence       atomic.Uint64
 	mu             sync.Mutex
 	sources        map[string]*watchSource
 	initializing   map[string]*watchSourceInit
@@ -141,12 +149,14 @@ func (h *WatchHub) Subscribe(path string, interval time.Duration) *Subscription 
 func (h *WatchHub) subscribeLocked(path string, src *watchSource) *Subscription {
 	h.nextSubscriber++
 	id := h.nextSubscriber
-	subscriber := newWatchSubscriber(10)
+	subscriber := make(chan snapshotUpdate, 1)
 	src.addSubscriber(id, subscriber)
+	src.requestSnapshot()
 
 	var once sync.Once
 	return &Subscription{
-		Updates: subscriber.updates,
+		Updates:   subscriber,
+		reconcile: src.requestSnapshot,
 		unsubscribe: func() {
 			once.Do(func() {
 				h.unsubscribe(path, id)
@@ -182,7 +192,7 @@ func readSnapshot(path string) (Snapshot, error) {
 		return nil, err
 	}
 
-	currentFiles := make(Snapshot)
+	currentFiles := make(Snapshot, len(entries))
 	for _, entry := range entries {
 		fileInfo, err := fileinfo.FileInfoFromDirEntry(path, entry)
 		if err != nil {
@@ -212,66 +222,30 @@ func resolveWatchPath(path string) (string, bool) {
 }
 
 type watchSource struct {
-	path         string
-	watchPath    string
-	interval     time.Duration
-	useFSWatcher bool
-	hub          *WatchHub
-	mu           sync.Mutex
-	subscribers  map[uint64]*watchSubscriber
-	stopChan     chan struct{}
-	stopped      chan struct{}
-	pollFallback bool
-}
-
-// watchSubscriber serializes delivery with close so a broadcast that already
-// captured this subscriber cannot send to its channel after unsubscribe closes
-// it.
-type watchSubscriber struct {
-	mu      sync.Mutex
-	updates chan Snapshot
-	closed  bool
-}
-
-func newWatchSubscriber(buffer int) *watchSubscriber {
-	return &watchSubscriber{updates: make(chan Snapshot, buffer)}
-}
-
-func (s *watchSubscriber) send(snapshot Snapshot) (sent bool, open bool) {
-	update := cloneSnapshot(snapshot)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
-		return false, false
-	}
-	select {
-	case s.updates <- update:
-		return true, true
-	default:
-		return false, true
-	}
-}
-
-func (s *watchSubscriber) close() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
-		return
-	}
-	s.closed = true
-	close(s.updates)
+	path          string
+	watchPath     string
+	interval      time.Duration
+	useFSWatcher  bool
+	hub           *WatchHub
+	mu            sync.Mutex
+	subscribers   map[uint64]chan snapshotUpdate
+	readRequested chan struct{}
+	stopChan      chan struct{}
+	stopped       chan struct{}
+	pollFallback  bool
 }
 
 func newWatchSource(path string, watchPath string, interval time.Duration, useFSWatcher bool, hub *WatchHub) *watchSource {
 	return &watchSource{
-		path:         path,
-		watchPath:    watchPath,
-		interval:     interval,
-		useFSWatcher: useFSWatcher,
-		hub:          hub,
-		subscribers:  make(map[uint64]*watchSubscriber),
-		stopChan:     make(chan struct{}),
-		stopped:      make(chan struct{}),
+		path:          path,
+		watchPath:     watchPath,
+		interval:      interval,
+		useFSWatcher:  useFSWatcher,
+		hub:           hub,
+		subscribers:   make(map[uint64]chan snapshotUpdate),
+		readRequested: make(chan struct{}, 1),
+		stopChan:      make(chan struct{}),
+		stopped:       make(chan struct{}),
 	}
 }
 
@@ -308,7 +282,7 @@ func (s *watchSource) stop() {
 	<-s.stopped
 }
 
-func (s *watchSource) addSubscriber(id uint64, subscriber *watchSubscriber) {
+func (s *watchSource) addSubscriber(id uint64, subscriber chan snapshotUpdate) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.subscribers[id] = subscriber
@@ -319,7 +293,7 @@ func (s *watchSource) removeSubscriber(id uint64) bool {
 	defer s.mu.Unlock()
 	if subscriber, ok := s.subscribers[id]; ok {
 		delete(s.subscribers, id)
-		subscriber.close()
+		close(subscriber)
 	}
 	return len(s.subscribers) == 0
 }
@@ -345,6 +319,8 @@ func (s *watchSource) pollLoop() {
 
 	for {
 		select {
+		case <-s.readRequested:
+			s.readAndBroadcast()
 		case <-ticker.C:
 			s.readAndBroadcast()
 		case <-s.stopChan:
@@ -393,6 +369,8 @@ func (s *watchSource) eventLoop(backend watchBackend) bool {
 				s.hub.debugPrint("WatchHub: fswatcher error path=%s err=%v", s.path, err)
 			}
 			return true
+		case <-s.readRequested:
+			s.readAndBroadcast()
 		case <-debounceC:
 			debounceC = nil
 			s.readAndBroadcast()
@@ -402,34 +380,34 @@ func (s *watchSource) eventLoop(backend watchBackend) bool {
 	}
 }
 
+// A subscription or a local model reset can span an unobserved change.
+func (s *watchSource) requestSnapshot() {
+	select {
+	case s.readRequested <- struct{}{}:
+	default:
+	}
+}
+
 func (s *watchSource) readAndBroadcast() {
+	sequence := s.hub.sequence.Add(1)
 	snapshot, err := s.hub.listSnapshot(s.path)
 	if err != nil {
 		s.hub.debugPrint("WatchHub: snapshot read skipped path=%s err=%v", s.path, err)
 		return
 	}
-	s.broadcast(snapshot)
+	s.broadcast(snapshotUpdate{files: snapshot, sequence: sequence})
 }
 
-func (s *watchSource) broadcast(snapshot Snapshot) {
+func (s *watchSource) broadcast(update snapshotUpdate) {
 	s.mu.Lock()
-	subscribers := make([]*watchSubscriber, 0, len(s.subscribers))
+	defer s.mu.Unlock()
 	for _, subscriber := range s.subscribers {
-		subscribers = append(subscribers, subscriber)
-	}
-	s.mu.Unlock()
-
-	for _, subscriber := range subscribers {
-		if sent, open := subscriber.send(snapshot); open && !sent {
-			s.hub.debugPrint("WatchHub: subscriber channel full path=%s", s.path)
+		// Subscribers need only the latest complete state. Holding mu serializes
+		// producers and removal, while the subscriber may receive at any time.
+		select {
+		case <-subscriber:
+		default:
 		}
+		subscriber <- update
 	}
-}
-
-func cloneSnapshot(src Snapshot) Snapshot {
-	dst := make(Snapshot, len(src))
-	for path, info := range src {
-		dst[path] = info
-	}
-	return dst
 }

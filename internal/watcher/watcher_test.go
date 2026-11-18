@@ -1,7 +1,8 @@
 package watcher
 
 import (
-	"reflect"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,14 +17,10 @@ type mockFM struct {
 	files           []fileinfo.FileInfo
 	unfilteredFiles []fileinfo.FileInfo
 	applied         []PendingChanges
+	notify          chan PendingChanges
 }
 
 func (m *mockFM) GetCurrentPath() string { return m.path }
-func (m *mockFM) GetFiles() []fileinfo.FileInfo {
-	cp := make([]fileinfo.FileInfo, len(m.files))
-	copy(cp, m.files)
-	return cp
-}
 func (m *mockFM) GetUnfilteredFiles() []fileinfo.FileInfo {
 	files := m.unfilteredFiles
 	if files == nil {
@@ -33,13 +30,12 @@ func (m *mockFM) GetUnfilteredFiles() []fileinfo.FileInfo {
 	copy(cp, files)
 	return cp
 }
-func (m *mockFM) UpdateFiles(files []fileinfo.FileInfo) {
-	m.files = append([]fileinfo.FileInfo{}, files...)
-}
-func (m *mockFM) RemoveFromSelections(string) {}
-
 func (m *mockFM) ApplyChanges(added, deleted, modified []fileinfo.FileInfo) {
-	m.applied = append(m.applied, PendingChanges{Added: added, Deleted: deleted, Modified: modified})
+	changes := PendingChanges{Added: added, Deleted: deleted, Modified: modified}
+	m.applied = append(m.applied, changes)
+	if m.notify != nil {
+		m.notify <- changes
+	}
 }
 
 func dummyDebug(format string, args ...interface{}) {}
@@ -97,7 +93,7 @@ func TestDetectChanges_AddedDeletedModified(t *testing.T) {
 		"/tmp/c.txt": fi("/tmp/c.txt", "c.txt", 1, t2),
 	}
 
-	added, deleted, modified, _ := dw.detectChanges(current)
+	added, deleted, modified, _ := dw.detectChanges(snapshotUpdate{files: current, sequence: dw.hub.sequence.Add(1)})
 	if len(added) != 1 || added[0].Name != "c.txt" {
 		t.Fatalf("expected 1 added c.txt, got %#v", added)
 	}
@@ -134,7 +130,7 @@ func TestDetectChanges_IsDirFlipWithSameMtimeSize(t *testing.T) {
 		"/tmp/beta": betaAsDir,
 	}
 
-	added, deleted, modified, _ := dw.detectChanges(current)
+	added, deleted, modified, _ := dw.detectChanges(snapshotUpdate{files: current, sequence: dw.hub.sequence.Add(1)})
 	if len(added) != 0 || len(deleted) != 0 {
 		t.Fatalf("expected no added/deleted, got added=%#v deleted=%#v", added, deleted)
 	}
@@ -165,7 +161,7 @@ func TestUpdateSnapshot_ExcludesParentAndDeleted(t *testing.T) {
 }
 
 func TestStartStop_IdempotentAndRapidCycles(t *testing.T) {
-	m := &mockFM{path: "."}
+	m := &mockFM{path: t.TempDir()}
 	dw := NewDirectoryWatcher(m, nil, dummyDebug)
 
 	for i := 0; i < 20; i++ {
@@ -184,209 +180,70 @@ func TestStartStop_IdempotentAndRapidCycles(t *testing.T) {
 	if dw.stopChan != nil {
 		t.Fatalf("stopChan should be nil after Stop")
 	}
-	if dw.changeChan != nil {
-		t.Fatalf("changeChan should be nil after Stop")
-	}
 	if dw.subscription != nil {
 		t.Fatalf("subscription should be nil after Stop")
 	}
 }
 
-func TestApplyPendingChanges_IgnoresStaleRun(t *testing.T) {
-	m := &mockFM{path: "."}
-	dw := NewDirectoryWatcher(m, nil, dummyDebug)
-
-	dw.Start()
-	dw.mu.RLock()
-	runID := dw.runID
-	dw.mu.RUnlock()
-
-	dw.Stop()
-
-	dw.applyPendingChanges(runID, &PendingChanges{
-		Added: []fileinfo.FileInfo{
-			fi("./new.txt", "new.txt", 1, time.Now()),
-		},
-	})
-
-	if len(m.applied) != 0 {
-		t.Fatalf("stale run dispatched changes: %+v", m.applied)
-	}
-}
-
-func TestApplyDataChangesOnUIRechecksRunGeneration(t *testing.T) {
-	m := &mockFM{path: "."}
-	dw := NewDirectoryWatcher(m, nil, dummyDebug)
-	dw.running = true
-	dw.runID = 2
-
-	dw.applyDataChangesOnUI(1, &PendingChanges{
-		Added: []fileinfo.FileInfo{fi("./stale.txt", "stale.txt", 1, time.Now())},
-	})
-
-	if len(m.applied) != 0 {
-		t.Fatalf("stale UI callback dispatched changes: %+v", m.applied)
-	}
-}
-
-func TestQueueSnapshotChangesAdvancesExpectedBaseline(t *testing.T) {
-	m := &mockFM{path: "."}
-	dw := NewDirectoryWatcher(m, nil, dummyDebug)
-	dw.running = true
-	dw.runID = 1
-	queued := make(chan *PendingChanges, 2)
-	now := time.Now()
-
-	dw.queueSnapshotChanges(1, Snapshot{
-		"./a.txt": fi("./a.txt", "a.txt", 1, now),
-	}, queued)
-	dw.queueSnapshotChanges(1, Snapshot{
-		"./a.txt": fi("./a.txt", "a.txt", 1, now),
-		"./b.txt": fi("./b.txt", "b.txt", 1, now),
-	}, queued)
-
-	first := <-queued
-	second := <-queued
-	if len(first.Added) != 1 || first.Added[0].Name != "a.txt" {
-		t.Fatalf("first snapshot changes = %#v, want only a.txt added", first)
-	}
-	if len(second.Added) != 1 || second.Added[0].Name != "b.txt" {
-		t.Fatalf("second snapshot changes = %#v, want only b.txt added", second)
-	}
-}
-
-func TestApplyDataChangesDispatchesCurrentChanges(t *testing.T) {
+func TestWatchLoopCommitsLatestSnapshotAndReconcilesRegistration(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
-
-	m := &mockFM{path: "/tmp"}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "created-before-watch"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	m := &mockFM{path: dir, notify: make(chan PendingChanges, 1)}
 	dw := NewDirectoryWatcher(m, nil, dummyDebug)
+	dw.Start()
+	defer dw.Stop()
+	select {
+	case changes := <-m.notify:
+		if len(changes.Added) != 1 || changes.Added[0].Name != "created-before-watch" {
+			t.Fatalf("initial reconciliation = %+v", changes)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("watcher did not reconcile the original listing")
+	}
+}
+
+func TestApplySnapshotRequiresSameRunAndBaseline(t *testing.T) {
+	now := time.Now()
+	existing := fi("/tmp/a", "a", 10, now)
+	added := fi("/tmp/b", "b", 10, now)
+	fm := &mockFM{files: []fileinfo.FileInfo{existing}}
+	dw := NewDirectoryWatcher(fm, nil, dummyDebug)
 	dw.running = true
 	dw.runID = 1
 	dw.updateSnapshot()
-	now := time.Unix(1, 0)
-	want := PendingChanges{
-		Added:    []fileinfo.FileInfo{fi("/tmp/new", "new", 1, now)},
-		Deleted:  []fileinfo.FileInfo{fi("/tmp/gone", "gone", 2, now)},
-		Modified: []fileinfo.FileInfo{fi("/tmp/changed", "changed", 3, now)},
+	read := snapshotUpdate{files: Snapshot{existing.Path: existing, added.Path: added}, sequence: dw.hub.sequence.Add(1)}
+	a, d, m, gen := dw.detectChanges(read)
+	changes := &PendingChanges{Added: a, Deleted: d, Modified: m, BaselineGen: gen}
+	dw.applySnapshotOnUI(0, changes, read.files)
+	if len(fm.applied) != 0 {
+		t.Fatal("old run applied a delta")
 	}
-	changes := PendingChanges{
-		Added:       append([]fileinfo.FileInfo(nil), want.Added...),
-		Deleted:     append([]fileinfo.FileInfo(nil), want.Deleted...),
-		Modified:    append([]fileinfo.FileInfo(nil), want.Modified...),
-		BaselineGen: dw.baselineGen,
-	}
-	// Exercise the same UI dispatch used by the watcher worker.
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		dw.applyDataChanges(1, &changes)
-		dw.applyDataChanges(1, &PendingChanges{BaselineGen: dw.baselineGen})
-	}()
-	<-done
-	if !reflect.DeepEqual(m.applied, []PendingChanges{want}) {
-		t.Fatalf("dispatched changes = %+v, want exactly %+v", m.applied, want)
-	}
-}
-
-// A RefreshSnapshot that lands between detection and the baseline promotion
-// must win. Otherwise the promotion installs the older directory read, the
-// entry the UI just created is missing from the baseline, and the next poll
-// reports it as added a second time.
-func TestAdvanceSnapshotKeepsBaselineResetDuringDetection(t *testing.T) {
-	m := &mockFM{path: "/tmp"}
-	dw := NewDirectoryWatcher(m, nil, dummyDebug)
-	dw.running = true
-
-	now := time.Now()
-	existing := fi("/tmp/a.txt", "a.txt", 10, now)
-	m.files = []fileinfo.FileInfo{existing}
-	dw.updateSnapshot()
-
-	// A directory read taken before the user created anything.
-	staleRead := Snapshot{"/tmp/a.txt": existing}
-	_, _, _, baselineGen := dw.detectChanges(staleRead)
-
-	// The user creates a directory; the UI merges it and resets the baseline.
-	created := fi("/tmp/new-dir", "new-dir", 0, now)
-	created.IsDir = true
-	m.files = append(m.files, created)
+	fm.files = append(fm.files, added)
 	dw.RefreshSnapshot()
-
-	// The in-flight change set now tries to promote its own, older read.
-	dw.advanceSnapshot(dw.runID, baselineGen, staleRead)
-
-	if _, ok := dw.previousFiles["/tmp/new-dir"]; !ok {
-		t.Fatal("baseline reset was overwritten by the older directory read")
+	dw.applySnapshotOnUI(1, changes, read.files)
+	if len(fm.applied) != 0 {
+		t.Fatal("old baseline applied a delta")
 	}
-
-	// The next poll sees the directory and must not report it as added.
-	nextRead := Snapshot{"/tmp/a.txt": existing, "/tmp/new-dir": created}
-	added, _, _, _ := dw.detectChanges(nextRead)
-	if len(added) != 0 {
-		t.Fatalf("added = %#v, want none", added)
+	read.files = Snapshot{existing.Path: existing}
+	a, d, m, _ = dw.detectChanges(read)
+	if len(a)+len(d)+len(m) != 0 {
+		t.Fatal("read started before a reset must be ignored")
 	}
-}
-
-// The steady state still advances: without an intervening reset the directory
-// read becomes the baseline, so the same change is not reported twice.
-func TestAdvanceSnapshotPromotesReadWhenBaselineUnchanged(t *testing.T) {
-	m := &mockFM{path: "/tmp"}
-	dw := NewDirectoryWatcher(m, nil, dummyDebug)
-	dw.running = true
-
-	now := time.Now()
-	existing := fi("/tmp/a.txt", "a.txt", 10, now)
-	m.files = []fileinfo.FileInfo{existing}
-	dw.updateSnapshot()
-
-	added := fi("/tmp/b.txt", "b.txt", 3, now)
-	read := Snapshot{"/tmp/a.txt": existing, "/tmp/b.txt": added}
-	gotAdded, _, _, baselineGen := dw.detectChanges(read)
-	if len(gotAdded) != 1 {
-		t.Fatalf("added = %#v, want b.txt", gotAdded)
+	read.sequence = dw.hub.sequence.Add(1)
+	a, d, m, gen = dw.detectChanges(read)
+	if len(d) != 1 || d[0].Path != added.Path {
+		t.Fatalf("expected deletion, got %+v", d)
 	}
-
-	dw.advanceSnapshot(dw.runID, baselineGen, read)
-
-	gotAdded, _, _, _ = dw.detectChanges(read)
-	if len(gotAdded) != 0 {
-		t.Fatalf("added = %#v, want none after the baseline advanced", gotAdded)
+	dw.applySnapshotOnUI(1, &PendingChanges{Added: a, Deleted: d, Modified: m, BaselineGen: gen}, read.files)
+	if len(fm.applied) != 1 {
+		t.Fatal("current delta was not applied")
 	}
-}
-
-// The queue-time generation check is not enough on its own: a change set can be
-// queued, then the UI can merge the same creation itself and reset the
-// baseline, and only then does the apply loop get to it. Applying it at that
-// point restamps the entry the UI added with StatusAdded.
-func TestApplyDataChangesOnUIDropsChangesFromAResetBaseline(t *testing.T) {
-	now := time.Now()
-	existing := fi("/tmp/a.txt", "a.txt", 10, now)
-	m := &mockFM{path: "/tmp", files: []fileinfo.FileInfo{existing}}
-	dw := NewDirectoryWatcher(m, nil, dummyDebug)
-	dw.running = true
-	dw.runID = 1
-	dw.updateSnapshot()
-
-	// The watcher detects the new file and queues it.
-	created := fi("/tmp/new.txt", "new.txt", 3, now)
-	created.Status = fileinfo.StatusAdded
-	read := Snapshot{"/tmp/a.txt": existing, "/tmp/new.txt": created}
-	added, deleted, modified, baselineGen := dw.detectChanges(read)
-	if len(added) != 1 {
-		t.Fatalf("added = %#v, want new.txt", added)
-	}
-	queued := &PendingChanges{Added: added, Deleted: deleted, Modified: modified, BaselineGen: baselineGen}
-
-	// Before the apply loop gets to it, the UI merges its own creation as a
-	// normal entry and resets the baseline.
-	uiCreated := fi("/tmp/new.txt", "new.txt", 3, now)
-	m.files = append(m.files, uiCreated)
-	dw.RefreshSnapshot()
-
-	dw.applyDataChangesOnUI(1, queued)
-
-	if len(m.applied) != 0 {
-		t.Fatalf("reset baseline dispatched stale changes: %+v", m.applied)
+	a, d, m, _ = dw.detectChanges(read)
+	if len(a)+len(d)+len(m) != 0 {
+		t.Fatal("accepted snapshot was not promoted")
 	}
 }

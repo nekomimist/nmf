@@ -18,17 +18,9 @@ Concurrency model:
 
 - Lifecycle state is guarded by watcher mutex.
 - Shared path monitoring is owned by `WatchHub`.
-- Change application remains per-window and is decoupled via buffered `changeChan`.
-- A successfully queued snapshot advances the watcher's expected baseline
-  immediately, so a burst cannot derive duplicate changes while an earlier UI
-  merge is pending. A full queue does not advance the baseline; the next
-  snapshot therefore includes the skipped cumulative difference.
-- Detection and that advance are separate critical sections with a channel send
-  between them, so a `RefreshSnapshot()` can land in the gap. A `baselineGen`
-  counter, incremented on every reset and captured during detection, makes the
-  advance skip rather than reinstate the older directory read. The reset wins
-  and the next read reconciles against it; without this, an entry the UI had
-  just created would be missing from the baseline and reported as added again.
+- After registering a subscriber, the source reads the directory again to catch changes between the load and watch registration.
+- Every source publishes immutable complete snapshots. Each subscriber has one pending slot. A newer snapshot replaces the pending one while the window processes its current update.
+- Each window computes deltas against its last accepted baseline and applies them on the Fyne thread before processing the next snapshot. A local baseline reset requests another read. The window ignores reads started before the reset and drops a computed delta if the run or baseline generation changed before UI application.
 - `ApplyChanges` replaces an added path that is already in the list instead of
   appending it, since the baseline excludes entries marked deleted and a
   recreated file therefore arrives as an add.
@@ -37,16 +29,14 @@ Concurrency model:
   filtered list would permanently discard entries hidden at update time.
 - FileManager access happens through watcher-facing interface methods:
   - `GetCurrentPath`
-  - `GetFiles`
-  - `UpdateFiles`
-  - `RemoveFromSelections`
+  - `GetUnfilteredFiles`
   - `ApplyChanges`
 - Detected changes are merged via `ApplyChanges` only, and the watcher invokes
   it inside `fyne.DoAndWait`. Browsing data is synchronized by
   `internal/browser.Model`, but `FileManager.ApplyChanges` also refreshes Fyne
   widgets, so the complete operation must stay on the Fyne main goroutine.
   Watcher background work may read through snapshot-returning interface methods
-  such as `GetFiles`; it must not touch widgets or retain mutable model state.
+  such as `GetUnfilteredFiles`; it must not touch widgets or retain mutable model state.
 - The watcher run generation is checked again inside the UI callback. A
   callback queued by a stopped/restarted run cannot modify the new run's list.
 - `ApplyChanges` skips the re-sort for modify-only change sets under
@@ -60,10 +50,7 @@ Watch behavior:
 - One `WatchHub` source is shared by all open windows for the same path.
 - Event bursts are debounced before a complete portable directory snapshot is
   read and broadcast to subscribers.
-- Each subscriber serializes snapshot delivery with channel close. A broadcast
-  may retain a subscriber reference after `Unsubscribe` removes it from the
-  source, but that stale delivery observes the closed subscriber and is dropped
-  instead of sending to a closed channel.
+- The source mutex serializes publication and channel closure. A slow subscriber retains the latest state without blocking delivery to another window.
 - If watcher creation, path registration, or runtime watcher delivery fails,
   that source falls back to polling.
 - Default fallback interval is 2 seconds. `SetPollInterval` affects the next
@@ -233,12 +220,9 @@ Watcher:
 
 - Read failures during snapshot refresh or polling are skipped for that cycle.
 - Failing fswatcher sources fall back to polling for that path source.
-- Full change channel drops update for that cycle (best-effort behavior).
 - Watch source path resolution and backend startup run outside the hub-wide
   mutex. Initialization is coordinated per display path, so one slow path does
   not block subscriptions or unsubscriptions for unrelated windows.
-- Snapshot delivery clones once per subscriber; ownership transfers to that
-  subscriber's watcher when received, avoiding a second baseline map clone.
 
 ## Regression Checklist
 
