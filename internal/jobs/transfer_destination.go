@@ -1,10 +1,12 @@
 package jobs
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"nmf/internal/fileinfo"
 )
@@ -21,15 +23,18 @@ func copySymlink(execCtx *executionContext, j *Job, target string, dst execution
 			}
 			return err
 		}
-		defer removePath(execCtx, tmp)
+		defer removeTransferTemp(execCtx, tmp)
 		return replacePath(j, execCtx, tmp, dst, true)
 	}
 	return fmt.Errorf("could not create temporary symlink in %s", dirPath(dst).displayPath())
 }
 
+var errSMBBackupRetained = errors.New("previous destination retained")
+
 // SMB rename does not replace existing paths. Keep the previous destination
 // until publication succeeds, and retain its backup if restoration fails.
-func replaceSMBPath(ops fileinfo.SMBPathOps, tmp, dst executionPath, overwrite bool) error {
+
+func replaceSMBPath(execCtx *executionContext, ops fileinfo.SMBPathOps, tmp, dst executionPath, overwrite bool) error {
 	err := ops.Rename(tmp.path, dst.path)
 	if err == nil || !overwrite {
 		return err
@@ -47,13 +52,19 @@ func replaceSMBPath(ops fileinfo.SMBPathOps, tmp, dst executionPath, overwrite b
 			return errors.Join(err, backupErr)
 		}
 		if publishErr := ops.Rename(tmp.path, dst.path); publishErr != nil {
-			if restoreErr := ops.Rename(backup.path, dst.path); restoreErr != nil {
-				return fmt.Errorf("previous destination retained at %s: %w", backup.displayPath(), errors.Join(publishErr, restoreErr))
+			restoreErr := withSMBCleanup(execCtx, dst, ops, func(recovery fileinfo.SMBPathOps) error {
+				return recovery.Rename(backup.path, dst.path)
+			})
+			if restoreErr != nil {
+				return fmt.Errorf("%w at %s: %w", errSMBBackupRetained, backup.displayPath(), errors.Join(publishErr, restoreErr))
 			}
 			return publishErr
 		}
-		if err := ops.Remove(backup.path); err != nil {
-			return fmt.Errorf("replacement succeeded; previous destination retained at %s: %w", backup.displayPath(), err)
+		removeErr := withSMBCleanup(execCtx, dst, ops, func(recovery fileinfo.SMBPathOps) error {
+			return recovery.Remove(backup.path)
+		})
+		if removeErr != nil {
+			return fmt.Errorf("replacement succeeded; %w at %s: %w", errSMBBackupRetained, backup.displayPath(), removeErr)
 		}
 		return nil
 	}
@@ -69,7 +80,7 @@ func replacePath(j *Job, execCtx *executionContext, tmp executionPath, dst execu
 		if err != nil {
 			return err
 		}
-		return replaceSMBPath(ops, tmp, dst, overwrite)
+		return replaceSMBPath(execCtx, ops, tmp, dst, overwrite)
 	}
 	if dst.localRoot != nil {
 		if overwrite {
@@ -95,4 +106,34 @@ func replacePath(j *Job, execCtx *executionContext, tmp executionPath, dst execu
 		return err
 	}
 	return publishExclusiveCopy(j, execCtx, tmp, dst)
+}
+
+// A canceled job has closed its SMB transport. Give removal of its temporary
+// file or restoration of the previous destination one bounded recovery session.
+func withSMBCleanup(execCtx *executionContext, p executionPath, ops fileinfo.SMBPathOps, cleanup func(fileinfo.SMBPathOps) error) error {
+	if execCtx.request.Err() == nil || p.smbOpener == nil {
+		err := cleanup(ops)
+		if err == nil || execCtx.request.Err() == nil || p.smbOpener == nil {
+			return err
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(execCtx.request), 3*time.Second)
+	defer cancel()
+	session, err := p.smbOpener.OpenSession(ctx)
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+	return cleanup(session)
+}
+
+func removeTransferTemp(execCtx *executionContext, p executionPath) error {
+	if p.backend != backendSMB || execCtx.request.Err() == nil {
+		return removePath(execCtx, p)
+	}
+	ops, err := execCtx.smbOpsFor(p)
+	if err != nil {
+		return err
+	}
+	return withSMBCleanup(execCtx, p, ops, func(recovery fileinfo.SMBPathOps) error { return recovery.Remove(p.path) })
 }

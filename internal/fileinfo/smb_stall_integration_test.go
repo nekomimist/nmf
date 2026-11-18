@@ -16,6 +16,11 @@ import (
 // This opt-in test pauses only the explicitly supplied disposable Samba
 // container. It verifies blocked reads and cleanup without changing the host network.
 func TestSMBReadCancellationWithPausedServer(t *testing.T) {
+	t.Run("reader", func(t *testing.T) { testSMBReadCancellation(t, false) })
+	t.Run("job-session", func(t *testing.T) { testSMBReadCancellation(t, true) })
+}
+
+func testSMBReadCancellation(t *testing.T, reusable bool) {
 	url := strings.TrimSpace(os.Getenv("NMF_SMB_TEST_DIR"))
 	container := strings.TrimSpace(os.Getenv("NMF_SMB_TEST_CONTAINER"))
 	if url == "" || container == "" {
@@ -57,7 +62,20 @@ func TestSMBReadCancellationWithPausedServer(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	in, err := smb.OpenContext(ctx, path)
+	var in io.ReadCloser
+	if reusable {
+		session, err := smb.OpenSession(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer session.Close()
+		in, err = session.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		in, err = smb.OpenContext(ctx, path)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"context"
 	"errors"
 	"os"
 	"runtime"
@@ -13,12 +14,12 @@ import (
 // owns the context and must close it. Sharing one context per job is what keeps
 // a remote backend dialed once instead of once per source, so this preamble
 // runs before any transfer rather than inside the per-source loop.
-func openTransferDestination(destDir string) (executionPath, *executionContext, error) {
+func openTransferDestination(request context.Context, destDir string) (executionPath, *executionContext, error) {
 	destPath, err := resolveExecutionPath(destDir)
 	if err != nil {
 		return executionPath{}, nil, wrapPath(destDir, err)
 	}
-	execCtx := newExecutionContext()
+	execCtx := newJobExecutionContext(request)
 	if err := validateDestinationDirectory(execCtx, destPath); err != nil {
 		if closeErr := execCtx.close(); closeErr != nil {
 			dbg("execution context close error: %v", closeErr)

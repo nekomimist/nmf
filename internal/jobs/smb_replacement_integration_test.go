@@ -99,7 +99,7 @@ func TestSMBReplacementIntegration(t *testing.T) {
 			tmp, dst := joinPath(root, "temporary"), joinPath(root, "destination")
 			smbTestWrite(t, verifyCtx, tmp, "new")
 			smbTestWrite(t, verifyCtx, dst, "old")
-			session, err := root.smbOpener.OpenSession()
+			session, err := root.smbOpener.OpenSession(t.Context())
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -33,13 +34,15 @@ type executionPath struct {
 }
 
 type executionContext struct {
+	request     context.Context
 	smbSessions map[string]fileinfo.SMBSession
 	archiveVFSs map[string]*fileinfo.ArchiveVFS
 	copyBuffer  []byte // reused by the serial transfers within one job
 }
 
-func newExecutionContext() *executionContext {
+func newJobExecutionContext(request context.Context) *executionContext {
 	return &executionContext{
+		request:     request,
 		smbSessions: make(map[string]fileinfo.SMBSession),
 		archiveVFSs: make(map[string]*fileinfo.ArchiveVFS),
 	}
@@ -79,7 +82,7 @@ func (ctx *executionContext) archiveVFSFor(p executionPath) (*fileinfo.ArchiveVF
 	if vfs, ok := ctx.archiveVFSs[p.archivePath]; ok && vfs != nil {
 		return vfs, nil
 	}
-	vfs, err := fileinfo.NewArchiveVFS(p.archivePath)
+	vfs, err := fileinfo.NewArchiveVFSContext(ctx.request, p.archivePath)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +109,7 @@ func (ctx *executionContext) smbOpsFor(p executionPath) (fileinfo.SMBPathOps, er
 		return session, nil
 	}
 
-	session, err := p.smbOpener.OpenSession()
+	session, err := p.smbOpener.OpenSession(ctx.request)
 	if err != nil {
 		return nil, err
 	}

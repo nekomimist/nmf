@@ -92,7 +92,7 @@ func copyReaderWithCancel(j *Job, execCtx *executionContext, in io.Reader, srcDi
 			_ = out.Close()
 		}
 		if !published {
-			_ = removePath(execCtx, tmp)
+			_ = removeTransferTemp(execCtx, tmp)
 		}
 	}()
 

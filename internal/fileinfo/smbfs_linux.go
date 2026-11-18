@@ -89,15 +89,17 @@ func (f *smbFileCloser) Close() error {
 }
 
 type smbMountedShare struct {
-	share *smb2.Share
-	sess  *smb2.Session
-	conn  net.Conn
+	stopCancel func() bool
+	share      *smb2.Share
+	sess       *smb2.Session
+	conn       net.Conn
 }
 
 func (m *smbMountedShare) Close() error {
 	if m == nil {
 		return nil
 	}
+	defer m.stopCancel()
 	return closeSMBSession(nil, m.share, m.sess, m.conn)
 }
 
@@ -228,12 +230,13 @@ func (s SMBFS) credentialsFor(ctx context.Context, relPath string) (Credentials,
 }
 
 // OpenSession opens a reusable mounted SMB share session.
-func (s SMBFS) OpenSession() (SMBSession, error) {
-	share, sess, conn, _, err := s.dialAndMount("")
+func (s SMBFS) OpenSession(ctx context.Context) (SMBSession, error) {
+	share, sess, conn, _, err := s.dialAndMountContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}
-	return &smbMountedShare{share: share, sess: sess, conn: conn}, nil
+	stopCancel := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	return &smbMountedShare{share: share, sess: sess, conn: conn, stopCancel: stopCancel}, nil
 }
 
 func (s SMBFS) dialAndMount(relPath string) (*smb2.Share, *smb2.Session, net.Conn, Credentials, error) {

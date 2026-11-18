@@ -344,7 +344,7 @@ func (m *Manager) worker() {
 		j.mu.Lock()
 		j.progressNotify = nil
 		if err != nil {
-			if errors.Is(err, errCanceled) {
+			if !errors.Is(err, errSMBBackupRetained) && (errors.Is(err, errCanceled) || errors.Is(err, context.Canceled) || canceled(j)) {
 				j.Status = StatusCanceled
 				dbg("job canceled id=%d after %d/%d", j.ID, j.DoneFiles, j.TotalFiles)
 			} else {
@@ -388,7 +388,7 @@ func (m *Manager) runJob(j *Job) error {
 	if j.Type == TypeExtract {
 		return m.runExtractJob(j)
 	}
-	destPath, execCtx, err := openTransferDestination(j.DestDir)
+	destPath, execCtx, err := openTransferDestination(j.ctx, j.DestDir)
 	if err != nil {
 		return err
 	}
@@ -437,7 +437,7 @@ func (m *Manager) runJob(j *Job) error {
 }
 
 func (m *Manager) runDeleteJob(j *Job) error {
-	execCtx := newExecutionContext()
+	execCtx := newJobExecutionContext(j.ctx)
 	defer func() {
 		if err := execCtx.close(); err != nil {
 			dbg("job %d: SMB session close error: %v", j.ID, err)
@@ -488,7 +488,7 @@ func (m *Manager) runExtractJob(j *Job) error {
 		return wrapPath(destPath.displayPath(), errors.New("archive destinations are read-only"))
 	}
 
-	execCtx := newExecutionContext()
+	execCtx := newJobExecutionContext(j.ctx)
 	defer func() {
 		if err := execCtx.close(); err != nil {
 			dbg("job %d: SMB session close error: %v", j.ID, err)
