@@ -420,3 +420,40 @@ func TestCopyDirectoryHonorsDestinationUmask(t *testing.T) {
 		t.Fatalf("mode = %o, want %o", got.Mode().Perm(), want.Mode().Perm())
 	}
 }
+
+func TestExtractRestoresDirectoryModeAfterError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix mode bits")
+	}
+	archive := filepath.Join(t.TempDir(), "partial.tar")
+	f, err := os.Create(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tw := tar.NewWriter(f)
+	for _, hdr := range []*tar.Header{{Name: "locked/", Typeflag: tar.TypeDir, Mode: 0555}, {Name: "link", Typeflag: tar.TypeSymlink, Linkname: "x", Mode: 0777}} {
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	dst := t.TempDir()
+	locked := filepath.Join(dst, "partial", "locked")
+	t.Cleanup(func() { os.Chmod(locked, 0700) })
+	job := &Job{Type: TypeExtract, ctx: t.Context(), Sources: []string{archive}, DestDir: dst}
+	if err := (&Manager{}).runJob(job); err == nil {
+		t.Fatal("extraction should fail at unsupported link")
+	}
+	info, err := os.Stat(locked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0200 != 0 {
+		t.Fatalf("partial extraction kept temporary permissions: %v", info.Mode())
+	}
+}

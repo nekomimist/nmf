@@ -143,11 +143,9 @@ func extractArchivePath(j *Job, execCtx *executionContext, src string, destDir e
 		defer in.Close()
 		return copyReaderWithCancel(j, execCtx, in, srcPath.displayPath(), dst, entry.Info, overwrite)
 	})
-	if err != nil {
-		return wrapPath(src, err)
-	}
-	if err := finishArchiveDirectories(j, execCtx, root, directories); err != nil {
-		return err
+	finishErr := finishArchiveDirectories(j, execCtx, root, directories, err == nil && shouldPreserveTimestamps(j))
+	if err != nil || finishErr != nil {
+		return errors.Join(wrapPath(src, err), finishErr)
 	}
 	if rootCreated {
 		j.addResult(Result{Source: src, Destination: root.displayPath(), DestinationCreated: true})
@@ -183,47 +181,55 @@ func prepareLocalArchiveDirectories(execCtx *executionContext, dir executionPath
 	return nil
 }
 
-func finishArchiveDirectories(j *Job, execCtx *executionContext, root executionPath, directories map[string]*archiveDirectory) error {
+func finishArchiveDirectories(j *Job, execCtx *executionContext, root executionPath, directories map[string]*archiveDirectory, preserveTimes bool) error {
 	ordered := make([]*archiveDirectory, 0, len(directories))
 	for _, dir := range directories {
-		if dir.info != nil && (dir.created || shouldPreserveTimestamps(j)) {
+		if dir.info != nil && (dir.created || preserveTimes) {
 			ordered = append(ordered, dir)
 		}
 	}
 	// A child's path is always longer than its parent's. Finish children
 	// first while every ancestor is still writable and traversable.
 	sort.Slice(ordered, func(i, j int) bool { return len(ordered[i].path.path) > len(ordered[j].path.path) })
+	var finishErr error
 	for _, dir := range ordered {
-		if canceled(j) {
-			return errCanceled
+		// Restore temporary permissions even if extraction failed or was
+		// canceled. Finish independent directories after an error.
+		if err := dir.restoreMode(); err != nil {
+			finishErr = errors.Join(finishErr, wrapPath(dir.path.displayPath(), err))
+			continue
 		}
-		if err := ensureSMBArchiveParents(execCtx, root, dir.path); err != nil {
-			return err
-		}
-		if dir.created && runtime.GOOS != "windows" {
-			// The header may follow the children of an implicit parent. Keep
-			// only permissions that both mkdir and the header granted.
-			f, err := openSameLocalDirectory(dir.path, dir.identity)
-			if err != nil {
-				return wrapPath(dir.path.displayPath(), err)
+		if preserveTimes && !canceled(j) {
+			if err := ensureSMBArchiveParents(execCtx, root, dir.path); err != nil {
+				return errors.Join(finishErr, err)
 			}
-			mode := dir.identity.Mode() &^ (os.ModePerm &^ dir.info.Mode().Perm())
-			if mode.Perm() != dir.identity.Mode().Perm() {
-				err = f.Chmod(mode)
-			}
-			f.Close()
-			if err != nil {
-				return wrapPath(dir.path.displayPath(), err)
-			}
-		}
-		if shouldPreserveTimestamps(j) {
 			mtime := dir.info.ModTime()
 			if err := chtimesPath(execCtx, dir.path, mtime, mtime); err != nil {
-				return wrapPath(dir.path.displayPath(), err)
+				finishErr = errors.Join(finishErr, wrapPath(dir.path.displayPath(), err))
 			}
 		}
 	}
-	return nil
+	if canceled(j) {
+		return errors.Join(finishErr, errCanceled)
+	}
+	return finishErr
+}
+
+func (dir *archiveDirectory) restoreMode() error {
+	if !dir.created || runtime.GOOS == "windows" {
+		return nil
+	}
+	// Only remove permissions. mkdir already applied the destination umask.
+	mode := dir.identity.Mode() &^ (os.ModePerm &^ dir.info.Mode().Perm())
+	if mode.Perm() == dir.identity.Mode().Perm() {
+		return nil
+	}
+	f, err := openSameLocalDirectory(dir.path, dir.identity)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return f.Chmod(mode)
 }
 
 func extractSourcePath(archivePath, inner string) executionPath {
