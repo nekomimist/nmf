@@ -218,7 +218,7 @@ Operational notes:
 - `Manager.Load` is the only operation on `config.json`; the app never saves
   to it.
 - Interactive updates (cursor memory, navigation history, file filter, sort)
-  go through `StateManager.SaveAsync` against `state.json` instead. See
+  go through `StateManager.ScheduleSave` against `state.json` instead. See
   "Runtime State (state.json)" below.
 
 ## Runtime State (state.json)
@@ -231,11 +231,10 @@ struct and persisted separately to `state.json`, managed by `StateManager`.
 Full JSON shape and OS-specific paths are documented in
 `docs/configuration.md`'s "Runtime State" section.
 
-- `StateManager` mirrors `Manager`'s former debounced background-save worker:
-  `SaveAsync` schedules a write coalesced over a 500ms window, `Flush` forces
-  a pending write immediately, and `Close` flushes and stops the worker.
-  `main.go` calls `stateManager.Close()` on shutdown so no in-flight state is
-  lost.
+- Interactive mutations reset a 500ms timer. The timer queues one snapshot
+  on the Fyne call thread, then the manager writes it in the background.
+  Writes are serialized by revision. `Flush` and `Close` capture any pending
+  changes synchronously on the owner thread or after the event loop exits.
 - Writes are atomic: `saveState` marshals to a temp file in the state
   directory, then renames it over `state.json`, so a crash mid-write cannot
   leave a corrupt file behind.

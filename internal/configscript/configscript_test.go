@@ -2434,6 +2434,18 @@ func (f *configScriptFakeFileManager) ApplyTemporarySort(sortConfig config.SortC
 	f.temporarySortApplied = true
 }
 func (f *configScriptFakeFileManager) GetSelectedFiles() map[string]bool { return f.selectedFiles }
+func (f *configScriptFakeFileManager) CommandTargets() []fileinfo.FileInfo {
+	var result []fileinfo.FileInfo
+	for _, file := range f.files {
+		if f.selectedFiles[file.Path] && fileinfo.IsFileOperationTarget(file) {
+			result = append(result, file)
+		}
+	}
+	if len(result) == 0 && f.cursorIndex >= 0 && f.cursorIndex < len(f.files) && fileinfo.IsFileOperationTarget(f.files[f.cursorIndex]) {
+		return []fileinfo.FileInfo{f.files[f.cursorIndex]}
+	}
+	return result
+}
 func (f *configScriptFakeFileManager) GetAllSelectedFiles() []fileinfo.FileInfo {
 	if f.allSelectedFiles != nil {
 		return f.allSelectedFiles

@@ -37,6 +37,7 @@ type FileManager struct {
 	cursorMoveDirection   int             // Pending vertical cursor movement: -1 up, 0 none, +1 down
 	cursorAnchor          cursorRowAnchor // Last visible row object for shell menu positioning
 	config                *config.Config
+	lastFilter            *config.FilterEntry // This window's toggle-back pattern.
 	state                 *config.State
 	stateManager          *config.StateManager
 	initialWindowSize     fyne.Size

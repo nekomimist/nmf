@@ -384,7 +384,8 @@ Shape of `state.json`:
   regular history in the default view and are never pruned by `maxEntries`.
   Last Access mode instead orders every candidate solely by `lastUsed`.
 - `fileFilter.entries`/`current`/`enabled`: filter history, the currently
-  applied filter, and whether it is enabled. Entries use `pattern`,
+  applied filter, and whether it is enabled. New windows start with the saved
+  filter settings. Each open window tracks its own active and last-used pattern. Entries use `pattern`,
   `lastUsed`, and `useCount`; text after `;;` in a pattern is a searchable
   comment, and only the text before `;;` is used for matching. The entry
   limit is `ui.fileFilter.maxEntries` (in `config.json`).

@@ -67,3 +67,23 @@ func TestDirectoryCursorPriorityAndMemoryUsage(t *testing.T) {
 		})
 	}
 }
+
+func TestSavingExistingCursorAtCapacityAndLoweringLimit(t *testing.T) {
+	state := &config.State{CursorMemory: config.CursorMemoryState{
+		Entries:  map[string]string{"/a": "1", "/b": "2", "/c": "3"},
+		LastUsed: map[string]time.Time{"/b": time.Unix(2, 0), "/c": time.Unix(3, 0)},
+	}}
+	fm := &FileManager{state: state, config: config.Default(), browser: newTestBrowser(testBrowserOptions{
+		files: []fileinfo.FileInfo{{Name: "new", Path: "/c/new"}}, cursorPath: "/c/new",
+	})}
+	fm.config.UI.CursorMemory.MaxEntries = 3
+	fm.SaveCursorPosition("/c")
+	if len(state.CursorMemory.Entries) != 3 || state.CursorMemory.Entries["/a"] != "1" {
+		t.Fatalf("evicted on update: %v", state.CursorMemory.Entries)
+	}
+	fm.config.UI.CursorMemory.MaxEntries = 1
+	fm.SaveCursorPosition("/d")
+	if len(state.CursorMemory.Entries) != 1 || state.CursorMemory.Entries["/d"] != "new" {
+		t.Fatalf("failed to enforce reduced limit: %v", state.CursorMemory.Entries)
+	}
+}

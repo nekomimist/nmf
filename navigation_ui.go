@@ -145,7 +145,7 @@ func (fm *FileManager) PinCurrentHistoryPath() {
 		return
 	}
 	if fm.stateManager != nil {
-		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+		if err := fm.scheduleStateSave(); err != nil {
 			debugPrint("FileManager: Error saving pinned history path: %v", err)
 			fm.ShowMessageDialog("History Jump", err.Error())
 			return
@@ -165,7 +165,7 @@ func (fm *FileManager) UnpinHistoryPath(path string) bool {
 		return false
 	}
 	if fm.stateManager != nil {
-		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+		if err := fm.scheduleStateSave(); err != nil {
 			debugPrint("FileManager: Error saving unpinned history path: %v", err)
 			fm.ShowMessageDialog("History Jump", err.Error())
 			return false
@@ -222,7 +222,7 @@ func (fm *FileManager) ShowMaintenanceDialog() {
 			return 0, nil
 		}
 		if fm.stateManager != nil {
-			if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+			if err := fm.scheduleStateSave(); err != nil {
 				debugPrint("FileManager: Error saving maintenance cleanup: %v", err)
 				return removed, err
 			}
@@ -234,7 +234,7 @@ func (fm *FileManager) ShowMaintenanceDialog() {
 
 func (fm *FileManager) normalizeNavigationHistoryForRuntimeState() {
 	if normalizeNavigationHistory(fm.state) && fm.stateManager != nil {
-		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+		if err := fm.scheduleStateSave(); err != nil {
 			debugPrint("FileManager: Error saving normalized navigation history: %v", err)
 		}
 	}
@@ -248,7 +248,7 @@ func (fm *FileManager) recordNavigationHistory(path string) {
 
 	fm.state.AddToNavigationHistory(path, fm.config.UI.NavigationHistory.MaxEntries)
 	if fm.stateManager != nil {
-		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+		if err := fm.scheduleStateSave(); err != nil {
 			debugPrint("FileManager: Error saving navigation history: %v", err)
 		}
 	}

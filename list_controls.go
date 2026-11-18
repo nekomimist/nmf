@@ -323,11 +323,27 @@ func (fm *FileManager) ShowFilterDialog() {
 		fm.focusFileList("filter-dialog-closed")
 	}, func(pattern string) {
 		if fm.state.RemoveFileFilterEntry(pattern) && fm.stateManager != nil {
-			if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+			if err := fm.scheduleStateSave(); err != nil {
 				debugPrint("FileManager: Error saving filter history deletion: %v", err)
 			}
 		}
 	})
+}
+
+// restoreWindowFilter seeds a new window from the last saved filter setting.
+func (fm *FileManager) restoreWindowFilter() {
+	current := fm.state.FileFilter.Current
+	if current == nil {
+		return
+	}
+	if pattern := config.EffectiveFilterPattern(current.Pattern); pattern == "" || fileinfo.ValidatePattern(pattern) != nil {
+		return
+	}
+	entry := *current
+	fm.lastFilter = &entry
+	if fm.state.FileFilter.Enabled {
+		_, _, _ = fm.browserModel().ApplyFilter(&entry)
+	}
 }
 
 // ApplyFilter applies a filter to the current file list.
@@ -350,10 +366,11 @@ func (fm *FileManager) ApplyFilter(entry *config.FilterEntry) {
 		return
 	}
 
+	fm.lastFilter = entry
 	fm.state.FileFilter.Current = entry
 	fm.state.FileFilter.Enabled = true
 	if fm.stateManager != nil {
-		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+		if err := fm.scheduleStateSave(); err != nil {
 			debugPrint("FileManager: Error saving applied filter state: %v", err)
 		}
 	}
@@ -373,10 +390,11 @@ func (fm *FileManager) ApplyFilter(entry *config.FilterEntry) {
 
 // ClearFilter completely removes the current filter (for Ctrl+Shift+F).
 func (fm *FileManager) ClearFilter() {
-	fm.state.FileFilter.Current = nil // Complete clear
+	fm.lastFilter = nil
+	fm.state.FileFilter.Current = nil
 	fm.state.FileFilter.Enabled = false
 	if fm.stateManager != nil {
-		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+		if err := fm.scheduleStateSave(); err != nil {
 			debugPrint("FileManager: Error saving cleared filter state: %v", err)
 		}
 	}
@@ -394,19 +412,21 @@ func (fm *FileManager) ClearFilter() {
 
 // ToggleFilter toggles the current filter on/off.
 func (fm *FileManager) ToggleFilter() {
-	if fm.state.FileFilter.Enabled && fm.browserModel().Filter() != nil {
+	if fm.browserModel().Filter() != nil {
 		fm.DisableFilter()
-	} else if fm.state.FileFilter.Current != nil {
-		fm.ApplyFilter(fm.state.FileFilter.Current)
+	} else if fm.lastFilter != nil {
+		fm.ApplyFilter(fm.lastFilter)
 	}
 }
 
 // DisableFilter temporarily disables the current filter (for toggle functionality).
 func (fm *FileManager) DisableFilter() {
-	// Keep fm.state.FileFilter.Current for toggle functionality
+	// Remember the disabled pattern as the startup preference, even if a
+	// different window most recently applied its own pattern.
+	fm.state.FileFilter.Current = fm.lastFilter
 	fm.state.FileFilter.Enabled = false
 	if fm.stateManager != nil {
-		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+		if err := fm.scheduleStateSave(); err != nil {
 			debugPrint("FileManager: Error saving disabled filter state: %v", err)
 		}
 	}
@@ -432,7 +452,7 @@ func (fm *FileManager) saveFilterToHistory(entry *config.FilterEntry) {
 
 	// Save state to disk
 	if fm.stateManager != nil {
-		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+		if err := fm.scheduleStateSave(); err != nil {
 			debugPrint("FileManager: Error saving filter history: %v", err)
 		}
 	}
@@ -480,7 +500,7 @@ func (fm *FileManager) ShowSortDialog() {
 
 		// Save state to file
 		if fm.stateManager != nil {
-			if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+			if err := fm.scheduleStateSave(); err != nil {
 				debugPrint("FileManager: Failed to save sort state: %v", err)
 			}
 		}

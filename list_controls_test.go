@@ -520,3 +520,36 @@ func TestRefreshCursorConsumesMoveDirection(t *testing.T) {
 		t.Fatalf("move direction after structural refresh = %d, want none", fm.cursorMoveDirection)
 	}
 }
+
+func TestWindowsRestoreAndToggleTheirOwnFilter(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	state := &config.State{FileFilter: config.FileFilterState{
+		Current: &config.FilterEntry{Pattern: "*.go"}, Enabled: true,
+	}}
+	a := newParentFallbackTestFileManager(state)
+	b := newParentFallbackTestFileManager(state)
+	files := []fileinfo.FileInfo{{Name: "x.go", Path: "/x.go"}, {Name: "x.txt", Path: "/x.txt"}}
+	for _, fm := range []*FileManager{a, b} {
+		fm.restoreWindowFilter()
+		if err := fm.browserModel().ReplaceFiles(files, true); err != nil {
+			t.Fatal(err)
+		}
+		if fm.FileCount() != 1 || fm.GetFiles()[0].Name != "x.go" {
+			t.Fatalf("restored listing = %v", fm.GetFiles())
+		}
+	}
+	b.ApplyFilter(&config.FilterEntry{Pattern: "*.txt"})
+	b.ClearFilter()
+	a.ToggleFilter()
+	if a.browser.Filter() != nil || a.FileCount() != 2 {
+		t.Fatalf("A failed to disable its filter: %v", a.GetFiles())
+	}
+	a.ToggleFilter()
+	if a.browser.Filter() == nil || a.browser.Filter().Pattern != "*.go" || a.FileCount() != 1 {
+		t.Fatalf("A recovered wrong filter: %v", a.GetFiles())
+	}
+	if b.browser.Filter() != nil || b.FileCount() != 2 {
+		t.Fatalf("B changed: %v", b.GetFiles())
+	}
+}

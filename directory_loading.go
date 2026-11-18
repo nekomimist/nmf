@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -25,20 +27,14 @@ func (fm *FileManager) SaveCursorPosition(dirPath string) {
 
 	fileName := file.Name
 	cursorMemory := &fm.state.CursorMemory
-	maxEntries := fm.config.UI.CursorMemory.MaxEntries
-
-	// Clean up old entries if we exceed max entries
-	if len(cursorMemory.Entries) >= maxEntries {
-		fm.cleanupOldCursorEntries()
-	}
-
 	// Save the cursor position and update last used time
 	cursorMemory.Entries[dirPath] = fileName
 	cursorMemory.LastUsed[dirPath] = time.Now()
+	fm.cleanupOldCursorEntries()
 
 	// Save state to disk
 	if fm.stateManager != nil {
-		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+		if err := fm.scheduleStateSave(); err != nil {
 			debugPrint("FileManager: Error saving cursor position state: %v", err)
 		}
 	}
@@ -64,25 +60,29 @@ func (fm *FileManager) cleanupOldCursorEntries() {
 	cursorMemory := &fm.state.CursorMemory
 	maxEntries := fm.config.UI.CursorMemory.MaxEntries
 
-	if len(cursorMemory.Entries) < maxEntries {
+	if maxEntries <= 0 || len(cursorMemory.Entries) <= maxEntries {
 		return
 	}
 
-	// Find the oldest entry
-	var oldestPath string
-	var oldestTime *time.Time
-
-	for path, lastUsed := range cursorMemory.LastUsed {
-		if oldestTime == nil || lastUsed.Before(*oldestTime) {
-			oldestPath = path
-			oldestTime = &lastUsed
+	// Normally there is just one excess entry. Sort only when a reduced
+	// configuration limit requires evicting several entries at once.
+	if len(cursorMemory.Entries) == maxEntries+1 {
+		var oldest string
+		for path := range cursorMemory.Entries {
+			if oldest == "" || cursorMemory.LastUsed[path].Before(cursorMemory.LastUsed[oldest]) {
+				oldest = path
+			}
 		}
+		delete(cursorMemory.Entries, oldest)
+		delete(cursorMemory.LastUsed, oldest)
+		return
 	}
-
-	// Remove the oldest entry
-	if oldestPath != "" {
-		delete(cursorMemory.Entries, oldestPath)
-		delete(cursorMemory.LastUsed, oldestPath)
+	paths := slices.SortedFunc(maps.Keys(cursorMemory.Entries), func(a, b string) int {
+		return cursorMemory.LastUsed[a].Compare(cursorMemory.LastUsed[b])
+	})
+	for _, path := range paths[:len(paths)-maxEntries] {
+		delete(cursorMemory.Entries, path)
+		delete(cursorMemory.LastUsed, path)
 	}
 }
 
