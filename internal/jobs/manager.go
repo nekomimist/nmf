@@ -261,19 +261,53 @@ func (m *Manager) Summary() Summary {
 
 // List returns detailed snapshots of running, pending, and historical jobs.
 func (m *Manager) List() []JobSnapshot {
+	return m.listSnapshots((*Job).Snapshot)
+}
+
+// ListRows returns scalar progress and status for each row in display order.
+func (m *Manager) ListRows() []JobSnapshot {
+	return m.listSnapshots(func(j *Job) JobSnapshot {
+		j.mu.RLock()
+		defer j.mu.RUnlock()
+		return j.rowLocked()
+	})
+}
+
+func (m *Manager) listSnapshots(snapshot func(*Job) JobSnapshot) []JobSnapshot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make([]JobSnapshot, 0, len(m.queue)+1+len(m.history))
 	if m.current != nil {
-		out = append(out, m.current.Snapshot())
+		out = append(out, snapshot(m.current))
 	}
 	for _, j := range m.queue {
-		out = append(out, j.Snapshot())
+		out = append(out, snapshot(j))
 	}
 	for i := len(m.history) - 1; i >= 0; i-- {
-		out = append(out, m.history[i].Snapshot())
+		out = append(out, snapshot(m.history[i]))
 	}
 	return out
+}
+
+// DisplayDetails returns only the items the Jobs window can display.
+func (m *Manager) DisplayDetails(id int64, sourceLimit int) (JobSnapshot, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	j := m.findJobLocked(id)
+	if j == nil {
+		return JobSnapshot{}, false
+	}
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	row := j.rowLocked()
+	switch j.Status {
+	case StatusCompleted:
+		n := min(len(j.Sources), max(0, sourceLimit))
+		row.Sources = append([]string(nil), j.Sources[:n]...)
+	case StatusFailed:
+		row.Failures = append([]JobFailure(nil), j.Failures...)
+	}
+	return row, true
 }
 
 // AcknowledgeFailure marks a failed job as seen by the user.
@@ -284,17 +318,13 @@ func (m *Manager) AcknowledgeFailure(id int64) bool {
 
 	var changed bool
 	m.mu.Lock()
-	for _, j := range m.allJobsLocked() {
-		if j.ID != id {
-			continue
-		}
+	if j := m.findJobLocked(id); j != nil {
 		j.mu.Lock()
 		if j.Status == StatusFailed && !j.FailureAcknowledged {
 			j.FailureAcknowledged = true
 			changed = true
 		}
 		j.mu.Unlock()
-		break
 	}
 	m.mu.Unlock()
 
@@ -304,14 +334,18 @@ func (m *Manager) AcknowledgeFailure(id int64) bool {
 	return changed
 }
 
-func (m *Manager) allJobsLocked() []*Job {
-	out := make([]*Job, 0, len(m.queue)+len(m.history)+1)
-	if m.current != nil {
-		out = append(out, m.current)
+func (m *Manager) findJobLocked(id int64) *Job {
+	if m.current != nil && m.current.ID == id {
+		return m.current
 	}
-	out = append(out, m.queue...)
-	out = append(out, m.history...)
-	return out
+	for _, jobs := range [][]*Job{m.queue, m.history} {
+		for _, j := range jobs {
+			if j.ID == id {
+				return j
+			}
+		}
+	}
+	return nil
 }
 
 func (m *Manager) worker() {

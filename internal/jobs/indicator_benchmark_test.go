@@ -31,3 +31,15 @@ func BenchmarkJobIndicator(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkJobsWindowRefresh(b *testing.B) {
+	m := &Manager{current: &Job{ID: 1, Status: StatusRunning, Sources: make([]string, 10000)}}
+	for id := range 100 {
+		m.history = append(m.history, &Job{ID: int64(id + 2), Status: StatusCompleted, Sources: make([]string, 10000)})
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = m.ListRows()
+		_, _ = m.DisplayDetails(2, 10)
+	}
+}
