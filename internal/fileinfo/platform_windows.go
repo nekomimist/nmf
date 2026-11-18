@@ -44,3 +44,9 @@ func IsWindowsHidden(path string) bool {
 	// Check if the hidden attribute is set
 	return (attrs & FILE_ATTRIBUTE_HIDDEN) != 0
 }
+
+// HasHiddenAttribute reads the platform hidden bit from existing directory metadata.
+func HasHiddenAttribute(info os.FileInfo) bool {
+	attrs, ok := info.Sys().(*syscall.Win32FileAttributeData)
+	return ok && attrs.FileAttributes&FILE_ATTRIBUTE_HIDDEN != 0
+}

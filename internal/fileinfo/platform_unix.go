@@ -11,3 +11,8 @@ func readDirLocal(path string) ([]os.DirEntry, error) { return os.ReadDir(path) 
 func IsWindowsHidden(path string) bool {
 	return false
 }
+
+// HasHiddenAttribute reads the platform hidden bit from existing directory metadata.
+func HasHiddenAttribute(info os.FileInfo) bool {
+	return false
+}

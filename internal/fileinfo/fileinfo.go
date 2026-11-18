@@ -3,6 +3,7 @@ package fileinfo
 import (
 	"fmt"
 	"image/color"
+	"strings"
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -32,13 +33,19 @@ const (
 
 // FileInfo represents a file or directory
 type FileInfo struct {
-	Name     string
-	Path     string
-	IsDir    bool
-	Size     int64
-	Modified time.Time
-	FileType FileType
-	Status   FileStatus // ファイルの現在のステータス
+	Name            string
+	Path            string
+	IsDir           bool
+	HiddenAttribute bool
+	Size            int64
+	Modified        time.Time
+	FileType        FileType
+	Status          FileStatus // ファイルの現在のステータス
+}
+
+// IsHidden reports visibility independently of whether an entry is navigable or a link.
+func (f FileInfo) IsHidden() bool {
+	return f.Name != ".." && (strings.HasPrefix(f.Name, ".") || f.HiddenAttribute)
 }
 
 // IsFileOperationTarget reports whether an entry can participate in list
@@ -54,7 +61,7 @@ func DetermineFileType(path string, name string, isDir bool) FileType {
 	if err == nil {
 		return metadata.FileType
 	}
-	return determineFileType(path, name, isDir, false)
+	return determineFileType(name, isDir, false, IsWindowsHidden(path))
 }
 
 // GetTextColor returns the text color based on file type
