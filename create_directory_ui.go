@@ -48,13 +48,14 @@ func (fm *FileManager) applyCreatedPathToList(path string, isDir bool) {
 	}
 
 	created := fileinfo.FileInfo{
-		Name:     name,
-		Path:     path,
-		IsDir:    isDir,
-		Size:     info.Size(),
-		Modified: info.ModTime(),
-		FileType: fileinfo.DetermineFileType(path, name, isDir),
-		Status:   fileinfo.StatusNormal,
+		Name:            name,
+		Path:            path,
+		IsDir:           isDir,
+		Size:            info.Size(),
+		HiddenAttribute: fileinfo.HasHiddenAttribute(info),
+		Modified:        info.ModTime(),
+		FileType:        fileinfo.DetermineFileType(path, name, isDir),
+		Status:          fileinfo.StatusNormal,
 	}
 	if isDir {
 		created.Size = 0
@@ -68,10 +69,7 @@ func (fm *FileManager) applyCreatedPathToList(path string, isDir bool) {
 		fm.SetCursorByIndex(0)
 	}
 	if fm.fileList != nil {
-		// RefreshCursor alone covers the redraw: it calls fileList.Refresh
-		// directly when there's no cursor, or ScrollTo (which itself ends in
-		// a full Refresh) when there is one.
-		fm.RefreshCursor()
+		fm.refreshListAndCursor()
 	}
 	fm.updateStatusBar()
 

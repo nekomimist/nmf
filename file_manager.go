@@ -150,13 +150,19 @@ type fileListRowAssignment struct {
 	path  string
 }
 
+// All live runtime-state mutations and scheduled captures run on the Fyne
+// call thread. main closes the manager after the event loop returns.
+func (fm *FileManager) scheduleStateSave() error {
+	return fm.stateManager.ScheduleSave(fm.state, fyne.Do)
+}
+
 func (fm *FileManager) browserModel() *browser.Model {
 	if fm.browser == nil {
 		sortConfig := config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}
 		if fm.state != nil && fm.config != nil {
 			sortConfig = fm.state.EffectiveSort(fm.config.UI.Sort)
 		}
-		fm.browser = browser.New("", sortConfig)
+		fm.browser = browser.New("", sortConfig, fm.config != nil && fm.config.UI.ShowHiddenFiles)
 	}
 	return fm.browser
 }
@@ -174,36 +180,7 @@ func (fm *FileManager) GetFiles() []fileinfo.FileInfo {
 // watcher uses this as its baseline so entries hidden by an active filter are
 // not mistaken for newly added files.
 func (fm *FileManager) GetUnfilteredFiles() []fileinfo.FileInfo {
-	return fm.browserModel().SourceFiles()
-}
-
-// UpdateFiles replaces the current listing with files and always re-sorts.
-// It implements the watcher.FileManager interface; ApplyChanges is the sole
-// production caller, and it goes through updateFiles directly so it can skip
-// the re-sort when safe. Keep this exported entry point always-sorting so any
-// other future caller gets the conservative, always-correct behavior.
-func (fm *FileManager) UpdateFiles(files []fileinfo.FileInfo) {
-	fm.updateFiles(files, true)
-}
-
-// updateFiles applies files as the new listing. resort is false only when the
-// caller has already proven the update cannot change relative order (see the
-// sortAffected computation in ApplyChanges).
-func (fm *FileManager) updateFiles(files []fileinfo.FileInfo, resort bool) {
-	if err := fm.browserModel().ReplaceFiles(files, resort); err != nil {
-		debugPrint("FileManager: Filter error: %v", err)
-	}
-
-	// widget.List is not data-bound, so it never redraws on its own; refresh
-	// explicitly to reflect additions, deletions, and modifications.
-	if fm.fileList != nil {
-		fm.fileList.Refresh()
-	}
-	fm.updateStatusBar()
-}
-
-func (fm *FileManager) RemoveFromSelections(path string) {
-	fm.browserModel().RemoveSelected(path)
+	return fm.browserModel().WatcherFiles()
 }
 
 // ApplyChanges merges watcher-detected added/deleted/modified files into the

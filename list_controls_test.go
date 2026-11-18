@@ -73,7 +73,7 @@ func TestApplyTemporarySortRefreshesVisibleRows(t *testing.T) {
 	}
 }
 
-func TestUpdateFilesUsesActiveTemporarySort(t *testing.T) {
+func TestWatcherAdditionUsesActiveTemporarySort(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
@@ -95,7 +95,7 @@ func TestUpdateFilesUsesActiveTemporarySort(t *testing.T) {
 	newer := fileinfo.FileInfo{Name: "a.txt", Path: "/tmp/a.txt", Modified: time.Unix(2, 0)}
 	older := fileinfo.FileInfo{Name: "z.txt", Path: "/tmp/z.txt", Modified: time.Unix(1, 0)}
 
-	fm.UpdateFiles([]fileinfo.FileInfo{older, newer})
+	fm.ApplyChanges([]fileinfo.FileInfo{older, newer}, nil, nil)
 
 	got := fm.GetFiles()
 	if len(got) != 2 || got[0].Name != "a.txt" || got[1].Name != "z.txt" {

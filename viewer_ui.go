@@ -13,13 +13,11 @@ import (
 // ShowFileViewer opens the selected file in the built-in preview viewer.
 func (fm *FileManager) ShowFileViewer() {
 	totalStart := time.Now()
-	currentIdx := fm.GetCurrentCursorIndex()
-	files := fm.GetFiles()
-	if currentIdx < 0 || currentIdx >= len(files) {
+	_, file, ok := fm.CurrentFile()
+	if !ok {
 		return
 	}
 
-	file := files[currentIdx]
 	if file.Name == ".." || file.IsDir {
 		return
 	}

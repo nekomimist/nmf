@@ -12,7 +12,7 @@ import (
 func TestModelReturnsDefensiveCopies(t *testing.T) {
 	files := []fileinfo.FileInfo{{Name: "note.txt", Path: "/tmp/note.txt"}}
 	filter := &config.FilterEntry{Pattern: "*.txt", UseCount: 3}
-	model := New("/tmp", nameSort())
+	model := New("/tmp", nameSort(), false)
 	model.ReplaceDirectory("/tmp", files, fileinfo.StorageInfo{Free: 10}, true, nameSort())
 	model.SetSelected(files[0].Path, true)
 	if _, _, err := model.ApplyFilter(filter); err != nil {
@@ -50,7 +50,7 @@ func TestModelFilterLifecycleRestoresUnfilteredListing(t *testing.T) {
 		{Name: "main.go", Path: "/tmp/main.go"},
 		{Name: "notes.md", Path: "/tmp/notes.md"},
 	}
-	model := New("/tmp", nameSort())
+	model := New("/tmp", nameSort(), false)
 	model.ReplaceDirectory("/tmp", files, fileinfo.StorageInfo{}, false, nameSort())
 
 	matched, total, err := model.ApplyFilter(&config.FilterEntry{Pattern: "*.go ;; source files"})
@@ -76,7 +76,7 @@ func TestModelFilterLifecycleRestoresUnfilteredListing(t *testing.T) {
 }
 
 func TestModelSourceFilesReturnsUnfilteredBaseline(t *testing.T) {
-	model := New("/tmp", nameSort())
+	model := New("/tmp", nameSort(), false)
 	model.ReplaceDirectory("/tmp", []fileinfo.FileInfo{
 		{Name: "main.go", Path: "/tmp/main.go"},
 		{Name: "notes.md", Path: "/tmp/notes.md"},
@@ -94,7 +94,7 @@ func TestModelSourceFilesReturnsUnfilteredBaseline(t *testing.T) {
 }
 
 func TestModelCursorFollowsPathAcrossSort(t *testing.T) {
-	model := New("/tmp", nameSort())
+	model := New("/tmp", nameSort(), false)
 	model.ReplaceDirectory("/tmp", []fileinfo.FileInfo{
 		{Name: "alpha.txt", Path: "/tmp/alpha.txt", Size: 30},
 		{Name: "banana.txt", Path: "/tmp/banana.txt", Size: 10},
@@ -113,7 +113,7 @@ func TestModelCursorFollowsPathAcrossSort(t *testing.T) {
 }
 
 func TestModelSetCursorByNameReportsAtomicChange(t *testing.T) {
-	model := New("/tmp", nameSort())
+	model := New("/tmp", nameSort(), false)
 	model.ReplaceDirectory("/tmp", []fileinfo.FileInfo{
 		{Name: "alpha.txt", Path: "/tmp/alpha.txt"},
 		{Name: "beta.txt", Path: "/tmp/beta.txt"},
@@ -140,7 +140,7 @@ func TestModelSetCursorByNameReportsAtomicChange(t *testing.T) {
 }
 
 func TestModelRangeSelectionSkipsNonTargets(t *testing.T) {
-	model := New("/tmp", nameSort())
+	model := New("/tmp", nameSort(), false)
 	model.ReplaceDirectory("/tmp", []fileinfo.FileInfo{
 		{Name: "..", Path: "/", IsDir: true},
 		{Name: "a.txt", Path: "/tmp/a.txt"},
@@ -163,7 +163,7 @@ func TestModelRangeSelectionSkipsNonTargets(t *testing.T) {
 }
 
 func TestModelListingStatsDoesNotExposeCollections(t *testing.T) {
-	model := New("/tmp", nameSort())
+	model := New("/tmp", nameSort(), false)
 	model.ReplaceDirectory("/tmp", []fileinfo.FileInfo{
 		{Name: "..", Path: "/", IsDir: true},
 		{Name: "a.txt", Path: "/tmp/a.txt"},
@@ -185,7 +185,7 @@ func TestModelListingStatsDoesNotExposeCollections(t *testing.T) {
 }
 
 func TestModelListingStatsDoesNotAllocate(t *testing.T) {
-	model := New("/tmp", nameSort())
+	model := New("/tmp", nameSort(), false)
 	files := make([]fileinfo.FileInfo, 1000)
 	for i := range files {
 		files[i] = fileinfo.FileInfo{Name: "entry", Path: "/tmp/entry"}
@@ -204,7 +204,7 @@ func TestModelListingStatsDoesNotAllocate(t *testing.T) {
 }
 
 func TestModelBatchSelectionPreservesNonTargets(t *testing.T) {
-	model := New("/tmp", nameSort())
+	model := New("/tmp", nameSort(), false)
 	model.ReplaceDirectory("/tmp", []fileinfo.FileInfo{
 		{Name: "..", Path: "/", IsDir: true},
 		{Name: "a.txt", Path: "/tmp/a.txt"},
@@ -244,7 +244,7 @@ func TestModelBatchSelectionPreservesNonTargets(t *testing.T) {
 }
 
 func TestModelApplyChangesUpdatesSelectionAndSortOrder(t *testing.T) {
-	model := New("/tmp", config.SortConfig{SortBy: "modified", SortOrder: "asc"})
+	model := New("/tmp", config.SortConfig{SortBy: "modified", SortOrder: "asc"}, false)
 	model.ReplaceDirectory("/tmp", []fileinfo.FileInfo{
 		{Name: "a.txt", Path: "/tmp/a.txt", Modified: time.Unix(1, 0)},
 		{Name: "b.txt", Path: "/tmp/b.txt", Modified: time.Unix(2, 0)},
@@ -272,7 +272,7 @@ func TestModelApplyChangesUpdatesSelectionAndSortOrder(t *testing.T) {
 }
 
 func TestModelApplyChangesPreservesFilteredBaseline(t *testing.T) {
-	model := New("/tmp", nameSort())
+	model := New("/tmp", nameSort(), false)
 	model.ReplaceDirectory("/tmp", []fileinfo.FileInfo{
 		{Name: "alpha.txt", Path: "/tmp/alpha.txt"},
 		{Name: "changed.log", Path: "/tmp/changed.log", Size: 1},
@@ -308,7 +308,7 @@ func TestModelApplyChangesPreservesFilteredBaseline(t *testing.T) {
 }
 
 func TestModelReplaceFilesReappliesFilter(t *testing.T) {
-	model := New("/tmp", nameSort())
+	model := New("/tmp", nameSort(), false)
 	model.ReplaceDirectory("/tmp", []fileinfo.FileInfo{{Name: "old.txt", Path: "/tmp/old.txt"}}, fileinfo.StorageInfo{}, false, nameSort())
 	if _, _, err := model.ApplyFilter(&config.FilterEntry{Pattern: "*.txt"}); err != nil {
 		t.Fatalf("ApplyFilter returned error: %v", err)
@@ -330,7 +330,7 @@ func TestModelReplaceFilesReappliesFilter(t *testing.T) {
 }
 
 func TestModelUpsertMaintainsFilteredBaselineAndCursor(t *testing.T) {
-	model := New("/tmp", nameSort())
+	model := New("/tmp", nameSort(), false)
 	model.ReplaceDirectory("/tmp", []fileinfo.FileInfo{{Name: "alpha.txt", Path: "/tmp/alpha.txt"}}, fileinfo.StorageInfo{}, false, nameSort())
 	if _, _, err := model.ApplyFilter(&config.FilterEntry{Pattern: "*.txt"}); err != nil {
 		t.Fatalf("ApplyFilter returned error: %v", err)
@@ -353,7 +353,7 @@ func TestModelUpsertMaintainsFilteredBaselineAndCursor(t *testing.T) {
 }
 
 func TestModelReplaceSelectionAndSetPath(t *testing.T) {
-	model := New("/before", nameSort())
+	model := New("/before", nameSort(), false)
 	model.SetPath("/after")
 	model.ReplaceSelection([]fileinfo.FileInfo{
 		{Name: "a.txt", Path: "/after/a.txt"},
@@ -370,7 +370,7 @@ func TestModelReplaceSelectionAndSetPath(t *testing.T) {
 }
 
 func TestModelRenamePreservesRowOrderAndUpdatesReferences(t *testing.T) {
-	model := New("/tmp", nameSort())
+	model := New("/tmp", nameSort(), false)
 	model.ReplaceDirectory("/tmp", []fileinfo.FileInfo{
 		{Name: "alpha.txt", Path: "/tmp/alpha.txt"},
 		{Name: "beta.txt", Path: "/tmp/beta.txt"},
@@ -393,7 +393,7 @@ func TestModelRenamePreservesRowOrderAndUpdatesReferences(t *testing.T) {
 }
 
 func TestModelRenameDoesNotMoveUnrelatedCursor(t *testing.T) {
-	model := New("/tmp", nameSort())
+	model := New("/tmp", nameSort(), false)
 	model.ReplaceDirectory("/tmp", []fileinfo.FileInfo{
 		{Name: "alpha.txt", Path: "/tmp/alpha.txt"},
 		{Name: "beta.txt", Path: "/tmp/beta.txt"},
@@ -409,7 +409,7 @@ func TestModelRenameDoesNotMoveUnrelatedCursor(t *testing.T) {
 }
 
 func TestModelNormalizesZeroSortConfig(t *testing.T) {
-	model := New("/tmp", config.SortConfig{})
+	model := New("/tmp", config.SortConfig{}, false)
 	if err := model.ReplaceFiles([]fileinfo.FileInfo{
 		{Name: "zeta.txt", Path: "/tmp/zeta.txt"},
 		{Name: "docs", Path: "/tmp/docs", IsDir: true},
@@ -440,7 +440,7 @@ func fileNames(files []fileinfo.FileInfo) []string {
 
 func TestModelChangesPreserveCallerOwnedListings(t *testing.T) {
 	input := []fileinfo.FileInfo{{Name: "a.txt", Path: "/tmp/a.txt", Size: 1}}
-	model := New("/tmp", nameSort())
+	model := New("/tmp", nameSort(), false)
 	model.ReplaceDirectory("/tmp", input, fileinfo.StorageInfo{}, false, nameSort())
 	snapshot := model.Files()
 	modified := []fileinfo.FileInfo{{Name: "a.txt", Path: "/tmp/a.txt", Size: 2}}
@@ -566,7 +566,90 @@ func TestModelApplyChangesReplacesRecreatedPathInsteadOfDuplicating(t *testing.T
 }
 
 func newApplyChangesTestModel(files []fileinfo.FileInfo, sortCfg config.SortConfig) *Model {
-	model := New("/tmp", sortCfg)
+	model := New("/tmp", sortCfg, false)
 	model.ReplaceDirectory("/tmp", files, fileinfo.StorageInfo{}, false, sortCfg)
 	return model
+}
+
+func TestUpsertThenWatcherModificationKeepsNameOrder(t *testing.T) {
+	m := New("/dir", nameSort(), false)
+	b := fileinfo.FileInfo{Name: "b", Path: "/dir/b"}
+	m.ReplaceDirectory("/dir", []fileinfo.FileInfo{b}, fileinfo.StorageInfo{}, false, nameSort())
+	if err := m.Upsert(fileinfo.FileInfo{Name: "a", Path: "/dir/a"}); err != nil {
+		t.Fatal(err)
+	}
+	b.Size = 123
+	if err := m.ApplyChanges(nil, nil, []fileinfo.FileInfo{b}); err != nil {
+		t.Fatal(err)
+	}
+	if got := fileNames(m.Files()); !reflect.DeepEqual(got, []string{"a", "b"}) {
+		t.Fatalf("name order after modification: %v", got)
+	}
+}
+
+func TestRenameReappliesGlobAndRestoresCursor(t *testing.T) {
+	m := New("/dir", nameSort(), false)
+	m.ReplaceDirectory("/dir", []fileinfo.FileInfo{{Name: "a.txt", Path: "/dir/a.txt"}, {Name: "b.txt", Path: "/dir/b.txt"}}, fileinfo.StorageInfo{}, false, nameSort())
+	if _, _, err := m.ApplyFilter(&config.FilterEntry{Pattern: "*.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	m.SetCursorIndex(0)
+	if !m.Rename("/dir/a.txt", "a.bin", "/dir/a.bin") {
+		t.Fatal("rename was not applied")
+	}
+	if got := fileNames(m.Files()); !reflect.DeepEqual(got, []string{"b.txt"}) || m.CursorPath() != "/dir/b.txt" {
+		t.Fatalf("renamed list = %v, cursor = %q", got, m.CursorPath())
+	}
+	m.ClearFilter()
+	if got := fileNames(m.Files()); !reflect.DeepEqual(got, []string{"a.bin", "b.txt"}) {
+		t.Fatalf("unfiltered list = %v", got)
+	}
+}
+
+func TestHiddenAttributeChangeUpdatesDirectoryVisibilityAndMarks(t *testing.T) {
+	for _, show := range []bool{false, true} {
+		m := New("/dir", nameSort(), show)
+		dir := fileinfo.FileInfo{Name: "dir", Path: "/dir/dir", IsDir: true}
+		m.ReplaceDirectory("/dir", []fileinfo.FileInfo{dir}, fileinfo.StorageInfo{}, false, nameSort())
+		m.SelectAll()
+		m.SetCursorIndex(0)
+		dir.HiddenAttribute = true
+		if err := m.ApplyChanges(nil, nil, []fileinfo.FileInfo{dir}); err != nil {
+			t.Fatal(err)
+		}
+		if (m.CursorPath() == dir.Path) != show || (m.FileCount() == 1) != show || m.IsSelected(dir.Path) != show || (len(m.SourceFiles()) == 1) != show || len(m.WatcherFiles()) != 1 {
+			t.Fatalf("show=%v, files=%v marks=%v", show, m.Files(), m.Selection())
+		}
+		dir.HiddenAttribute = false
+		if err := m.ApplyChanges(nil, nil, []fileinfo.FileInfo{dir}); err != nil {
+			t.Fatal(err)
+		}
+		if m.FileCount() != 1 {
+			t.Fatalf("unhidden directory missing (show=%v)", show)
+		}
+	}
+}
+
+func TestFullyClearedSelectionUsesCursorWithoutAllocatingSelection(t *testing.T) {
+	m := New("/dir", nameSort(), false)
+	files := []fileinfo.FileInfo{{Name: "..", Path: "/", IsDir: true}, {Name: "a", Path: "/dir/a"}, {Name: "b", Path: "/dir/b"}}
+	m.ReplaceDirectory("/dir", files, fileinfo.StorageInfo{}, false, nameSort())
+	m.InvertSelection(true)
+	m.InvertSelection(true)
+	if len(m.Selection()) != 0 || testing.AllocsPerRun(20, func() { _ = m.SelectedFiles() }) != 0 {
+		t.Fatal("clearing marks retained selection entries or allocated an empty result")
+	}
+	m.SetCursorIndex(1)
+	if got := m.CommandTargets(); !reflect.DeepEqual(got, files[1:2]) {
+		t.Fatalf("cursor targets = %+v", got)
+	}
+	m.SetSelected(files[2].Path, true)
+	if got := m.CommandTargets(); !reflect.DeepEqual(got, files[2:]) {
+		t.Fatalf("marked targets = %+v", got)
+	}
+	m.ToggleSelected(files[2].Path)
+	m.SetCursorIndex(0)
+	if got := m.CommandTargets(); len(got) != 0 {
+		t.Fatalf("parent entry became a command target: %+v", got)
+	}
 }

@@ -68,7 +68,7 @@ func (fm *FileManager) StartFileDrag(dragged fileinfo.FileInfo) {
 }
 
 func (fm *FileManager) collectDragSourcePaths(dragged fileinfo.FileInfo) ([]string, error) {
-	candidates := fm.selectedDragCandidates()
+	candidates := fm.selectedFileInfos()
 	if len(candidates) == 0 {
 		candidates = []fileinfo.FileInfo{dragged}
 	}
@@ -82,22 +82,6 @@ func (fm *FileManager) collectDragSourcePaths(dragged fileinfo.FileInfo) ([]stri
 		paths = append(paths, path)
 	}
 	return paths, nil
-}
-
-func (fm *FileManager) selectedDragCandidates() []fileinfo.FileInfo {
-	selected := make([]fileinfo.FileInfo, 0)
-	for p, ok := range fm.GetSelectedFiles() {
-		if !ok {
-			continue
-		}
-		for _, fi := range fm.GetFiles() {
-			if fi.Path == p {
-				selected = append(selected, fi)
-				break
-			}
-		}
-	}
-	return selected
 }
 
 func dragSourceNativePath(fi fileinfo.FileInfo) (string, error) {

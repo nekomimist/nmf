@@ -451,10 +451,22 @@ func (fm *FileManager) directoryCursorIndex(files []fileinfo.FileInfo, path, pre
 	if index := directoryFileNameIndex(files, fm.restoreCursorPosition(path)); index >= 0 {
 		return index
 	}
-	for _, neighbor := range neighbors {
-		if index := directoryFilePathIndex(files, neighbor); index >= 0 {
-			debugPrint("FileManager: refresh cursor fallback path=%s index=%d", neighbor, index)
+	// Try the nearest neighbor without allocating. If the directory was
+	// replaced since the previous listing, index the remaining candidates once.
+	if len(neighbors) > 0 {
+		if index := directoryFilePathIndex(files, neighbors[0]); index >= 0 {
 			return index
+		}
+	}
+	if len(neighbors) > 1 {
+		indices := make(map[string]int, len(files))
+		for i := range files {
+			indices[files[i].Path] = i
+		}
+		for _, neighbor := range neighbors[1:] {
+			if index, ok := indices[neighbor]; ok {
+				return index
+			}
 		}
 	}
 	return 0

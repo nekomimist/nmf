@@ -24,7 +24,7 @@ func NewFileManager(runtime *ApplicationRuntime, path string) *FileManager {
 	keyManager := keymanager.NewKeyManager(debugPrint)
 	fm := &FileManager{
 		window:            runtime.app.NewWindow(constants.ApplicationTitle),
-		browser:           browser.New(path, state.EffectiveSort(config.UI.Sort)),
+		browser:           browser.New(path, state.EffectiveSort(config.UI.Sort), config.UI.ShowHiddenFiles),
 		directoryLoader:   browser.NewDirectoryLoader(),
 		directoryCache:    browser.NewDirectoryCache(directoryCacheTTL, directoryCacheMaxEntries),
 		config:            config,

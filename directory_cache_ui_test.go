@@ -162,3 +162,37 @@ func directoryLoadingTestState() *config.State {
 func osWriteTestFile(path string) error {
 	return os.WriteFile(path, []byte("x"), 0o644)
 }
+
+func TestHiddenSettingAppliesToLoadedAndCachedEntries(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	dir := t.TempDir()
+	for _, name := range []string{".dotdir", "visible"} {
+		if err := os.Mkdir(filepath.Join(dir, name), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".dotfile"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	sortCfg := config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}
+	for _, show := range []bool{false, true} {
+		fm := newParentFallbackTestFileManager(directoryLoadingTestState())
+		fm.config.UI.ShowHiddenFiles = show
+		fm.browser = nil
+		fm.loadDirectoryAsync(fm.directoryLoader.Begin(), dir, "", sortCfg, false, nil, directoryLoadPresentation{})
+		want := []string{"..", "visible"}
+		if show {
+			want = []string{"..", ".dotdir", "visible", ".dotfile"}
+		}
+		if got := namesOf(fm.GetFiles()); !reflect.DeepEqual(got, want) {
+			t.Fatalf("loaded, show=%t: got %v, want %v", show, got, want)
+		}
+		if !fm.displayCachedDirectory(dir, "", sortCfg, nil) {
+			t.Fatal("expected cached directory")
+		}
+		if got := namesOf(fm.GetFiles()); !reflect.DeepEqual(got, want) {
+			t.Fatalf("cached, show=%t: got %v, want %v", show, got, want)
+		}
+	}
+}

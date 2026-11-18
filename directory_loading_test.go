@@ -50,7 +50,7 @@ func TestBusyEscapeCancelsLatestDirectoryLoad(t *testing.T) {
 	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
 	loader := browser.NewDirectoryLoader()
 	fm := &FileManager{
-		browser:         browser.New("/tmp", config.SortConfig{SortBy: "name", SortOrder: "asc"}),
+		browser:         browser.New("/tmp", config.SortConfig{SortBy: "name", SortOrder: "asc"}, false),
 		directoryLoader: loader,
 		keyManager:      km,
 	}

@@ -85,7 +85,10 @@ func (fm *FileManager) applyRenameToList(oldPath, newName, newPath string) {
 		return
 	}
 
-	fm.RefreshCursor()
+	if fm.fileList != nil {
+		fm.refreshListAndCursor()
+	}
+	fm.updateStatusBar()
 
 	if fm.dirWatcher != nil {
 		fm.dirWatcher.RefreshSnapshot()

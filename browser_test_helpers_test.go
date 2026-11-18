@@ -25,7 +25,7 @@ func newTestBrowser(options testBrowserOptions) *browser.Model {
 		sortConfig.SortOrder = "asc"
 	}
 
-	model := browser.New(options.path, sortConfig)
+	model := browser.New(options.path, sortConfig, false)
 	model.ReplaceDirectory(
 		options.path,
 		options.files,

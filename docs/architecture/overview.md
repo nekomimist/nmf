@@ -43,7 +43,7 @@ list of shared dependencies.
 
 `internal/browser.Model` owns mutable browsing state for one window:
 
-- current path, visible list, and unfiltered list
+- current path, complete directory baseline, and the derived visible listing. Hidden-file policy applies before the active glob to real reads, cache hits, and watcher updates.
 - selection and cursor path/index cache
 - storage information, active sort, and active filter
 
