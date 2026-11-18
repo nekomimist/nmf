@@ -74,12 +74,15 @@ def go_output(root, *args, env=None):
 
 def dependency_licenses(root, arch):
     env = dict(os.environ, GOOS="windows", GOARCH=arch, CGO_ENABLED="1")
-    stream = go_output(root, "list", "-deps", "-json", "-tags", "release,migrated_fynedo", ".", env=env)
+    stream = go_output(root, "list", "-deps", "-json=Module", "-tags", "release,migrated_fynedo", ".", env=env)
     decoder = json.JSONDecoder()
     modules = {}
-    while stream.strip():
-        package, end = decoder.raw_decode(stream.lstrip())
-        stream = stream.lstrip()[end:]
+    offset = 0
+    while offset < len(stream):
+        if stream[offset].isspace():
+            offset += 1
+            continue
+        package, offset = decoder.raw_decode(stream, offset)
         module = package.get("Module")
         if module and not module.get("Main"):
             if module.get("Replace"):
@@ -89,7 +92,7 @@ def dependency_licenses(root, arch):
     files = {}
     for name, module in sorted(modules.items()):
         directory = Path(module["Dir"])
-        notices = sorted(p for p in directory.rglob("*") if p.is_file() and LICENSE_NAME.match(p.name))
+        notices = sorted(p for p in directory.rglob("*") if LICENSE_NAME.match(p.name) and p.is_file())
         if not notices and name in LICENSE_READMES:
             notices = [directory / LICENSE_READMES[name]]
         if not notices:

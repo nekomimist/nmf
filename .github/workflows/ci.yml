@@ -31,6 +31,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev xorg-dev libxkbcommon-dev libwayland-dev
       - name: Test release tooling
         run: python3 -m unittest discover -s scripts -p '*_test.py'
+      - name: Test GUI smoke runner
+        run: node --test scripts/gui-windows/runner.test.mjs
       - run: go vet -tags migrated_fynedo ./...
       - run: go test -race -tags migrated_fynedo ./...
 
