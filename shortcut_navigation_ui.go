@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"time"
 
 	"fyne.io/fyne/v2"
 
@@ -38,111 +37,119 @@ func (fm *FileManager) shortcutDefaultOpener() func(string) error {
 	return fileinfo.OpenWithDefaultApp
 }
 
-func (fm *FileManager) beginShortcutOpen() (uint64, context.Context) {
-	fm.shortcutMu.Lock()
-	defer fm.shortcutMu.Unlock()
-	if fm.shortcutOpenCancel != nil {
-		fm.shortcutOpenCancel()
+func (fm *FileManager) beginFileOperation() (uint64, context.Context) {
+	fm.fileOperationMu.Lock()
+	defer fm.fileOperationMu.Unlock()
+	if fm.fileOperationCancel != nil {
+		fm.fileOperationCancel()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	fm.nextShortcutOpenID++
-	fm.activeShortcutOpenID = fm.nextShortcutOpenID
-	fm.shortcutOpenCancel = cancel
-	return fm.activeShortcutOpenID, ctx
+	fm.nextFileOperationID++
+	fm.activeFileOperationID = fm.nextFileOperationID
+	fm.fileOperationCancel = cancel
+	return fm.activeFileOperationID, ctx
 }
 
-func (fm *FileManager) finishShortcutOpen(id uint64) bool {
-	fm.shortcutMu.Lock()
-	defer fm.shortcutMu.Unlock()
-	if id == 0 || fm.activeShortcutOpenID != id {
+func (fm *FileManager) finishFileOperation(id uint64) bool {
+	fm.fileOperationMu.Lock()
+	defer fm.fileOperationMu.Unlock()
+	if id == 0 || fm.activeFileOperationID != id {
 		return false
 	}
-	fm.activeShortcutOpenID = 0
-	if fm.shortcutOpenCancel != nil {
-		fm.shortcutOpenCancel()
-		fm.shortcutOpenCancel = nil
+	fm.activeFileOperationID = 0
+	if fm.fileOperationCancel != nil {
+		fm.fileOperationCancel()
+		fm.fileOperationCancel = nil
 	}
 	return true
 }
 
-// invalidateShortcutOpen cancels the matching shortcut operation. An id of
+// invalidateFileOperation cancels the matching file operation. An id of
 // zero invalidates whichever operation is active.
-func (fm *FileManager) invalidateShortcutOpen(id uint64) bool {
+func (fm *FileManager) invalidateFileOperation(id uint64) bool {
 	if fm == nil {
 		return false
 	}
-	fm.shortcutMu.Lock()
-	defer fm.shortcutMu.Unlock()
-	if fm.activeShortcutOpenID == 0 || (id != 0 && fm.activeShortcutOpenID != id) {
+	fm.fileOperationMu.Lock()
+	defer fm.fileOperationMu.Unlock()
+	if fm.activeFileOperationID == 0 || (id != 0 && fm.activeFileOperationID != id) {
 		return false
 	}
-	fm.activeShortcutOpenID = 0
-	if fm.shortcutOpenCancel != nil {
-		fm.shortcutOpenCancel()
-		fm.shortcutOpenCancel = nil
+	fm.activeFileOperationID = 0
+	if fm.fileOperationCancel != nil {
+		fm.fileOperationCancel()
+		fm.fileOperationCancel = nil
 	}
 	return true
 }
 
-func (fm *FileManager) cancelActiveShortcutOpen() {
-	if !fm.invalidateShortcutOpen(0) {
+func (fm *FileManager) cancelActiveFileOperation() {
+	if !fm.invalidateFileOperation(0) {
 		return
 	}
 	if fm.busy != nil {
 		fm.busy.End()
 	}
-	fm.focusFileList("shortcut-open-cancel")
-	debugPrint("FileManager: Shortcut open canceled")
+	fm.focusFileList("file-operation-cancel")
+	debugPrint("FileManager: File operation canceled")
 }
 
-func (fm *FileManager) openShortcut(path string) {
-	id, ctx := fm.beginShortcutOpen()
-	debugPrint("FileManager: Shortcut open start id=%d path=%s", id, path)
+// runFileOperation performs blocking opens and format probes on a worker. The
+// returned closure belongs to the UI thread and only runs for the active request.
+func (fm *FileManager) runFileOperation(message string, work func(context.Context) func()) {
+	id, ctx := fm.beginFileOperation()
 	if fm.busy != nil {
-		// This callback intentionally cancels the active generation instead of
-		// capturing id. BusyController preserves its original callback when an
-		// already-active guard is updated.
-		fm.busy.Begin("Resolving shortcut...", fm.cancelActiveShortcutOpen)
+		fm.busy.Begin(message, fm.cancelActiveFileOperation)
 	}
-
-	resolver := fm.shortcutResolver()
-	opener := fm.shortcutDefaultOpener()
 	go func() {
-		started := time.Now()
-		result := runShortcutOpen(ctx, path, resolver, opener)
-		debugPrint("FileManager: Shortcut open worker id=%d elapsed=%s path=%s resolveErr=%v openErr=%v", id, time.Since(started), path, result.resolveErr, result.openErr)
+		apply := work(ctx)
 		if ctx.Err() != nil {
 			return
 		}
 		fyne.Do(func() {
-			if fm.isWindowClosed() || !fm.finishShortcutOpen(id) {
+			if fm.isWindowClosed() || !fm.finishFileOperation(id) {
 				return
 			}
-			// End the shortcut guard before LoadDirectory begins its own busy
-			// generation with the directory-load cancellation callback.
 			if fm.busy != nil {
 				fm.busy.End()
 			}
-
-			if result.navigate {
-				fm.LoadDirectory(result.directory)
-				return
-			}
-			if !result.delegated {
-				debugPrint("FileManager: Shortcut target unavailable path=%s err=%v", path, result.resolveErr)
-				fm.ShowMessageDialog("ショートカットを開けませんでした", result.resolveErr.Error())
-				return
-			}
-			if result.resolveErr != nil {
-				debugPrint("FileManager: Shortcut resolution delegated path=%s err=%v", path, result.resolveErr)
-			}
-			if result.openErr != nil {
-				debugPrint("FileManager: Failed to open shortcut path=%s err=%v", path, result.openErr)
-				fm.resetKeyStateAfterExternalOpen("open-shortcut-error")
-				fm.ShowMessageDialog("ファイルを開けませんでした", result.openErr.Error())
+			if apply != nil {
+				apply()
 			}
 		})
 	}()
+}
+
+func (fm *FileManager) openFileAsync(path string, inspect bool) {
+	fm.runFileOperation("Opening file...", func(ctx context.Context) func() {
+		if inspect && fileinfo.IsSupportedArchiveContext(ctx, path) {
+			return func() { fm.LoadDirectory(fileinfo.ArchiveRootPath(path)) }
+		}
+		if inspect && fm.isShortcutNavigationCandidate(path) {
+			result := runShortcutOpen(ctx, path, fm.shortcutResolver(), fm.shortcutDefaultOpener())
+			if result.navigate {
+				return func() { fm.LoadDirectory(result.directory) }
+			}
+			if !result.delegated {
+				return func() {
+					fm.ShowMessageDialog("ショートカットを開けませんでした", result.resolveErr.Error())
+				}
+			}
+			return fm.fileOpenCompletion(result.openErr)
+		}
+		return fm.fileOpenCompletion(fileinfo.OpenWithDefaultAppContext(ctx, path))
+	})
+}
+
+func (fm *FileManager) fileOpenCompletion(err error) func() {
+	if err == nil {
+		return nil
+	}
+	return func() {
+		debugPrint("FileManager: File open failed: %v", err)
+		fm.resetKeyStateAfterExternalOpen("open-file-error")
+		fm.ShowMessageDialog("ファイルを開けませんでした", err.Error())
+	}
 }
 
 func runShortcutOpen(

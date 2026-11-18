@@ -657,22 +657,7 @@ func (fm *FileManager) OpenFile(file *fileinfo.FileInfo) {
 		fm.LoadDirectory(file.Path)
 		return
 	}
-	if fileinfo.IsSupportedArchive(file.Path) {
-		fm.LoadDirectory(fileinfo.ArchiveRootPath(file.Path))
-		return
-	}
-	if fm.isShortcutNavigationCandidate(file.Path) {
-		fm.openShortcut(file.Path)
-		return
-	}
-
-	// Regular file: try to open with associated application
-	if err := fileinfo.OpenWithDefaultApp(file.Path); err != nil {
-		debugPrint("FileManager: Failed to open file '%s': %v", file.Path, err)
-		fm.resetKeyStateAfterExternalOpen("open-file-error")
-		fm.ShowMessageDialog("ファイルを開けませんでした", err.Error())
-		return
-	}
+	fm.openFileAsync(file.Path, true)
 }
 
 // OpenFileDefaultApp opens a file with the system default app, or navigates into a directory.
@@ -688,12 +673,7 @@ func (fm *FileManager) OpenFileDefaultApp(file *fileinfo.FileInfo) {
 		fm.LoadDirectory(file.Path)
 		return
 	}
-	if err := fileinfo.OpenWithDefaultApp(file.Path); err != nil {
-		debugPrint("FileManager: Failed to open file with default app '%s': %v", file.Path, err)
-		fm.resetKeyStateAfterExternalOpen("open-default-app-error")
-		fm.ShowMessageDialog("ファイルを開けませんでした", err.Error())
-		return
-	}
+	fm.openFileAsync(file.Path, false)
 }
 
 func (fm *FileManager) resetKeyStateAfterExternalOpen(label string) {

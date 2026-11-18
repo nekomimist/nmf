@@ -3,16 +3,21 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
+
+	fynetest "fyne.io/fyne/v2/test"
 
 	"nmf/internal/fileinfo"
 )
 
 func TestShortcutOpenGenerationRejectsCanceledAndStaleResults(t *testing.T) {
 	fm := &FileManager{}
-	first, firstCtx := fm.beginShortcutOpen()
-	second, secondCtx := fm.beginShortcutOpen()
+	first, firstCtx := fm.beginFileOperation()
+	second, secondCtx := fm.beginFileOperation()
 	if firstCtx.Err() == nil {
 		t.Fatal("starting a replacement shortcut open should cancel the previous context")
 	}
@@ -20,19 +25,19 @@ func TestShortcutOpenGenerationRejectsCanceledAndStaleResults(t *testing.T) {
 		t.Fatalf("replacement shortcut context error = %v, want active", secondCtx.Err())
 	}
 
-	if fm.invalidateShortcutOpen(first) {
+	if fm.invalidateFileOperation(first) {
 		t.Fatal("stale shortcut cancellation should not cancel the active request")
 	}
-	if fm.finishShortcutOpen(first) {
+	if fm.finishFileOperation(first) {
 		t.Fatal("stale shortcut result should not finish")
 	}
-	if !fm.invalidateShortcutOpen(second) {
+	if !fm.invalidateFileOperation(second) {
 		t.Fatal("active shortcut cancellation should succeed")
 	}
 	if secondCtx.Err() == nil {
 		t.Fatal("active shortcut cancellation should cancel its context")
 	}
-	if fm.finishShortcutOpen(second) {
+	if fm.finishFileOperation(second) {
 		t.Fatal("canceled shortcut result should not finish")
 	}
 }
@@ -182,7 +187,7 @@ func TestOpenFileStartsShortcutResolutionWithoutBlocking(t *testing.T) {
 		close(release)
 		t.Fatal("shortcut resolver did not start")
 	}
-	if !fm.invalidateShortcutOpen(0) {
+	if !fm.invalidateFileOperation(0) {
 		close(release)
 		t.Fatal("active shortcut operation was not cancellable")
 	}
@@ -191,5 +196,43 @@ func TestOpenFileStartsShortcutResolutionWithoutBlocking(t *testing.T) {
 	case <-resolverReturned:
 	case <-time.After(time.Second):
 		t.Fatal("blocked test resolver did not return")
+	}
+}
+
+func TestOpenOrdinaryFileWithArchiveSuffixUsesListedOSPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a temporary Unix opener")
+	}
+	app := fynetest.NewApp()
+	defer app.Quit()
+	dir := t.TempDir()
+	report := filepath.Join(dir, "opened-path")
+	t.Setenv("NMF_TEST_OPENED_FILE", report)
+	t.Setenv("PATH", dir)
+	if err := os.WriteFile(filepath.Join(dir, "xdg-open"), []byte(`#!/bin/sh
+printf %s "$1" > "$NMF_TEST_OPENED_FILE"
+`), 0700); err != nil {
+		t.Fatal(err)
+	}
+	name := "ordinary.zip\u2003"
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte("plain text"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	fm := &FileManager{}
+	fm.OpenFile(&fileinfo.FileInfo{Path: path, Name: name})
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		got, _ := os.ReadFile(report)
+		fm.fileOperationMu.Lock()
+		finished := fm.activeFileOperationID == 0
+		fm.fileOperationMu.Unlock()
+		if finished && string(got) == path {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("opener got %q, want %q (finished=%t)", got, path, finished)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
