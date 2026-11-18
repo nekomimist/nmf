@@ -34,6 +34,7 @@ type LineEditSelection struct {
 
 // LineEditDialogOptions configures a single-line edit dialog.
 type LineEditDialogOptions struct {
+	SensitiveInput   bool
 	Title            string
 	Prompt           string
 	CurrentText      string
@@ -115,7 +116,11 @@ func (d *LineEditDialog) ShowDialog(parent fyne.Window, onAccept func(string) bo
 	content.Add(dialogButtonRow("Cancel", d.CancelDialog, d.opts.ConfirmText, d.AcceptEdit))
 
 	handler := newLineEditKeyHandler(d, d.keyManager, d.bindings)
-	d.kmToken = d.keyManager.PushHandler(handler)
+	if d.opts.SensitiveInput {
+		d.kmToken = d.keyManager.PushSensitiveHandler(handler)
+	} else {
+		d.kmToken = d.keyManager.PushHandler(handler)
+	}
 
 	title := d.opts.Title
 	if title == "" {

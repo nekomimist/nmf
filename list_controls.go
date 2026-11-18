@@ -516,9 +516,10 @@ func (fm *FileManager) ShowSortDialog() {
 func (fm *FileManager) ShowPathEditDialog() {
 	debugPrint("FileManager: Opening path edit dialog")
 	dlg := ui.NewLineEditDialog(ui.LineEditDialogOptions{
-		Title:       "Edit Path",
-		Prompt:      "Path:",
-		InitialText: fm.GetCurrentPath(),
+		Title:          "Edit Path",
+		SensitiveInput: true,
+		Prompt:         "Path:",
+		InitialText:    fm.GetCurrentPath(),
 		InitialSelection: &ui.LineEditSelection{
 			Start: 0,
 			End:   utf8.RuneCountInString(fm.GetCurrentPath()),
@@ -527,7 +528,7 @@ func (fm *FileManager) ShowPathEditDialog() {
 		Width:       760,
 	}, fm.keyManager, fm.config.UI.KeyBindings)
 	dlg.ShowDialog(fm.window, func(path string) bool {
-		debugPrint("FileManager: path edit accepted input=%s focused=%s", path, focusedObjectLabel(fm.window))
+		debugPrint("FileManager: path edit accepted")
 		return fm.navigateToPath(path)
 	})
 }

@@ -110,7 +110,7 @@ func (fm *FileManager) navigateToPath(inputPath string) bool {
 
 	resolvedPath, parsed, err := fileinfo.CanonicalDisplayPath(path)
 	if err != nil {
-		debugPrint("FileManager: Invalid path '%s': %v", inputPath, err)
+		debugPrint("FileManager: Invalid path input")
 		fm.setPathDisplay(fm.GetCurrentPath())
 		return false
 	}

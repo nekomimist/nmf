@@ -131,7 +131,7 @@ func (d *smbLoginDialog) show() {
 
 	if d.km != nil {
 		handler := newSMBLoginKeyHandler(d, d.bindings, d.km.Debugf)
-		d.kmToken = d.km.PushHandler(handler)
+		d.kmToken = d.km.PushSensitiveHandler(handler)
 	}
 
 	d.dialog = dialog.NewCustomWithoutButtons("SMB Login: "+d.host+"/"+d.share, content, d.parent)
