@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestConflictRenameRetriesInvalidAndOccupiedNames(t *testing.T) {
@@ -101,5 +102,37 @@ func TestConflictApplyToRestPreservesActionSemantics(t *testing.T) {
 				t.Fatalf("default = %q, want %q", job.conflictDefault, tt.wantDefault)
 			}
 		})
+	}
+}
+
+func TestConflictRenameUsesOccupiedDestinationTimestamp(t *testing.T) {
+	srcDir, dstDir := t.TempDir(), t.TempDir()
+	src := filepath.Join(srcDir, "a")
+	dst := filepath.Join(dstDir, "a")
+	occupied := filepath.Join(dstDir, "b")
+	for path, seconds := range map[string]int64{src: 2000, dst: 1000, occupied: 3000} {
+		if err := os.WriteFile(path, []byte(path), 0600); err != nil {
+			t.Fatal(err)
+		}
+		at := time.Unix(seconds, 0)
+		if err := os.Chtimes(path, at, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	job := &Job{Type: TypeCopy, ctx: t.Context(), Sources: []string{src}, DestDir: dstDir}
+	job.Resolver = func(_ context.Context, req ConflictRequest) ConflictResolution {
+		if req.Destination == dst {
+			return ConflictResolution{Action: ConflictRename, NewName: "b"}
+		}
+		if req.Destination != occupied || req.DestModified.Unix() != 3000 {
+			t.Fatalf("retry showed %q at %v", req.Destination, req.DestModified)
+		}
+		return ConflictResolution{Action: ConflictOverwriteIfNewer}
+	}
+	if err := (&Manager{}).runJob(job); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(occupied); err != nil || string(got) != occupied {
+		t.Fatalf("newer target = %q, %v", got, err)
 	}
 }
