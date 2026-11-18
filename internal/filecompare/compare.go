@@ -47,18 +47,24 @@ func CompareDirectFilesContext(ctx context.Context, sourceFiles []fileinfo.FileI
 	}
 
 	targets := make(map[string]fileinfo.FileInfo, len(targetEntries))
+	targetErrors := make(map[string]error)
 	for _, entry := range targetEntries {
 		if err := ctx.Err(); err != nil {
 			return Result{}, err
 		}
 		fi, err := fileinfo.FileInfoFromDirEntry(targetDir, entry)
-		if err != nil || !isComparableFile(fi) {
+		if err != nil {
+			targetErrors[entry.Name()] = err
+			continue
+		}
+		if !isComparableFile(fi) {
 			continue
 		}
 		targets[fi.Name] = fi
 	}
 
 	result := Result{TargetCount: len(targets)}
+	cmp := comparison{ctx: ctx}
 	for _, source := range sourceFiles {
 		if err := ctx.Err(); err != nil {
 			return Result{}, err
@@ -68,7 +74,11 @@ func CompareDirectFilesContext(ctx context.Context, sourceFiles []fileinfo.FileI
 		}
 		result.SourceCount++
 		target, exists := targets[source.Name]
-		matched, err := matches(ctx, source, target, exists, method)
+		var matched bool
+		err := targetErrors[source.Name]
+		if err == nil {
+			matched, err = cmp.matches(source, target, exists, method)
+		}
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return Result{}, ctxErr
 		}
@@ -90,7 +100,12 @@ func isComparableFile(fi fileinfo.FileInfo) bool {
 	return fi.Name != ".." && !fi.IsDir && fi.Status != fileinfo.StatusDeleted
 }
 
-func matches(ctx context.Context, source, target fileinfo.FileInfo, exists bool, method Method) (bool, error) {
+type comparison struct {
+	ctx    context.Context
+	buffer []byte // allocated only for content comparisons, reused across file pairs
+}
+
+func (c *comparison) matches(source, target fileinfo.FileInfo, exists bool, method Method) (bool, error) {
 	switch method {
 	case MissingOrNewer:
 		return !exists || source.Modified.After(target.Modified), nil
@@ -106,72 +121,68 @@ func matches(ctx context.Context, source, target fileinfo.FileInfo, exists bool,
 		if !exists || source.Size != target.Size {
 			return false, nil
 		}
-		equal, err := contentEqual(ctx, source.Path, target.Path)
-		if err != nil {
-			return false, err
-		}
-		return equal, nil
+		return c.contentEqual(source.Path, target.Path)
 	default:
 		return false, fmt.Errorf("unknown compare method: %s", method)
 	}
 }
 
-func contentEqual(ctx context.Context, leftPath, rightPath string) (bool, error) {
-	left, err := fileinfo.OpenPortableContext(ctx, leftPath)
+func (c *comparison) contentEqual(leftPath, rightPath string) (bool, error) {
+	left, err := fileinfo.OpenPortableContext(c.ctx, leftPath)
 	if err != nil {
 		return false, fmt.Errorf("%s: %w", leftPath, err)
 	}
 	defer left.Close()
 
-	right, err := fileinfo.OpenPortableContext(ctx, rightPath)
+	right, err := fileinfo.OpenPortableContext(c.ctx, rightPath)
 	if err != nil {
 		return false, fmt.Errorf("%s: %w", rightPath, err)
 	}
 	defer right.Close()
 
-	return readersEqual(ctx, left, right)
+	return c.readersEqual(left, right)
 }
 
-func readersEqual(ctx context.Context, left, right io.Reader) (bool, error) {
-	left = &comparisonReader{ctx: ctx, reader: left}
-	right = &comparisonReader{ctx: ctx, reader: right}
-	leftBuf := make([]byte, 32*1024)
-	rightBuf := make([]byte, 32*1024)
+func (c *comparison) readersEqual(left, right io.Reader) (bool, error) {
+	const chunk = 32 * 1024
+	if c.buffer == nil {
+		c.buffer = make([]byte, 2*chunk)
+	}
+	leftBuf, rightBuf := c.buffer[:chunk], c.buffer[chunk:]
 	for {
-		leftN, leftErr := io.ReadFull(left, leftBuf)
-		rightN, rightErr := io.ReadFull(right, rightBuf)
-		if leftErr == io.ErrUnexpectedEOF {
-			leftErr = io.EOF
+		leftN, leftErr := c.readChunk(left, leftBuf)
+		if leftErr != nil && leftErr != io.EOF {
+			return false, leftErr
 		}
-		if rightErr == io.ErrUnexpectedEOF {
-			rightErr = io.EOF
+		rightN, rightErr := c.readChunk(right, rightBuf)
+		if rightErr != nil && rightErr != io.EOF {
+			return false, rightErr
 		}
-		if err := ctx.Err(); err != nil {
+		if err := c.ctx.Err(); err != nil {
 			return false, err
 		}
 		if leftN != rightN || !bytes.Equal(leftBuf[:leftN], rightBuf[:rightN]) {
 			return false, nil
 		}
-		if leftErr == io.EOF && rightErr == io.EOF {
+		if leftErr != nil && rightErr != nil {
 			return true, nil
 		}
-		if leftErr != nil && leftErr != io.EOF {
-			return false, leftErr
-		}
-		if rightErr != nil && rightErr != io.EOF {
-			return false, rightErr
-		}
 	}
 }
 
-type comparisonReader struct {
-	ctx    context.Context
-	reader io.Reader
-}
-
-func (r *comparisonReader) Read(p []byte) (int, error) {
-	if err := r.ctx.Err(); err != nil {
-		return 0, err
+// Preserve provider errors (including ErrUnexpectedEOF) even when a read
+// returns data with the error. A short final chunk ending in EOF is normal.
+func (c *comparison) readChunk(reader io.Reader, buf []byte) (int, error) {
+	n := 0
+	for n < len(buf) {
+		if err := c.ctx.Err(); err != nil {
+			return n, err
+		}
+		read, err := reader.Read(buf[n:])
+		n += read
+		if err != nil {
+			return n, err
+		}
 	}
-	return r.reader.Read(p)
+	return n, nil
 }

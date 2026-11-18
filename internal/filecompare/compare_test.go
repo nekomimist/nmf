@@ -1,12 +1,16 @@
 package filecompare
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"nmf/internal/fileinfo"
@@ -156,11 +160,58 @@ func TestContentComparisonStopsBetweenReads(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	left := &cancelRead{cancel: cancel}
-	equal, err := readersEqual(ctx, left, unexpectedRead{t: t})
+	cmp := comparison{ctx: ctx}
+	equal, err := cmp.readersEqual(left, unexpectedRead{t: t})
 	if equal || !errors.Is(err, context.Canceled) {
 		t.Fatalf("comparison = %t, %v", equal, err)
 	}
 	if left.reads != 1 {
 		t.Fatalf("source read %d times after cancellation", left.reads)
+	}
+}
+
+func TestContentComparisonReportsPartialReadFailure(t *testing.T) {
+	for _, wantErr := range []error{errors.New("read failed"), io.ErrUnexpectedEOF} {
+		for _, failLeft := range []bool{true, false} {
+			var left io.Reader = io.MultiReader(strings.NewReader("ab"), iotest.ErrReader(wantErr))
+			var right io.Reader = strings.NewReader("abcdef")
+			if !failLeft {
+				left, right = right, left
+			}
+			cmp := comparison{ctx: t.Context()}
+			if equal, err := cmp.readersEqual(left, right); equal || !errors.Is(err, wantErr) {
+				t.Fatalf("left failed=%t: got %t, %v, want %v", failLeft, equal, err, wantErr)
+			}
+		}
+	}
+}
+
+func TestMissingComparisonReportsUnreadableTargetMetadata(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("requires Unix directory search permissions")
+	}
+	dest := t.TempDir()
+	writeFile(t, dest, "file", "target", time.Now())
+	if err := os.Chmod(dest, 0400); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dest, 0700) })
+	got, err := CompareDirectFiles([]fileinfo.FileInfo{{Name: "file"}}, dest, Missing)
+	if err != nil || len(got.Matched) != 0 || got.ErrorCount != 1 || !errors.Is(got.FirstError, os.ErrPermission) {
+		t.Fatalf("unexpected comparison: %+v, %v", got, err)
+	}
+}
+
+func BenchmarkCompareTinyContents(b *testing.B) {
+	cmp := comparison{ctx: b.Context()}
+	data := []byte("12345678")
+	var left, right bytes.Reader
+	b.ReportAllocs()
+	for b.Loop() {
+		left.Reset(data)
+		right.Reset(data)
+		if equal, err := cmp.readersEqual(&left, &right); err != nil || !equal {
+			b.Fatalf("unexpected comparison: %t, %v", equal, err)
+		}
 	}
 }
