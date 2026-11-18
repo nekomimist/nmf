@@ -145,7 +145,7 @@ func (d *DirectoryJumpDialog) createWidgets() {
 		if id >= 0 && int(id) < len(d.filteredEntries) {
 			d.selectedIndex = int(id)
 			d.selectedPath = d.filteredEntries[id].Directory
-			d.debugPrint("DirectoryJumpDialog: selected %s index=%d", d.selectedPath, d.selectedIndex)
+			d.debugPrint("DirectoryJumpDialog: selected index=%d", d.selectedIndex)
 			if d.parent != nil && d.sink != nil {
 				d.parent.Canvas().Focus(d.sink)
 			}
@@ -190,7 +190,7 @@ func (d *DirectoryJumpDialog) updateFilteredEntries(query string) {
 	}
 
 	if NormalizeDirectoryJumpShortcut(query) != "" && len(d.filteredEntries) == 1 {
-		d.debugPrint("DirectoryJumpDialog: unique shortcut match path=%s", d.filteredEntries[0].Directory)
+		d.debugPrint("DirectoryJumpDialog: unique shortcut match")
 		d.pendingAutoAcceptPath = d.filteredEntries[0].Directory
 		d.autoAcceptScheduled = false
 	} else {
@@ -366,7 +366,7 @@ func (d *DirectoryJumpDialog) CopySelectedShortcutToSearch() {
 
 // SelectCurrentItem selects the current list item.
 func (d *DirectoryJumpDialog) SelectCurrentItem() {
-	d.debugPrint("DirectoryJumpDialog: select current path=%s", d.selectedPath)
+	d.debugPrint("DirectoryJumpDialog: select current index=%d", d.selectedIndex)
 }
 
 // AcceptSelection accepts the selected row.

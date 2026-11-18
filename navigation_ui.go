@@ -206,7 +206,7 @@ func (fm *FileManager) ShowDirectoryJumpDialog() {
 
 	dialog := ui.NewDirectoryJumpDialog(entries, fm.keyManager, debugPrint)
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
-		debugPrint("FileManager: jump dialog selected path=%s focused=%s", selectedPath, focusedObjectLabel(fm.window))
+		debugPrint("FileManager: jump dialog selected focused=%s", focusedObjectLabel(fm.window))
 		fm.jumpToConfiguredDirectory(selectedPath)
 		fm.focusFileList("jump-dialog-selected")
 	})
@@ -273,7 +273,8 @@ func (fm *FileManager) jumpToConfiguredDirectory(inputPath string) {
 
 	resolvedPath, parsed, err := fileinfo.CanonicalDisplayPath(path)
 	if err != nil {
-		debugPrint("FileManager: Invalid directory jump path '%s': %v", inputPath, err)
+		err = directoryInputError(inputPath, err)
+		debugPrint("FileManager: Invalid directory jump: %v", err)
 		fm.ShowMessageDialog("フォルダを開けませんでした", err.Error())
 		return
 	}
