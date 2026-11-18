@@ -52,7 +52,7 @@ func replaceSMBPath(execCtx *executionContext, ops fileinfo.SMBPathOps, tmp, dst
 			return errors.Join(err, backupErr)
 		}
 		if publishErr := ops.Rename(tmp.path, dst.path); publishErr != nil {
-			restoreErr := withSMBCleanup(execCtx, dst, ops, func(recovery fileinfo.SMBPathOps) error {
+			restoreErr := withSMBCleanup(execCtx, dst, func(recovery fileinfo.SMBPathOps) error {
 				return recovery.Rename(backup.path, dst.path)
 			})
 			if restoreErr != nil {
@@ -60,7 +60,7 @@ func replaceSMBPath(execCtx *executionContext, ops fileinfo.SMBPathOps, tmp, dst
 			}
 			return publishErr
 		}
-		removeErr := withSMBCleanup(execCtx, dst, ops, func(recovery fileinfo.SMBPathOps) error {
+		removeErr := withSMBCleanup(execCtx, dst, func(recovery fileinfo.SMBPathOps) error {
 			return recovery.Remove(backup.path)
 		})
 		if removeErr != nil {
@@ -110,9 +110,12 @@ func replacePath(j *Job, execCtx *executionContext, tmp executionPath, dst execu
 
 // A canceled job has closed its SMB transport. Give removal of its temporary
 // file or restoration of the previous destination one bounded recovery session.
-func withSMBCleanup(execCtx *executionContext, p executionPath, ops fileinfo.SMBPathOps, cleanup func(fileinfo.SMBPathOps) error) error {
+func withSMBCleanup(execCtx *executionContext, p executionPath, cleanup func(fileinfo.SMBPathOps) error) error {
 	if execCtx.request.Err() == nil || p.smbOpener == nil {
-		err := cleanup(ops)
+		ops, err := execCtx.smbOpsFor(p)
+		if err == nil {
+			err = cleanup(ops)
+		}
 		if err == nil || execCtx.request.Err() == nil || p.smbOpener == nil {
 			return err
 		}
@@ -128,12 +131,10 @@ func withSMBCleanup(execCtx *executionContext, p executionPath, ops fileinfo.SMB
 }
 
 func removeTransferTemp(execCtx *executionContext, p executionPath) error {
-	if p.backend != backendSMB || execCtx.request.Err() == nil {
+	if p.backend != backendSMB {
 		return removePath(execCtx, p)
 	}
-	ops, err := execCtx.smbOpsFor(p)
-	if err != nil {
-		return err
-	}
-	return withSMBCleanup(execCtx, p, ops, func(recovery fileinfo.SMBPathOps) error { return recovery.Remove(p.path) })
+	return withSMBCleanup(execCtx, p, func(ops fileinfo.SMBPathOps) error {
+		return ops.Remove(p.path)
+	})
 }

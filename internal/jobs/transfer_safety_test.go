@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"nmf/internal/fileinfo"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -328,6 +329,51 @@ func TestOperationsPreserveSelectedTrailingSpace(t *testing.T) {
 				if got, err := os.ReadFile(filepath.Join(dst, selectedName)); err != nil || string(got) != selected {
 					t.Fatalf("destination = %q, %v", got, err)
 				}
+			}
+		})
+	}
+}
+
+type cleanupTestSession struct {
+	fakeSMBSession
+	remove func() error
+}
+
+func (s *cleanupTestSession) Remove(string) error { return s.remove() }
+
+type cleanupTestOpener func(context.Context) (fileinfo.SMBSession, error)
+
+func (f cleanupTestOpener) OpenSession(ctx context.Context) (fileinfo.SMBSession, error) {
+	return f(ctx)
+}
+
+func TestTransferTempRemovalRecoversCancellation(t *testing.T) {
+	for _, when := range []string{"before cleanup", "during session open", "during remove"} {
+		t.Run(when, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			if when == "before cleanup" {
+				cancel()
+			}
+			execCtx := newJobExecutionContext(ctx)
+			defer execCtx.close()
+			var recovered bool
+			p := executionPath{backend: backendSMB, path: "/part", smb: fakeSMBOps{}}
+			p.smbOpener = cleanupTestOpener(func(req context.Context) (fileinfo.SMBSession, error) {
+				if req == ctx {
+					if when == "during session open" {
+						cancel()
+						return nil, ctx.Err()
+					}
+					return &cleanupTestSession{remove: func() error { cancel(); return ctx.Err() }}, nil
+				}
+				if _, ok := req.Deadline(); !ok || req.Err() != nil {
+					t.Fatal("recovery context should be bounded and live")
+				}
+				return &cleanupTestSession{remove: func() error { recovered = true; return nil }}, nil
+			})
+			if err := removeTransferTemp(execCtx, p); err != nil || !recovered {
+				t.Fatalf("cleanup recovered=%t, err=%v", recovered, err)
 			}
 		})
 	}
