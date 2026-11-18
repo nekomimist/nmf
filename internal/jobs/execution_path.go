@@ -283,11 +283,15 @@ func normalizeSMBExecutionPath(p string) string {
 
 // resolveExecutionPath maps display paths to backend-specific execution paths.
 func resolveExecutionPath(p string) (executionPath, error) {
-	p = strings.TrimSpace(p)
-	if p == "" {
+	if strings.TrimSpace(p) == "" {
 		return executionPath{}, errors.New("path is empty")
 	}
 
+	// Archive paths are syntactic here. The execution context opens and
+	// validates each archive once, when the job first reads a member.
+	if archive, inner, ok := fileinfo.SplitArchivePath(p); ok {
+		return executionPath{backend: backendArchive, path: inner, archivePath: archive}, nil
+	}
 	vfs, parsed, err := fileinfo.ResolveRead(p)
 	if err != nil {
 		return executionPath{}, err
@@ -296,19 +300,6 @@ func resolveExecutionPath(p string) (executionPath, error) {
 	native := parsed.Native
 	if native == "" {
 		native = p
-	}
-
-	if parsed.Scheme == fileinfo.SchemeArchive {
-		_ = fileinfo.CloseVFS(vfs)
-		if native == "" {
-			native = "."
-		}
-		return executionPath{
-			raw:         p,
-			path:        native,
-			backend:     backendArchive,
-			archivePath: parsed.Archive,
-		}, nil
 	}
 
 	if parsed.Scheme == fileinfo.SchemeSMB && parsed.Provider != "local" {

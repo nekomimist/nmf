@@ -297,3 +297,37 @@ func TestExclusivePublishFallbackPreservesDestination(t *testing.T) {
 		t.Fatalf("destination = %q, %v", data, err)
 	}
 }
+
+func TestOperationsPreserveSelectedTrailingSpace(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("ordinary Windows paths alias trailing ASCII spaces")
+	}
+	for _, op := range []Type{TypeCopy, TypeMove, TypeDelete} {
+		t.Run(string(op), func(t *testing.T) {
+			dir, dst := t.TempDir(), t.TempDir()
+			sibling, selected := filepath.Join(dir, "report"), filepath.Join(dir, "report ")
+			for _, name := range []string{sibling, selected} {
+				if err := os.WriteFile(name, []byte(name), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			j := &Job{Type: op, ctx: t.Context(), Sources: []string{selected}, DestDir: dst, DeleteMode: DeleteModePermanent}
+			if err := (&Manager{}).runJob(j); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := os.ReadFile(sibling); err != nil || string(got) != sibling {
+				t.Fatalf("sibling = %q, %v", got, err)
+			}
+			if op != TypeCopy {
+				if _, err := os.Stat(selected); !os.IsNotExist(err) {
+					t.Fatalf("source still exists: %v", err)
+				}
+			}
+			if op != TypeDelete {
+				if got, err := os.ReadFile(filepath.Join(dst, "report ")); err != nil || string(got) != selected {
+					t.Fatalf("destination = %q, %v", got, err)
+				}
+			}
+		})
+	}
+}
