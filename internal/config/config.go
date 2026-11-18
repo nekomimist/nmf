@@ -654,9 +654,3 @@ func NormalizeViewerDefaultPane(pane string) string {
 		return ""
 	}
 }
-
-// frecencyScore, sortNavigationHistoryEntries, sortFileFilterEntries,
-// EffectiveFilterPattern, and stopTimer moved to state.go: after the
-// config.json/state.json split, Config no longer has any use for them (the
-// history/filter accessors that called them now live on *State), and
-// stopTimer's only remaining caller is StateManager's save worker.

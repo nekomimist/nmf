@@ -7,8 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -149,25 +151,39 @@ func cloneFileFilterState(src FileFilterState) FileFilterState {
 // count and pruning by frecency once entries exceed maxEntries. Pinned paths
 // live in a separate list and are never pruned here.
 func (s *State) AddToNavigationHistory(path string, maxEntries int) {
-	now := time.Now()
+	s.AddNavigationHistoryPaths([]string{path}, maxEntries)
+}
+
+// AddNavigationHistoryPaths records the whole batch before ranking or pruning
+// so a path repeatedly used within a job retains each visit.
+func (s *State) AddNavigationHistoryPaths(paths []string, maxEntries int) {
 	history := &s.NavigationHistory
 	ensureNavigationHistoryStatsState(history)
-
-	found := false
-	for _, entry := range history.Entries {
-		if entry == path {
-			found = true
-			break
+	// Statistics for legacy files can include keys absent from Entries.
+	var existing map[string]bool
+	if len(paths) > 1 {
+		existing = make(map[string]bool, len(history.Entries))
+		for _, path := range history.Entries {
+			existing[path] = true
 		}
 	}
-	if !found {
-		history.Entries = append(history.Entries, path)
+	now := time.Now()
+	for _, path := range paths {
+		found := existing[path]
+		if existing == nil {
+			found = slices.Contains(history.Entries, path)
+		} else {
+			existing[path] = true
+		}
+		if !found {
+			history.Entries = append(history.Entries, path)
+		}
+		now = time.Now()
+		history.LastUsed[path] = now
+		history.UseCount[path]++
 	}
-
-	history.LastUsed[path] = now
-	history.UseCount[path]++
 	sortNavigationHistoryState(history, now)
-	pruneNavigationHistoryState(history, maxEntries, now)
+	pruneNavigationHistoryState(history, maxEntries)
 }
 
 // GetNavigationHistory returns the navigation history entries sorted by frecency.
@@ -269,11 +285,10 @@ func sortNavigationHistoryState(history *NavigationHistoryState, now time.Time) 
 	sortNavigationHistoryEntries(history.Entries, history.LastUsed, history.UseCount, now)
 }
 
-func pruneNavigationHistoryState(history *NavigationHistoryState, maxEntries int, now time.Time) {
+func pruneNavigationHistoryState(history *NavigationHistoryState, maxEntries int) {
 	if maxEntries <= 0 || len(history.Entries) <= maxEntries {
 		return
 	}
-	sortNavigationHistoryState(history, now)
 	for _, path := range history.Entries[maxEntries:] {
 		delete(history.LastUsed, path)
 		delete(history.UseCount, path)
@@ -414,48 +429,42 @@ func (s *State) EffectiveSort(configDefault SortConfig) SortConfig {
 	return configDefault
 }
 
-// StateManager manages persistence of runtime state to state.json. It
-// mirrors Manager's debounced background-save worker (SaveAsync/Flush/Close)
-// but is kept as a separate implementation rather than shared/generic code,
-// since the point of the config.json/state.json split is to structurally
-// remove write access from the config side.
+// StateManager coalesces runtime-state changes and serializes atomic writes.
 type StateManager struct {
 	statePath  string
 	debugPrint func(format string, args ...interface{})
 
-	saveDelay     time.Duration
-	saveRequests  chan *State
-	flushRequests chan chan error
-	closeRequests chan chan error
-	stopped       chan struct{}
+	mu               sync.Mutex
+	saveDelay        time.Duration
+	timer            *time.Timer
+	revision         uint64
+	pending          *State
+	owned            bool   // pending may only be read on the state owner's goroutine.
+	snapshot         *State // Immutable until a successful write or a newer capture.
+	snapshotRevision uint64
+	writerActive     bool
+	closed           bool
+
+	writeMu sync.Mutex
+	written uint64
 }
 
 // ErrStateManagerClosed is returned when operations are attempted after Close has been called.
 var ErrStateManagerClosed = errors.New("state manager closed")
 
-// NewStateManager creates a new runtime-state manager and starts its
-// background save worker.
+// NewStateManager creates a manager for the default runtime-state file.
 func NewStateManager(debugPrint func(format string, args ...interface{})) *StateManager {
 	return NewStateManagerWithPath(getStatePath(), debugPrint)
 }
 
 // NewStateManagerWithPath creates a runtime-state manager rooted at an
-// explicit state.json path instead of the OS-default location (see
-// getStatePath), and starts its background save worker. Used by the
+// explicit state.json path instead of the OS-default location. Used by the
 // -profile/-state-dir CLI overrides.
 func NewStateManagerWithPath(statePath string, debugPrint func(format string, args ...interface{})) *StateManager {
-	m := &StateManager{
-		statePath:     statePath,
-		debugPrint:    debugPrint,
-		saveDelay:     500 * time.Millisecond,
-		saveRequests:  make(chan *State, 1),
-		flushRequests: make(chan chan error),
-		closeRequests: make(chan chan error),
-		stopped:       make(chan struct{}),
+	if debugPrint == nil {
+		debugPrint = func(string, ...interface{}) {}
 	}
-
-	m.startWorker()
-	return m
+	return &StateManager{statePath: statePath, debugPrint: debugPrint, saveDelay: 500 * time.Millisecond}
 }
 
 // StatePath returns the full state.json path used by this manager.
@@ -593,159 +602,145 @@ func migrateLegacyRuntimeState(configPath string, debugPrint func(format string,
 	return state
 }
 
-// Save saves state to state.json synchronously, flushing any pending
-// asynchronous save first.
+// Save persists state synchronously.
 func (m *StateManager) Save(state *State) error {
-	if err := m.Flush(); err != nil && !errors.Is(err, ErrStateManagerClosed) {
+	if err := m.SaveAsync(state); err != nil {
 		return err
 	}
-	return m.saveState(cloneState(state))
+	return m.Flush()
 }
 
-// SaveAsync clones state synchronously, then schedules a debounced write on
-// the background worker.
+// SaveAsync takes an independent snapshot before returning. Callers may
+// immediately mutate the supplied state.
 func (m *StateManager) SaveAsync(state *State) error {
-	select {
-	case <-m.stopped:
-		return ErrStateManagerClosed
-	default:
-	}
-
-	stateCopy := cloneState(state)
-
-	select {
-	case m.saveRequests <- stateCopy:
-		return nil
-	case <-m.stopped:
-		return ErrStateManagerClosed
-	}
+	return m.schedule(cloneState(state), nil)
 }
 
-// Flush forces any pending asynchronous save to be written immediately.
-func (m *StateManager) Flush() error {
-	select {
-	case <-m.stopped:
+// ScheduleSave coalesces mutations to a state owned by a single goroutine.
+// dispatch queues snapshot capture on that owner. Flush and Close must also
+// run on the owner, or after all state mutations have stopped.
+func (m *StateManager) ScheduleSave(state *State, dispatch func(func())) error {
+	if dispatch == nil {
+		return m.SaveAsync(state)
+	}
+	return m.schedule(state, dispatch)
+}
+
+func (m *StateManager) schedule(state *State, dispatch func(func())) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
 		return ErrStateManagerClosed
-	default:
 	}
-
-	reply := make(chan error, 1)
-	select {
-	case m.flushRequests <- reply:
-	case <-m.stopped:
-		return ErrStateManagerClosed
+	m.revision++
+	rev := m.revision
+	m.pending, m.owned = state, dispatch != nil
+	if m.timer != nil {
+		m.timer.Stop()
 	}
-
-	return <-reply
-}
-
-// Close flushes pending writes and stops the background worker.
-func (m *StateManager) Close() error {
-	select {
-	case <-m.stopped:
-		return nil
-	default:
-	}
-
-	reply := make(chan error, 1)
-	select {
-	case m.closeRequests <- reply:
-	case <-m.stopped:
-		return nil
-	}
-
-	return <-reply
-}
-
-func (m *StateManager) startWorker() {
-	go m.saveWorker()
-}
-
-func (m *StateManager) saveWorker() {
-	var pending *State
-	var timer *time.Timer
-
-	for {
-		var timerChan <-chan time.Time
-		if timer != nil {
-			timerChan = timer.C
+	m.timer = time.AfterFunc(m.saveDelay, func() {
+		if dispatch == nil {
+			m.saveDue(rev)
+		} else {
+			dispatch(func() { m.saveDue(rev) })
 		}
-
-		select {
-		case state := <-m.saveRequests:
-			pending = state
-			if timer == nil {
-				timer = time.NewTimer(m.saveDelay)
-			} else {
-				stopTimer(timer)
-				timer.Reset(m.saveDelay)
-			}
-		case <-timerChan:
-			if pending != nil {
-				if err := m.saveState(pending); err != nil {
-					m.debugPrint("State: Error saving state: %v", err)
-				}
-				pending = nil
-			}
-			timer = nil
-		case reply := <-m.flushRequests:
-			// select picks ready cases at random, so a SaveAsync that already
-			// returned (its value sitting in saveRequests) can lose to this
-			// case; drain it here so flush never answers success without
-			// having applied the latest queued state.
-			pending = drainPendingSave(m.saveRequests, pending)
-			stopTimer(timer)
-			timer = nil
-			var err error
-			if pending != nil {
-				err = m.saveState(pending)
-				pending = nil
-			}
-			reply <- err
-		case reply := <-m.closeRequests:
-			// Same race as the flush case above, but here losing it would
-			// discard the state permanently: close(m.stopped) below ends the
-			// worker for good, so anything left in saveRequests would never
-			// be saved.
-			pending = drainPendingSave(m.saveRequests, pending)
-			stopTimer(timer)
-			timer = nil
-			var err error
-			if pending != nil {
-				err = m.saveState(pending)
-				pending = nil
-			}
-			reply <- err
-			close(m.stopped)
-			return
-		}
-	}
+	})
+	return nil
 }
 
-// drainPendingSave non-blockingly checks saveRequests for a state queued by a
-// SaveAsync call that returned before this select ran, so pending is never
-// stale when flush/close happens to win select's random case order.
-func drainPendingSave(saveRequests <-chan *State, pending *State) *State {
-	select {
-	case state := <-saveRequests:
-		return state
-	default:
-		return pending
-	}
-}
-
-// stopTimer stops t and drains a pending fire so it can be safely reused or
-// discarded, per the standard library's documented Timer.Stop idiom.
-func stopTimer(t *time.Timer) {
-	if t == nil {
+func (m *StateManager) saveDue(rev uint64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed || m.revision != rev || m.pending == nil {
 		return
 	}
-	if !t.Stop() {
-		select {
-		case <-t.C:
-		default:
+	m.captureLocked()
+	if !m.writerActive {
+		m.writerActive = true
+		go m.writeSnapshots()
+	}
+}
+
+// A slow filesystem can fall behind several captures. Keep only the newest
+// waiting snapshot and let a single writer finish the one already in progress.
+func (m *StateManager) writeSnapshots() {
+	m.mu.Lock()
+	for m.snapshot != nil {
+		rev, snapshot := m.snapshotRevision, m.snapshot
+		m.mu.Unlock()
+		err := m.write(rev, snapshot)
+		if err != nil {
+			m.debugPrint("State: Error saving state: %v", err)
+		}
+		m.mu.Lock()
+		if err != nil && m.snapshotRevision == rev {
+			break // Flush, Close, or a newer capture retries the pending state.
 		}
 	}
+	m.writerActive = false
+	m.mu.Unlock()
+}
+
+// captureLocked snapshots a dirty state, or returns the snapshot from an
+// in-flight or failed write. This lets Flush retry or finish it synchronously.
+func (m *StateManager) captureLocked() *State {
+	if m.timer != nil {
+		m.timer.Stop()
+		m.timer = nil
+	}
+	if m.pending != nil {
+		m.snapshot = m.pending
+		m.snapshotRevision = m.revision
+		if m.owned {
+			m.snapshot = cloneState(m.pending)
+		}
+		m.pending = nil
+	}
+	return m.snapshot
+}
+
+func (m *StateManager) write(rev uint64, snapshot *State) error {
+	if snapshot == nil {
+		return nil
+	}
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+	if rev <= m.written {
+		return nil
+	}
+	if err := m.saveState(snapshot); err != nil {
+		return err
+	}
+	m.written = rev
+	m.mu.Lock()
+	if m.snapshotRevision == rev {
+		m.snapshot = nil
+	}
+	m.mu.Unlock()
+	return nil
+}
+
+// Flush synchronously writes the latest scheduled state.
+func (m *StateManager) Flush() error {
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return ErrStateManagerClosed
+	}
+	snapshot := m.captureLocked()
+	rev := m.snapshotRevision
+	m.mu.Unlock()
+	return m.write(rev, snapshot)
+}
+
+// Close captures pending mutations and waits for the latest revision to reach disk.
+func (m *StateManager) Close() error {
+	m.mu.Lock()
+	m.closed = true
+	snapshot := m.captureLocked()
+	rev := m.snapshotRevision
+	m.mu.Unlock()
+	return m.write(rev, snapshot)
 }
 
 // saveState writes state to statePath atomically: marshal into a temp file
