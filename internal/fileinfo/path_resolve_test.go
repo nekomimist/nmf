@@ -75,3 +75,14 @@ func TestResolveDirectoryPathContext_Cancelled(t *testing.T) {
 		t.Fatalf("error = %v, want context.Canceled", err)
 	}
 }
+
+func TestSMBDisplayPreservesSelectedWhitespace(t *testing.T) {
+	input := "smb://host/share/report\u2003"
+	display, _, err := CanonicalDisplayPath(input)
+	if err != nil || display != input {
+		t.Fatalf("canonical path=%q err=%v", display, err)
+	}
+	if got := smbURLToUNC(input); got != "\\\\host\\share\\report\u2003" {
+		t.Fatalf("UNC path = %q", got)
+	}
+}

@@ -339,7 +339,7 @@ func isBenignNetworkCloseError(err error) bool {
 }
 
 func normalizeSMBPath(relPath string) string {
-	p := strings.TrimSpace(relPath)
+	p := relPath
 	if p == "/" || p == "\\" {
 		return ""
 	}

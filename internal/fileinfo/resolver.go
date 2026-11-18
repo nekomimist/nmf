@@ -50,7 +50,7 @@ func ResolveReadContext(ctx context.Context, input string) (VFS, Parsed, error) 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	raw := strings.TrimSpace(input)
+	raw := input
 	if raw == "" {
 		return LocalFS{}, Parsed{Raw: input, Scheme: SchemeFile, Display: input, Native: input, Provider: "local"}, nil
 	}
@@ -193,7 +193,7 @@ func isSMBURL(p string) bool {
 
 func smbURLToUNC(u string) string {
 	// smb://[user[:pass]@]host/share/seg1/seg2 -> \\host\share\seg1\seg2 (drop creds)
-	s := strings.TrimSpace(u)
+	s := u
 	if strings.HasPrefix(strings.ToLower(s), "smb://") {
 		s = s[len("smb://"):]
 	} else {
@@ -260,7 +260,7 @@ func parseUNC(unc string) Parsed {
 
 func canonicalizeSMB(url string) string {
 	// cheap canonicalization for display purposes
-	s := strings.TrimSpace(url)
+	s := url
 	s = strings.ReplaceAll(s, "\\", "/")
 	if !strings.HasPrefix(strings.ToLower(s), "smb://") {
 		s = "smb://" + strings.TrimPrefix(s, "//")
@@ -295,7 +295,7 @@ func errUnsupportedSMB() error {
 // parseSMBURL extracts host, share, segments from an smb-like path.
 // Accepts forms: smb://[user[:pass]@]host/share/..., //host/share/...
 func parseSMBURL(u string) (host, share string, segments []string, user, pass, domain string) {
-	s := strings.TrimSpace(u)
+	s := u
 	if strings.HasPrefix(s, "//") && !strings.HasPrefix(strings.ToLower(s), "smb://") {
 		s = "smb:" + s // normalize to smb://
 	}
