@@ -231,13 +231,9 @@ Before merging lifecycle changes:
 - `go vet -tags migrated_fynedo ./...`
 - `make test-race`
 - `make test-windows-compile`
-- `make test-darwin-compile`
-- CI additionally runs the full test suite natively on pinned `macos-15` as a
-  non-blocking smoke job. macOS is not a supported release target yet, so this
-  job remains diagnostic until it is consistently green and the GUI has been
-  checked manually. Fyne's Darwin tests cannot be cross-compiled correctly from
-  Linux without the macOS SDK; the local Make target only compile-checks the
-  production core packages for both `amd64` and `arm64` with CGO disabled.
+- Run `make test-darwin-compile` locally to compile the fileinfo, jobs, and
+  watcher packages for Darwin amd64 and arm64 with cgo disabled. Revisit
+  native macOS CI when work on macOS support begins.
 - Verify `Start -> Stop -> Start -> Stop` watcher cycle behavior
 - Verify shared source subscribe/unsubscribe behavior for multiple windows on
   the same path
