@@ -1,6 +1,10 @@
 package jobs
 
-import "testing"
+import (
+	"fmt"
+	"slices"
+	"testing"
+)
 
 func TestSummaryTracksActiveJobsAndFailureAcknowledgment(t *testing.T) {
 	m := &Manager{
@@ -46,5 +50,30 @@ func TestJobsWindowRowsAndSelectedDetails(t *testing.T) {
 	detail.Sources[0] = "changed"
 	if done.Sources[0] != "a" {
 		t.Fatal("details modified job sources")
+	}
+}
+
+func TestDeleteDetailsIncludeEverySuccessfulSource(t *testing.T) {
+	sources := make([]string, 12)
+	for i := range sources {
+		sources[i] = fmt.Sprintf("/tmp/item-%d", i)
+	}
+	for _, tt := range []struct {
+		status Status
+		done   int
+	}{
+		{StatusCompleted, 12},
+		{StatusFailed, 11},
+		{StatusCanceled, 11},
+		{StatusCanceled, 0},
+	} {
+		t.Run(fmt.Sprintf("%s/%d", tt.status, tt.done), func(t *testing.T) {
+			job := &Job{ID: 1, Type: TypeDelete, Status: tt.status, Sources: sources, DoneFiles: tt.done, TotalFiles: len(sources)}
+			m := &Manager{history: []*Job{job}}
+			detail, ok := m.DisplayDetails(job.ID, 10)
+			if !ok || !slices.Equal(detail.Sources, sources[:tt.done]) {
+				t.Fatalf("details sources = %v, want %v", detail.Sources, sources[:tt.done])
+			}
+		})
 	}
 }

@@ -128,6 +128,27 @@ func (m *Manager) EnqueueDelete(sources []string, mode DeleteMode) *Job {
 	return m.enqueueDelete(sources, mode)
 }
 
+// RecordRename appends a successful direct rename to the shared job history.
+func (m *Manager) RecordRename(oldPath, newPath string) {
+	if oldPath == newPath {
+		return
+	}
+	j := &Job{
+		ID:          atomic.AddInt64(&m.nextID, 1),
+		Type:        TypeRename,
+		Sources:     []string{oldPath},
+		renameTo:    newPath,
+		Status:      StatusCompleted,
+		TotalFiles:  1,
+		DoneFiles:   1,
+		CompletedAt: time.Now(),
+	}
+	m.mu.Lock()
+	m.addHistoryLocked(j)
+	m.mu.Unlock()
+	m.notify()
+}
+
 // EnqueueCopyWithResolver enqueues a copy job with an optional collision resolver.
 func (m *Manager) EnqueueCopyWithResolver(sources []string, destDir string, resolver ConflictResolver) *Job {
 	return m.EnqueueCopyWithOptions(sources, destDir, resolver, TransferOptions{})
@@ -300,11 +321,15 @@ func (m *Manager) DisplayDetails(id int64, sourceLimit int) (JobSnapshot, bool) 
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	row := j.rowLocked()
-	switch j.Status {
-	case StatusCompleted:
+	if j.Type == TypeDelete && isTerminalStatus(j.Status) {
+		// Delete stops at the first error, so DoneFiles counts a successful prefix.
+		n := min(len(j.Sources), j.DoneFiles)
+		row.Sources = append([]string(nil), j.Sources[:n]...)
+	} else if j.Status == StatusCompleted {
 		n := min(len(j.Sources), max(0, sourceLimit))
 		row.Sources = append([]string(nil), j.Sources[:n]...)
-	case StatusFailed:
+	}
+	if j.Status == StatusFailed {
 		row.Failures = append([]JobFailure(nil), j.Failures...)
 	}
 	return row, true

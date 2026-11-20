@@ -71,6 +71,7 @@ func (fm *FileManager) renameCurrentFile(target fileinfo.FileInfo, newName strin
 		return false
 	}
 
+	fm.jobManager().RecordRename(target.Path, newPath)
 	fm.applyRenameToList(target.Path, trimmed, newPath)
 	if target.IsDir {
 		fm.updateNavigationHistoryAfterRename(target.Path, newPath)

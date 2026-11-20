@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Jobs shows the full paths of successfully deleted or trashed items, even
+  when a batch fails or is canceled. Successful renames appear in Jobs history
+  with both the original and new full paths.
+
 ## 0.1.6 - 2026-11-20
 
 - Hidden files remain visible by default. **Breaking:** an explicit

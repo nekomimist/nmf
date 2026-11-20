@@ -60,7 +60,7 @@ func TestJobsWindowCompletedDetailsSummarizeTargets(t *testing.T) {
 	}
 }
 
-func TestJobsWindowCompletedDetailsDoesNotAddMoreLineAtLimit(t *testing.T) {
+func TestJobsWindowCompletedDeleteDetailsShowFullPaths(t *testing.T) {
 	sources := []string{
 		"/tmp/one.txt",
 		"/tmp/two.txt",
@@ -74,11 +74,36 @@ func TestJobsWindowCompletedDetailsDoesNotAddMoreLineAtLimit(t *testing.T) {
 	jw.updateDetails()
 	got := jw.details.Text
 
-	if !strings.Contains(got, "Targets:") || !strings.Contains(got, "one.txt") || !strings.Contains(got, "two.txt") {
-		t.Fatalf("completed details missing target names:\n%s", got)
+	if !strings.Contains(got, "Deleted:\n  - /tmp/one.txt\n  - /tmp/two.txt\n") {
+		t.Fatalf("delete details missing full paths:\n%s", got)
 	}
 	if strings.Contains(got, "... and") {
 		t.Fatalf("completed details should not show a remaining count:\n%s", got)
+	}
+}
+
+func TestJobsWindowCopiesRenamePaths(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	now := time.Date(2026, 8, 18, 3, 4, 5, 0, time.Local)
+	it := jobs.JobSnapshot{
+		ID:          10,
+		Type:        jobs.TypeRename,
+		Status:      jobs.StatusCompleted,
+		Sources:     []string{"smb://server/share/old.txt"},
+		RenameTo:    "smb://server/share/new.txt",
+		CompletedAt: now,
+	}
+	jw := NewJobsWindow(app, func(string, ...interface{}) {})
+	jw.items = []jobs.JobSnapshot{it}
+	jw.selectedIdx = 0
+	jw.updateDetails()
+	jw.CopySelectedJobText()
+
+	want := "[03:04:05] rename → new.txt  (completed)\n\n" +
+		"Job #10 rename\nStatus: completed\nFrom: smb://server/share/old.txt\nTo: smb://server/share/new.txt\n"
+	if got := app.Clipboard().Content(); got != want {
+		t.Fatalf("clipboard content = %q, want %q", got, want)
 	}
 }
 

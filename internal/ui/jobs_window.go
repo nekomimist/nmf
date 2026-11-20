@@ -184,6 +184,9 @@ func (jd *JobsWindow) updateDetails() {
 }
 
 func jobSummaryLine(it jobs.JobSnapshot) string {
+	if it.Type == jobs.TypeRename {
+		return fmt.Sprintf("[%s] rename → %s  (%s)", it.CompletedAt.Format("15:04:05"), fileinfo.BaseName(it.RenameTo), it.Status)
+	}
 	status := string(it.Status)
 	when := it.EnqueuedAt
 	if it.Status == jobs.StatusRunning && !it.StartedAt.IsZero() {
@@ -206,6 +209,14 @@ func jobSummaryLine(it jobs.JobSnapshot) string {
 
 func jobDetailsText(it jobs.JobSnapshot) string {
 	b := &strings.Builder{}
+	if it.Type == jobs.TypeRename {
+		fmt.Fprintf(b, "Job #%d rename\nStatus: %s\n", it.ID, it.Status)
+		if len(it.Sources) > 0 {
+			fmt.Fprintf(b, "From: %s\n", it.Sources[0])
+		}
+		fmt.Fprintf(b, "To: %s\n", it.RenameTo)
+		return b.String()
+	}
 	target := it.DestDir
 	if it.Type == jobs.TypeDelete {
 		target = string(it.DeleteMode)
@@ -217,7 +228,15 @@ func jobDetailsText(it jobs.JobSnapshot) string {
 	case jobs.StatusFailed:
 		writeJobFailures(b, it)
 	case jobs.StatusCompleted:
-		writeCompletedTargets(b, it.Sources, it.TotalFiles)
+		if it.Type != jobs.TypeDelete {
+			writeCompletedTargets(b, it.Sources, it.TotalFiles)
+		}
+	}
+	if it.Type == jobs.TypeDelete && len(it.Sources) > 0 {
+		fmt.Fprintln(b, "Deleted:")
+		for _, src := range it.Sources {
+			fmt.Fprintf(b, "  - %s\n", src)
+		}
 	}
 	return b.String()
 }

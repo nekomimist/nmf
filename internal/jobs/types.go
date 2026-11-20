@@ -14,6 +14,7 @@ const (
 	TypeMove    Type = "move"
 	TypeDelete  Type = "delete"
 	TypeExtract Type = "extract"
+	TypeRename  Type = "rename"
 )
 
 // DeleteMode controls whether a delete job uses OS trash or permanent removal.
@@ -35,13 +36,14 @@ const (
 	StatusCanceled  Status = "canceled"
 )
 
-// Job holds a single copy/move/delete job.
+// Job holds a queued operation or a completed rename.
 type Job struct {
 	// immutable fields
 	ID              int64
 	Type            Type
 	Sources         []string // absolute/native source paths
 	DestDir         string   // absolute/native destination directory
+	renameTo        string   // display path of the renamed item
 	DeleteMode      DeleteMode
 	Resolver        ConflictResolver
 	Options         TransferOptions
@@ -154,6 +156,7 @@ func (j *Job) rowLocked() JobSnapshot {
 		Message:             j.Message,
 		Error:               j.Error,
 		DestDir:             j.DestDir,
+		RenameTo:            j.renameTo,
 		DeleteMode:          j.DeleteMode,
 		FailureAcknowledged: j.FailureAcknowledged,
 		EnqueuedAt:          j.EnqueuedAt,
@@ -283,6 +286,7 @@ type JobSnapshot struct {
 	Status              Status
 	Sources             []string
 	DestDir             string
+	RenameTo            string
 	DeleteMode          DeleteMode
 	TotalFiles          int
 	DoneFiles           int

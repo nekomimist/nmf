@@ -1,9 +1,14 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
+	"fyne.io/fyne/v2/test"
+
 	"nmf/internal/fileinfo"
+	"nmf/internal/jobs"
 )
 
 func TestRenameInitialSelection(t *testing.T) {
@@ -38,5 +43,43 @@ func TestRenameInitialSelection(t *testing.T) {
 				t.Fatalf("renameInitialSelection() = %+v, want start=0 end=%d", got, tt.wantEnd)
 			}
 		})
+	}
+}
+
+func TestRenameCurrentFileRecordsCompletedHistory(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	dir := t.TempDir()
+	oldPath := filepath.Join(dir, "note.txt")
+	newPath := filepath.Join(dir, "Note.txt")
+	if err := os.WriteFile(oldPath, []byte("hello"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := &jobs.Manager{}
+	fm := &FileManager{window: app.NewWindow("Rename"), runtime: &ApplicationRuntime{jobManager: m}}
+	target := fileinfo.FileInfo{Name: "note.txt", Path: oldPath}
+	if !fm.renameCurrentFile(target, target.Name) || len(m.ListRows()) != 0 {
+		t.Fatal("same-name rename should succeed without creating history")
+	}
+	if fm.renameCurrentFile(target, "../invalid") || len(m.ListRows()) != 0 {
+		t.Fatal("failed rename should not create history")
+	}
+	if !fm.renameCurrentFile(target, "Note.txt") {
+		t.Fatal("case-only rename did not succeed")
+	}
+	rows := m.ListRows()
+	if len(rows) != 1 || rows[0].Type != jobs.TypeRename || rows[0].Status != jobs.StatusCompleted || rows[0].CompletedAt.IsZero() {
+		t.Fatalf("rename rows = %+v", rows)
+	}
+	detail, ok := m.DisplayDetails(rows[0].ID, 10)
+	if !ok || len(detail.Sources) != 1 || detail.Sources[0] != oldPath || detail.RenameTo != newPath {
+		t.Fatalf("rename details = %+v, want %q → %q", detail, oldPath, newPath)
+	}
+	if m.Summary() != (jobs.Summary{}) || m.Cancel(rows[0].ID) {
+		t.Fatal("completed rename should not count as active or be cancelable")
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 1 || entries[0].Name() != "Note.txt" {
+		t.Fatalf("directory entries after rename = %v, error = %v", entries, err)
 	}
 }
