@@ -25,9 +25,11 @@ type CompareResult struct {
 // CompareDialog presents compare options and a destination directory picker.
 type CompareDialog struct {
 	destinationPicker
-	sourcePath  string
-	sourceCount int
-	methodRadio *widget.RadioGroup
+	sourcePath           string
+	sourceFileCount      int
+	sourceDirectoryCount int
+	methodRadio          *widget.RadioGroup
+	compareButton        *widget.Button
 
 	debugPrint func(format string, args ...interface{})
 	keyManager *keymanager.KeyManager
@@ -44,18 +46,19 @@ type CompareDialog struct {
 // NewCompareDialog creates a new directory compare dialog.
 func NewCompareDialog(
 	sourcePath string,
-	sourceCount int,
+	sourceFileCount, sourceDirectoryCount int,
 	destCandidates []DestinationCandidate,
 	km *keymanager.KeyManager,
 	debugPrint func(format string, args ...interface{}),
 	matchers ...*search.Provider,
 ) *CompareDialog {
 	d := &CompareDialog{
-		destinationPicker: destinationPicker{allDest: destCandidates, openDest: destinationOpenMap(destCandidates)},
-		sourcePath:        sourcePath,
-		sourceCount:       sourceCount,
-		keyManager:        km,
-		debugPrint:        debugPrint,
+		destinationPicker:    destinationPicker{allDest: destCandidates, openDest: destinationOpenMap(destCandidates)},
+		sourcePath:           sourcePath,
+		sourceFileCount:      sourceFileCount,
+		sourceDirectoryCount: sourceDirectoryCount,
+		keyManager:           km,
+		debugPrint:           debugPrint,
 	}
 	if len(matchers) > 0 {
 		d.matchers = matchers[0]
@@ -74,11 +77,21 @@ func (d *CompareDialog) createWidgets() {
 			d.parent.Canvas().Focus(d.sink)
 		}
 	})
+	d.compareButton = dialogConfirmButton("Compare", d.AcceptSelection)
 	d.methodRadio = widget.NewRadioGroup(compareMethodLabels(), func(string) {
+		if d.hasSourceForMethod(d.selectedMethod()) {
+			d.compareButton.Enable()
+		} else {
+			d.compareButton.Disable()
+		}
 		d.focusSink()
 	})
 	d.methodRadio.Required = true
-	d.methodRadio.SetSelected(compareMethodLabel(filecompare.MissingOrNewer))
+	method := filecompare.MissingOrNewer
+	if d.sourceFileCount == 0 && d.sourceDirectoryCount > 0 {
+		method = filecompare.MissingSubdirectory
+	}
+	d.methodRadio.SetSelected(compareMethodLabel(method))
 }
 
 // ShowDialog renders and shows the compare dialog.
@@ -87,7 +100,7 @@ func (d *CompareDialog) ShowDialog(parent fyne.Window, onAccept func(CompareResu
 	d.onAccept = onAccept
 	dialogWidth := responsiveDialogWidth(parent, compareDialogWidth)
 
-	header := widget.NewLabel(fmt.Sprintf("Compare %d file(s)", d.sourceCount))
+	header := widget.NewLabel(fmt.Sprintf("Files: %d, Subdirectories: %d", d.sourceFileCount, d.sourceDirectoryCount))
 	header.TextStyle.Bold = true
 	fromLabel := widget.NewLabel("From: " + compactComparePath(d.sourcePath, compareSourcePathMaxRunesForWidth(dialogWidth)))
 	fromLabel.TextStyle.Monospace = true
@@ -95,7 +108,7 @@ func (d *CompareDialog) ShowDialog(parent fyne.Window, onAccept func(CompareResu
 	fromLine := container.NewGridWrap(fyne.NewSize(dialogWidth, fromLabel.MinSize().Height), fromLabel)
 	headerBox := container.NewVBox(header, fromLine)
 
-	methodLabel := widget.NewLabel("Mark files where:")
+	methodLabel := widget.NewLabel("Mark entries where:")
 	methodBox := container.NewVBox(methodLabel, d.methodRadio)
 
 	searchLabel := widget.NewLabel("Destination:")
@@ -110,7 +123,7 @@ func (d *CompareDialog) ShowDialog(parent fyne.Window, onAccept func(CompareResu
 		historyOrderSection(d.orderRadio),
 		searchSection,
 		fixed,
-		dialogButtonBar(dialogCancelButton("Cancel", d.CancelDialog), dialogConfirmButton("Compare", d.AcceptSelection)),
+		dialogButtonBar(dialogCancelButton("Cancel", d.CancelDialog), d.compareButton),
 	)
 
 	handler := keymanager.NewCompareDialogKeyHandler(d, d.debugPrint)
@@ -154,7 +167,7 @@ func (d *CompareDialog) moveMethod(delta int) {
 	if d.methodRadio == nil {
 		return
 	}
-	labels := compareMethodLabels()
+	labels := d.methodRadio.Options
 	current := 0
 	for i, label := range labels {
 		if label == d.methodRadio.Selected {
@@ -196,6 +209,10 @@ func (d *CompareDialog) SelectSizeContentEqual() {
 	d.selectMethod(filecompare.SizeContentEqual)
 }
 
+func (d *CompareDialog) SelectMissingSubdirectory() {
+	d.selectMethod(filecompare.MissingSubdirectory)
+}
+
 func (d *CompareDialog) selectMethod(method filecompare.Method) {
 	if d.methodRadio == nil {
 		return
@@ -213,7 +230,8 @@ func (d *CompareDialog) AcceptDirectPath() {
 }
 
 func (d *CompareDialog) accept(direct bool) {
-	if d.closed {
+	method := d.selectedMethod()
+	if d.closed || !d.hasSourceForMethod(method) {
 		return
 	}
 	d.closed = true
@@ -230,7 +248,6 @@ func (d *CompareDialog) accept(direct bool) {
 	} else if d.selectedPath != "" {
 		acceptedPath = d.selectedPath
 	}
-	method := d.selectedMethod()
 	deferDialogClose(d.keyManager, "compare.accept", func() {
 		d.notifyDialogClosed()
 		d.keyManager.RemoveHandler(d.kmToken)
@@ -286,9 +303,18 @@ func (d *CompareDialog) selectedMethod() filecompare.Method {
 		return filecompare.SizeTimeEqual
 	case compareMethodLabel(filecompare.SizeContentEqual):
 		return filecompare.SizeContentEqual
+	case compareMethodLabel(filecompare.MissingSubdirectory):
+		return filecompare.MissingSubdirectory
 	default:
 		return filecompare.MissingOrNewer
 	}
+}
+
+func (d *CompareDialog) hasSourceForMethod(method filecompare.Method) bool {
+	if method == filecompare.MissingSubdirectory {
+		return d.sourceDirectoryCount > 0
+	}
+	return d.sourceFileCount > 0
 }
 
 func compareMethodLabels() []string {
@@ -299,6 +325,7 @@ func compareMethodLabels() []string {
 		compareMethodLabel(filecompare.SizeEqual),
 		compareMethodLabel(filecompare.SizeTimeEqual),
 		compareMethodLabel(filecompare.SizeContentEqual),
+		compareMethodLabel(filecompare.MissingSubdirectory),
 	}
 }
 
@@ -314,6 +341,8 @@ func compareMethodLabel(method filecompare.Method) string {
 		return "File size and timestamp match (Alt+T)"
 	case filecompare.SizeContentEqual:
 		return "File size and content match (Alt+C)"
+	case filecompare.MissingSubdirectory:
+		return "Subdirectory missing in destination (Alt+D)"
 	default:
 		return "Missing in destination or newer (Alt+U)"
 	}

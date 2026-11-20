@@ -24,7 +24,7 @@ func TestCompareDialogOrderChangeKeepsMethodAndSinkFocus(t *testing.T) {
 	defer app.Quit()
 	window := app.NewWindow("compare")
 	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
-	d := NewCompareDialog("/src", 1, nil, km, func(string, ...interface{}) {})
+	d := NewCompareDialog("/src", 1, 0, nil, km, func(string, ...interface{}) {})
 	d.SelectSizeContentEqual()
 	d.ShowDialog(window, func(CompareResult) {})
 	defer d.dialog.Hide()
@@ -91,16 +91,62 @@ func TestCompareSourcePathMaxRunesForWidthExpandsWithWidth(t *testing.T) {
 	}
 }
 
-func TestCompareDialogMethodRadioRequiresSelection(t *testing.T) {
-	dialog := NewCompareDialog("/src", 1, nil, nil, func(string, ...interface{}) {})
+func TestCompareDialogDefaultMethod(t *testing.T) {
+	tests := []struct {
+		name    string
+		files   int
+		dirs    int
+		method  filecompare.Method
+		enabled bool
+	}{
+		{name: "files and subdirectories", files: 1, dirs: 1, method: filecompare.MissingOrNewer, enabled: true},
+		{name: "only subdirectories", dirs: 1, method: filecompare.MissingSubdirectory, enabled: true},
+		{name: "empty", method: filecompare.MissingOrNewer},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := NewCompareDialog("/src", tt.files, tt.dirs, nil, nil, func(string, ...interface{}) {})
+			if !d.methodRadio.Required {
+				t.Fatal("compare method radio group should require one selected option")
+			}
+			if got := d.selectedMethod(); got != tt.method {
+				t.Fatalf("default compare method = %q, want %q", got, tt.method)
+			}
+			if enabled := !d.compareButton.Disabled(); enabled != tt.enabled {
+				t.Fatalf("Compare button enabled = %t, want %t", enabled, tt.enabled)
+			}
+		})
+	}
+}
 
-	if dialog.methodRadio == nil {
-		t.Fatal("compare method radio group was not created")
+func TestCompareDialogBlocksConfirmationWithoutSourceEntries(t *testing.T) {
+	app := fynetest.NewApp()
+	defer app.Quit()
+	window := app.NewWindow("compare")
+	km := keymanager.NewKeyManager(nil)
+	destination := t.TempDir()
+	d := NewCompareDialog("/src", 0, 1, []DestinationCandidate{{Path: destination}}, km, func(string, ...interface{}) {})
+	var accepted CompareResult
+	d.ShowDialog(window, func(result CompareResult) { accepted = result })
+	defer d.CancelDialog()
+	handler := km.GetCurrentHandler()
+
+	handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyM}, keymanager.ModifierState{AltPressed: true})
+	if !d.compareButton.Disabled() {
+		t.Fatal("Compare button should be disabled for a file method with no files")
 	}
-	if !dialog.methodRadio.Required {
-		t.Fatal("compare method radio group should require one selected option")
+	for _, modifiers := range []keymanager.ModifierState{{}, {CtrlPressed: true}} {
+		if !handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyReturn}, modifiers) || d.closed || accepted.Destination != "" {
+			t.Fatalf("confirmation with ctrl=%t should be handled and leave the dialog open", modifiers.CtrlPressed)
+		}
 	}
-	if got := dialog.methodRadio.Selected; got != compareMethodLabel(filecompare.MissingOrNewer) {
-		t.Fatalf("default compare method = %q, want %q", got, compareMethodLabel(filecompare.MissingOrNewer))
+
+	handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyD}, keymanager.ModifierState{AltPressed: true})
+	if d.compareButton.Disabled() {
+		t.Fatal("Compare button should be enabled for a subdirectory method with subdirectories")
+	}
+	handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyReturn}, keymanager.ModifierState{})
+	if accepted != (CompareResult{Destination: destination, Method: filecompare.MissingSubdirectory}) {
+		t.Fatalf("accepted = %+v, want subdirectory comparison to %s", accepted, destination)
 	}
 }

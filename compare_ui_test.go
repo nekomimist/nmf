@@ -5,12 +5,38 @@ import (
 	"testing"
 	"time"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
 
+	"nmf/internal/browser"
 	"nmf/internal/config"
+	"nmf/internal/fileinfo"
+	"nmf/internal/keymanager"
 	customtheme "nmf/internal/theme"
 	"nmf/internal/ui"
 )
+
+func TestShowCompareDialogWithEmptySource(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	path := t.TempDir()
+	fm := &FileManager{
+		browser:    browser.New(path, config.SortConfig{}, true),
+		state:      &config.State{},
+		window:     app.NewWindow("compare"),
+		keyManager: keymanager.NewKeyManager(nil),
+	}
+	fm.browserModel().ReplaceDirectory(path, []fileinfo.FileInfo{
+		{Name: "..", Path: fileinfo.ParentPath(path), IsDir: true},
+	}, fileinfo.StorageInfo{}, false, config.SortConfig{})
+
+	fm.ShowCompareDialog()
+	handler, ok := fm.keyManager.GetCurrentHandler().(*keymanager.CompareDialogKeyHandler)
+	if !ok {
+		t.Fatal("empty source should still open the comparison dialog")
+	}
+	handler.OnKeyActivated(&fyne.KeyEvent{Name: fyne.KeyEscape}, keymanager.ModifierState{})
+}
 
 func TestCancelCompareReleasesInputAndCancelsWork(t *testing.T) {
 	app := test.NewApp()

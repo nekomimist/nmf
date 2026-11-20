@@ -5,6 +5,8 @@
 - Jobs shows the full paths of successfully deleted or trashed items, even
   when a batch fails or is canceled. Successful renames appear in Jobs history
   with both the original and new full paths.
+- Compare Directories can mark subdirectories missing from the destination.
+  The dialog also opens when the current directory has no files.
 
 ## 0.1.6 - 2026-11-20
 

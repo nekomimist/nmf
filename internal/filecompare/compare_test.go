@@ -46,9 +46,9 @@ func TestCompareDirectFilesMethods(t *testing.T) {
 			writeFile(t, srcDir, "different-size.txt", "long", base)
 			writeFile(t, dstDir, "different-size.txt", "x", base)
 
-			got, err := CompareDirectFiles(readFileInfos(t, srcDir), dstDir, tt.method)
+			got, err := CompareDirectEntriesContext(t.Context(), readFileInfos(t, srcDir), dstDir, tt.method)
 			if err != nil {
-				t.Fatalf("CompareDirectFiles returned error: %v", err)
+				t.Fatalf("compare returned error: %v", err)
 			}
 			if gotNames := fileNames(got.Matched); !sameNames(gotNames, tt.want) {
 				t.Fatalf("matched = %#v, want %#v", gotNames, tt.want)
@@ -68,15 +68,46 @@ func TestCompareDirectFilesIgnoresDirectories(t *testing.T) {
 	}
 	writeFile(t, srcDir, "file.txt", "source", time.Unix(2, 0))
 
-	got, err := CompareDirectFiles(readFileInfos(t, srcDir), dstDir, Missing)
+	got, err := CompareDirectEntriesContext(t.Context(), readFileInfos(t, srcDir), dstDir, Missing)
 	if err != nil {
-		t.Fatalf("CompareDirectFiles returned error: %v", err)
+		t.Fatalf("compare returned error: %v", err)
 	}
 	if gotNames := fileNames(got.Matched); !sameNames(gotNames, []string{"file.txt"}) {
 		t.Fatalf("matched = %#v, want only file.txt", gotNames)
 	}
 	if got.SourceCount != 1 || got.TargetCount != 0 {
 		t.Fatalf("counts = source %d target %d, want 1/0", got.SourceCount, got.TargetCount)
+	}
+}
+
+func TestCompareMissingSubdirectories(t *testing.T) {
+	source, target := t.TempDir(), t.TempDir()
+	for _, path := range []string{
+		filepath.Join(source, "same", "source-child"),
+		filepath.Join(source, "missing"),
+		filepath.Join(source, "file-collision"),
+		filepath.Join(target, "same", "target-child"),
+		filepath.Join(target, "other", "missing"),
+	} {
+		if err := os.MkdirAll(path, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, source, "source-file", "source", time.Now())
+	writeFile(t, target, "file-collision", "target", time.Now())
+	entries := append(readFileInfos(t, source),
+		fileinfo.FileInfo{Name: "..", IsDir: true},
+		fileinfo.FileInfo{Name: "deleted", IsDir: true, Status: fileinfo.StatusDeleted},
+	)
+	got, err := CompareDirectEntriesContext(t.Context(), entries, target, MissingSubdirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if names := fileNames(got.Matched); !sameNames(names, []string{"missing", "file-collision"}) {
+		t.Fatalf("matched = %v, want missing and file-collision", names)
+	}
+	if got.SourceCount != 3 || got.TargetCount != 2 || got.ErrorCount != 0 {
+		t.Fatalf("unexpected comparison counts: %+v", got)
 	}
 }
 
@@ -136,7 +167,7 @@ func sameNames(got, want []string) bool {
 func TestCompareCanceledBeforeListing(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	_, err := CompareDirectFilesContext(ctx, nil, filepath.Join(t.TempDir(), "missing"), Missing)
+	_, err := CompareDirectEntriesContext(ctx, nil, filepath.Join(t.TempDir(), "missing"), Missing)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("compare error = %v, want canceled", err)
 	}
@@ -196,7 +227,7 @@ func TestMissingComparisonReportsUnreadableTargetMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(dest, 0700) })
-	got, err := CompareDirectFiles([]fileinfo.FileInfo{{Name: "file"}}, dest, Missing)
+	got, err := CompareDirectEntriesContext(t.Context(), []fileinfo.FileInfo{{Name: "file"}}, dest, Missing)
 	if err != nil || len(got.Matched) != 0 || got.ErrorCount != 1 || !errors.Is(got.FirstError, os.ErrPermission) {
 		t.Fatalf("unexpected comparison: %+v, %v", got, err)
 	}

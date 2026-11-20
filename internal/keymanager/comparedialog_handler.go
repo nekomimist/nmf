@@ -31,6 +31,7 @@ type CompareDialogInterface interface {
 	SelectSizeEqual()
 	SelectSizeTimeEqual()
 	SelectSizeContentEqual()
+	SelectMissingSubdirectory()
 }
 
 // CompareDialogKeyHandler handles keyboard events for the compare dialog.
@@ -47,6 +48,7 @@ func NewCompareDialogKeyHandler(d CompareDialogInterface, debugPrint func(format
 		{"A-S", d.SelectSizeEqual},
 		{"A-T", d.SelectSizeTimeEqual},
 		{"A-C", d.SelectSizeContentEqual},
+		{"A-D", d.SelectMissingSubdirectory},
 
 		{"C-H", d.BackspaceSearch},
 		{"C-R", d.ToggleHistoryOrder},

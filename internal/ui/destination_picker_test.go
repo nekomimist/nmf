@@ -21,7 +21,7 @@ func TestDestinationDialogsToggleHistoryOrder(t *testing.T) {
 			original := slices.Clone(candidates)
 			var picker *destinationPicker
 			if op == "compare" {
-				d := NewCompareDialog("/src", 1, candidates, nil, func(string, ...interface{}) {})
+				d := NewCompareDialog("/src", 1, 0, candidates, nil, func(string, ...interface{}) {})
 				picker = &d.destinationPicker
 			} else {
 				d := NewCopyMoveDialog(op, []string{"file.txt"}, candidates, false, nil, func(string, ...interface{}) {})

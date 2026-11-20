@@ -14,31 +14,33 @@ type fakeCompareDialog struct {
 	size           int
 	sizeTime       int
 	sizeContent    int
+	subdirectory   int
 }
 
-func (f *fakeCompareDialog) MoveUp()                   {}
-func (f *fakeCompareDialog) MoveDown()                 {}
-func (f *fakeCompareDialog) MoveToTop()                {}
-func (f *fakeCompareDialog) MoveToBottom()             {}
-func (f *fakeCompareDialog) ClearSearch()              {}
-func (f *fakeCompareDialog) AppendToSearch(string)     {}
-func (f *fakeCompareDialog) BackspaceSearch()          {}
-func (f *fakeCompareDialog) CopySelectedPathToSearch() {}
-func (f *fakeCompareDialog) ScrollSelectedRight()      {}
-func (f *fakeCompareDialog) ResetHorizontalScroll()    {}
-func (f *fakeCompareDialog) ToggleHistoryOrder()       { f.order++ }
-func (f *fakeCompareDialog) SelectCurrentItem()        {}
-func (f *fakeCompareDialog) AcceptSelection()          {}
-func (f *fakeCompareDialog) AcceptDirectPath()         {}
-func (f *fakeCompareDialog) CancelDialog()             {}
-func (f *fakeCompareDialog) NextMethod()               {}
-func (f *fakeCompareDialog) PreviousMethod()           {}
-func (f *fakeCompareDialog) SelectMissingOrNewer()     { f.missingOrNewer++ }
-func (f *fakeCompareDialog) SelectMissing()            { f.missing++ }
-func (f *fakeCompareDialog) SelectNewer()              { f.newer++ }
-func (f *fakeCompareDialog) SelectSizeEqual()          { f.size++ }
-func (f *fakeCompareDialog) SelectSizeTimeEqual()      { f.sizeTime++ }
-func (f *fakeCompareDialog) SelectSizeContentEqual()   { f.sizeContent++ }
+func (f *fakeCompareDialog) MoveUp()                    {}
+func (f *fakeCompareDialog) MoveDown()                  {}
+func (f *fakeCompareDialog) MoveToTop()                 {}
+func (f *fakeCompareDialog) MoveToBottom()              {}
+func (f *fakeCompareDialog) ClearSearch()               {}
+func (f *fakeCompareDialog) AppendToSearch(string)      {}
+func (f *fakeCompareDialog) BackspaceSearch()           {}
+func (f *fakeCompareDialog) CopySelectedPathToSearch()  {}
+func (f *fakeCompareDialog) ScrollSelectedRight()       {}
+func (f *fakeCompareDialog) ResetHorizontalScroll()     {}
+func (f *fakeCompareDialog) ToggleHistoryOrder()        { f.order++ }
+func (f *fakeCompareDialog) SelectCurrentItem()         {}
+func (f *fakeCompareDialog) AcceptSelection()           {}
+func (f *fakeCompareDialog) AcceptDirectPath()          {}
+func (f *fakeCompareDialog) CancelDialog()              {}
+func (f *fakeCompareDialog) NextMethod()                {}
+func (f *fakeCompareDialog) PreviousMethod()            {}
+func (f *fakeCompareDialog) SelectMissingOrNewer()      { f.missingOrNewer++ }
+func (f *fakeCompareDialog) SelectMissing()             { f.missing++ }
+func (f *fakeCompareDialog) SelectNewer()               { f.newer++ }
+func (f *fakeCompareDialog) SelectSizeEqual()           { f.size++ }
+func (f *fakeCompareDialog) SelectSizeTimeEqual()       { f.sizeTime++ }
+func (f *fakeCompareDialog) SelectSizeContentEqual()    { f.sizeContent++ }
+func (f *fakeCompareDialog) SelectMissingSubdirectory() { f.subdirectory++ }
 
 func TestCompareDialogHandlerCtrlRTogglesHistoryOrder(t *testing.T) {
 	dialog := &fakeCompareDialog{}
@@ -70,6 +72,7 @@ func TestCompareDialogAltShortcutsSelectMethods(t *testing.T) {
 		{name: "size", key: fyne.KeyS, want: func() int { return dialog.size }},
 		{name: "size time", key: fyne.KeyT, want: func() int { return dialog.sizeTime }},
 		{name: "size content", key: fyne.KeyC, want: func() int { return dialog.sizeContent }},
+		{name: "missing subdirectory", key: fyne.KeyD, want: func() int { return dialog.subdirectory }},
 	}
 	for _, tt := range tests {
 		before := tt.want()

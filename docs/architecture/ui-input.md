@@ -458,7 +458,12 @@ Compare dialog:
 
 - `S-C` opens a direct-directory compare dialog through `compare.show`.
 - The source is the focused File Manager's current directory. Opening the dialog
-  clears any active file filter so all direct files are compared.
+  clears any active file filter. The dialog opens even when the source is empty.
+- `Alt+D` selects the subdirectory comparison. It marks direct subdirectories
+  that have no same-named subdirectory in the destination. When the source has
+  subdirectories and no files, this method is selected by default.
+- The Compare button and keyboard confirmation are disabled when the selected
+  method has no source entries.
 - The destination picker reuses the same history/open-window candidate model as
   Copy/Move, and the accepted comparison replaces the current mark set.
 

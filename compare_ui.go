@@ -13,42 +13,35 @@ import (
 
 // ShowCompareDialog opens the direct-directory comparison dialog.
 func (fm *FileManager) ShowCompareDialog() {
-	sourceFiles := fm.compareSourceFiles()
-	if len(sourceFiles) == 0 {
-		debugPrint("FileManager: No source files available for compare path=%s", fm.GetCurrentPath())
-		fm.ShowMessageDialog("Compare Directories", "There are no files to compare in the current directory.")
-		return
+	if fm.browserModel().Filter() != nil {
+		fm.ClearFilter()
+	}
+	sourcePath := fm.GetCurrentPath()
+	sourceEntries := fm.browserModel().SourceFiles()
+	fileCount, directoryCount := 0, 0
+	for _, entry := range sourceEntries {
+		if !fileinfo.IsFileOperationTarget(entry) {
+			continue
+		}
+		if entry.IsDir {
+			directoryCount++
+		} else {
+			fileCount++
+		}
 	}
 
 	dest := fm.buildDestinationCandidates()
-	dlg := ui.NewCompareDialog(fm.GetCurrentPath(), len(sourceFiles), dest, fm.keyManager, debugPrint, fm.searchMatchers)
+	dlg := ui.NewCompareDialog(sourcePath, fileCount, directoryCount, dest, fm.keyManager, debugPrint, fm.searchMatchers)
 	openDest := destinationCandidateOpenMap(dest)
 	dlg.SetOnSelectedPathChanged(func(path string) {
 		updateOpenPathHighlights(fm, path, openDest, dlg.SetOwnerHighlighted)
 	})
-	sourcePath := fm.GetCurrentPath()
 	dlg.ShowDialog(fm.window, func(result ui.CompareResult) {
-		fm.runCompare(sourcePath, sourceFiles, result)
+		fm.runCompare(sourcePath, sourceEntries, result)
 	})
 }
 
-func (fm *FileManager) compareSourceFiles() []fileinfo.FileInfo {
-	if fm.browserModel().Filter() != nil {
-		fm.ClearFilter()
-	}
-
-	source := fm.browserModel().SourceFiles()
-	files := make([]fileinfo.FileInfo, 0, len(source))
-	for _, fi := range source {
-		if fi.Name == ".." || fi.IsDir || fi.Status == fileinfo.StatusDeleted {
-			continue
-		}
-		files = append(files, fi)
-	}
-	return files
-}
-
-func (fm *FileManager) runCompare(sourcePath string, sourceFiles []fileinfo.FileInfo, result ui.CompareResult) {
+func (fm *FileManager) runCompare(sourcePath string, sourceEntries []fileinfo.FileInfo, result ui.CompareResult) {
 	if result.Destination == "" {
 		fm.FocusFileList()
 		return
@@ -69,7 +62,7 @@ func (fm *FileManager) runCompare(sourcePath string, sourceFiles []fileinfo.File
 		fm.FocusFileList()
 	})
 	go func() {
-		compareResult, err := filecompare.CompareDirectFilesContext(ctx, sourceFiles, result.Destination, result.Method)
+		compareResult, err := filecompare.CompareDirectEntriesContext(ctx, sourceEntries, result.Destination, result.Method)
 		fyne.Do(func() {
 			if fm.isWindowClosed() || generation != fm.compareGeneration || fm.compareCancel == nil {
 				return
@@ -82,13 +75,17 @@ func (fm *FileManager) runCompare(sourcePath string, sourceFiles []fileinfo.File
 				return
 			}
 			marked := fm.applyCompareMarks(compareResult.Matched)
-			debugPrint("FileManager: Compare done source=%s dest=%s method=%s sourceFiles=%d targetFiles=%d matched=%d errors=%d",
+			debugPrint("FileManager: Compare done source=%s dest=%s method=%s sourceEntries=%d targetEntries=%d matched=%d errors=%d",
 				sourcePath, result.Destination, result.Method, compareResult.SourceCount, compareResult.TargetCount, marked, compareResult.ErrorCount)
-			if compareResult.ErrorCount > 0 {
-				fm.ShowMessageDialog("Compare Directories", fmt.Sprintf("Marked %d file(s). %d file(s) could not be compared: %v", marked, compareResult.ErrorCount, compareResult.FirstError))
-			} else {
-				fm.ShowMessageDialog("Compare Directories", fmt.Sprintf("Marked %d file(s).", marked))
+			entryKind := "file(s)"
+			if result.Method == filecompare.MissingSubdirectory {
+				entryKind = "subdirectory entries"
 			}
+			message := fmt.Sprintf("Marked %d %s.", marked, entryKind)
+			if compareResult.ErrorCount > 0 {
+				message += fmt.Sprintf(" %d %s could not be compared: %v", compareResult.ErrorCount, entryKind, compareResult.FirstError)
+			}
+			fm.ShowMessageDialog("Compare Directories", message)
 			fm.FocusFileList()
 		})
 	}()

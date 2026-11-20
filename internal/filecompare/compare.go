@@ -9,19 +9,20 @@ import (
 	"nmf/internal/fileinfo"
 )
 
-// Method identifies how source files are matched against destination files.
+// Method identifies which source entries to mark after comparing directories.
 type Method string
 
 const (
-	MissingOrNewer   Method = "missing_or_newer"
-	Missing          Method = "missing"
-	Newer            Method = "newer"
-	SizeEqual        Method = "size_equal"
-	SizeTimeEqual    Method = "size_time_equal"
-	SizeContentEqual Method = "size_content_equal"
+	MissingOrNewer      Method = "missing_or_newer"
+	Missing             Method = "missing"
+	Newer               Method = "newer"
+	SizeEqual           Method = "size_equal"
+	SizeTimeEqual       Method = "size_time_equal"
+	SizeContentEqual    Method = "size_content_equal"
+	MissingSubdirectory Method = "missing_subdirectory"
 )
 
-// Result describes the source files matched by a comparison.
+// Result describes the source entries matched by a comparison.
 type Result struct {
 	Matched     []fileinfo.FileInfo
 	SourceCount int
@@ -30,14 +31,9 @@ type Result struct {
 	FirstError  error
 }
 
-// CompareDirectFiles compares non-directory source files against targetDir's
-// non-directory direct children by exact file name.
-func CompareDirectFiles(sourceFiles []fileinfo.FileInfo, targetDir string, method Method) (Result, error) {
-	return CompareDirectFilesContext(context.Background(), sourceFiles, targetDir, method)
-}
-
-// CompareDirectFilesContext compares files until completion or cancellation.
-func CompareDirectFilesContext(ctx context.Context, sourceFiles []fileinfo.FileInfo, targetDir string, method Method) (Result, error) {
+// CompareDirectEntriesContext compares direct children by exact name.
+// MissingSubdirectory compares directories. The other methods compare files.
+func CompareDirectEntriesContext(ctx context.Context, sourceEntries []fileinfo.FileInfo, targetDir string, method Method) (Result, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -46,6 +42,7 @@ func CompareDirectFilesContext(ctx context.Context, sourceFiles []fileinfo.FileI
 		return Result{}, err
 	}
 
+	directories := method == MissingSubdirectory
 	targets := make(map[string]fileinfo.FileInfo, len(targetEntries))
 	targetErrors := make(map[string]error)
 	for _, entry := range targetEntries {
@@ -57,7 +54,7 @@ func CompareDirectFilesContext(ctx context.Context, sourceFiles []fileinfo.FileI
 			targetErrors[entry.Name()] = err
 			continue
 		}
-		if !isComparableFile(fi) {
+		if !fileinfo.IsFileOperationTarget(fi) || fi.IsDir != directories {
 			continue
 		}
 		targets[fi.Name] = fi
@@ -65,11 +62,11 @@ func CompareDirectFilesContext(ctx context.Context, sourceFiles []fileinfo.FileI
 
 	result := Result{TargetCount: len(targets)}
 	cmp := comparison{ctx: ctx}
-	for _, source := range sourceFiles {
+	for _, source := range sourceEntries {
 		if err := ctx.Err(); err != nil {
 			return Result{}, err
 		}
-		if !isComparableFile(source) {
+		if !fileinfo.IsFileOperationTarget(source) || source.IsDir != directories {
 			continue
 		}
 		result.SourceCount++
@@ -96,10 +93,6 @@ func CompareDirectFilesContext(ctx context.Context, sourceFiles []fileinfo.FileI
 	return result, nil
 }
 
-func isComparableFile(fi fileinfo.FileInfo) bool {
-	return fi.Name != ".." && !fi.IsDir && fi.Status != fileinfo.StatusDeleted
-}
-
 type comparison struct {
 	ctx    context.Context
 	buffer []byte // allocated only for content comparisons, reused across file pairs
@@ -109,7 +102,7 @@ func (c *comparison) matches(source, target fileinfo.FileInfo, exists bool, meth
 	switch method {
 	case MissingOrNewer:
 		return !exists || source.Modified.After(target.Modified), nil
-	case Missing:
+	case Missing, MissingSubdirectory:
 		return !exists, nil
 	case Newer:
 		return exists && source.Modified.After(target.Modified), nil
