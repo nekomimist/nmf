@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.6 - 2026-11-20
+
 - Hidden files remain visible by default. **Breaking:** an explicit
   `ui.showHiddenFiles: false` now hides dotfiles and entries with the Windows
   hidden attribute. Remove that setting or set it to `true` to keep them visible.
