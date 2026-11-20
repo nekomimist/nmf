@@ -326,9 +326,8 @@ default even when `value` is set.
 
 NMF persists frequently-changing runtime state — remembered cursor positions,
 navigation history (including saved History Jump paths), file filter history
-plus the currently applied filter, and the last-applied sort — to a separate
-`state.json` file, not to `config.json`. `config.json` is never written to by
-the app.
+plus the currently applied filter, creation name histories, and the last-applied
+sort — to a separate `state.json` file. The app treats `config.json` as read-only.
 
 `state.json` location:
 
@@ -359,6 +358,8 @@ Shape of `state.json`:
     "current": null,
     "enabled": false
   },
+  "createDirectoryHistory": ["notes"],
+  "createTextFileHistory": ["todo.txt"],
   "sort": {
     "sortBy": "name",
     "sortOrder": "asc",
@@ -391,6 +392,9 @@ Shape of `state.json`:
   `lastUsed`, and `useCount`; text after `;;` in a pattern is a searchable
   comment, and only the text before `;;` is used for matching. The entry
   limit is `ui.fileFilter.maxEntries` (in `config.json`).
+- `createDirectoryHistory` and `createTextFileHistory` each hold up to 20
+  distinct names successfully created from the corresponding dialog, newest
+  first. Empty histories are omitted.
 - `sort`: the sort last applied through the Sort dialog, omitted until a sort
   has been applied. While present, it overrides `ui.sort` from `config.json`;
   `config.json`'s `ui.sort` is only used as the initial default before any
@@ -400,7 +404,7 @@ Shape of `state.json`:
 - navigation history paths are normalized when recorded or shown; SMB/UNC forms
   are stored as canonical `smb://host/share/...` paths.
 
-`config.json` keeps only the entry-count knobs for these features
+`config.json` keeps the configurable entry limits
 (`ui.cursorMemory.maxEntries`, `ui.navigationHistory.maxEntries`,
 `ui.fileFilter.maxEntries`) plus `ui.sort`, used as described above.
 

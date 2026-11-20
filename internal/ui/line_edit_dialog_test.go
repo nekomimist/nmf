@@ -276,6 +276,56 @@ func TestLineEditDialogAppliesInitialSelection(t *testing.T) {
 	}
 }
 
+func TestLineEditDialogHistoryKeys(t *testing.T) {
+	app := test.NewTempApp(t)
+	w := app.NewWindow("History")
+	defer w.Close()
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	d := NewLineEditDialog(LineEditDialogOptions{
+		History: []string{"最新", "older"},
+	}, km)
+	d.ShowDialog(w, nil)
+	defer d.CancelDialog()
+	test.Type(d.entry, "draft")
+	press := func(key fyne.KeyName, ctrl bool) {
+		ev := &fyne.KeyEvent{Name: key}
+		d.entry.KeyDown(ev)
+		if ctrl {
+			d.entry.TypedShortcut(&desktop.CustomShortcut{KeyName: key, Modifier: fyne.KeyModifierControl})
+		} else {
+			d.entry.TypedKey(ev)
+		}
+		d.entry.KeyUp(ev)
+	}
+	check := func(want string, cursor int) {
+		t.Helper()
+		if d.entry.Text != want || d.entry.CursorColumn != cursor {
+			t.Fatalf("name = %q at %d, want %q at %d", d.entry.Text, d.entry.CursorColumn, want, cursor)
+		}
+	}
+	press(fyne.KeyUp, false)
+	check("最新", 2)
+	press(fyne.KeyP, true)
+	check("older", 5)
+	press(fyne.KeyUp, false)
+	check("older", 5)
+	press(fyne.KeyN, true)
+	check("最新", 2)
+	press(fyne.KeyDown, false)
+	check("draft", 5)
+	press(fyne.KeyDown, false)
+	check("draft", 5)
+	d.CancelDialog()
+
+	d = NewLineEditDialog(LineEditDialogOptions{InitialText: "draft", History: []string{"older"}}, km, []config.KeyBindingEntry{
+		{Target: keymanager.KeyBindingTargetLineEdit, Key: "C-P", Command: keymanager.CommandLineEditCursorStart},
+	})
+	d.ShowDialog(w, nil)
+	defer d.CancelDialog()
+	press(fyne.KeyP, true)
+	check("draft", 0)
+}
+
 func TestLineEditEntryReadlineShortcutKeys(t *testing.T) {
 	entry := NewLineEditEntry(nil)
 	entry.SetText("abcd")

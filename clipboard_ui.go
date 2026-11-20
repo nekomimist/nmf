@@ -4,7 +4,6 @@ import (
 	"fyne.io/fyne/v2"
 
 	"nmf/internal/fileinfo"
-	"nmf/internal/ui"
 )
 
 // SetClipboardText writes text to the application clipboard.
@@ -26,14 +25,7 @@ func (fm *FileManager) SetClipboardText(text string) bool {
 
 // ShowClipboardTextFileDialog asks for a file name and creates it from clipboard text.
 func (fm *FileManager) ShowClipboardTextFileDialog() {
-	dlg := ui.NewLineEditDialog(ui.LineEditDialogOptions{
-		Title:       "Create Text File",
-		Prompt:      "File name:",
-		ConfirmText: "Create",
-	}, fm.keyManager, fm.config.UI.KeyBindings)
-	dlg.ShowDialog(fm.window, func(name string) bool {
-		return fm.CreateClipboardTextFile(name)
-	})
+	fm.showCreateNameDialog("Create Text File", "File name:", &fm.state.CreateTextFileHistory, fm.CreateClipboardTextFile)
 }
 
 // CreateClipboardTextFile creates a local text file from the current clipboard text.

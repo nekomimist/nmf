@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image/color"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -40,6 +41,7 @@ type LineEditDialogOptions struct {
 	CurrentText      string
 	InitialText      string
 	InitialSelection *LineEditSelection
+	History          []string // Newest first. Empty history adds no bindings.
 	ConfirmText      string
 	Width            float32
 	Height           float32
@@ -59,6 +61,8 @@ type LineEditDialog struct {
 	dialog     dialog.Dialog
 	closed     bool
 	onAccept   func(string) bool
+	historyPos int // 0 is the draft and 1 is the newest history entry.
+	draft      string
 }
 
 // NewLineEditDialog creates a configured one-line edit dialog.
@@ -75,6 +79,7 @@ func NewLineEditDialog(opts LineEditDialogOptions, km *keymanager.KeyManager, co
 	if opts.WidthRatio <= 0 {
 		opts.WidthRatio = responsiveDialogWidthRatio
 	}
+	opts.History = slices.Clone(opts.History)
 
 	d := &LineEditDialog{
 		opts:       opts,
@@ -116,6 +121,9 @@ func (d *LineEditDialog) ShowDialog(parent fyne.Window, onAccept func(string) bo
 	content.Add(dialogButtonRow("Cancel", d.CancelDialog, d.opts.ConfirmText, d.AcceptEdit))
 
 	handler := newLineEditKeyHandler(d, d.keyManager, d.bindings)
+	if len(d.opts.History) > 0 {
+		handler.SetHistoryActions(func() { d.moveHistory(1) }, func() { d.moveHistory(-1) })
+	}
 	if d.opts.SensitiveInput {
 		d.kmToken = d.keyManager.PushSensitiveHandler(handler)
 	} else {
@@ -179,6 +187,24 @@ func (d *LineEditDialog) close() {
 		}
 		unfocusIfDialogOwned(d.parent, d.entry)
 	})
+}
+
+func (d *LineEditDialog) moveHistory(step int) {
+	pos := d.historyPos + step
+	if pos < 0 || pos > len(d.opts.History) {
+		return
+	}
+	if d.historyPos == 0 {
+		d.draft = d.entry.Text
+	}
+	d.historyPos = pos
+	text := d.draft
+	if pos > 0 {
+		text = d.opts.History[pos-1]
+	}
+	d.focusEntry()
+	d.entry.SetText(text)
+	d.entry.MoveCursorEnd()
 }
 
 func (d *LineEditDialog) MoveCursorStart() {

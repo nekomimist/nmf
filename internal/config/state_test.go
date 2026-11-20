@@ -2,8 +2,10 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -285,6 +287,51 @@ func TestStateManagerSaveAsyncAndLoadRoundTrip(t *testing.T) {
 	}
 	if loaded.Sort == nil || loaded.Sort.SortBy != "size" || loaded.Sort.SortOrder != "desc" {
 		t.Fatalf("sort = %#v, want sortBy size/desc", loaded.Sort)
+	}
+}
+
+func TestCreateNameHistoryRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "state.json")
+	if err := os.WriteFile(statePath, []byte(`{"sort":{"sortBy":"name"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sm := newTestStateManager(t, statePath)
+	state, err := sm.Load(filepath.Join(dir, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.CreateDirectoryHistory) != 0 || len(state.CreateTextFileHistory) != 0 {
+		t.Fatal("state without creation history should start with empty histories")
+	}
+	for i := 1; i <= 21; i++ {
+		state.CreateDirectoryHistory.Record(fmt.Sprintf("directory-%02d", i))
+	}
+	state.CreateDirectoryHistory.Record(" directory-10 ")
+	state.CreateTextFileHistory.Record("メモ.txt")
+	if err := sm.SaveAsync(state); err != nil {
+		t.Fatal(err)
+	}
+	state.CreateDirectoryHistory[0] = "mutated after snapshot"
+	state.CreateTextFileHistory[0] = "mutated after snapshot"
+	if err := sm.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := sm.Load(filepath.Join(dir, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDirectories := []string{"directory-10"}
+	for i := 21; i >= 2; i-- {
+		if i != 10 {
+			wantDirectories = append(wantDirectories, fmt.Sprintf("directory-%02d", i))
+		}
+	}
+	if !slices.Equal(reloaded.CreateDirectoryHistory, wantDirectories) {
+		t.Fatalf("directory names = %q, want %q", reloaded.CreateDirectoryHistory, wantDirectories)
+	}
+	if !slices.Equal(reloaded.CreateTextFileHistory, []string{"メモ.txt"}) {
+		t.Fatalf("text file names = %q, want メモ.txt", reloaded.CreateTextFileHistory)
 	}
 }
 

@@ -7,6 +7,8 @@
   with both the original and new full paths.
 - Compare Directories can mark subdirectories missing from the destination.
   The dialog also opens when the current directory has no files.
+- Create Directory and Create Text File remember their last 20 names across
+  restarts. Use Up/Down or Ctrl+P/Ctrl+N to recall a name.
 
 ## 0.1.6 - 2026-11-20
 

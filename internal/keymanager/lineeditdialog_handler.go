@@ -43,6 +43,7 @@ type LineEditDialogKeyHandler struct {
 	dialog     LineEditDialogInterface
 	bindings   []keyBinding
 	commands   map[string]func()
+	history    *dialogKeyHandler
 	debugPrint func(format string, args ...interface{})
 	onHelp     func()
 }
@@ -66,6 +67,16 @@ func NewLineEditDialogKeyHandler(d LineEditDialogInterface, debugPrint func(form
 
 // SetHelpAction supplies the host's input-owner transition and help presenter.
 func (h *LineEditDialogKeyHandler) SetHelpAction(action func()) { h.onHelp = action }
+
+// SetHistoryActions adds history keys after the common editing bindings.
+func (h *LineEditDialogKeyHandler) SetHistoryActions(older, newer func()) {
+	h.history = newDialogKeyHandler(h.GetName(), h.debugPrint, []dialogBinding{
+		{"Up", older},
+		{"C-P", older},
+		{"Down", newer},
+		{"C-N", newer},
+	})
+}
 
 func buildLineEditBindings(configured []config.KeyBindingEntry, debugPrint func(string, ...interface{})) []keyBinding {
 	return buildTargetKeyBindings(
@@ -94,7 +105,7 @@ func (h *LineEditDialogKeyHandler) OnKeyActivated(ev *fyne.KeyEvent, modifiers M
 		h.commands[binding.command]()
 		return true
 	}
-	return false
+	return h.history != nil && h.history.OnKeyActivated(ev, modifiers)
 }
 
 // OnTypedRune handles text input when focus has drifted away from the entry.

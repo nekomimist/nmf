@@ -39,16 +39,42 @@ type FileFilterState struct {
 	Enabled bool          `json:"enabled"` // Current filter enabled state
 }
 
+const createNameHistoryLimit = 20
+
+// CreateNameHistory holds names in most-recently-created order.
+type CreateNameHistory []string
+
+// Record moves a successfully created name to the front of the history.
+func (h *CreateNameHistory) Record(name string) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return
+	}
+	entries := make(CreateNameHistory, 1, min(len(*h)+1, createNameHistoryLimit))
+	entries[0] = name
+	for _, previous := range *h {
+		if len(entries) == createNameHistoryLimit {
+			break
+		}
+		if previous != name {
+			entries = append(entries, previous)
+		}
+	}
+	*h = entries
+}
+
 // State represents runtime state persisted to state.json. It holds the parts
 // of the former config.json UI state (cursor memory, navigation history, file
 // filter history, and the last-applied sort) that mutate during normal use
 // and therefore do not belong in the user-authored, version-controllable
 // config.json.
 type State struct {
-	CursorMemory      CursorMemoryState      `json:"cursorMemory"`
-	NavigationHistory NavigationHistoryState `json:"navigationHistory"`
-	FileFilter        FileFilterState        `json:"fileFilter"`
-	Sort              *SortConfig            `json:"sort,omitempty"` // Last-applied sort; nil means config.json's ui.sort is the effective default
+	CursorMemory           CursorMemoryState      `json:"cursorMemory"`
+	NavigationHistory      NavigationHistoryState `json:"navigationHistory"`
+	FileFilter             FileFilterState        `json:"fileFilter"`
+	Sort                   *SortConfig            `json:"sort,omitempty"` // Last-applied sort; nil means config.json's ui.sort is the effective default
+	CreateDirectoryHistory CreateNameHistory      `json:"createDirectoryHistory,omitempty"`
+	CreateTextFileHistory  CreateNameHistory      `json:"createTextFileHistory,omitempty"`
 }
 
 // newDefaultState returns a State with empty, non-nil maps/slices and no
@@ -85,6 +111,8 @@ func cloneState(s *State) *State {
 	clone.CursorMemory = cloneCursorMemoryState(s.CursorMemory)
 	clone.NavigationHistory = cloneNavigationHistoryState(s.NavigationHistory)
 	clone.FileFilter = cloneFileFilterState(s.FileFilter)
+	clone.CreateDirectoryHistory = slices.Clone(s.CreateDirectoryHistory)
+	clone.CreateTextFileHistory = slices.Clone(s.CreateTextFileHistory)
 	if s.Sort != nil {
 		sortCopy := *s.Sort
 		clone.Sort = &sortCopy
@@ -521,6 +549,8 @@ func normalizeState(state *State) {
 	if state.FileFilter.Entries == nil {
 		state.FileFilter.Entries = make([]FilterEntry, 0)
 	}
+	state.CreateDirectoryHistory = state.CreateDirectoryHistory[:min(len(state.CreateDirectoryHistory), createNameHistoryLimit)]
+	state.CreateTextFileHistory = state.CreateTextFileHistory[:min(len(state.CreateTextFileHistory), createNameHistoryLimit)]
 }
 
 // legacyRuntimeStateDoc mirrors only the runtime-state keys that used to live

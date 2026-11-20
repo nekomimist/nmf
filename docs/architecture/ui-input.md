@@ -449,6 +449,9 @@ Line edit dialogs:
 - `F2` or `R` opens a single-item rename dialog for the cursor row only.
 - `C-L` opens a path edit dialog instead of focusing the path display directly.
 - The focused entry owns normal text input and standard Entry editing; the dialog key handler commits with Enter, cancels with Escape, and adds readline-style Ctrl-A/E/B/F/H/D/K/U editing.
+- In Create Directory and Create Text File, Up or Ctrl+P recalls an older
+  name, and Down or Ctrl+N recalls a newer name or restores the draft after
+  the newest entry. Configured `lineEdit` bindings take precedence.
 
 Rename behavior:
 

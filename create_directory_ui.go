@@ -1,19 +1,34 @@
 package main
 
 import (
+	"nmf/internal/config"
 	"nmf/internal/fileinfo"
 	"nmf/internal/ui"
 )
 
 // ShowCreateDirectoryDialog shows a single-name directory creation dialog.
 func (fm *FileManager) ShowCreateDirectoryDialog() {
+	fm.showCreateNameDialog("Create Directory", "Directory name:", &fm.state.CreateDirectoryHistory, fm.CreateDirectory)
+}
+
+func (fm *FileManager) showCreateNameDialog(title, prompt string, history *config.CreateNameHistory, create func(string) bool) {
 	dlg := ui.NewLineEditDialog(ui.LineEditDialogOptions{
-		Title:       "Create Directory",
-		Prompt:      "Directory name:",
+		Title:       title,
+		Prompt:      prompt,
 		ConfirmText: "Create",
+		History:     *history,
 	}, fm.keyManager, fm.config.UI.KeyBindings)
 	dlg.ShowDialog(fm.window, func(name string) bool {
-		return fm.CreateDirectory(name)
+		if !create(name) {
+			return false
+		}
+		history.Record(name)
+		if fm.stateManager != nil {
+			if err := fm.scheduleStateSave(); err != nil {
+				debugPrint("FileManager: Error saving creation history: %v", err)
+			}
+		}
+		return true
 	})
 }
 
