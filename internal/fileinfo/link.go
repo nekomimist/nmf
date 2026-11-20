@@ -17,12 +17,13 @@ type readlinkProvider interface {
 
 // PathMetadata is the normalized file metadata nmf uses for list rendering and navigation.
 type PathMetadata struct {
-	Info     os.FileInfo
-	IsDir    bool
-	IsLink   bool
-	FileType FileType
-	Size     int64
-	Modified time.Time
+	Info            os.FileInfo
+	IsDir           bool
+	IsLink          bool
+	HiddenAttribute bool
+	FileType        FileType
+	Size            int64
+	Modified        time.Time
 }
 
 // LstatPortable resolves the path to its backend and stats the path without following links.
@@ -99,13 +100,15 @@ func InspectPath(path string, name string, entry os.DirEntry) (PathMetadata, err
 		}
 	}
 
+	hiddenAttribute := HasHiddenAttribute(info)
 	return PathMetadata{
-		Info:     info,
-		IsDir:    isDir,
-		IsLink:   isLink,
-		FileType: determineFileType(path, name, isDir, isLink),
-		Size:     info.Size(),
-		Modified: info.ModTime(),
+		HiddenAttribute: hiddenAttribute,
+		Info:            info,
+		IsDir:           isDir,
+		IsLink:          isLink,
+		FileType:        determineFileType(name, isDir, isLink, hiddenAttribute),
+		Size:            info.Size(),
+		Modified:        info.ModTime(),
 	}, nil
 }
 
@@ -117,13 +120,14 @@ func FileInfoFromDirEntry(parent string, entry os.DirEntry) (FileInfo, error) {
 		return FileInfo{}, err
 	}
 	return FileInfo{
-		Name:     entry.Name(),
-		Path:     fullPath,
-		IsDir:    metadata.IsDir,
-		Size:     metadata.Size,
-		Modified: metadata.Modified,
-		FileType: metadata.FileType,
-		Status:   StatusNormal,
+		Name:            entry.Name(),
+		Path:            fullPath,
+		IsDir:           metadata.IsDir,
+		HiddenAttribute: metadata.HiddenAttribute,
+		Size:            metadata.Size,
+		Modified:        metadata.Modified,
+		FileType:        metadata.FileType,
+		Status:          StatusNormal,
 	}, nil
 }
 
@@ -142,17 +146,14 @@ func pathInfo(path string, entry os.DirEntry) (os.FileInfo, error) {
 	return LstatPortable(path)
 }
 
-func determineFileType(path string, name string, isDir bool, isLink bool) FileType {
+func determineFileType(name string, isDir, isLink, hiddenAttribute bool) FileType {
 	if isLink {
 		return FileTypeSymlink
 	}
 	if isDir {
 		return FileTypeDirectory
 	}
-	if strings.HasPrefix(name, ".") {
-		return FileTypeHidden
-	}
-	if runtime.GOOS == "windows" && IsWindowsHidden(path) {
+	if strings.HasPrefix(name, ".") || hiddenAttribute {
 		return FileTypeHidden
 	}
 	return FileTypeRegular

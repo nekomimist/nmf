@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -25,20 +27,14 @@ func (fm *FileManager) SaveCursorPosition(dirPath string) {
 
 	fileName := file.Name
 	cursorMemory := &fm.state.CursorMemory
-	maxEntries := fm.config.UI.CursorMemory.MaxEntries
-
-	// Clean up old entries if we exceed max entries
-	if len(cursorMemory.Entries) >= maxEntries {
-		fm.cleanupOldCursorEntries()
-	}
-
 	// Save the cursor position and update last used time
 	cursorMemory.Entries[dirPath] = fileName
 	cursorMemory.LastUsed[dirPath] = time.Now()
+	fm.cleanupOldCursorEntries()
 
 	// Save state to disk
 	if fm.stateManager != nil {
-		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+		if err := fm.scheduleStateSave(); err != nil {
 			debugPrint("FileManager: Error saving cursor position state: %v", err)
 		}
 	}
@@ -64,25 +60,29 @@ func (fm *FileManager) cleanupOldCursorEntries() {
 	cursorMemory := &fm.state.CursorMemory
 	maxEntries := fm.config.UI.CursorMemory.MaxEntries
 
-	if len(cursorMemory.Entries) < maxEntries {
+	if maxEntries <= 0 || len(cursorMemory.Entries) <= maxEntries {
 		return
 	}
 
-	// Find the oldest entry
-	var oldestPath string
-	var oldestTime *time.Time
-
-	for path, lastUsed := range cursorMemory.LastUsed {
-		if oldestTime == nil || lastUsed.Before(*oldestTime) {
-			oldestPath = path
-			oldestTime = &lastUsed
+	// Normally there is just one excess entry. Sort only when a reduced
+	// configuration limit requires evicting several entries at once.
+	if len(cursorMemory.Entries) == maxEntries+1 {
+		var oldest string
+		for path := range cursorMemory.Entries {
+			if oldest == "" || cursorMemory.LastUsed[path].Before(cursorMemory.LastUsed[oldest]) {
+				oldest = path
+			}
 		}
+		delete(cursorMemory.Entries, oldest)
+		delete(cursorMemory.LastUsed, oldest)
+		return
 	}
-
-	// Remove the oldest entry
-	if oldestPath != "" {
-		delete(cursorMemory.Entries, oldestPath)
-		delete(cursorMemory.LastUsed, oldestPath)
+	paths := slices.SortedFunc(maps.Keys(cursorMemory.Entries), func(a, b string) int {
+		return cursorMemory.LastUsed[a].Compare(cursorMemory.LastUsed[b])
+	})
+	for _, path := range paths[:len(paths)-maxEntries] {
+		delete(cursorMemory.Entries, path)
+		delete(cursorMemory.LastUsed, path)
 	}
 }
 
@@ -110,7 +110,7 @@ func (fm *FileManager) navigateToPath(inputPath string) bool {
 
 	resolvedPath, parsed, err := fileinfo.CanonicalDisplayPath(path)
 	if err != nil {
-		debugPrint("FileManager: Invalid path '%s': %v", inputPath, err)
+		debugPrint("FileManager: Invalid path input")
 		fm.setPathDisplay(fm.GetCurrentPath())
 		return false
 	}
@@ -451,10 +451,22 @@ func (fm *FileManager) directoryCursorIndex(files []fileinfo.FileInfo, path, pre
 	if index := directoryFileNameIndex(files, fm.restoreCursorPosition(path)); index >= 0 {
 		return index
 	}
-	for _, neighbor := range neighbors {
-		if index := directoryFilePathIndex(files, neighbor); index >= 0 {
-			debugPrint("FileManager: refresh cursor fallback path=%s index=%d", neighbor, index)
+	// Try the nearest neighbor without allocating. If the directory was
+	// replaced since the previous listing, index the remaining candidates once.
+	if len(neighbors) > 0 {
+		if index := directoryFilePathIndex(files, neighbors[0]); index >= 0 {
 			return index
+		}
+	}
+	if len(neighbors) > 1 {
+		indices := make(map[string]int, len(files))
+		for i := range files {
+			indices[files[i].Path] = i
+		}
+		for _, neighbor := range neighbors[1:] {
+			if index, ok := indices[neighbor]; ok {
+				return index
+			}
 		}
 	}
 	return 0

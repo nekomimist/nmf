@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -33,13 +34,15 @@ type executionPath struct {
 }
 
 type executionContext struct {
+	request     context.Context
 	smbSessions map[string]fileinfo.SMBSession
 	archiveVFSs map[string]*fileinfo.ArchiveVFS
 	copyBuffer  []byte // reused by the serial transfers within one job
 }
 
-func newExecutionContext() *executionContext {
+func newJobExecutionContext(request context.Context) *executionContext {
 	return &executionContext{
+		request:     request,
 		smbSessions: make(map[string]fileinfo.SMBSession),
 		archiveVFSs: make(map[string]*fileinfo.ArchiveVFS),
 	}
@@ -79,7 +82,7 @@ func (ctx *executionContext) archiveVFSFor(p executionPath) (*fileinfo.ArchiveVF
 	if vfs, ok := ctx.archiveVFSs[p.archivePath]; ok && vfs != nil {
 		return vfs, nil
 	}
-	vfs, err := fileinfo.NewArchiveVFS(p.archivePath)
+	vfs, err := fileinfo.NewArchiveVFSContext(ctx.request, p.archivePath)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +109,7 @@ func (ctx *executionContext) smbOpsFor(p executionPath) (fileinfo.SMBPathOps, er
 		return session, nil
 	}
 
-	session, err := p.smbOpener.OpenSession()
+	session, err := p.smbOpener.OpenSession(ctx.request)
 	if err != nil {
 		return nil, err
 	}
@@ -283,11 +286,15 @@ func normalizeSMBExecutionPath(p string) string {
 
 // resolveExecutionPath maps display paths to backend-specific execution paths.
 func resolveExecutionPath(p string) (executionPath, error) {
-	p = strings.TrimSpace(p)
-	if p == "" {
+	if strings.TrimSpace(p) == "" {
 		return executionPath{}, errors.New("path is empty")
 	}
 
+	// Archive paths are syntactic here. The execution context opens and
+	// validates each archive once, when the job first reads a member.
+	if archive, inner, ok := fileinfo.SplitArchivePath(p); ok {
+		return executionPath{backend: backendArchive, path: inner, archivePath: archive}, nil
+	}
 	vfs, parsed, err := fileinfo.ResolveRead(p)
 	if err != nil {
 		return executionPath{}, err
@@ -296,19 +303,6 @@ func resolveExecutionPath(p string) (executionPath, error) {
 	native := parsed.Native
 	if native == "" {
 		native = p
-	}
-
-	if parsed.Scheme == fileinfo.SchemeArchive {
-		_ = fileinfo.CloseVFS(vfs)
-		if native == "" {
-			native = "."
-		}
-		return executionPath{
-			raw:         p,
-			path:        native,
-			backend:     backendArchive,
-			archivePath: parsed.Archive,
-		}, nil
 	}
 
 	if parsed.Scheme == fileinfo.SchemeSMB && parsed.Provider != "local" {

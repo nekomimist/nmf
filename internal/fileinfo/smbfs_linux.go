@@ -46,7 +46,7 @@ func (f *smbReadWriteFile) Close() error {
 		return nil
 	}
 	if f.stopCancel != nil {
-		f.stopCancel()
+		defer f.stopCancel()
 	}
 	var fileErr error
 	if f.file != nil {
@@ -89,15 +89,17 @@ func (f *smbFileCloser) Close() error {
 }
 
 type smbMountedShare struct {
-	share *smb2.Share
-	sess  *smb2.Session
-	conn  net.Conn
+	stopCancel func() bool
+	share      *smb2.Share
+	sess       *smb2.Session
+	conn       net.Conn
 }
 
 func (m *smbMountedShare) Close() error {
 	if m == nil {
 		return nil
 	}
+	defer m.stopCancel()
 	return closeSMBSession(nil, m.share, m.sess, m.conn)
 }
 
@@ -228,12 +230,13 @@ func (s SMBFS) credentialsFor(ctx context.Context, relPath string) (Credentials,
 }
 
 // OpenSession opens a reusable mounted SMB share session.
-func (s SMBFS) OpenSession() (SMBSession, error) {
-	share, sess, conn, _, err := s.dialAndMount("")
+func (s SMBFS) OpenSession(ctx context.Context) (SMBSession, error) {
+	share, sess, conn, _, err := s.dialAndMountContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}
-	return &smbMountedShare{share: share, sess: sess, conn: conn}, nil
+	stopCancel := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	return &smbMountedShare{share: share, sess: sess, conn: conn, stopCancel: stopCancel}, nil
 }
 
 func (s SMBFS) dialAndMount(relPath string) (*smb2.Share, *smb2.Session, net.Conn, Credentials, error) {
@@ -336,7 +339,7 @@ func isBenignNetworkCloseError(err error) bool {
 }
 
 func normalizeSMBPath(relPath string) string {
-	p := strings.TrimSpace(relPath)
+	p := relPath
 	if p == "/" || p == "\\" {
 		return ""
 	}
@@ -367,18 +370,9 @@ func (s SMBFS) ReadDirContext(ctx context.Context, relPath string) ([]os.DirEntr
 	if err != nil {
 		return nil, err
 	}
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			_ = conn.Close()
-		case <-done:
-		}
-	}()
-	defer func() {
-		close(done)
-		_ = closeSMBSession(nil, share, sess, conn)
-	}()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	defer closeSMBSession(nil, share, sess, conn)
 
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -420,18 +414,9 @@ func (s SMBFS) StatContext(ctx context.Context, relPath string) (os.FileInfo, er
 	if err != nil {
 		return nil, err
 	}
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			_ = conn.Close()
-		case <-done:
-		}
-	}()
-	defer func() {
-		close(done)
-		_ = closeSMBSession(nil, share, sess, conn)
-	}()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	defer closeSMBSession(nil, share, sess, conn)
 
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -449,17 +434,19 @@ func (s SMBFS) StatContext(ctx context.Context, relPath string) (os.FileInfo, er
 	return fi, nil
 }
 
-// StorageInfo returns capacity information for the SMB share.
-func (s SMBFS) StorageInfo(relPath string) (StorageInfo, error) {
-	share, sess, conn, _, err := s.dialAndMount(relPath)
+// StorageInfoContext returns capacity information for the SMB share.
+func (s SMBFS) StorageInfoContext(ctx context.Context, relPath string) (StorageInfo, error) {
+	share, sess, conn, _, err := s.dialAndMountContext(ctx, relPath)
 	if err != nil {
 		return StorageInfo{}, err
 	}
-	defer func() {
-		_ = closeSMBSession(nil, share, sess, conn)
-	}()
-
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	defer closeSMBSession(nil, share, sess, conn)
 	info, err := share.Statfs(normalizeSMBPathForStat(relPath))
+	if ctx.Err() != nil {
+		return StorageInfo{}, ctx.Err()
+	}
 	if err != nil {
 		if isAuthError(err) {
 			ClearCachedCredentials(s.host, s.share)

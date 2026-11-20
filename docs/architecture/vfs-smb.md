@@ -53,7 +53,11 @@ Archive paths are read-only. The root display path for an archive is
 Virtual-path parsing recognizes archive filenames and common ZIP-based
 application extensions, including Office/OpenDocument files, JAR, APK, and
 EPUB. It does not perform I/O, so history and remote paths remain parseable
-while unavailable. Opening still identifies and validates the actual contents.
+while unavailable. Opening probes at most 64 KiB of the source stream on a cancellable worker.
+If the contents identify an archive with an unusual suffix, nmf represents it as
+`nmf-archive:<percent-escaped outer path>!/inner/path`. The explicit prefix
+keeps its entries accessible from offline history without ambiguity. A direct
+SMB archive is staged in full when the listing or extraction opens it.
 Ordinary `bang!/` directory components are skipped when locating the archive
 boundary; this guard must not reject recognized ZIP-container filenames.
 ZIP entry names without the UTF-8 flag use the configured fallback charset
@@ -141,9 +145,11 @@ Implemented VFS providers expose:
 
 ## File Opening Behavior
 
-Main-list `Return` uses the `open` command. It enters directories, enters
-supported archive files, and delegates other files to
-`fileinfo.OpenWithDefaultApp`.
+Main-list `Return` uses the `open` command. It enters directories directly.
+For files, a window-owned worker probes for an archive, resolves a shortcut
+when applicable, or calls `fileinfo.OpenWithDefaultAppContext`. Extract uses
+the same cancellable worker to probe the captured selection before showing
+destination choices.
 On Windows, `.lnk` shortcut files are resolved before default-app delegation:
 shortcuts to directories enter the target directory, and shortcuts to files
 enter the target file's parent directory. Shortcut COM reads and target
@@ -154,7 +160,7 @@ that worker, while an inaccessible parsed target is reported directly instead
 of invoking the same unreachable target again through `ShellExecuteW`.
 
 Main-list `Shift+Return` uses `open.defaultApp`. It enters directories but
-delegates files directly to `fileinfo.OpenWithDefaultApp`, so archive-like
+delegates files directly to `fileinfo.OpenWithDefaultAppContext`, so archive-like
 application formats such as `.xlsx` can be launched with the OS-associated app.
 
 - Windows: uses `ShellExecuteW("open")`; `smb://` is converted to UNC first.

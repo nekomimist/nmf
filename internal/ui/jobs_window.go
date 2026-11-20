@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -20,20 +21,21 @@ const completedJobTargetLimit = 10
 
 // JobsWindow shows the global background job queue and allows cancel.
 type JobsWindow struct {
-	app         fyne.App
-	list        *widget.List
-	bind        binding.StringList
-	items       []jobs.JobSnapshot
-	selectedIdx int
-	selectedID  int64
-	details     *widget.Label
-	window      fyne.Window
-	sink        *KeySink
-	km          *keymanager.KeyManager
-	debugPrint  func(format string, args ...interface{})
-	jobsUnsub   func()
-	closed      bool
-	onClosed    func()
+	app            fyne.App
+	list           *widget.List
+	bind           binding.StringList
+	items          []jobs.JobSnapshot
+	selectedIdx    int
+	selectedID     int64
+	details        *widget.Label
+	window         fyne.Window
+	sink           *KeySink
+	km             *keymanager.KeyManager
+	debugPrint     func(format string, args ...interface{})
+	jobsUnsub      func()
+	refreshPending atomic.Bool
+	closed         bool
+	onClosed       func()
 }
 
 func NewJobsWindow(app fyne.App, debugPrint func(format string, args ...interface{})) *JobsWindow {
@@ -103,13 +105,7 @@ func (jd *JobsWindow) Show() {
 	}
 	if jd.jobsUnsub == nil {
 		m := jobs.GetManager()
-		jd.jobsUnsub = m.Subscribe(func() {
-			fyne.Do(func() {
-				if !jd.closed {
-					jd.refresh()
-				}
-			})
-		})
+		jd.jobsUnsub = m.Subscribe(jd.queueRefresh)
 	}
 	jd.window.Show()
 	jd.window.RequestFocus()
@@ -131,9 +127,21 @@ func (jd *JobsWindow) SetOnClosed(fn func()) {
 	jd.onClosed = fn
 }
 
+func (jd *JobsWindow) queueRefresh() {
+	if jd.refreshPending.CompareAndSwap(false, true) {
+		fyne.Do(func() {
+			// Clearing first allows a change during refresh to enqueue one more pass.
+			jd.refreshPending.Store(false)
+			if !jd.closed {
+				jd.refresh()
+			}
+		})
+	}
+}
+
 func (jd *JobsWindow) refresh() {
 	m := jobs.GetManager()
-	snapshots := m.List()
+	snapshots := m.ListRows()
 	jd.items = snapshots
 	lines := make([]string, len(snapshots))
 	for i, it := range snapshots {
@@ -168,7 +176,11 @@ func (jd *JobsWindow) updateDetails() {
 		jd.details.SetText("")
 		return
 	}
-	jd.details.SetText(jobDetailsText(jd.items[jd.selectedIdx]))
+	it := jd.items[jd.selectedIdx]
+	if snapshot, ok := jobs.GetManager().DisplayDetails(it.ID, completedJobTargetLimit); ok {
+		it = snapshot
+	}
+	jd.details.SetText(jobDetailsText(it))
 }
 
 func jobSummaryLine(it jobs.JobSnapshot) string {
@@ -205,7 +217,7 @@ func jobDetailsText(it jobs.JobSnapshot) string {
 	case jobs.StatusFailed:
 		writeJobFailures(b, it)
 	case jobs.StatusCompleted:
-		writeCompletedTargets(b, it.Sources)
+		writeCompletedTargets(b, it.Sources, it.TotalFiles)
 	}
 	return b.String()
 }
@@ -354,7 +366,7 @@ func (jd *JobsWindow) acknowledgeSelectedFailure() {
 	}
 }
 
-func writeCompletedTargets(b *strings.Builder, sources []string) {
+func writeCompletedTargets(b *strings.Builder, sources []string, total int) {
 	if len(sources) == 0 {
 		return
 	}
@@ -366,7 +378,7 @@ func writeCompletedTargets(b *strings.Builder, sources []string) {
 	for _, src := range sources[:limit] {
 		fmt.Fprintf(b, "  - %s\n", fileinfo.BaseName(src))
 	}
-	if more := len(sources) - limit; more > 0 {
+	if more := total - limit; more > 0 {
 		fmt.Fprintf(b, "  ... and %d more\n", more)
 	}
 }
@@ -406,7 +418,7 @@ func (jd *JobsWindow) cancelSelected() {
 	if jd.selectedID != 0 {
 		m := jobs.GetManager()
 		_ = m.Cancel(jd.selectedID)
-		fyne.Do(jd.refresh)
+		jd.queueRefresh()
 	}
 }
 func (jd *JobsWindow) CancelSelected() { jd.cancelSelected() }
@@ -433,7 +445,7 @@ func (jd *JobsWindow) CopySelectedJobText() {
 	}
 
 	it := jd.items[jd.selectedIdx]
-	text := jobSummaryLine(it) + "\n\n" + jobDetailsText(it)
+	text := jobSummaryLine(it) + "\n\n" + jd.details.Text
 	clipboard.SetContent(text)
 	if jd.debugPrint != nil {
 		jd.debugPrint("JobsWindow: copied job_id=%d bytes=%d", it.ID, len(text))

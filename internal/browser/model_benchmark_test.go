@@ -36,7 +36,7 @@ func BenchmarkApplyChanges(b *testing.B) {
 		b.Run(fmt.Sprintf("files%d_changes%d", tc.n, tc.changes), func(b *testing.B) {
 			files := benchmarkListing(tc.n)
 			cfg := config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}
-			model := New("/audit", cfg)
+			model := New("/audit", cfg, false)
 			model.ReplaceDirectory("/audit", files, fileinfo.StorageInfo{}, false, cfg)
 			modified := append([]fileinfo.FileInfo(nil), files[len(files)-tc.changes:]...)
 			for i := range modified {

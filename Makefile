@@ -4,8 +4,8 @@ APP_ID := io.github.nekomimist.nmf
 APP_VERSION := $(shell cat VERSION)
 # Windows version resources accept only the numeric SemVer core.
 WINDOWS_VERSION := $(firstword $(subst +, ,$(subst -, ,$(APP_VERSION))))
-# Use the same packaging build number for both architectures.
-WINDOWS_APP_BUILD := $(shell sed -n 's/^Build = //p' FyneApp.toml)
+# Read the build number inside the packaging lock, before Fyne updates it.
+WINDOWS_APP_BUILD = $$(sed -n 's/^Build = //p' FyneApp.toml)
 DIST := dist
 WINDOWS_ZIG ?= zig
 WINDOWS_OBJCOPY ?= llvm-objcopy
@@ -15,7 +15,6 @@ NIX_DEVELOP ?= nix develop
 WINDOWS_TEST_PACKAGES ?= ./...
 
 .PHONY: build build-linux build-windows build-windows-in-nix build-windows-arm64 build-windows-arm64-in-nix test test-all test-race test-windows-compile test-windows-compile-in-nix test-windows-compile-arm64 test-windows-compile-arm64-in-nix test-darwin-compile debug-env clean
-.NOTPARALLEL: build-windows build-windows-in-nix build-windows-arm64 build-windows-arm64-in-nix
 
 build: build-linux
 
@@ -27,17 +26,20 @@ build-linux:
 	mkdir -p $(DIST)
 	go build -tags $(FYNE_TAGS) -o $(DIST)/$(APP) .
 
+# Both architectures package through NMF.exe and FyneApp.toml in this checkout.
 define build-windows-target
-	mkdir -p $(DIST)
+	mkdir -p $(DIST) .cache
 	@set -eu; \
+	exec 9>>.cache/windows-package.lock; \
+	flock 9; \
 	metadata_backup=$$(mktemp); \
 	cp FyneApp.toml "$$metadata_backup"; \
 	trap 'cp "$$metadata_backup" FyneApp.toml; rm -f "$$metadata_backup"' EXIT; \
 	CC="$(WINDOWS_ZIG) cc -target $(1)-windows-gnu $(WINDOWS_CC_FLAGS)" \
 	CXX="$(WINDOWS_ZIG) c++ -target $(1)-windows-gnu $(WINDOWS_CC_FLAGS)" \
 	CGO_ENABLED=1 GOOS=windows GOARCH=$(2) \
-	fyne package --target windows --icon nmf-icon.png --app-id $(APP_ID) --name $(APP_NAME) --app-version $(WINDOWS_VERSION) --app-build $(WINDOWS_APP_BUILD) --release
-	mv $(APP_NAME).exe $(DIST)/$(3).exe
+	fyne package --target windows --icon nmf-icon.png --app-id $(APP_ID) --name $(APP_NAME) --app-version $(WINDOWS_VERSION) --app-build $(WINDOWS_APP_BUILD) --release; \
+	mv $(APP_NAME).exe $(DIST)/$(3).exe; \
 	$(WINDOWS_OBJCOPY) --subsystem windows:6.0 $(DIST)/$(3).exe
 endef
 

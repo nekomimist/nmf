@@ -126,7 +126,7 @@ func (d *archivePasswordDialog) show() {
 
 	if d.km != nil {
 		handler := newLineEditKeyHandler(d, d.km, d.bindings)
-		d.kmToken = d.km.PushHandler(handler)
+		d.kmToken = d.km.PushSensitiveHandler(handler)
 	}
 
 	d.dialog = dialog.NewCustomWithoutButtons(title, content, d.parent)

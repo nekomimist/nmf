@@ -101,7 +101,7 @@ temp directory), SMB credentials cached in the OS keyring (service
     "maxLogFiles": 10
   },
   "ui": {
-    "showHiddenFiles": false,
+    "showHiddenFiles": true,
     "sort": {
       "sortBy": "name",
       "sortOrder": "asc",
@@ -204,7 +204,9 @@ temp directory), SMB credentials cached in the OS keyring (service
 
 `ui`
 
-- `showHiddenFiles`: show dotfiles and hidden files when supported.
+- `showHiddenFiles` defaults to true. Set it to false to hide dotfiles and
+  entries with the Windows hidden attribute. Each window applies the setting
+  to its file list, including cached listings and watcher updates.
 - `sort.sortBy`: one of `name`, `size`, `modified`, or `extension`.
 - `sort.sortOrder`: `asc` or `desc`.
 - `sort.directoriesFirst`: keep directories before regular files.
@@ -384,7 +386,8 @@ Shape of `state.json`:
   regular history in the default view and are never pruned by `maxEntries`.
   Last Access mode instead orders every candidate solely by `lastUsed`.
 - `fileFilter.entries`/`current`/`enabled`: filter history, the currently
-  applied filter, and whether it is enabled. Entries use `pattern`,
+  applied filter, and whether it is enabled. New windows start with the saved
+  filter settings. Each open window tracks its own active and last-used pattern. Entries use `pattern`,
   `lastUsed`, and `useCount`; text after `;;` in a pattern is a searchable
   comment, and only the text before `;;` is used for matching. The entry
   limit is `ui.fileFilter.maxEntries` (in `config.json`).

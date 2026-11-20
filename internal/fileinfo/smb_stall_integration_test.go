@@ -16,6 +16,11 @@ import (
 // This opt-in test pauses only the explicitly supplied disposable Samba
 // container. It verifies blocked reads and cleanup without changing the host network.
 func TestSMBReadCancellationWithPausedServer(t *testing.T) {
+	t.Run("reader", func(t *testing.T) { testSMBReadCancellation(t, false) })
+	t.Run("job-session", func(t *testing.T) { testSMBReadCancellation(t, true) })
+}
+
+func testSMBReadCancellation(t *testing.T, reusable bool) {
 	url := strings.TrimSpace(os.Getenv("NMF_SMB_TEST_DIR"))
 	container := strings.TrimSpace(os.Getenv("NMF_SMB_TEST_CONTAINER"))
 	if url == "" || container == "" {
@@ -40,7 +45,8 @@ func TestSMBReadCancellationWithPausedServer(t *testing.T) {
 	if !matched {
 		t.Fatal("SMB host must be the explicitly selected container's IP address")
 	}
-	path := smb.Join(parsed.Native, "nmf-cancel-"+rand.Text())
+	name := "nmf-cancel-" + rand.Text()
+	path := smb.Join(parsed.Native, name)
 	out, err := smb.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		t.Fatal(err)
@@ -57,7 +63,20 @@ func TestSMBReadCancellationWithPausedServer(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	in, err := smb.OpenContext(ctx, path)
+	var in io.ReadCloser
+	if reusable {
+		session, err := smb.OpenSession(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer session.Close()
+		in, err = session.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		in, err = smb.OpenContext(ctx, path)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,6 +94,31 @@ func TestSMBReadCancellationWithPausedServer(t *testing.T) {
 			t.Errorf("unpause server: %v: %s", err, output)
 		}
 	})
+	if !reusable {
+		t.Run("preview", func(t *testing.T) {
+			previewCtx, cancelPreview := context.WithCancel(t.Context())
+			defer cancelPreview()
+			done := make(chan error, 1)
+			go func() {
+				_, err := ReadPreviewFileContext(previewCtx, JoinPath(url, name))
+				done <- err
+			}()
+			select {
+			case err := <-done:
+				t.Fatalf("preview completed while server was paused: %v", err)
+			case <-time.After(100 * time.Millisecond):
+			}
+			cancelPreview()
+			select {
+			case err := <-done:
+				if err == nil {
+					t.Fatal("canceled preview succeeded")
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("canceled preview remained blocked")
+			}
+		})
+	}
 	readDone := make(chan error, 1)
 	go func() { _, err := in.Read(make([]byte, 64)); readDone <- err }()
 	select {

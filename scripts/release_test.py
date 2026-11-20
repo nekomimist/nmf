@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import struct
 import subprocess
 import sys
@@ -21,6 +22,29 @@ class ReleaseTest(unittest.TestCase):
         (self.root / "VERSION").write_text("0.1.0\n")
         self.changelog = "# Changelog\n\n## Unreleased\n\n## 0.1.0 - 2026-09-16\n\n- Initial release.\n"
         (self.root / "CHANGELOG.md").write_text(self.changelog)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Windows packaging runs on Linux")
+    def test_parallel_packaging_preserves_architecture_and_metadata(self):
+        shutil.copy(release.ROOT / "Makefile", self.root)
+        metadata = self.root / "FyneApp.toml"
+        metadata.write_text("Build = 7\n")
+        packager = self.root / "fyne"
+        packager.write_text("""#!/bin/sh
+set -eu
+mkdir active-package
+trap 'rmdir active-package' EXIT
+case " $* " in *" --app-build 7 "*) ;; *) exit 1 ;; esac
+echo 'Build = 8' > FyneApp.toml
+sleep 0.1
+echo "$GOARCH" > NMF.exe
+""")
+        packager.chmod(0o755)
+        env = dict(os.environ, PATH=str(self.root) + os.pathsep + os.environ["PATH"])
+        subprocess.run(["make", "-j2", "build-windows-in-nix", "build-windows-arm64-in-nix",
+                        "WINDOWS_OBJCOPY=true"], cwd=self.root, env=env, check=True, stdout=subprocess.PIPE)
+        self.assertEqual(metadata.read_text(), "Build = 7\n")
+        self.assertEqual((self.root / "dist/nmf.exe").read_text().strip(), "amd64")
+        self.assertEqual((self.root / "dist/nmf-arm64.exe").read_text().strip(), "arm64")
 
     def test_semver_and_tag_validation(self):
         for version in ("0.1.0", "1.0.0-rc.1", "0.2.0-0", "1.2.3-1a.0+build.001", "1.2.3+build-1"):

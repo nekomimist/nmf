@@ -17,7 +17,9 @@ func TestRemoveNavigationHistoryTreeRemovesDescendantsAndPinnedPaths(t *testing.
 	state := navigationHistoryTestState(root, child, sibling)
 	state.NavigationHistory.Pinned = []string{root, child, sibling}
 
-	if !removeNavigationHistoryTree(state, root) {
+	var rules historyPathRules
+	rules.add(0, root, "")
+	if !rules.apply(state) {
 		t.Fatal("removeNavigationHistoryTree returned false")
 	}
 	if got := state.NavigationHistory.Entries; len(got) != 1 || got[0] != sibling {
@@ -218,4 +220,25 @@ func containsNavigationPath(paths []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestBatchMovesRebaseNestedDestinationsAcrossProviders(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "parent")
+	child := filepath.Join(src, "sub", "file")
+	final := filepath.Join(t.TempDir(), "final")
+	dst := "smb://server/share/dst"
+	fm := &FileManager{state: navigationHistoryTestState(src, child)}
+	fm.state.NavigationHistory.Pinned = []string{child}
+	fm.applyJobNavigationHistory(jobs.JobSnapshot{Type: jobs.TypeMove, Results: []jobs.Result{
+		{Source: src, Destination: dst, SourceIsDir: true},
+		{Source: "smb://SERVER/SHARE/DST", Destination: final, SourceIsDir: true},
+	}})
+	wantChild := filepath.Join(final, "sub", "file")
+	h := fm.state.NavigationHistory
+	if got := h.UseCount[final]; got != 3 || h.UseCount[wantChild] != 1 || len(h.UseCount) != 2 {
+		t.Fatalf("counts = %v, want visits merged at final root and child", h.UseCount)
+	}
+	if !reflect.DeepEqual(h.Pinned, []string{wantChild}) {
+		t.Fatalf("pins = %v, want %q", h.Pinned, wantChild)
+	}
 }

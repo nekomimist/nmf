@@ -524,12 +524,11 @@ func (d *FileViewerDialog) replacePaneObject(pane string, obj fyne.CanvasObject)
 
 func (d *FileViewerDialog) createHexGrid() *fileViewerTextGrid {
 	stepStart := time.Now()
-	hex := viewerHex(d.preview)
-	d.debug("FileViewer: hex-view elapsed=%s bytes=%d", time.Since(stepStart), len(hex))
-	stepStart = time.Now()
-	grid := d.newViewerTextGrid(hex)
+	grid := newViewerGrid(viewerLines{hexData: d.preview.Data}, d.km, d.updateLineDisplay, d.debugPrint)
+	grid.SetWrap(d.defaultWrap)
+	grid.SetCopyHandler(d.copySelection)
 	d.hexGrid = grid
-	d.debug("FileViewer: hex-grid elapsed=%s bytes=%d", time.Since(stepStart), len(hex))
+	d.debug("FileViewer: hex-grid elapsed=%s input_bytes=%d", time.Since(stepStart), len(d.preview.Data))
 	return grid
 }
 
@@ -1143,13 +1142,6 @@ func writeEscapedRune(b *strings.Builder, r rune) {
 	fmt.Fprintf(b, "\\U%08X", r)
 }
 
-func viewerHex(preview *fileinfo.PreviewFile) string {
-	if preview == nil {
-		return ""
-	}
-	return fileinfo.FormatHexDump(preview.Data)
-}
-
 func truncateUTF8Bytes(text string, limit int) (string, bool) {
 	if limit < 0 {
 		limit = 0
@@ -1256,9 +1248,10 @@ func (d *FileViewerDialog) copySelection() {
 		return
 	}
 	text := grid.SelectedText()
-	start, end, chars := grid.selectionDebugInfo()
-	d.debug("FileViewer: copy-selection active=%s selection=%t start=%d:%d end=%d:%d chars=%d text_chars=%d",
-		d.activeName, grid.selection.set, start.line+1, start.col, end.line+1, end.col, chars, len([]rune(text)))
+	chars := utf8.RuneCountInString(text)
+	start, end := grid.normalizedSelection()
+	d.debug("FileViewer: copy-selection active=%s selection=%t start=%d:%d end=%d:%d chars=%d",
+		d.activeName, grid.selection.set, start.line+1, start.col, end.line+1, end.col, chars)
 	if text == "" {
 		d.setStatusSuffix("copy=no-selection")
 		d.focusActiveViewer()
@@ -1272,8 +1265,8 @@ func (d *FileViewerDialog) copySelection() {
 		return
 	}
 	clipboard.SetContent(text)
-	d.debug("FileViewer: copy-selection clipboard-set chars=%d", len([]rune(text)))
-	d.setStatusSuffix(fmt.Sprintf("copied=%d", len([]rune(text))))
+	d.debug("FileViewer: copy-selection clipboard-set chars=%d", chars)
+	d.setStatusSuffix(fmt.Sprintf("copied=%d", chars))
 	d.focusActiveViewer()
 }
 

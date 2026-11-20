@@ -56,7 +56,7 @@ const (
 	DefaultSortBy           = "name"
 	DefaultSortOrder        = "asc"
 	DefaultDirectoriesFirst = true
-	DefaultShowHiddenFiles  = false
+	DefaultShowHiddenFiles  = true
 	DefaultCursorType       = "underline"
 )
 

@@ -37,6 +37,7 @@ type FileManager struct {
 	cursorMoveDirection   int             // Pending vertical cursor movement: -1 up, 0 none, +1 down
 	cursorAnchor          cursorRowAnchor // Last visible row object for shell menu positioning
 	config                *config.Config
+	lastFilter            *config.FilterEntry // This window's toggle-back pattern.
 	state                 *config.State
 	stateManager          *config.StateManager
 	initialWindowSize     fyne.Size
@@ -70,10 +71,10 @@ type FileManager struct {
 	nextViewerID          uint64
 	activeViewer          uint64
 	viewerCancel          context.CancelFunc
-	shortcutMu            sync.Mutex
-	nextShortcutOpenID    uint64
-	activeShortcutOpenID  uint64
-	shortcutOpenCancel    context.CancelFunc
+	fileOperationMu       sync.Mutex
+	nextFileOperationID   uint64
+	activeFileOperationID uint64
+	fileOperationCancel   context.CancelFunc
 	shortcutCandidateFn   func(string) bool
 	shortcutResolverFn    func(context.Context, string) (string, bool, error)
 	shortcutDefaultOpenFn func(string) error
@@ -150,13 +151,19 @@ type fileListRowAssignment struct {
 	path  string
 }
 
+// All live runtime-state mutations and scheduled captures run on the Fyne
+// call thread. main closes the manager after the event loop returns.
+func (fm *FileManager) scheduleStateSave() error {
+	return fm.stateManager.ScheduleSave(fm.state, fyne.Do)
+}
+
 func (fm *FileManager) browserModel() *browser.Model {
 	if fm.browser == nil {
-		sortConfig := config.SortConfig{SortBy: "name", SortOrder: "asc", DirectoriesFirst: true}
-		if fm.state != nil && fm.config != nil {
-			sortConfig = fm.state.EffectiveSort(fm.config.UI.Sort)
+		cfg := fm.config
+		if cfg == nil {
+			cfg = config.Default()
 		}
-		fm.browser = browser.New("", sortConfig)
+		fm.browser = browser.New("", fm.state.EffectiveSort(cfg.UI.Sort), cfg.UI.ShowHiddenFiles)
 	}
 	return fm.browser
 }
@@ -174,36 +181,7 @@ func (fm *FileManager) GetFiles() []fileinfo.FileInfo {
 // watcher uses this as its baseline so entries hidden by an active filter are
 // not mistaken for newly added files.
 func (fm *FileManager) GetUnfilteredFiles() []fileinfo.FileInfo {
-	return fm.browserModel().SourceFiles()
-}
-
-// UpdateFiles replaces the current listing with files and always re-sorts.
-// It implements the watcher.FileManager interface; ApplyChanges is the sole
-// production caller, and it goes through updateFiles directly so it can skip
-// the re-sort when safe. Keep this exported entry point always-sorting so any
-// other future caller gets the conservative, always-correct behavior.
-func (fm *FileManager) UpdateFiles(files []fileinfo.FileInfo) {
-	fm.updateFiles(files, true)
-}
-
-// updateFiles applies files as the new listing. resort is false only when the
-// caller has already proven the update cannot change relative order (see the
-// sortAffected computation in ApplyChanges).
-func (fm *FileManager) updateFiles(files []fileinfo.FileInfo, resort bool) {
-	if err := fm.browserModel().ReplaceFiles(files, resort); err != nil {
-		debugPrint("FileManager: Filter error: %v", err)
-	}
-
-	// widget.List is not data-bound, so it never redraws on its own; refresh
-	// explicitly to reflect additions, deletions, and modifications.
-	if fm.fileList != nil {
-		fm.fileList.Refresh()
-	}
-	fm.updateStatusBar()
-}
-
-func (fm *FileManager) RemoveFromSelections(path string) {
-	fm.browserModel().RemoveSelected(path)
+	return fm.browserModel().WatcherFiles()
 }
 
 // ApplyChanges merges watcher-detected added/deleted/modified files into the

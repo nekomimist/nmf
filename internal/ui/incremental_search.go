@@ -18,8 +18,8 @@ import (
 // IncrementalSearchOverlay represents a lightweight search overlay
 type IncrementalSearchOverlay struct {
 	searchTerm     string              // Current search term
-	matchedFiles   []fileinfo.FileInfo // Files matching the search
-	currentMatch   int                 // Index of current match in matchedFiles
+	matches        []int               // Indexes into allFiles when searchTerm is nonempty
+	currentMatch   int                 // Index within the active result set
 	container      *fyne.Container     // Main container for the overlay
 	searchLabel    *canvas.Text        // Shows current search term and match info
 	searchText     *shrinkingTextLabel // Keeps long match names from expanding the window
@@ -45,7 +45,6 @@ func NewIncrementalSearchOverlay(
 	overlay := &IncrementalSearchOverlay{
 		searchTerm:    "",
 		allFiles:      files,
-		matchedFiles:  make([]fileinfo.FileInfo, 0),
 		currentMatch:  -1,
 		debugPrint:    debugPrint,
 		keyManager:    keyManager,
@@ -140,6 +139,8 @@ func (iso *IncrementalSearchOverlay) hide(cancel bool) {
 
 	iso.visible = false
 	iso.closed = true
+	iso.allFiles = nil
+	iso.matches = nil
 	iso.container.Hide()
 
 	// Call cancel callback if this was an explicit cancellation.
@@ -182,32 +183,36 @@ func (iso *IncrementalSearchOverlay) RemoveLastCharacter() {
 
 // NextMatch moves to the next matching file
 func (iso *IncrementalSearchOverlay) NextMatch() {
-	if !iso.visible || len(iso.matchedFiles) == 0 {
+	if !iso.visible || iso.matchCount() == 0 {
 		return
 	}
 
-	iso.currentMatch = (iso.currentMatch + 1) % len(iso.matchedFiles)
+	iso.currentMatch = (iso.currentMatch + 1) % iso.matchCount()
 	iso.updateDisplay()
 	iso.debugPrint("IncrementalSearchOverlay: Next match, index: %d", iso.currentMatch)
 }
 
 // PreviousMatch moves to the previous matching file
 func (iso *IncrementalSearchOverlay) PreviousMatch() {
-	if !iso.visible || len(iso.matchedFiles) == 0 {
+	if !iso.visible || iso.matchCount() == 0 {
 		return
 	}
 
-	iso.currentMatch = (iso.currentMatch - 1 + len(iso.matchedFiles)) % len(iso.matchedFiles)
+	iso.currentMatch = (iso.currentMatch - 1 + iso.matchCount()) % iso.matchCount()
 	iso.updateDisplay()
 	iso.debugPrint("IncrementalSearchOverlay: Previous match, index: %d", iso.currentMatch)
 }
 
 // GetCurrentMatch returns the currently selected file, or nil if none
 func (iso *IncrementalSearchOverlay) GetCurrentMatch() *fileinfo.FileInfo {
-	if !iso.visible || iso.currentMatch < 0 || iso.currentMatch >= len(iso.matchedFiles) {
+	if !iso.visible || iso.currentMatch < 0 || iso.currentMatch >= iso.matchCount() {
 		return nil
 	}
-	return &iso.matchedFiles[iso.currentMatch]
+	index := iso.currentMatch
+	if iso.searchTerm != "" {
+		index = iso.matches[index]
+	}
+	return &iso.allFiles[index]
 }
 
 // GetSearchTerm returns the current search term
@@ -222,52 +227,45 @@ func (iso *IncrementalSearchOverlay) IsVisible() bool {
 
 // updateSearch updates the matched files based on current search term
 func (iso *IncrementalSearchOverlay) updateSearch() {
-	iso.matchedFiles = iso.matchedFiles[:0] // Clear slice but keep capacity
-
-	if iso.searchTerm == "" {
-		// User deleted all characters - show all files
-		iso.matchedFiles = append(iso.matchedFiles, iso.allFiles...)
-		if len(iso.matchedFiles) > 0 {
-			iso.currentMatch = 0
-		} else {
-			iso.currentMatch = -1
-		}
-	} else {
-		// Find files that match the search term (case-insensitive matching)
+	iso.matches = iso.matches[:0]
+	if iso.searchTerm != "" {
 		matcher := iso.matchers.Build(iso.searchTerm)
-		for _, file := range iso.allFiles {
-			if matcher.Match(file.Name) {
-				iso.matchedFiles = append(iso.matchedFiles, file)
+		for i := range iso.allFiles {
+			if matcher.Match(iso.allFiles[i].Name) {
+				iso.matches = append(iso.matches, i)
 			}
 		}
-
-		// Reset current match to first result if we have matches
-		if len(iso.matchedFiles) > 0 {
-			iso.currentMatch = 0
-		} else {
-			iso.currentMatch = -1
-		}
 	}
-
+	iso.currentMatch = -1
+	if iso.matchCount() > 0 {
+		iso.currentMatch = 0
+	}
 	iso.updateDisplay()
+}
+
+func (iso *IncrementalSearchOverlay) matchCount() int {
+	if iso.searchTerm == "" {
+		return len(iso.allFiles)
+	}
+	return len(iso.matches)
 }
 
 // updateDisplay updates the overlay display with current search state
 func (iso *IncrementalSearchOverlay) updateDisplay() {
-	if len(iso.matchedFiles) == 0 {
+	if iso.matchCount() == 0 {
 		if iso.searchTerm == "" {
 			iso.setSearchText("🔍 Type to narrow down")
 		} else {
 			iso.setSearchText(fmt.Sprintf("🔍 Search: %s (no matches found)", iso.searchTerm))
 		}
 	} else {
-		matchInfo := fmt.Sprintf("[%d/%d]", iso.currentMatch+1, len(iso.matchedFiles))
+		matchInfo := fmt.Sprintf("[%d/%d]", iso.currentMatch+1, iso.matchCount())
 		if iso.searchTerm == "" {
 			iso.setSearchText(fmt.Sprintf("🔍 Type to narrow down %s", matchInfo))
 		} else {
 			currentFileName := ""
-			if iso.currentMatch >= 0 && iso.currentMatch < len(iso.matchedFiles) {
-				currentFileName = fmt.Sprintf(" → %s", iso.matchedFiles[iso.currentMatch].Name)
+			if file := iso.GetCurrentMatch(); file != nil {
+				currentFileName = fmt.Sprintf(" → %s", file.Name)
 			}
 			iso.setSearchText(fmt.Sprintf("🔍 Search: %s %s%s", iso.searchTerm, matchInfo, currentFileName))
 		}

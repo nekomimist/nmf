@@ -13,17 +13,11 @@ func (fm *FileManager) ShowDeleteDialog(permanent bool) {
 		fm.logCachedListingBlocked("delete")
 		return
 	}
-	targets := fm.collectTargets()
+	targets, srcPaths := fm.collectTransferTargets()
 	if len(targets) == 0 {
 		debugPrint("FileManager: No valid target for delete")
 		return
 	}
-	srcPaths := fm.collectTargetPaths()
-	if len(srcPaths) == 0 {
-		debugPrint("FileManager: No valid source paths for delete")
-		return
-	}
-
 	dlg := ui.NewDeleteConfirmDialog(targets, permanent, fm.keyManager)
 	dlg.ShowDialog(fm.window, func() {
 		mode := jobs.DeleteModeTrash

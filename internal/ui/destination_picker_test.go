@@ -4,6 +4,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"fyne.io/fyne/v2/canvas"
 )
 
 func TestDestinationDialogsToggleHistoryOrder(t *testing.T) {
@@ -40,8 +42,12 @@ func TestDestinationDialogsToggleHistoryOrder(t *testing.T) {
 			if picker.selectedPath != wantRecent[0] || !picker.filteredDest[1].OpenInWindow {
 				t.Fatal("ordering should select the newest destination and retain open-window metadata")
 			}
-			if got, _ := picker.dataBinding.Get(); !slices.Equal(got, wantRecent) {
-				t.Fatalf("displayed paths = %v, want %v", got, wantRecent)
+			row := picker.destList.CreateItem().(*canvas.Text)
+			for i, want := range wantRecent {
+				picker.destList.UpdateItem(i, row)
+				if row.Text != want {
+					t.Fatalf("displayed row %d = %q, want %q", i, row.Text, want)
+				}
 			}
 
 			picker.searchEntry.SetText("project")

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"strings"
 	"sync"
 
@@ -34,6 +35,8 @@ type DirectoryTreeDialog struct {
 	children       map[string][]string
 	branches       map[string]bool
 	loading        map[string]bool
+	visibleNodes   []string // Invalidated on root, expansion or loaded-child changes.
+	visibleIndex   int
 	loadChildren   func(string) ([]string, error)
 	classifyBranch func(string) (bool, bool)
 	loadApplyMu    sync.Mutex
@@ -66,18 +69,8 @@ func NewDirectoryTreeDialog(currentPath string, keyManager *keymanager.KeyManage
 func (dtd *DirectoryTreeDialog) createTree() {
 	dtd.tree = widget.NewTree(
 		// childUIDs function - returns child directories
-		func(uid widget.TreeNodeID) []widget.TreeNodeID {
-			children := dtd.getDirectoryChildren(string(uid))
-			result := make([]widget.TreeNodeID, len(children))
-			for i, child := range children {
-				result[i] = widget.TreeNodeID(child)
-			}
-			return result
-		},
-		// isBranch function - all paths are branches (directories)
-		func(uid widget.TreeNodeID) bool {
-			return dtd.isDirectory(string(uid))
-		},
+		dtd.getDirectoryChildren,
+		dtd.isDirectory,
 		// create function - creates node UI
 		func(branch bool) fyne.CanvasObject {
 			icon := widget.NewIcon(theme.FolderIcon())
@@ -108,8 +101,11 @@ func (dtd *DirectoryTreeDialog) createTree() {
 
 	// Set branch open handler for lazy loading
 	dtd.tree.OnBranchOpened = func(uid widget.TreeNodeID) {
+		dtd.invalidateVisibleNodes()
+		dtd.getDirectoryChildren(uid)
 		dtd.debugPrint("TreeDialog: Branch opened: %s", uid)
 	}
+	dtd.tree.OnBranchClosed = func(widget.TreeNodeID) { dtd.invalidateVisibleNodes() }
 
 	// Set initial root node
 	dtd.tree.Root = widget.TreeNodeID(dtd.currentRoot)
@@ -160,6 +156,7 @@ func (dtd *DirectoryTreeDialog) getDirectoryChildren(path string) []string {
 					dtd.branches[child] = isBranch
 				}
 			}
+			dtd.visibleNodes = nil
 			tree := dtd.tree
 			dtd.loadApplyMu.Unlock()
 			if tree != nil {
@@ -230,23 +227,38 @@ func (dtd *DirectoryTreeDialog) getDisplayName(path string) string {
 	return base
 }
 
-// getVisibleNodes returns all currently visible nodes in the tree
-func (dtd *DirectoryTreeDialog) getVisibleNodes() []widget.TreeNodeID {
-	var visibleNodes []widget.TreeNodeID
-	dtd.collectVisibleNodes(widget.TreeNodeID(dtd.currentRoot), &visibleNodes)
-	return visibleNodes
+func (dtd *DirectoryTreeDialog) invalidateVisibleNodes() {
+	dtd.loadApplyMu.Lock()
+	dtd.visibleNodes = nil
+	dtd.loadApplyMu.Unlock()
 }
 
-// collectVisibleNodes recursively collects all visible nodes from the tree
-func (dtd *DirectoryTreeDialog) collectVisibleNodes(nodeID widget.TreeNodeID, visibleNodes *[]widget.TreeNodeID) {
-	*visibleNodes = append(*visibleNodes, nodeID)
+func (dtd *DirectoryTreeDialog) adjacentVisibleNode(delta int) (string, bool) {
+	dtd.loadApplyMu.Lock()
+	defer dtd.loadApplyMu.Unlock()
+	if dtd.visibleNodes == nil {
+		dtd.collectVisibleNodes(dtd.currentRoot)
+	}
+	nodes := dtd.visibleNodes
+	i := dtd.visibleIndex
+	if i < 0 || i >= len(nodes) || nodes[i] != dtd.selectedPath {
+		i = slices.Index(nodes, dtd.selectedPath)
+	}
+	next := i + delta
+	if i < 0 || next < 0 || next >= len(nodes) {
+		return "", false
+	}
+	dtd.visibleIndex = next
+	return nodes[next], true
+}
 
-	// If this branch is open, collect its children
-	if dtd.tree.IsBranchOpen(nodeID) {
-		children := dtd.getDirectoryChildren(string(nodeID))
-		for _, child := range children {
-			childID := widget.TreeNodeID(child)
-			dtd.collectVisibleNodes(childID, visibleNodes)
+// Called with loadApplyMu held. Open branches load their children in the
+// background and invalidate this traversal when their result arrives.
+func (dtd *DirectoryTreeDialog) collectVisibleNodes(node string) {
+	dtd.visibleNodes = append(dtd.visibleNodes, node)
+	if dtd.tree.IsBranchOpen(node) {
+		for _, child := range dtd.children[node] {
+			dtd.collectVisibleNodes(child)
 		}
 	}
 }
@@ -264,11 +276,6 @@ func (dtd *DirectoryTreeDialog) expandInitialLevel() {
 // expands its initial level, and resets the selection to the root node —
 // mirroring the selection setup ShowDialog performs at open time. Callers
 // must update dtd.rootMode and dtd.currentRoot before calling this.
-//
-// This reset matters because MoveUp/MoveDown locate the cursor by searching
-// getVisibleNodes() (rooted at dtd.currentRoot) for a node matching
-// dtd.selectedPath; leaving a stale path from the old root's subtree would
-// make both of them permanent no-ops after a mode change.
 func (dtd *DirectoryTreeDialog) reRootAndSelect() {
 	dtd.tree.Refresh()
 	dtd.expandInitialLevel()
@@ -385,48 +392,16 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 // TreeDialogInterface implementation methods
 
 // MoveUp moves the selection up in the tree
-func (dtd *DirectoryTreeDialog) MoveUp() {
-	visibleNodes := dtd.getVisibleNodes()
-	if len(visibleNodes) == 0 {
-		return
-	}
+func (dtd *DirectoryTreeDialog) MoveUp() { dtd.moveVisible(-1) }
 
-	currentIndex := -1
-	for i, node := range visibleNodes {
-		if string(node) == dtd.selectedPath {
-			currentIndex = i
-			break
-		}
-	}
+// MoveDown moves the selection down in the tree.
+func (dtd *DirectoryTreeDialog) MoveDown() { dtd.moveVisible(1) }
 
-	if currentIndex > 0 {
-		newSelection := visibleNodes[currentIndex-1]
-		dtd.tree.Select(newSelection)
-		dtd.selectedPath = string(newSelection)
-		dtd.debugPrint("TreeDialog: Move up to %s", newSelection)
-	}
-}
-
-// MoveDown moves the selection down in the tree
-func (dtd *DirectoryTreeDialog) MoveDown() {
-	visibleNodes := dtd.getVisibleNodes()
-	if len(visibleNodes) == 0 {
-		return
-	}
-
-	currentIndex := -1
-	for i, node := range visibleNodes {
-		if string(node) == dtd.selectedPath {
-			currentIndex = i
-			break
-		}
-	}
-
-	if currentIndex >= 0 && currentIndex < len(visibleNodes)-1 {
-		newSelection := visibleNodes[currentIndex+1]
-		dtd.tree.Select(newSelection)
-		dtd.selectedPath = string(newSelection)
-		dtd.debugPrint("TreeDialog: Move down to %s", newSelection)
+func (dtd *DirectoryTreeDialog) moveVisible(delta int) {
+	if node, ok := dtd.adjacentVisibleNode(delta); ok {
+		dtd.tree.Select(node)
+		dtd.selectedPath = node
+		dtd.debugPrint("TreeDialog: Move to %s", node)
 	}
 }
 

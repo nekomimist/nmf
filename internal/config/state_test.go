@@ -288,11 +288,7 @@ func TestStateManagerSaveAsyncAndLoadRoundTrip(t *testing.T) {
 	}
 }
 
-// TestStateManagerSaveAsyncThenCloseRoundTrip is a regression test for a race
-// in saveWorker: select chooses among ready cases at random, so Close's case
-// could win over a SaveAsync value already sitting in saveRequests and reply
-// success without ever writing it, permanently losing the state. It loops
-// several fresh managers back-to-back (no sleep) to reliably hit that window.
+// A close immediately following SaveAsync must include that revision.
 func TestStateManagerSaveAsyncThenCloseRoundTrip(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		tempDir := t.TempDir()
@@ -603,5 +599,99 @@ func TestNewStateManagerWithPath(t *testing.T) {
 	}
 	if state == nil {
 		t.Fatal("expected non-nil default state")
+	}
+}
+
+func TestScheduledStateSaveCoalescesAndClosesWithQueuedOwnerCallback(t *testing.T) {
+	sm := newTestStateManager(t, filepath.Join(t.TempDir(), "state.json"))
+	sm.saveDelay = time.Millisecond
+	queued := make(chan func(), 2)
+	dispatch := func(action func()) { queued <- action }
+	next := func() func() {
+		t.Helper()
+		select {
+		case fn := <-queued:
+			return fn
+		case <-time.After(2 * time.Second):
+			t.Fatal("timer did not queue owner callback")
+			return nil
+		}
+	}
+	state := newDefaultState()
+	state.NavigationHistory.Pinned = []string{"/one"}
+	if err := sm.ScheduleSave(state, dispatch); err != nil {
+		t.Fatal(err)
+	}
+	old := next()
+	state.NavigationHistory.Pinned[0] = "/two"
+	if err := sm.ScheduleSave(state, dispatch); err != nil {
+		t.Fatal(err)
+	}
+	latest := next()
+	old()
+	// The stale callback cannot claim or copy the new revision.
+	sm.mu.Lock()
+	captured := sm.snapshot != nil || sm.pending != state
+	sm.mu.Unlock()
+	if captured {
+		t.Fatal("stale callback captured the pending revision")
+	}
+	if err := sm.Close(); err != nil {
+		t.Fatal(err)
+	}
+	state.NavigationHistory.Pinned[0] = "/changed-after-close"
+	latest()
+	got, err := sm.Load("")
+	if err != nil || len(got.NavigationHistory.Pinned) != 1 || got.NavigationHistory.Pinned[0] != "/two" {
+		t.Fatalf("persisted state = %+v, err %v", got, err)
+	}
+}
+
+func TestLatestSnapshotWinsWhileWriterIsBusy(t *testing.T) {
+	sm := newTestStateManager(t, filepath.Join(t.TempDir(), "state.json"))
+	sm.saveDelay = time.Hour
+	state := newDefaultState()
+	state.NavigationHistory.Pinned = []string{"/first"}
+	queue := func(func()) { t.Error("unexpected timer") }
+
+	// Hold disk I/O until both UI snapshots have been captured.
+	func() {
+		sm.writeMu.Lock()
+		defer sm.writeMu.Unlock()
+		for _, path := range []string{"/first", "/second"} {
+			state.NavigationHistory.Pinned[0] = path
+			if err := sm.ScheduleSave(state, queue); err != nil {
+				t.Fatal(err)
+			}
+			sm.saveDue(sm.revision)
+		}
+		state.NavigationHistory.Pinned[0] = "/unscheduled"
+	}()
+	if err := sm.Close(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := sm.Load("")
+	if err != nil || len(got.NavigationHistory.Pinned) != 1 || got.NavigationHistory.Pinned[0] != "/second" {
+		t.Fatalf("loaded %+v, err %v", got, err)
+	}
+}
+
+func TestStateManagerRetryAfterWriteFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "parent")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sm := newTestStateManager(t, filepath.Join(path, "state.json"))
+	if err := sm.Save(newDefaultState()); err == nil {
+		t.Fatal("expected writing below a file to fail")
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := sm.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(sm.StatePath()); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -41,11 +41,21 @@ func askDestinationConflict(j *Job, execCtx *executionContext, src, dst executio
 			return applyDestinationConflict(resolution.Action, dst, suggested, srcInfo, dstInfo)
 		}
 
-		renamed, retry, err := renameConflictDestination(j, execCtx, dst, resolution.NewName)
-		if err != nil || !retry {
-			return renamed, false, false, err
+		name, err := fileinfo.ValidateRenameName(resolution.NewName)
+		if err != nil {
+			if j.Resolver == nil {
+				return dst, false, false, wrapPath(dst.displayPath(), err)
+			}
+		} else {
+			dst = joinPath(dirPath(dst), name)
+			dstInfo, err = lstatPath(execCtx, dst)
+			if fileinfo.IsNotExist(err) {
+				return dst, false, false, nil
+			}
+			if err != nil {
+				return dst, false, false, wrapPath(dst.displayPath(), err)
+			}
 		}
-		dst = renamed
 		j.conflictDefault = ConflictRename
 	}
 }
@@ -103,24 +113,6 @@ func applyDestinationConflict(action ConflictAction, dst, suggested executionPat
 	default:
 		return dst, false, false, fmt.Errorf("unknown conflict action: %s", action)
 	}
-}
-
-// renameConflictDestination requests another prompt for invalid or occupied
-// names. Without a resolver, invalid names must fail instead of looping.
-func renameConflictDestination(j *Job, execCtx *executionContext, dst executionPath, newName string) (renamed executionPath, retry bool, err error) {
-	name, err := fileinfo.ValidateRenameName(newName)
-	if err != nil {
-		if j.Resolver == nil {
-			return dst, false, wrapPath(dst.displayPath(), err)
-		}
-		return dst, true, nil
-	}
-	renamed = joinPath(dirPath(dst), name)
-	exists, err := pathExists(execCtx, renamed)
-	if err != nil {
-		return renamed, false, wrapPath(renamed.displayPath(), err)
-	}
-	return renamed, exists, nil
 }
 
 func canOverwriteConflict(srcInfo, dstInfo os.FileInfo) bool {

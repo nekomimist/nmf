@@ -44,7 +44,7 @@ func ResolveShortcutNavigationDirContext(ctx context.Context, p string) (string,
 		return "", false, err
 	}
 
-	target := strings.TrimSpace(shortcut.TargetPath)
+	target := shortcut.TargetPath
 	if target == "" {
 		return "", false, nil
 	}

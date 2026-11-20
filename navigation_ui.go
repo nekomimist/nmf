@@ -145,7 +145,7 @@ func (fm *FileManager) PinCurrentHistoryPath() {
 		return
 	}
 	if fm.stateManager != nil {
-		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+		if err := fm.scheduleStateSave(); err != nil {
 			debugPrint("FileManager: Error saving pinned history path: %v", err)
 			fm.ShowMessageDialog("History Jump", err.Error())
 			return
@@ -165,7 +165,7 @@ func (fm *FileManager) UnpinHistoryPath(path string) bool {
 		return false
 	}
 	if fm.stateManager != nil {
-		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+		if err := fm.scheduleStateSave(); err != nil {
 			debugPrint("FileManager: Error saving unpinned history path: %v", err)
 			fm.ShowMessageDialog("History Jump", err.Error())
 			return false
@@ -206,7 +206,7 @@ func (fm *FileManager) ShowDirectoryJumpDialog() {
 
 	dialog := ui.NewDirectoryJumpDialog(entries, fm.keyManager, debugPrint)
 	dialog.ShowDialog(fm.window, func(selectedPath string) {
-		debugPrint("FileManager: jump dialog selected path=%s focused=%s", selectedPath, focusedObjectLabel(fm.window))
+		debugPrint("FileManager: jump dialog selected focused=%s", focusedObjectLabel(fm.window))
 		fm.jumpToConfiguredDirectory(selectedPath)
 		fm.focusFileList("jump-dialog-selected")
 	})
@@ -222,7 +222,7 @@ func (fm *FileManager) ShowMaintenanceDialog() {
 			return 0, nil
 		}
 		if fm.stateManager != nil {
-			if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+			if err := fm.scheduleStateSave(); err != nil {
 				debugPrint("FileManager: Error saving maintenance cleanup: %v", err)
 				return removed, err
 			}
@@ -234,7 +234,7 @@ func (fm *FileManager) ShowMaintenanceDialog() {
 
 func (fm *FileManager) normalizeNavigationHistoryForRuntimeState() {
 	if normalizeNavigationHistory(fm.state) && fm.stateManager != nil {
-		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+		if err := fm.scheduleStateSave(); err != nil {
 			debugPrint("FileManager: Error saving normalized navigation history: %v", err)
 		}
 	}
@@ -248,7 +248,7 @@ func (fm *FileManager) recordNavigationHistory(path string) {
 
 	fm.state.AddToNavigationHistory(path, fm.config.UI.NavigationHistory.MaxEntries)
 	if fm.stateManager != nil {
-		if err := fm.stateManager.SaveAsync(fm.state); err != nil {
+		if err := fm.scheduleStateSave(); err != nil {
 			debugPrint("FileManager: Error saving navigation history: %v", err)
 		}
 	}
@@ -273,7 +273,8 @@ func (fm *FileManager) jumpToConfiguredDirectory(inputPath string) {
 
 	resolvedPath, parsed, err := fileinfo.CanonicalDisplayPath(path)
 	if err != nil {
-		debugPrint("FileManager: Invalid directory jump path '%s': %v", inputPath, err)
+		err = directoryInputError(inputPath, err)
+		debugPrint("FileManager: Invalid directory jump: %v", err)
 		fm.ShowMessageDialog("フォルダを開けませんでした", err.Error())
 		return
 	}

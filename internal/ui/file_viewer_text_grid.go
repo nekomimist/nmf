@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -32,8 +33,7 @@ type fileViewerTextGrid struct {
 
 	grid        *widget.TextGrid
 	selectionBG *fyne.Container
-	lines       []string
-	foldedLines []string
+	viewerLines
 	// maxLineWidth caches the widest display line. lines is fixed for the
 	// grid's lifetime, so the scan behind it runs at most once instead of on
 	// every horizontal cursor move and every resize.
@@ -102,40 +102,32 @@ type viewerWrappedLineLayout struct {
 }
 
 func newFileViewerTextGrid(text string, km *keymanager.KeyManager, onMoved func(), debugPrint func(format string, args ...interface{})) *fileViewerTextGrid {
+	return newViewerGrid(viewerLines{lines: strings.Split(text, "\n")}, km, onMoved, debugPrint)
+}
+
+func newViewerGrid(content viewerLines, km *keymanager.KeyManager, onMoved func(), debugPrint func(format string, args ...interface{})) *fileViewerTextGrid {
 	start := time.Now()
 	syncAmbiguousWidthPolicy()
 	v := &fileViewerTextGrid{
 		grid:        widget.NewTextGrid(),
 		selectionBG: container.NewWithoutLayout(),
-		lines:       splitViewerLines(text),
+		viewerLines: content,
 		visibleRows: fileViewerTextGridFallbackRows,
 		visibleCols: fileViewerTextGridFallbackCols,
-		km:          km,
-		onMoved:     onMoved,
-		debugPrint:  debugPrint,
+		km:          km, onMoved: onMoved, debugPrint: debugPrint,
 	}
-	v.foldedLines = make([]string, len(v.lines))
-	for _, line := range v.lines {
-		if w := viewerTextGridLineWidth(line); w > v.maxLineWidth {
-			v.maxLineWidth = w
-		}
+	if len(content.hexData) > 0 {
+		// Hex rows use fixed-width ASCII fields. Only the last row can be shorter.
+		v.maxLineWidth = len(content.lineAt(0))
 	}
-	for i, line := range v.lines {
-		v.foldedLines[i] = strings.ToLower(line)
+	for i, line := range content.lines {
+		v.maxLineWidth = max(v.maxLineWidth, v.measureLine(i, line))
 	}
 	v.grid.Scroll = fyne.ScrollNone
 	v.ExtendBaseWidget(v)
 	v.refreshGrid()
-	v.debug("FileViewer: text-grid-init elapsed=%s lines=%d", time.Since(start), len(v.lines))
+	v.debug("FileViewer: text-grid-init elapsed=%s lines=%d", time.Since(start), v.TotalLines())
 	return v
-}
-
-func splitViewerLines(text string) []string {
-	lines := strings.Split(text, "\n")
-	if len(lines) == 0 {
-		return []string{""}
-	}
-	return lines
 }
 
 func viewerLocaleUsesWideAmbiguous() bool {
@@ -282,17 +274,17 @@ func (v *fileViewerTextGrid) Dragged(ev *fyne.DragEvent) {
 		start := v.textPositionForCanvasPosition(fyne.NewPos(ev.Position.X-ev.Dragged.DX, ev.Position.Y-ev.Dragged.DY))
 		v.selection = viewerTextSelection{start: start, end: pos, set: true}
 		v.selecting = true
-		startNorm, endNorm, chars := v.selectionDebugInfo()
-		v.debug("FileViewer: text-grid-selection-start from=%d:%d to=%d:%d norm=%d:%d-%d:%d chars=%d x=%.1f y=%.1f dx=%.1f dy=%.1f",
+		startNorm, endNorm := v.normalizedSelection()
+		v.debug("FileViewer: text-grid-selection-start from=%d:%d to=%d:%d norm=%d:%d-%d:%d x=%.1f y=%.1f dx=%.1f dy=%.1f",
 			start.line+1, start.col, pos.line+1, pos.col,
-			startNorm.line+1, startNorm.col, endNorm.line+1, endNorm.col, chars,
+			startNorm.line+1, startNorm.col, endNorm.line+1, endNorm.col,
 			ev.Position.X, ev.Position.Y, ev.Dragged.DX, ev.Dragged.DY)
 	} else {
 		v.selection.end = pos
-		startNorm, endNorm, chars := v.selectionDebugInfo()
-		v.debug("FileViewer: text-grid-selection-update to=%d:%d norm=%d:%d-%d:%d chars=%d x=%.1f y=%.1f dx=%.1f dy=%.1f",
+		startNorm, endNorm := v.normalizedSelection()
+		v.debug("FileViewer: text-grid-selection-update to=%d:%d norm=%d:%d-%d:%d x=%.1f y=%.1f dx=%.1f dy=%.1f",
 			pos.line+1, pos.col,
-			startNorm.line+1, startNorm.col, endNorm.line+1, endNorm.col, chars,
+			startNorm.line+1, startNorm.col, endNorm.line+1, endNorm.col,
 			ev.Position.X, ev.Position.Y, ev.Dragged.DX, ev.Dragged.DY)
 	}
 	v.refreshGrid()
@@ -300,9 +292,9 @@ func (v *fileViewerTextGrid) Dragged(ev *fyne.DragEvent) {
 
 func (v *fileViewerTextGrid) DragEnd() {
 	v.selecting = false
-	start, end, chars := v.selectionDebugInfo()
-	v.debug("FileViewer: text-grid-selection-end selection=%t start=%d:%d end=%d:%d chars=%d",
-		v.selection.set, start.line+1, start.col, end.line+1, end.col, chars)
+	start, end := v.normalizedSelection()
+	v.debug("FileViewer: text-grid-selection-end selection=%t start=%d:%d end=%d:%d",
+		v.selection.set, start.line+1, start.col, end.line+1, end.col)
 	if v.selection.set && compareViewerTextPosition(v.selection.start, v.selection.end) == 0 {
 		v.selection = viewerTextSelection{}
 		v.refreshGrid()
@@ -410,7 +402,7 @@ func (v *fileViewerTextGrid) End() {
 	line := v.maxTopLine()
 	col := 0
 	if v.wrap {
-		col = viewerTextGridLineWidth(v.lines[line])
+		col = viewerTextGridLineWidth(v.lineAt(line))
 	}
 	v.setTopPosition(line, col)
 }
@@ -439,13 +431,6 @@ func (v *fileViewerTextGrid) CurrentLine() int {
 	return line
 }
 
-func (v *fileViewerTextGrid) TotalLines() int {
-	if len(v.lines) == 0 {
-		return 1
-	}
-	return len(v.lines)
-}
-
 func (v *fileViewerTextGrid) Find(query string, direction int) viewerTextSearchResult {
 	return v.FindWithCase(query, direction, false)
 }
@@ -464,14 +449,15 @@ func (v *fileViewerTextGrid) FindWithCase(query string, direction int, matchCase
 		direction = 1
 	}
 
-	searchLines := v.lines
-	searchQuery := query
-	if !matchCase {
-		searchLines = v.foldedLines
-		searchQuery = strings.ToLower(query)
+	start := viewerTextPosition{line: v.topLine}
+	if direction < 0 {
+		start.col = utf8.RuneCountInString(v.lineAt(start.line))
 	}
-	start := v.searchStart(query, matchCase, direction)
-	match, wrapped, ok := findViewerTextMatch(searchLines, searchQuery, start, direction)
+	if v.search.set && v.search.query == query && v.search.matchCase == matchCase {
+		start = v.search.start
+		start.col += direction
+	}
+	match, wrapped, ok := v.findMatch(query, start, direction, matchCase)
 	if !ok {
 		v.search = viewerTextSearch{query: query, matchCase: matchCase}
 		v.refreshGrid()
@@ -482,50 +468,19 @@ func (v *fileViewerTextGrid) FindWithCase(query string, direction int, matchCase
 	v.search = viewerTextSearch{
 		query:     query,
 		matchCase: matchCase,
-		start:     match.start,
-		end:       viewerTextPosition{line: match.start.line, col: match.start.col + len([]rune(query))},
+		start:     match,
+		end:       viewerTextPosition{line: match.line, col: match.col + len([]rune(query))},
 		set:       true,
 	}
 	v.revealSearchMatch()
 	v.debug("FileViewer: text-grid-search query=%q direction=%d matched=true wrapped=%t line=%d col=%d",
-		query, direction, wrapped, match.start.line+1, match.start.col+1)
+		query, direction, wrapped, match.line+1, match.col+1)
 	return viewerTextSearchResult{
 		Matched: true,
 		Wrapped: wrapped,
-		Line:    match.start.line + 1,
-		Column:  match.start.col + 1,
+		Line:    match.line + 1,
+		Column:  match.col + 1,
 	}
-}
-
-func (v *fileViewerTextGrid) searchStart(query string, matchCase bool, direction int) viewerTextPosition {
-	if v.search.set && v.search.query == query && v.search.matchCase == matchCase {
-		if direction < 0 {
-			if v.search.start.col > 0 {
-				return viewerTextPosition{line: v.search.start.line, col: v.search.start.col - 1}
-			}
-			if v.search.start.line > 0 {
-				line := v.search.start.line - 1
-				return viewerTextPosition{line: line, col: len([]rune(v.lines[line])) - 1}
-			}
-			return viewerTextPosition{}
-		}
-		return v.clampTextPosition(viewerTextPosition{line: v.search.start.line, col: v.search.start.col + 1})
-	}
-	if direction < 0 {
-		if len(v.lines) == 0 {
-			return viewerTextPosition{}
-		}
-		line := v.topLine
-		if line >= len(v.lines) {
-			line = len(v.lines) - 1
-		}
-		lineLen := len([]rune(v.lines[line]))
-		if lineLen == 0 {
-			return viewerTextPosition{line: line}
-		}
-		return viewerTextPosition{line: line, col: lineLen - 1}
-	}
-	return v.clampTextPosition(viewerTextPosition{line: v.topLine, col: 0})
 }
 
 func (v *fileViewerTextGrid) pageRows() int {
@@ -669,7 +624,7 @@ func (v *fileViewerTextGrid) debug(format string, args ...interface{}) {
 
 func (v *fileViewerTextGrid) renderVisibleLines(rows, cols int) []viewerVisibleLine {
 	visible := make([]viewerVisibleLine, 0, rows)
-	for i := v.topLine; i < len(v.lines) && len(visible) < rows; i++ {
+	for i := v.topLine; i < v.TotalLines() && len(visible) < rows; i++ {
 		if v.wrap {
 			startCol := 0
 			var lineMap viewerDisplayLineMap
@@ -677,13 +632,12 @@ func (v *fileViewerTextGrid) renderVisibleLines(rows, cols int) []viewerVisibleL
 				startCol = v.topWrapCol
 				lineMap = v.wrappedLineLayout(i).display
 			} else {
-				lineMap = newViewerDisplayLineMap(v.lines[i])
+				lineMap = newViewerDisplayLineMap(v.lineAt(i))
 			}
 			visible = append(visible, lineMap.wrap(i, startCol, cols, rows-len(visible))...)
 			continue
 		}
-		lineMap := newViewerDisplayLineMap(v.lines[i])
-		visible = append(visible, lineMap.slice(i, v.leftCol, cols))
+		visible = append(visible, v.visibleLine(i, v.leftCol, cols))
 	}
 	return visible
 }
@@ -691,7 +645,7 @@ func (v *fileViewerTextGrid) renderVisibleLines(rows, cols int) []viewerVisibleL
 func (v *fileViewerTextGrid) wrappedLineLayout(line int) *viewerWrappedLineLayout {
 	layout := v.wrapLayout
 	if layout == nil || layout.line != line {
-		layout = &viewerWrappedLineLayout{line: line, display: newViewerDisplayLineMap(v.lines[line])}
+		layout = &viewerWrappedLineLayout{line: line, display: newViewerDisplayLineMap(v.lineAt(line))}
 		v.wrapLayout = layout
 	}
 	cols := v.visibleCols
@@ -818,8 +772,8 @@ func (v *fileViewerTextGrid) revealSearchMatch() {
 			changed = true
 		}
 	} else {
-		col := viewerDisplayColumnForLogicalCol(v.lines[v.search.start.line], v.search.start.col)
-		endCol := viewerDisplayColumnForLogicalCol(v.lines[v.search.end.line], v.search.end.col)
+		col := viewerDisplayColumnForLogicalCol(v.lineAt(v.search.start.line), v.search.start.col)
+		endCol := viewerDisplayColumnForLogicalCol(v.lineAt(v.search.end.line), v.search.end.col)
 		cols := v.visibleCols
 		if cols < 1 {
 			cols = fileViewerTextGridFallbackCols
@@ -880,24 +834,18 @@ func (v *fileViewerTextGrid) SelectedText() string {
 	if compareViewerTextPosition(start, end) == 0 {
 		return ""
 	}
-	return viewerTextForRange(v.lines, start, end)
+	return v.textForRange(start, end)
 }
 
 func (v *fileViewerTextGrid) SelectAll() int {
-	if len(v.lines) == 0 {
-		v.selection = viewerTextSelection{}
-		v.selecting = false
-		v.refreshGrid()
-		return 0
-	}
-	lastLine := len(v.lines) - 1
+	lastLine := v.TotalLines() - 1
 	v.selection = viewerTextSelection{
 		start: viewerTextPosition{line: 0, col: 0},
-		end:   viewerTextPosition{line: lastLine, col: len([]rune(v.lines[lastLine]))},
+		end:   viewerTextPosition{line: lastLine, col: len([]rune(v.lineAt(lastLine)))},
 		set:   true,
 	}
 	v.refreshGrid()
-	return len([]rune(v.SelectedText()))
+	return v.runeCount()
 }
 
 func (v *fileViewerTextGrid) ClearSelection() bool {
@@ -910,15 +858,6 @@ func (v *fileViewerTextGrid) ClearSelection() bool {
 	return hadSelection
 }
 
-func (v *fileViewerTextGrid) selectionDebugInfo() (viewerTextPosition, viewerTextPosition, int) {
-	if !v.selection.set {
-		return viewerTextPosition{}, viewerTextPosition{}, 0
-	}
-	start, end := v.normalizedSelection()
-	text := viewerTextForRange(v.lines, start, end)
-	return start, end, len([]rune(text))
-}
-
 func (v *fileViewerTextGrid) normalizedSelection() (viewerTextPosition, viewerTextPosition) {
 	start := v.clampTextPosition(v.selection.start)
 	end := v.clampTextPosition(v.selection.end)
@@ -929,16 +868,13 @@ func (v *fileViewerTextGrid) normalizedSelection() (viewerTextPosition, viewerTe
 }
 
 func (v *fileViewerTextGrid) clampTextPosition(pos viewerTextPosition) viewerTextPosition {
-	if len(v.lines) == 0 {
-		return viewerTextPosition{}
-	}
 	if pos.line < 0 {
 		pos.line = 0
 	}
-	if pos.line >= len(v.lines) {
-		pos.line = len(v.lines) - 1
+	if pos.line >= v.TotalLines() {
+		pos.line = v.TotalLines() - 1
 	}
-	lineLen := len([]rune(v.lines[pos.line]))
+	lineLen := len([]rune(v.lineAt(pos.line)))
 	if pos.col < 0 {
 		pos.col = 0
 	}
@@ -954,11 +890,6 @@ type viewerDisplayLineMap struct {
 	cellToCol    []int
 }
 
-type viewerTextMatch struct {
-	start viewerTextPosition
-	end   viewerTextPosition
-}
-
 func newViewerDisplayLineMap(line string) viewerDisplayLineMap {
 	var text []rune
 	var continuation []bool
@@ -966,10 +897,7 @@ func newViewerDisplayLineMap(line string) viewerDisplayLineMap {
 	displayCol := 0
 	logicalCol := 0
 	for _, r := range line {
-		widthCells := viewerTextGridRuneWidth(r)
-		if r == '\t' {
-			widthCells = nextTabStop(displayCol, fileViewerTextGridTabWidth) - displayCol
-		}
+		widthCells := viewerRuneCells(r, displayCol)
 		for cell := 0; cell < widthCells; cell++ {
 			isContinuation := r != '\t' && cell > 0
 			if r == '\t' || isContinuation {
@@ -1009,21 +937,23 @@ func viewerTextGridRuneWidth(r rune) int {
 	return width
 }
 
+func viewerRuneCells(r rune, col int) int {
+	if r == '\t' {
+		return nextTabStop(col, fileViewerTextGridTabWidth) - col
+	}
+	return viewerTextGridRuneWidth(r)
+}
+
 func viewerTextGridLineWidth(line string) int {
 	col := 0
 	for _, r := range line {
-		if r == '\t' {
-			col = nextTabStop(col, fileViewerTextGridTabWidth)
-			continue
-		}
-		col += viewerTextGridRuneWidth(r)
+		col += viewerRuneCells(r, col)
 	}
 	return col
 }
 
 func viewerDisplayColumnForLogicalCol(line string, logicalCol int) int {
-	lineMap := newViewerDisplayLineMap(line)
-	return lineMap.displayColumnForLogicalCol(logicalCol)
+	return viewerTextGridLineWidth(line[:viewerRuneOffset(line, logicalCol)])
 }
 
 func (m viewerDisplayLineMap) displayColumnForLogicalCol(logicalCol int) int {
@@ -1188,47 +1118,6 @@ func (row viewerVisibleLine) displayColumnForLogicalCol(logicalCol int) int {
 	return row.displayLen
 }
 
-func viewerTextForRange(lines []string, start, end viewerTextPosition) string {
-	if len(lines) == 0 || compareViewerTextPosition(start, end) >= 0 {
-		return ""
-	}
-	start = clampViewerTextPosition(lines, start)
-	end = clampViewerTextPosition(lines, end)
-	if compareViewerTextPosition(start, end) >= 0 {
-		return ""
-	}
-	if start.line == end.line {
-		return string([]rune(lines[start.line])[start.col:end.col])
-	}
-	parts := make([]string, 0, end.line-start.line+1)
-	parts = append(parts, string([]rune(lines[start.line])[start.col:]))
-	for line := start.line + 1; line < end.line; line++ {
-		parts = append(parts, lines[line])
-	}
-	parts = append(parts, string([]rune(lines[end.line])[:end.col]))
-	return strings.Join(parts, "\n")
-}
-
-func clampViewerTextPosition(lines []string, pos viewerTextPosition) viewerTextPosition {
-	if len(lines) == 0 {
-		return viewerTextPosition{}
-	}
-	if pos.line < 0 {
-		pos.line = 0
-	}
-	if pos.line >= len(lines) {
-		pos.line = len(lines) - 1
-	}
-	lineLen := len([]rune(lines[pos.line]))
-	if pos.col < 0 {
-		pos.col = 0
-	}
-	if pos.col > lineLen {
-		pos.col = lineLen
-	}
-	return pos
-}
-
 func compareViewerTextPosition(a, b viewerTextPosition) int {
 	if a.line < b.line {
 		return -1
@@ -1243,139 +1132,6 @@ func compareViewerTextPosition(a, b viewerTextPosition) int {
 		return 1
 	}
 	return 0
-}
-
-func findViewerTextMatch(lines []string, query string, start viewerTextPosition, direction int) (viewerTextMatch, bool, bool) {
-	if len(lines) == 0 || query == "" {
-		return viewerTextMatch{}, false, false
-	}
-	start = clampViewerTextPosition(lines, start)
-	if direction < 0 {
-		if match, ok := findViewerTextBackward(lines, query, start, true); ok {
-			return match, false, true
-		}
-		end := viewerTextPosition{line: len(lines) - 1, col: len([]rune(lines[len(lines)-1]))}
-		if match, ok := findViewerTextBackward(lines, query, end, true); ok {
-			return match, true, true
-		}
-		return viewerTextMatch{}, false, false
-	}
-	if match, ok := findViewerTextForward(lines, query, start, true); ok {
-		return match, false, true
-	}
-	if match, ok := findViewerTextForward(lines, query, viewerTextPosition{}, true); ok {
-		return match, true, true
-	}
-	return viewerTextMatch{}, false, false
-}
-
-func findViewerTextForward(lines []string, query string, start viewerTextPosition, includeStart bool) (viewerTextMatch, bool) {
-	queryLen := len([]rune(query))
-	for line := start.line; line < len(lines); line++ {
-		col := 0
-		if line == start.line {
-			col = start.col
-			if !includeStart {
-				col++
-			}
-		}
-		if idx, ok := viewerIndexRunes(lines[line], query, col); ok {
-			return viewerTextMatch{
-				start: viewerTextPosition{line: line, col: idx},
-				end:   viewerTextPosition{line: line, col: idx + queryLen},
-			}, true
-		}
-	}
-	return viewerTextMatch{}, false
-}
-
-func findViewerTextBackward(lines []string, query string, start viewerTextPosition, includeStart bool) (viewerTextMatch, bool) {
-	queryLen := len([]rune(query))
-	for line := start.line; line >= 0; line-- {
-		before := len([]rune(lines[line]))
-		if line == start.line {
-			before = start.col
-			if includeStart {
-				before++
-			}
-		}
-		if idx, ok := viewerLastIndexRunes(lines[line], query, before); ok {
-			return viewerTextMatch{
-				start: viewerTextPosition{line: line, col: idx},
-				end:   viewerTextPosition{line: line, col: idx + queryLen},
-			}, true
-		}
-	}
-	return viewerTextMatch{}, false
-}
-
-func viewerIndexRunes(line, query string, startCol int) (int, bool) {
-	runes := []rune(line)
-	if startCol < 0 {
-		startCol = 0
-	}
-	if startCol > len(runes) {
-		return 0, false
-	}
-	offset := strings.Index(string(runes[startCol:]), query)
-	if offset < 0 {
-		return 0, false
-	}
-	return startCol + len([]rune(string(runes[startCol:])[:offset])), true
-}
-
-func viewerLastIndexRunes(line, query string, beforeCol int) (int, bool) {
-	runes := []rune(line)
-	if beforeCol < 0 {
-		return 0, false
-	}
-	if beforeCol > len(runes) {
-		beforeCol = len(runes)
-	}
-	offset := strings.LastIndex(string(runes[:beforeCol]), query)
-	if offset < 0 {
-		return 0, false
-	}
-	return len([]rune(string(runes[:beforeCol])[:offset])), true
-}
-
-func viewerSliceDisplayLine(line string, startCol, width int) string {
-	if width < 1 {
-		width = fileViewerTextGridFallbackCols
-	}
-	if startCol < 0 {
-		startCol = 0
-	}
-	runes := []rune(line)
-	if startCol >= len(runes) {
-		return ""
-	}
-	end := startCol + width
-	if end > len(runes) {
-		end = len(runes)
-	}
-	return string(runes[startCol:end])
-}
-
-func viewerWrapDisplayLine(line string, width, limit int) []string {
-	if width < 1 {
-		width = fileViewerTextGridFallbackCols
-	}
-	if limit < 1 {
-		return nil
-	}
-	if line == "" {
-		return []string{""}
-	}
-	var rows []string
-	for len(line) > 0 && len(rows) < limit {
-		rows = append(rows, viewerSliceDisplayLine(line, 0, width))
-		if len([]rune(line)) <= width {
-			break
-		}
-		line = string([]rune(line)[width:])
-	}
-	return rows
 }
 
 type fileViewerTextGridRenderer struct {

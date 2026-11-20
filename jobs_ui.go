@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -117,7 +118,14 @@ func (fm *FileManager) ShowMoveDialog() { fm.showCopyMoveDialog(ui.OpMove) }
 
 // ShowExtractArchiveDialog shows the archive extraction UI.
 func (fm *FileManager) ShowExtractArchiveDialog() {
-	targets, srcPaths := fm.collectArchiveTargets()
+	files := fm.CommandTargets()
+	fm.runFileOperation("Checking archives...", func(ctx context.Context) func() {
+		names, paths := archiveTargetNamesAndPaths(ctx, files)
+		return func() { fm.showArchiveDestinations(names, paths) }
+	})
+}
+
+func (fm *FileManager) showArchiveDestinations(targets, srcPaths []string) {
 	if len(targets) == 0 {
 		debugPrint("FileManager: No archive target for extract")
 		fm.ShowMessageDialog("Extract failed", "Select a supported archive file to extract.")
@@ -133,14 +141,12 @@ func (fm *FileManager) ShowExtractArchiveDialog() {
 // showCopyMoveDialog builds targets and destination candidates then shows dialog
 func (fm *FileManager) showCopyMoveDialog(op ui.Operation) {
 	// Determine targets: marked files if any; otherwise cursor item
-	targets := fm.collectTargets()
+	targets, srcPaths := fm.collectTransferTargets()
 	if len(targets) == 0 {
 		debugPrint("FileManager: No valid target for %s", string(op))
 		return
 	}
 
-	// We need full source paths for jobs, not only names — compute now
-	srcPaths := fm.collectTargetPaths()
 	fm.showTransferDestinationDialog(op, targets, func(result ui.CopyMoveResult) {
 		selectedDest := result.Destination
 		if op == ui.OpMove && sameDirectoryPath(selectedDest, fm.GetCurrentPath()) {
@@ -208,8 +214,6 @@ func (fm *FileManager) conflictResolver() jobs.ConflictResolver {
 }
 
 func sameDirectoryPath(a, b string) bool {
-	a = strings.TrimSpace(a)
-	b = strings.TrimSpace(b)
 	if a == "" || b == "" {
 		return false
 	}
@@ -227,7 +231,6 @@ func sameDirectoryPath(a, b string) bool {
 }
 
 func normalizeComparablePath(p string) string {
-	p = strings.TrimSpace(p)
 	if fileinfo.IsSMBDisplay(p) {
 		p = strings.ReplaceAll(p, "\\", "/")
 		p = strings.TrimRight(p, "/")
@@ -241,64 +244,33 @@ func normalizeComparablePath(p string) string {
 	return cleaned
 }
 
-// collectTargets returns display names of targets based on selection or cursor
-func (fm *FileManager) collectTargets() []string {
-	selectedFiles := fm.selectedFileInfos()
-	selected := make([]string, len(selectedFiles))
-	for i, fi := range selectedFiles {
-		selected[i] = fi.Name
+func (fm *FileManager) collectTransferTargets() (names, paths []string) {
+	files := fm.CommandTargets()
+	names = make([]string, len(files))
+	paths = make([]string, len(files))
+	for i, file := range files {
+		names[i], paths[i] = file.Name, file.Path
 	}
-	if len(selected) > 0 {
-		return selected
-	}
-	// Fall back to cursor
-	idx := fm.GetCurrentCursorIndex()
-	if fi, ok := fm.FileAt(idx); ok {
-		if fi.Name != ".." && fi.Status != fileinfo.StatusDeleted {
-			return []string{fi.Name}
-		}
-	}
-	return nil
+	return names, paths
 }
 
-// collectTargetPaths returns absolute/native source file paths
 func (fm *FileManager) collectTargetPaths() []string {
-	selectedFiles := fm.selectedFileInfos()
-	selected := make([]string, len(selectedFiles))
-	for i, fi := range selectedFiles {
-		selected[i] = fi.Path
+	files := fm.CommandTargets()
+	paths := make([]string, len(files))
+	for i, file := range files {
+		paths[i] = file.Path
 	}
-	if len(selected) > 0 {
-		return selected
-	}
-	idx := fm.GetCurrentCursorIndex()
-	if fi, ok := fm.FileAt(idx); ok {
-		if fi.Name != ".." && fi.Status != fileinfo.StatusDeleted {
-			return []string{fi.Path}
-		}
-	}
-	return nil
+	return paths
 }
 
-func (fm *FileManager) collectArchiveTargets() ([]string, []string) {
-	selectedFiles := fm.selectedFileInfos()
-	if len(selectedFiles) > 0 {
-		return archiveTargetNamesAndPaths(selectedFiles)
-	}
-	idx := fm.GetCurrentCursorIndex()
-	if fi, ok := fm.FileAt(idx); ok {
-		if fileinfo.IsFileOperationTarget(fi) {
-			return archiveTargetNamesAndPaths([]fileinfo.FileInfo{fi})
-		}
-	}
-	return nil, nil
-}
-
-func archiveTargetNamesAndPaths(files []fileinfo.FileInfo) ([]string, []string) {
+func archiveTargetNamesAndPaths(ctx context.Context, files []fileinfo.FileInfo) ([]string, []string) {
 	names := make([]string, 0, len(files))
 	paths := make([]string, 0, len(files))
 	for _, fi := range files {
-		if fi.IsDir || fileinfo.IsArchivePath(fi.Path) || !fileinfo.IsSupportedArchive(fi.Path) {
+		if ctx.Err() != nil {
+			return nil, nil
+		}
+		if fi.IsDir || !fileinfo.IsSupportedArchiveContext(ctx, fi.Path) {
 			continue
 		}
 		names = append(names, fi.Name)

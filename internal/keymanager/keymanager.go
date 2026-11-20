@@ -2,8 +2,10 @@ package keymanager
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver/desktop"
@@ -42,8 +44,9 @@ type KeyHandler interface {
 type HandlerToken uint64
 
 type handlerEntry struct {
-	token   HandlerToken
-	handler KeyHandler
+	sensitive bool
+	token     HandlerToken
+	handler   KeyHandler
 }
 
 // KeyManager manages a stack of key handlers.
@@ -62,6 +65,7 @@ type handlerEntry struct {
 // completion showing a message dialog); it guards the small transient state
 // only, never held across handler callbacks.
 type KeyManager struct {
+	sensitiveInputs   atomic.Int32
 	handlers          []handlerEntry
 	nextToken         HandlerToken
 	modifierState     ModifierState
@@ -130,11 +134,13 @@ func (km *KeyManager) notifyInputActivity() {
 
 // NewKeyManager creates a new KeyManager instance
 func NewKeyManager(debugPrint func(format string, args ...interface{})) *KeyManager {
-	return &KeyManager{
-		handlers:    make([]handlerEntry, 0),
-		debugPrint:  debugPrint,
-		queueOnMain: queueOnFyneMain,
+	km := &KeyManager{queueOnMain: queueOnFyneMain}
+	km.debugPrint = func(format string, args ...interface{}) {
+		if debugPrint != nil && km.sensitiveInputs.Load() == 0 {
+			debugPrint(format, args...)
+		}
 	}
+	return km
 }
 
 // Debugf forwards to the app's debugPrint, using the same source-prefix
@@ -165,12 +171,25 @@ func queueOnFyneMain(fn func()) {
 // token that removes exactly this entry via RemoveHandler. The input owner
 // changes, so the gate disarms until the next fresh key press.
 func (km *KeyManager) PushHandler(handler KeyHandler) HandlerToken {
+	return km.pushHandler(handler, false)
+}
+
+// PushSensitiveHandler suppresses key diagnostics while a credential or URL
+// entry owns input, including while a nested help dialog has focus.
+func (km *KeyManager) PushSensitiveHandler(handler KeyHandler) HandlerToken {
+	return km.pushHandler(handler, true)
+}
+
+func (km *KeyManager) pushHandler(handler KeyHandler, sensitive bool) HandlerToken {
 	km.mutex.Lock()
 	defer km.mutex.Unlock()
 
 	km.nextToken++
 	token := km.nextToken
-	km.handlers = append(km.handlers, handlerEntry{token: token, handler: handler})
+	if sensitive {
+		km.sensitiveInputs.Add(1)
+	}
+	km.handlers = append(km.handlers, handlerEntry{token: token, handler: handler, sensitive: sensitive})
 	km.stackVersion++
 	km.armed = false
 	km.debugPrint("KeyManager: push %s token=%d stack=%d", handler.GetName(), token, len(km.handlers))
@@ -198,7 +217,11 @@ func (km *KeyManager) RemoveHandler(token HandlerToken) KeyHandler {
 
 	entry := km.handlers[idx]
 	wasTop := idx == len(km.handlers)-1
-	km.handlers = append(km.handlers[:idx], km.handlers[idx+1:]...)
+	km.handlers = slices.Delete(km.handlers, idx, idx+1)
+	if entry.sensitive {
+		km.lastKeyDown = ""
+		km.sensitiveInputs.Add(-1)
+	}
 	km.stackVersion++
 	if wasTop {
 		// The active input owner changed; transient input state belongs to it.
@@ -465,6 +488,10 @@ func (km *KeyManager) ListHandlers() []string {
 func (km *KeyManager) DumpState() string {
 	km.mutex.RLock()
 	defer km.mutex.RUnlock()
+
+	if km.sensitiveInputs.Load() > 0 {
+		return "sensitive input active"
+	}
 
 	handlers := make([]string, len(km.handlers))
 	for i, entry := range km.handlers {

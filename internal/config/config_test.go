@@ -61,8 +61,8 @@ func TestGetDefaultConfig(t *testing.T) {
 	}
 
 	// Test UI defaults
-	if config.UI.ShowHiddenFiles {
-		t.Error("Expected ShowHiddenFiles to be false by default")
+	if !config.UI.ShowHiddenFiles {
+		t.Error("Expected hidden files to be visible by default")
 	}
 	if config.UI.Sort.SortBy != "name" {
 		t.Errorf("Expected default sort by 'name', got '%s'", config.UI.Sort.SortBy)
@@ -359,7 +359,6 @@ func TestMergeConfigs(t *testing.T) {
 			Colors:            colors,
 		},
 		UI: rawUIConfig{
-			ShowHiddenFiles: &trueVal,
 			Sort: rawSortConfig{
 				SortBy:           &sortBy,
 				SortOrder:        &sortOrder,
@@ -435,8 +434,8 @@ func TestMergeConfigs(t *testing.T) {
 	if got := defaultConfig.Theme.Colors["cursor"].Dark.RGBA; got != [4]uint8{1, 2, 3, 4} {
 		t.Errorf("Expected merged cursor dark color, got %+v", got)
 	}
-	if defaultConfig.UI.ShowHiddenFiles != true {
-		t.Error("Expected merged ShowHiddenFiles to be true")
+	if !defaultConfig.UI.ShowHiddenFiles {
+		t.Error("Expected an omitted showHiddenFiles to preserve the default")
 	}
 	if defaultConfig.UI.Sort.SortBy != "size" {
 		t.Errorf("Expected merged sort by 'size', got '%s'", defaultConfig.UI.Sort.SortBy)
@@ -672,7 +671,7 @@ func TestManagerLoadReadsHandWrittenConfigFile(t *testing.T) {
 		"window": {"width": 1200, "height": 800, "bringAllToFront": true, "moveSourceOnNewWindow": true},
 		"theme": {"dark": false, "fontSize": 18},
 		"ui": {
-			"showHiddenFiles": true,
+			"showHiddenFiles": false,
 			"sort": {"sortBy": "modified", "sortOrder": "desc", "directoriesFirst": true},
 			"viewer": {"defaultWrap": true},
 			"cursorStyle": {"type": "background", "thickness": 5},
@@ -709,8 +708,8 @@ func TestManagerLoadReadsHandWrittenConfigFile(t *testing.T) {
 	if loadedConfig.Theme.FontSize != 18 {
 		t.Errorf("Expected loaded font size 18, got %d", loadedConfig.Theme.FontSize)
 	}
-	if loadedConfig.UI.ShowHiddenFiles != true {
-		t.Error("Expected loaded ShowHiddenFiles to be true")
+	if loadedConfig.UI.ShowHiddenFiles {
+		t.Error("Expected explicit showHiddenFiles=false to hide hidden files")
 	}
 	if !loadedConfig.UI.Viewer.DefaultWrap {
 		t.Error("Expected loaded viewer default wrap to be true")

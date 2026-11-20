@@ -8,7 +8,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -32,8 +31,8 @@ type destinationPicker struct {
 	orderMode             string
 	destList              *widget.List
 	filteredDest, allDest []DestinationCandidate
+	recentDest            []DestinationCandidate
 	openDest              map[string]bool
-	dataBinding           binding.StringList
 	selectedPath          string
 	selectedIdx           int
 	matchers              *search.Provider
@@ -60,21 +59,23 @@ func (d *destinationPicker) createWidgets(focus func()) {
 	d.searchEntry = NewCustomSearchEntry()
 	d.searchEntry.SetPlaceHolder("Type to filter destination...")
 	d.searchEntry.OnChanged = func(q string) { d.updateFiltered(q) }
-	d.dataBinding = binding.NewStringList()
-	d.destList = widget.NewListWithData(
-		d.dataBinding,
+	d.destList = widget.NewList(
+		func() int { return len(d.filteredDest) },
 		func() fyne.CanvasObject {
 			text := canvas.NewText("", currentAppThemeColor(fynetheme.ColorNameForeground))
 			text.TextStyle = fyne.TextStyle{Monospace: true}
 			text.TextSize = fynetheme.TextSize()
 			return text
 		},
-		func(item binding.DataItem, obj fyne.CanvasObject) {
-			str, _ := item.(binding.String).Get()
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			if id < 0 || id >= len(d.filteredDest) {
+				return
+			}
+			path := d.filteredDest[id].Path
 			if text, ok := obj.(*canvas.Text); ok {
-				text.Text = str
+				text.Text = path
 				text.TextSize = fynetheme.TextSize()
-				text.Color = d.destinationTextColor(str)
+				text.Color = d.destinationTextColor(path)
 				text.Refresh()
 			}
 		},
@@ -104,24 +105,25 @@ func (d *destinationPicker) createWidgets(focus func()) {
 
 // updateFiltered updates destination list
 func (d *destinationPicker) updateFiltered(q string) {
-	ordered := append([]DestinationCandidate(nil), d.allDest...)
+	ordered := d.allDest
 	if d.orderMode == navigationHistoryOrderLastUsed {
-		sort.SliceStable(ordered, func(i, j int) bool {
-			return ordered[i].LastUsed.After(ordered[j].LastUsed)
-		})
+		if d.recentDest == nil {
+			d.recentDest = append([]DestinationCandidate(nil), d.allDest...)
+			sort.SliceStable(d.recentDest, func(i, j int) bool { return d.recentDest[i].LastUsed.After(d.recentDest[j].LastUsed) })
+		}
+		ordered = d.recentDest
 	}
 	if q == "" {
 		d.filteredDest = ordered
 	} else {
 		matcher := d.matchers.Build(q)
-		d.filteredDest = d.filteredDest[:0:0]
+		d.filteredDest = nil
 		for _, p := range ordered {
 			if matcher.Match(p.Path) {
 				d.filteredDest = append(d.filteredDest, p)
 			}
 		}
 	}
-	d.dataBinding.Set(destinationPaths(d.filteredDest))
 	if len(d.filteredDest) > 0 {
 		d.selectedIdx = 0
 		d.selectedPath = d.filteredDest[0].Path
@@ -159,6 +161,7 @@ func (d *destinationPicker) SetDestinations(candidates []DestinationCandidate, p
 	previousPath := d.selectedPath
 	query := d.GetSearchText()
 	d.allDest = append([]DestinationCandidate(nil), candidates...)
+	d.recentDest = nil
 	d.openDest = destinationOpenMap(d.allDest)
 	d.updateFiltered(query)
 

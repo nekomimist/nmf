@@ -24,6 +24,7 @@
             zig
             fyne
             gnumake
+            (lib.getBin util-linuxMinimal) # flock for the shared packaging files.
             pkg-config
             python3
             llvmPackages.llvm

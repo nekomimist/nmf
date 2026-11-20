@@ -1,6 +1,9 @@
 package fileinfo
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 // StorageInfo contains capacity information for the storage backing a path.
 type StorageInfo struct {
@@ -13,16 +16,27 @@ type StorageInfo struct {
 var ErrStorageUnsupported = fmt.Errorf("storage information is not supported")
 
 type storageProvider interface {
-	StorageInfo(path string) (StorageInfo, error)
+	StorageInfoContext(context.Context, string) (StorageInfo, error)
 }
 
 // StatStoragePortable resolves the display path and returns storage capacity for
 // the backing file system when the provider can report it.
 func StatStoragePortable(p string) (StorageInfo, error) {
+	return StatStoragePortableContext(context.Background(), p)
+}
+
+// StatStoragePortableContext uses the directory load context for network queries.
+func StatStoragePortableContext(ctx context.Context, p string) (StorageInfo, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return StorageInfo{}, err
+	}
 	if IsArchivePath(p) {
 		return StorageInfo{}, ErrStorageUnsupported
 	}
-	vfs, parsed, err := ResolveRead(p)
+	vfs, parsed, err := ResolveReadContext(ctx, p)
 	if err != nil {
 		return StorageInfo{}, err
 	}
@@ -36,7 +50,7 @@ func StatStoragePortable(p string) (StorageInfo, error) {
 		native = p
 	}
 	if provider, ok := vfs.(storageProvider); ok {
-		return provider.StorageInfo(native)
+		return provider.StorageInfoContext(ctx, native)
 	}
 	return localStorageInfo(native)
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -10,7 +11,21 @@ import (
 	"time"
 
 	"nmf/internal/config"
+	"nmf/internal/fileinfo"
 )
+
+func TestStartupDirectoryErrorOmitsSMBCredentials(t *testing.T) {
+	for _, path := range []string{
+		"smb://name:secret@host",
+		"//name:secret@host/share",
+		fileinfo.ArchiveRootPath("smb://name:secret@host/share/book.zip"),
+	} {
+		err := directoryInputError(path, fmt.Errorf("invalid path %q", path))
+		if strings.Contains(err.Error(), "secret") || !strings.Contains(err.Error(), "SMB") {
+			t.Fatalf("unsafe or uninformative diagnostic: %v", err)
+		}
+	}
+}
 
 func TestSetupDebugLoggingEmptyPathNoop(t *testing.T) {
 	oldDebugMode := debugMode

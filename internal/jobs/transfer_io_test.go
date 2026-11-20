@@ -133,3 +133,24 @@ func (h *transferOutputHandle) Close() error {
 	h.backend.events = append(h.backend.events, "close")
 	return h.backend.closeErr
 }
+
+func TestTransferBufferAdaptsToGrowingFiles(t *testing.T) {
+	execCtx := newJobExecutionContext(t.Context())
+	job := &Job{ctx: t.Context()}
+	for _, size := range []int{1, 2500000} {
+		data := bytes.Repeat([]byte("x"), size)
+		var out bytes.Buffer
+		if err := copyTransferData(job, execCtx, bytes.NewReader(data), &out, "source", "tmp", 1); err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(out.Bytes(), data) {
+			t.Fatal("source grew beyond its reported size and was truncated")
+		}
+		if size == 1 && len(execCtx.copyBuffer) > 4096 {
+			t.Fatalf("small file buffer = %d", len(execCtx.copyBuffer))
+		}
+	}
+	if len(execCtx.copyBuffer) <= 4096 || len(execCtx.copyBuffer) > 1<<20 {
+		t.Fatalf("grown buffer = %d", len(execCtx.copyBuffer))
+	}
+}

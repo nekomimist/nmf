@@ -10,7 +10,10 @@ import (
 )
 
 func trashPath(ctx context.Context, displayPath string) error {
-	vfs, parsed, err := ResolveRead(displayPath)
+	if IsArchivePath(displayPath) {
+		return ErrTrashUnsupported
+	}
+	vfs, parsed, err := ResolveReadContext(ctx, displayPath)
 	if err != nil {
 		return err
 	}

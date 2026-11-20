@@ -420,7 +420,7 @@ func TestFileViewerDialogBinaryStartsOnHexTextGrid(t *testing.T) {
 	if d.hexGrid == nil {
 		t.Fatal("hexGrid is nil, want TextGrid hex viewer")
 	}
-	if got := strings.Join(d.hexGrid.lines, "\n"); !strings.Contains(got, "00000000") {
+	if got := d.hexGrid.lineAt(0); !strings.Contains(got, "00000000") {
 		t.Fatalf("hex grid text = %q, want hex dump offset", got)
 	}
 }
@@ -1710,10 +1710,13 @@ func TestFileViewerDialogEscapeFromLineReturnsToViewer(t *testing.T) {
 	}
 }
 
-func TestSplitViewerLinesKeepsTrailingEmptyLine(t *testing.T) {
-	lines := splitViewerLines("a\n")
+func TestViewerGridKeepsTrailingEmptyLine(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	grid := newFileViewerTextGrid("a\n", nil, nil, nil)
+	lines := grid.lines
 	if len(lines) != 2 || lines[0] != "a" || lines[1] != "" {
-		t.Fatalf("splitViewerLines() = %#v, want trailing empty line", lines)
+		t.Fatalf("viewer lines = %#v, want trailing empty line", lines)
 	}
 }
 

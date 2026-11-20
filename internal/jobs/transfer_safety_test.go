@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"nmf/internal/fileinfo"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -295,5 +296,85 @@ func TestExclusivePublishFallbackPreservesDestination(t *testing.T) {
 	}
 	if data, err := os.ReadFile(dst); err != nil || string(data) != "source" {
 		t.Fatalf("destination = %q, %v", data, err)
+	}
+}
+
+func TestOperationsPreserveSelectedTrailingSpace(t *testing.T) {
+	selectedName := "report "
+	if runtime.GOOS == "windows" {
+		selectedName = "report\u3000"
+	}
+	for _, op := range []Type{TypeCopy, TypeMove, TypeDelete} {
+		t.Run(string(op), func(t *testing.T) {
+			dir, dst := t.TempDir(), t.TempDir()
+			sibling, selected := filepath.Join(dir, "report"), filepath.Join(dir, selectedName)
+			for _, name := range []string{sibling, selected} {
+				if err := os.WriteFile(name, []byte(name), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			j := &Job{Type: op, ctx: t.Context(), Sources: []string{selected}, DestDir: dst, DeleteMode: DeleteModePermanent}
+			if err := (&Manager{}).runJob(j); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := os.ReadFile(sibling); err != nil || string(got) != sibling {
+				t.Fatalf("sibling = %q, %v", got, err)
+			}
+			if op != TypeCopy {
+				if _, err := os.Stat(selected); !os.IsNotExist(err) {
+					t.Fatalf("source still exists: %v", err)
+				}
+			}
+			if op != TypeDelete {
+				if got, err := os.ReadFile(filepath.Join(dst, selectedName)); err != nil || string(got) != selected {
+					t.Fatalf("destination = %q, %v", got, err)
+				}
+			}
+		})
+	}
+}
+
+type cleanupTestSession struct {
+	fakeSMBSession
+	remove func() error
+}
+
+func (s *cleanupTestSession) Remove(string) error { return s.remove() }
+
+type cleanupTestOpener func(context.Context) (fileinfo.SMBSession, error)
+
+func (f cleanupTestOpener) OpenSession(ctx context.Context) (fileinfo.SMBSession, error) {
+	return f(ctx)
+}
+
+func TestTransferTempRemovalRecoversCancellation(t *testing.T) {
+	for _, when := range []string{"before cleanup", "during session open", "during remove"} {
+		t.Run(when, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			if when == "before cleanup" {
+				cancel()
+			}
+			execCtx := newJobExecutionContext(ctx)
+			defer execCtx.close()
+			var recovered bool
+			p := executionPath{backend: backendSMB, path: "/part", smb: fakeSMBOps{}}
+			p.smbOpener = cleanupTestOpener(func(req context.Context) (fileinfo.SMBSession, error) {
+				if req == ctx {
+					if when == "during session open" {
+						cancel()
+						return nil, ctx.Err()
+					}
+					return &cleanupTestSession{remove: func() error { cancel(); return ctx.Err() }}, nil
+				}
+				if _, ok := req.Deadline(); !ok || req.Err() != nil {
+					t.Fatal("recovery context should be bounded and live")
+				}
+				return &cleanupTestSession{remove: func() error { recovered = true; return nil }}, nil
+			})
+			if err := removeTransferTemp(execCtx, p); err != nil || !recovered {
+				t.Fatalf("cleanup recovered=%t, err=%v", recovered, err)
+			}
+		})
 	}
 }

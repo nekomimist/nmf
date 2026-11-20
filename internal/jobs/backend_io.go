@@ -311,3 +311,30 @@ func createExclusivePath(execCtx *executionContext, p executionPath, mode os.Fil
 	}
 	return os.OpenFile(p.path, os.O_CREATE|os.O_WRONLY|os.O_EXCL, perm)
 }
+
+// openSameLocalDirectory returns a handle to the recorded directory. Deferred
+// metadata updates must not follow a replacement symlink or a different inode.
+func openSameLocalDirectory(p executionPath, before os.FileInfo) (*os.File, error) {
+	if !before.IsDir() || fileinfo.IsLinkModeCandidate(before.Mode()) {
+		return nil, errors.New("destination is not a plain directory")
+	}
+	var f *os.File
+	var err error
+	if p.localRoot != nil {
+		f, err = p.localRoot.Open(p.path)
+	} else {
+		f, err = os.Open(p.path)
+	}
+	if err != nil {
+		return nil, err
+	}
+	info, err := f.Stat()
+	if err != nil || !os.SameFile(info, before) {
+		f.Close()
+		if err != nil {
+			return nil, err
+		}
+		return nil, errors.New("destination directory changed")
+	}
+	return f, nil
+}

@@ -4,6 +4,7 @@ package shellmenu
 
 import (
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -11,6 +12,35 @@ import (
 
 	"golang.org/x/sys/windows"
 )
+
+func TestShellEnumerationEmptyOrFailed(t *testing.T) {
+	emptyFolder := &shellFolder{vtbl: &shellFolderVtbl{
+		enumObjects: syscall.NewCallback(func(_ *shellFolder, _, _ uintptr, out **enumIDList) uintptr {
+			*out = nil
+			return sFalse
+		}),
+	}}
+	if _, err := findChildPIDLByName(emptyFolder, "missing"); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("empty folder: %v", err)
+	}
+
+	enumerator := &enumIDList{vtbl: &enumIDListVtbl{
+		next: syscall.NewCallback(func(_ *enumIDList, _ uintptr, _ *uintptr, fetched *uint32) uintptr {
+			*fetched = 0
+			return 0x80004005 // E_FAIL
+		}),
+		release: syscall.NewCallback(func(_ *enumIDList) uintptr { return 0 }),
+	}}
+	folder := &shellFolder{vtbl: &shellFolderVtbl{
+		enumObjects: syscall.NewCallback(func(_ *shellFolder, _, _ uintptr, out **enumIDList) uintptr {
+			*out = enumerator
+			return sOK
+		}),
+	}}
+	if _, err := findChildPIDLByName(folder, "missing"); err == nil || !strings.Contains(err.Error(), "0x80004005") {
+		t.Fatalf("failed Next: %v", err)
+	}
+}
 
 func TestDropSourceCOMCallbacks(t *testing.T) {
 	for _, tt := range []struct {

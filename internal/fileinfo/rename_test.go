@@ -195,3 +195,26 @@ func TestCreateDirectoryPortableRejectsExistingTarget(t *testing.T) {
 		t.Fatal("CreateDirectoryPortable returned nil error for existing target")
 	}
 }
+
+func TestRenamePreservesListedSourceWhitespace(t *testing.T) {
+	dir := t.TempDir()
+	sibling := filepath.Join(dir, "report")
+	// Unicode EM SPACE is a valid filename character on Windows as well.
+	source := sibling + "\u2003"
+	if err := os.WriteFile(source, []byte("selected"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sibling, []byte("sibling"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	target, err := RenamePortable(source, "renamed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{target: "selected", sibling: "sibling"} {
+		data, err := os.ReadFile(name)
+		if err != nil || string(data) != want {
+			t.Errorf("read %q = %q, %v, want %q", name, data, err, want)
+		}
+	}
+}

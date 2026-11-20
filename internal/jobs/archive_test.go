@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"nmf/internal/fileinfo"
 )
@@ -338,5 +340,120 @@ func TestSMBArchiveParentsRejectExistingLinks(t *testing.T) {
 	entries, err := os.ReadDir(outside)
 	if err != nil || len(entries) != 0 {
 		t.Fatalf("outside entries = %v, %v", entries, err)
+	}
+}
+
+func TestReadonlyDirectoryCopy(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix mode bits")
+	}
+	src := filepath.Join(t.TempDir(), "private")
+	dest := t.TempDir()
+	if err := os.Mkdir(src, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "child"), []byte("data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(src, 0555); err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(dest, "private")
+	t.Cleanup(func() { os.Chmod(src, 0700); os.Chmod(dst, 0700) })
+	job := &Job{Type: TypeCopy, ctx: t.Context(), Sources: []string{src}, DestDir: dest}
+	if err := (&Manager{}).runJob(job); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(filepath.Join(dst, "child")); err != nil || string(got) != "data" {
+		t.Fatalf("child = %q, %v", got, err)
+	}
+	if info, err := os.Stat(dst); err != nil || info.Mode().Perm() != 0555 {
+		t.Fatalf("directory = %v, %v", info, err)
+	}
+}
+
+func TestExtractRestoresDirectoryTimestamp(t *testing.T) {
+	archive := writeJobTestTarGz(t, map[string]string{"dir/file.txt": "data"})
+	dst := t.TempDir()
+	job := &Job{Type: TypeExtract, ctx: t.Context(), Sources: []string{archive}, DestDir: dst, Options: TransferOptions{PreserveTimestamps: true}}
+	if err := (&Manager{}).runJob(job); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(dst, "sample", "dir"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.ModTime().Equal(time.Unix(0, 0)) {
+		t.Fatalf("directory mtime = %v", info.ModTime())
+	}
+}
+
+func TestCopyDirectoryHonorsDestinationUmask(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix mode bits")
+	}
+	src := filepath.Join(t.TempDir(), "source")
+	dst := t.TempDir()
+	if err := os.Mkdir(src, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(src, 0777); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(dst, "mask-reference")
+	if err := os.Mkdir(sentinel, 0777); err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.Stat(sentinel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := &Job{Type: TypeCopy, ctx: t.Context(), Sources: []string{src}, DestDir: dst}
+	if err := (&Manager{}).runJob(job); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.Stat(filepath.Join(dst, "source"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Mode().Perm() != want.Mode().Perm() {
+		t.Fatalf("mode = %o, want %o", got.Mode().Perm(), want.Mode().Perm())
+	}
+}
+
+func TestExtractRestoresDirectoryModeAfterError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix mode bits")
+	}
+	archive := filepath.Join(t.TempDir(), "partial.tar")
+	f, err := os.Create(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tw := tar.NewWriter(f)
+	for _, hdr := range []*tar.Header{{Name: "locked/", Typeflag: tar.TypeDir, Mode: 0555}, {Name: "link", Typeflag: tar.TypeSymlink, Linkname: "x", Mode: 0777}} {
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	dst := t.TempDir()
+	locked := filepath.Join(dst, "partial", "locked")
+	t.Cleanup(func() { os.Chmod(locked, 0700) })
+	job := &Job{Type: TypeExtract, ctx: t.Context(), Sources: []string{archive}, DestDir: dst}
+	if err := (&Manager{}).runJob(job); err == nil {
+		t.Fatal("extraction should fail at unsupported link")
+	}
+	info, err := os.Stat(locked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0200 != 0 {
+		t.Fatalf("partial extraction kept temporary permissions: %v", info.Mode())
 	}
 }

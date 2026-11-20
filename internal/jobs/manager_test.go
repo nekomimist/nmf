@@ -253,12 +253,14 @@ func (s *fakeSMBSession) Close() error {
 }
 
 type fakeSMBOpener struct {
+	request   context.Context
 	openCalls int
 	err       error
 	new       func() fileinfo.SMBSession
 }
 
-func (o *fakeSMBOpener) OpenSession() (fileinfo.SMBSession, error) {
+func (o *fakeSMBOpener) OpenSession(ctx context.Context) (fileinfo.SMBSession, error) {
+	o.request = ctx
 	o.openCalls++
 	if o.err != nil {
 		return nil, o.err
@@ -269,8 +271,10 @@ func (o *fakeSMBOpener) OpenSession() (fileinfo.SMBSession, error) {
 	return &fakeSMBSession{}, nil
 }
 
+func newExecutionContext() *executionContext { return newJobExecutionContext(context.Background()) }
+
 func TestExecutionContextSMBSessionReusePerRoot(t *testing.T) {
-	ctx := newExecutionContext()
+	ctx := newJobExecutionContext(t.Context())
 	session := &fakeSMBSession{}
 	opener := &fakeSMBOpener{
 		new: func() fileinfo.SMBSession { return session },
@@ -291,6 +295,9 @@ func TestExecutionContextSMBSessionReusePerRoot(t *testing.T) {
 	ops2, err := ctx.smbOpsFor(p)
 	if err != nil {
 		t.Fatalf("second smbOpsFor failed: %v", err)
+	}
+	if opener.request != ctx.request {
+		t.Fatal("job context missing from SMB session")
 	}
 	if opener.openCalls != 1 {
 		t.Fatalf("expected one OpenSession call, got %d", opener.openCalls)
@@ -1198,10 +1205,33 @@ func pathBase(p string) string {
 // production preamble runJob uses, so these tests exercise the real shared
 // execution context rather than a parallel code path of their own.
 func transferOneSource(j *Job, src string, destDir string) error {
-	destPath, execCtx, err := openTransferDestination(destDir)
+	destPath, execCtx, err := openTransferDestination(j.ctx, destDir)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = execCtx.close() }()
 	return transferSource(j, execCtx, src, destPath)
+}
+
+func TestCanceledTrashJobAllowsNextJob(t *testing.T) {
+	original := trashPath
+	started := make(chan struct{})
+	trashPath = func(ctx context.Context, _ string) error { close(started); <-ctx.Done(); return ctx.Err() }
+	t.Cleanup(func() { trashPath = original })
+	m := NewManager()
+	t.Cleanup(func() { m.mu.Lock(); m.closed = true; m.cond.Broadcast(); m.mu.Unlock() })
+	job := m.EnqueueDelete([]string{filepath.Join(t.TempDir(), "file")}, DeleteModeTrash)
+	next := m.EnqueueCopy(nil, t.TempDir())
+	<-started
+	done := make(chan JobSnapshot, 1)
+	next.OnFinished(func(s JobSnapshot) { done <- s })
+	m.Cancel(job.ID)
+	select {
+	case <-time.After(3 * time.Second):
+		t.Fatal("next job remained blocked")
+	case snapshot := <-done:
+		if snapshot.Status != StatusCompleted || job.Snapshot().Status != StatusCanceled {
+			t.Fatalf("jobs: %v %v", job.Snapshot().Status, snapshot.Status)
+		}
+	}
 }

@@ -1,8 +1,10 @@
 package jobs
 
 import (
+	"context"
 	"errors"
 	"os"
+	"runtime"
 
 	"nmf/internal/fileinfo"
 )
@@ -12,12 +14,12 @@ import (
 // owns the context and must close it. Sharing one context per job is what keeps
 // a remote backend dialed once instead of once per source, so this preamble
 // runs before any transfer rather than inside the per-source loop.
-func openTransferDestination(destDir string) (executionPath, *executionContext, error) {
+func openTransferDestination(request context.Context, destDir string) (executionPath, *executionContext, error) {
 	destPath, err := resolveExecutionPath(destDir)
 	if err != nil {
 		return executionPath{}, nil, wrapPath(destDir, err)
 	}
-	execCtx := newExecutionContext()
+	execCtx := newJobExecutionContext(request)
 	if err := validateDestinationDirectory(execCtx, destPath); err != nil {
 		if closeErr := execCtx.close(); closeErr != nil {
 			dbg("execution context close error: %v", closeErr)
@@ -138,11 +140,44 @@ func transferSymlink(j *Job, execCtx *executionContext, src, dst executionPath, 
 
 func transferDirectory(j *Job, execCtx *executionContext, src, dst executionPath, fi os.FileInfo) error {
 	dbg("job %d: mkdir %s (mode=%v)", j.ID, dst.displayPath(), fi.Mode())
-	if err := ensureDir(execCtx, dst, fi.Mode()); err != nil {
+	mode := fi.Mode().Perm()
+	if mode == 0 && src.backend == backendArchive {
+		// Implicit archive directories do not have a permissions header.
+		mode = 0755
+	}
+	var dir *os.File
+	var finalMode os.FileMode
+	if dst.backend == backendLocal && runtime.GOOS != "windows" {
+		// Let mkdir apply the destination's umask to the requested permissions.
+		// Temporarily enable owner access so read-only directories can be populated.
+		created, err := createDirectoryIfMissing(execCtx, dst, mode|0700)
+		if err != nil {
+			return wrapPath(dst.displayPath(), err)
+		}
+		if created && mode&0700 != 0700 {
+			info, err := os.Lstat(dst.path)
+			if err != nil {
+				return wrapPath(dst.displayPath(), err)
+			}
+			dir, err = openSameLocalDirectory(dst, info)
+			if err != nil {
+				return wrapPath(dst.displayPath(), err)
+			}
+			defer dir.Close()
+			finalMode = info.Mode() &^ (0700 &^ mode)
+		}
+	} else if err := ensureDir(execCtx, dst, mode); err != nil {
 		return wrapPath(dst.displayPath(), err)
 	}
-	if err := transferDirectoryChildren(j, execCtx, src, dst); err != nil {
-		return err
+	childErr := transferDirectoryChildren(j, execCtx, src, dst)
+	if dir != nil {
+		// Operate on the directory we opened, even if its name changed.
+		if err := dir.Chmod(finalMode); err != nil {
+			return wrapPath(dst.displayPath(), err)
+		}
+	}
+	if childErr != nil {
+		return childErr
 	}
 	// Finish only when every child transferred. A skipped child keeps its
 	// source directory, and timestamp preservation waits for a complete copy.

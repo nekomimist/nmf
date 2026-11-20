@@ -92,7 +92,7 @@ func copyReaderWithCancel(j *Job, execCtx *executionContext, in io.Reader, srcDi
 			_ = out.Close()
 		}
 		if !published {
-			_ = removePath(execCtx, tmp)
+			_ = removeTransferTemp(execCtx, tmp)
 		}
 	}()
 
@@ -132,10 +132,15 @@ func copyTransferData(j *Job, execCtx *executionContext, in io.Reader, out io.Wr
 		totalBytes = 0
 	}
 	j.beginFileProgress(srcDisplay, totalBytes)
-	if execCtx.copyBuffer == nil {
-		execCtx.copyBuffer = make([]byte, 1<<20)
+	const maxBuffer = 1 << 20
+	// Small files share a small buffer; subsequent larger files grow it on
+	// demand. Treat metadata as a size hint since streams can grow mid-copy.
+	size := int(min(maxBuffer, max(int64(4096), totalBytes)))
+	if len(execCtx.copyBuffer) < size {
+		execCtx.copyBuffer = make([]byte, size)
 	}
 	buf := execCtx.copyBuffer
+	var copied int64
 	for {
 		if canceled(j) {
 			return errCanceled
@@ -145,6 +150,7 @@ func copyTransferData(j *Job, execCtx *executionContext, in io.Reader, out io.Wr
 			if _, werr := out.Write(buf[:n]); werr != nil {
 				return wrapPath(tmpDisplay, werr)
 			}
+			copied += int64(n)
 			j.addFileProgress(int64(n), false)
 		}
 		if rerr == io.EOF {
@@ -152,6 +158,10 @@ func copyTransferData(j *Job, execCtx *executionContext, in io.Reader, out io.Wr
 		}
 		if rerr != nil {
 			return wrapPath(srcDisplay, rerr)
+		}
+		if n == len(buf) && len(buf) < maxBuffer && copied > totalBytes {
+			execCtx.copyBuffer = make([]byte, min(2*len(buf), maxBuffer))
+			buf = execCtx.copyBuffer
 		}
 	}
 	j.completeFileProgress()

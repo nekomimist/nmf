@@ -482,7 +482,7 @@ func TestMainScreenCursorCommandNeedsOnlyCursorListPort(t *testing.T) {
 	// requires every port, while this test proves the command itself consumes
 	// only the cursor/list responsibility.
 	handler := newMainScreenKeyHandlerWithCommands(
-		MainScreenDependencies{cursorList: cursor},
+		MainScreenDependencies{CursorList: cursor},
 		func(string, ...interface{}) {},
 		nil,
 		nil,
@@ -567,17 +567,7 @@ func TestMainScreenDependenciesRejectTypedNilPort(t *testing.T) {
 			t.Fatalf("typed-nil dependency panic = %v, want missing CursorList identified", recovered)
 		}
 	}()
-	NewMainScreenDependencies(MainScreenPorts{
-		CursorList:  fm,
-		Selection:   fm,
-		Directory:   fm,
-		FileOpener:  fm,
-		Windows:     fm,
-		History:     fm,
-		Filters:     fm,
-		Application: fm,
-		Commands:    fm,
-	}, nil, nil)
+	NewMainScreenKeyHandler(MainScreenDependencies{CursorList: fm}, func(string, ...interface{}) {})
 }
 
 func (f *mainScreenFakeFileManager) GetCurrentCursorIndex() int    { return f.cursorIndex }
@@ -603,6 +593,18 @@ func (f *mainScreenFakeFileManager) CurrentSort() config.SortConfig {
 func (f *mainScreenFakeFileManager) ApplyTemporarySort(sortConfig config.SortConfig) {
 }
 func (f *mainScreenFakeFileManager) GetSelectedFiles() map[string]bool { return f.selectedFiles }
+func (f *mainScreenFakeFileManager) CommandTargets() []fileinfo.FileInfo {
+	var result []fileinfo.FileInfo
+	for _, file := range f.files {
+		if f.selectedFiles[file.Path] && fileinfo.IsFileOperationTarget(file) {
+			result = append(result, file)
+		}
+	}
+	if len(result) == 0 && f.cursorIndex >= 0 && f.cursorIndex < len(f.files) && fileinfo.IsFileOperationTarget(f.files[f.cursorIndex]) {
+		return []fileinfo.FileInfo{f.files[f.cursorIndex]}
+	}
+	return result
+}
 func (f *mainScreenFakeFileManager) GetAllSelectedFiles() []fileinfo.FileInfo {
 	if f.allSelectedFiles != nil {
 		return f.allSelectedFiles
@@ -668,21 +670,18 @@ func (f *mainScreenFakeFileManager) OpenFileDefaultApp(file *fileinfo.FileInfo) 
 }
 
 func mainScreenDependenciesForTest(f *mainScreenFakeFileManager) MainScreenDependencies {
-	return NewMainScreenDependencies(
-		MainScreenPorts{
-			CursorList:  f,
-			Selection:   f,
-			Directory:   f,
-			FileOpener:  f,
-			Windows:     f,
-			History:     f,
-			Filters:     f,
-			Application: f,
-			Commands:    f,
-		},
-		nil,
-		f.SetClipboardText,
-	)
+	return MainScreenDependencies{
+		CursorList:   f,
+		Selection:    f,
+		Directory:    f,
+		FileOpener:   f,
+		Windows:      f,
+		History:      f,
+		Filters:      f,
+		Application:  f,
+		Commands:     f,
+		SetClipboard: f.SetClipboardText,
+	}
 }
 
 // fakeDialogActions builds the DialogActions closures MainScreenKeyHandler

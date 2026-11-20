@@ -136,6 +136,14 @@ func (j *Job) Snapshot() JobSnapshot {
 }
 
 func (j *Job) snapshotLocked() JobSnapshot {
+	row := j.rowLocked()
+	row.Sources = append([]string(nil), j.Sources...)
+	row.Failures = append([]JobFailure(nil), j.Failures...)
+	row.Results = append([]Result(nil), j.results...)
+	return row
+}
+
+func (j *Job) rowLocked() JobSnapshot {
 	return JobSnapshot{
 		ID:                  j.ID,
 		Type:                j.Type,
@@ -156,9 +164,6 @@ func (j *Job) snapshotLocked() JobSnapshot {
 		CurrentTotalBytes:   j.CurrentTotalBytes,
 		CurrentStartedAt:    j.CurrentStartedAt,
 		CurrentUpdatedAt:    j.CurrentUpdatedAt,
-		Sources:             append([]string(nil), j.Sources...),
-		Failures:            append([]JobFailure(nil), j.Failures...),
-		Results:             append([]Result(nil), j.results...),
 	}
 }
 

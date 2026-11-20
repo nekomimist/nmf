@@ -30,7 +30,7 @@ nmf.color("lineEditCursor", value = "primary")
 nmf.color("lineEditSelection", value = [5, 6, 7, 8])
 nmf.color("dialogListCursor", value = "selection")
 nmf.debug_logging(enabled = True, log_directory = "logs/debug", max_files = 4)
-nmf.ui(show_hidden_files = True, item_spacing = 2, scroll_margin = 5)
+nmf.ui(show_hidden_files = False, item_spacing = 2, scroll_margin = 5)
 nmf.copy(preserve_timestamps = True)
 nmf.viewer(max_width = 1200, max_height = 900, default_pane = "text", default_wrap = True)
 nmf.archive(zip_name_encoding = "cp437")
@@ -61,7 +61,7 @@ nmf.command("user.parent", parent)
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 
-	cfg := testConfig()
+	cfg := config.Default()
 	rt, err := Load(path, cfg, Options{})
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
@@ -109,8 +109,8 @@ nmf.command("user.parent", parent)
 	if !cfg.Debug.Enabled || cfg.Debug.LogDirectory != "logs/debug" || cfg.Debug.MaxLogFiles != 4 {
 		t.Fatalf("debug = %+v, want enabled logs/debug max 4", cfg.Debug)
 	}
-	if !cfg.UI.ShowHiddenFiles || cfg.UI.ItemSpacing != 2 || cfg.UI.ScrollMargin != 5 {
-		t.Fatalf("ui = %+v, want hidden=true spacing=2 scroll margin=5", cfg.UI)
+	if cfg.UI.ShowHiddenFiles || cfg.UI.ItemSpacing != 2 || cfg.UI.ScrollMargin != 5 {
+		t.Fatalf("ui = %+v, want hidden=false spacing=2 scroll margin=5", cfg.UI)
 	}
 	if !cfg.UI.Copy.PreserveTimestamps {
 		t.Fatalf("copy = %+v, want preserve_timestamps=true", cfg.UI.Copy)
@@ -2434,6 +2434,18 @@ func (f *configScriptFakeFileManager) ApplyTemporarySort(sortConfig config.SortC
 	f.temporarySortApplied = true
 }
 func (f *configScriptFakeFileManager) GetSelectedFiles() map[string]bool { return f.selectedFiles }
+func (f *configScriptFakeFileManager) CommandTargets() []fileinfo.FileInfo {
+	var result []fileinfo.FileInfo
+	for _, file := range f.files {
+		if f.selectedFiles[file.Path] && fileinfo.IsFileOperationTarget(file) {
+			result = append(result, file)
+		}
+	}
+	if len(result) == 0 && f.cursorIndex >= 0 && f.cursorIndex < len(f.files) && fileinfo.IsFileOperationTarget(f.files[f.cursorIndex]) {
+		return []fileinfo.FileInfo{f.files[f.cursorIndex]}
+	}
+	return result
+}
 func (f *configScriptFakeFileManager) GetAllSelectedFiles() []fileinfo.FileInfo {
 	if f.allSelectedFiles != nil {
 		return f.allSelectedFiles

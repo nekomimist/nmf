@@ -60,7 +60,7 @@ func parseWindowsShellPath(input string) (windowsShellPath, error) {
 // depending on the VFS package. Keeping this conversion here allows Windows
 // Shell operations to be reused by fileinfo without an import cycle.
 func normalizeWindowsShellPath(input string) string {
-	p := strings.TrimSpace(input)
+	p := input
 	if !strings.HasPrefix(strings.ToLower(p), "smb://") {
 		return p
 	}

@@ -31,9 +31,8 @@ Core model:
   cursor/list, selection, directory navigation, file opening, window actions,
   history, filters, and application lifecycle. A command that only moves the
   cursor can therefore be tested with only the cursor/list port.
-- Production wiring uses `NewMainScreenDependencies`, whose opaque result and
-  constructor validation prevent an omitted required responsibility port from
-  surviving into command execution as a nil-interface panic.
+- The main-screen handler constructor validates the required ports once,
+  including typed nils, before installing any commands.
 - Custom and Starlark commands receive the separate `CommandFileManager`
   boundary through `CommandContext`. That boundary contains command-context
   reads and explicitly supported mutations, but no focus, window, filter, or

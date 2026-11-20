@@ -24,7 +24,7 @@ func NewFileManager(runtime *ApplicationRuntime, path string) *FileManager {
 	keyManager := keymanager.NewKeyManager(debugPrint)
 	fm := &FileManager{
 		window:            runtime.app.NewWindow(constants.ApplicationTitle),
-		browser:           browser.New(path, state.EffectiveSort(config.UI.Sort)),
+		browser:           browser.New(path, state.EffectiveSort(config.UI.Sort), config.UI.ShowHiddenFiles),
 		directoryLoader:   browser.NewDirectoryLoader(),
 		directoryCache:    browser.NewDirectoryCache(directoryCacheTTL, directoryCacheMaxEntries),
 		config:            config,
@@ -37,6 +37,7 @@ func NewFileManager(runtime *ApplicationRuntime, path string) *FileManager {
 		searchMatchers:    runtime.searchMatchers,
 		runtime:           runtime,
 	}
+	fm.restoreWindowFilter()
 	keyManager.SetInputActivityCallback(fm.noteInputActivity)
 
 	// Busy overlay and its input guard are window-owned.
@@ -121,19 +122,17 @@ func NewFileManager(runtime *ApplicationRuntime, path string) *FileManager {
 }
 
 func newMainScreenDependencies(fm *FileManager) keymanager.MainScreenDependencies {
-	return keymanager.NewMainScreenDependencies(
-		keymanager.MainScreenPorts{
-			CursorList:  fm,
-			Selection:   fm,
-			Directory:   fm,
-			FileOpener:  fm,
-			Windows:     fm,
-			History:     fm,
-			Filters:     fm,
-			Application: fm,
-			Commands:    fm,
-		},
-		fm.RunExternalCommand,
-		fm.SetClipboardText,
-	)
+	return keymanager.MainScreenDependencies{
+		CursorList:         fm,
+		Selection:          fm,
+		Directory:          fm,
+		FileOpener:         fm,
+		Windows:            fm,
+		History:            fm,
+		Filters:            fm,
+		Application:        fm,
+		Commands:           fm,
+		RunExternalCommand: fm.RunExternalCommand,
+		SetClipboard:       fm.SetClipboardText,
+	}
 }

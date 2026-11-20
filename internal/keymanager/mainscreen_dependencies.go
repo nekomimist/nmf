@@ -64,28 +64,11 @@ type MainScreenApplication interface {
 	QuitApplication()
 }
 
-// MainScreenPorts names every required responsibility supplied by the
-// composition root. NewMainScreenDependencies validates the complete set of
-// ports; optional command integrations are separate constructor arguments.
-type MainScreenPorts struct {
-	CursorList  MainScreenCursorList
-	Selection   MainScreenSelection
-	Directory   MainScreenDirectory
-	FileOpener  MainScreenFileOpener
-	Windows     MainScreenWindows
-	History     MainScreenHistory
-	Filters     MainScreenFilters
-	Application MainScreenApplication
-	Commands    CommandFileManager
-}
-
 // CommandContextReader supplies the immutable context exposed to custom
 // commands and Starlark command helpers.
 type CommandContextReader interface {
-	GetCurrentCursorIndex() int
 	GetCurrentPath() string
-	GetFiles() []fileinfo.FileInfo
-	GetSelectedFiles() map[string]bool
+	CommandTargets() []fileinfo.FileInfo
 	GetAllSelectedFiles() []fileinfo.FileInfo
 	CurrentSort() config.SortConfig
 }
@@ -105,79 +88,45 @@ type CommandFileManager interface {
 	CommandOperations
 }
 
-// MainScreenDependencies makes each responsibility consumed by the main key
-// handler explicit. A composition root may provide one object for several
-// ports, but tests and future controllers do not need to implement unrelated
-// methods.
+// MainScreenDependencies names the responsibilities used by the key handler.
+// The handler constructor validates the required ports once before use.
 type MainScreenDependencies struct {
-	cursorList  MainScreenCursorList
-	selection   MainScreenSelection
-	directory   MainScreenDirectory
-	fileOpener  MainScreenFileOpener
-	windows     MainScreenWindows
-	history     MainScreenHistory
-	filters     MainScreenFilters
-	application MainScreenApplication
-	commands    CommandFileManager
-
-	// These command integrations are optional. A nil function means the host
-	// does not provide that operation, and the configscript command returns
-	// false instead of invoking it.
-	runExternalCommand func(command string, args []string, edit bool, cwd string) bool
-	setClipboard       func(text string) bool
-}
-
-// NewMainScreenDependencies constructs a complete dependency set. The opaque
-// result prevents callers outside keymanager from omitting a required port;
-// handler constructors validate the zero value as a second line of defense.
-// External-command and clipboard integrations remain optional so hosts that do
-// not support them can fail those configscript operations closed.
-func NewMainScreenDependencies(
-	ports MainScreenPorts,
-	runExternalCommand func(command string, args []string, edit bool, cwd string) bool,
-	setClipboard func(text string) bool,
-) MainScreenDependencies {
-	dependencies := MainScreenDependencies{
-		cursorList:         ports.CursorList,
-		selection:          ports.Selection,
-		directory:          ports.Directory,
-		fileOpener:         ports.FileOpener,
-		windows:            ports.Windows,
-		history:            ports.History,
-		filters:            ports.Filters,
-		application:        ports.Application,
-		commands:           ports.Commands,
-		runExternalCommand: runExternalCommand,
-		setClipboard:       setClipboard,
-	}
-	dependencies.validate()
-	return dependencies
+	CursorList  MainScreenCursorList
+	Selection   MainScreenSelection
+	Directory   MainScreenDirectory
+	FileOpener  MainScreenFileOpener
+	Windows     MainScreenWindows
+	History     MainScreenHistory
+	Filters     MainScreenFilters
+	Application MainScreenApplication
+	Commands    CommandFileManager
+	// External processes and the clipboard are optional host integrations.
+	RunExternalCommand func(command string, args []string, edit bool, cwd string) bool
+	SetClipboard       func(text string) bool
 }
 
 func (d MainScreenDependencies) validate() {
-	requireMainScreenDependency("CursorList", d.cursorList)
-	requireMainScreenDependency("Selection", d.selection)
-	requireMainScreenDependency("Directory", d.directory)
-	requireMainScreenDependency("FileOpener", d.fileOpener)
-	requireMainScreenDependency("Windows", d.windows)
-	requireMainScreenDependency("History", d.history)
-	requireMainScreenDependency("Filters", d.filters)
-	requireMainScreenDependency("Application", d.application)
-	requireMainScreenDependency("Commands", d.commands)
-}
-
-func requireMainScreenDependency(name string, dependency any) {
-	if dependency == nil || isNilMainScreenDependency(dependency) {
-		panic("keymanager: MainScreenDependencies requires " + name)
+	check := func(name string, port any) {
+		v := reflect.ValueOf(port)
+		if v.IsValid() {
+			switch v.Kind() {
+			case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+				if !v.IsNil() {
+					return
+				}
+			default:
+				return
+			}
+		}
+		panic("keymanager: missing main screen port " + name)
 	}
-}
-
-func isNilMainScreenDependency(dependency any) bool {
-	value := reflect.ValueOf(dependency)
-	switch value.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return value.IsNil()
-	default:
-		return false
-	}
+	check("CursorList", d.CursorList)
+	check("Selection", d.Selection)
+	check("Directory", d.Directory)
+	check("FileOpener", d.FileOpener)
+	check("Windows", d.Windows)
+	check("History", d.History)
+	check("Filters", d.Filters)
+	check("Application", d.Application)
+	check("Commands", d.Commands)
 }

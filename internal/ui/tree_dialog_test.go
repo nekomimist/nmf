@@ -1,11 +1,15 @@
 package ui
 
 import (
+	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
 	fynetest "fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
+
+	"nmf/internal/fileinfo"
 )
 
 func waitForTreeTest(t *testing.T, condition func() bool) {
@@ -104,13 +108,6 @@ func TestDirectoryTreeCachesPlatformBranchClassification(t *testing.T) {
 	waitForTreeTest(t, func() bool { return !dialog.isDirectory("X:\\") })
 }
 
-// TestDirectoryTreeToggleRootModeResetsSelectionForNavigation is a regression
-// test for a bug where ToggleRootMode (and the radio-group mode switch) never
-// reset dtd.selectedPath/dtd.tree selection to the new root. MoveUp/MoveDown
-// locate the cursor by searching getVisibleNodes() (rooted at the new
-// currentRoot) for a node matching dtd.selectedPath; a stale path from the
-// old root's subtree can never appear there, so both became permanent
-// no-ops after a mode toggle.
 func TestDirectoryTreeToggleRootModeResetsSelectionForNavigation(t *testing.T) {
 	app := fynetest.NewApp()
 	defer app.Quit()
@@ -155,5 +152,76 @@ func TestDirectoryTreeToggleRootModeResetsSelectionForNavigation(t *testing.T) {
 	wantSelection := parentRoot + "/parent-child"
 	if dialog.selectedPath != wantSelection {
 		t.Fatalf("selectedPath after MoveDown() = %q, want %q (a node under the new root)", dialog.selectedPath, wantSelection)
+	}
+}
+
+func TestTreeParentPreservesArchiveRoot(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "content.zip")
+	root := fileinfo.ArchiveRootPath(archive)
+	if got := GetPlatformParent(fileinfo.JoinPath(root, "folder")); got != root {
+		t.Fatalf("parent = %q, want %q", got, root)
+	}
+	if got := GetPlatformParent(root); got != filepath.Dir(archive) {
+		t.Fatalf("parent of archive = %q, want %q", got, filepath.Dir(archive))
+	}
+}
+
+func TestTreeNavigationReflectsLoadedChildren(t *testing.T) {
+	app := fynetest.NewApp()
+	defer app.Quit()
+	d := NewDirectoryTreeDialog("/tmp", nil, func(string, ...interface{}) {})
+	// Exercise the async loader and navigation index without a canvas renderer.
+	root := d.currentRoot
+	d.tree = &widget.Tree{Root: root}
+	d.selectedPath = root
+	release := make(chan struct{})
+	d.loadChildren = func(string) ([]string, error) { <-release; return []string{"child"}, nil }
+	d.getDirectoryChildren(root)
+	if _, ok := d.adjacentVisibleNode(1); ok {
+		t.Fatal("pending load unexpectedly supplied a child")
+	}
+	close(release)
+	waitForTreeTest(t, func() bool { node, ok := d.adjacentVisibleNode(1); return ok && node == "child" })
+	d.loadUIApplyMu.Lock()
+	d.loadUIApplyMu.Unlock()
+}
+
+func TestTreeNavigationReflectsBranchChanges(t *testing.T) {
+	app := fynetest.NewApp()
+	defer app.Quit()
+	d := NewDirectoryTreeDialog("/tmp", nil, func(string, ...interface{}) {})
+	d.children[d.currentRoot] = []string{"a", "b"}
+	d.children["a"] = []string{"a1"}
+	d.selectedPath = "a"
+	if n, _ := d.adjacentVisibleNode(1); n != "b" {
+		t.Fatalf("closed branch next = %q", n)
+	}
+	d.tree.OpenBranch("a")
+	if n, _ := d.adjacentVisibleNode(1); n != "a1" {
+		t.Fatalf("expanded branch next = %q", n)
+	}
+	d.tree.CloseBranch("a")
+	if n, _ := d.adjacentVisibleNode(1); n != "b" {
+		t.Fatalf("collapsed branch next = %q", n)
+	}
+}
+
+func BenchmarkDirectoryTreeAdjacentVisibleNode(b *testing.B) {
+	d := NewDirectoryTreeDialog("/tmp", nil, func(string, ...interface{}) {})
+	children := make([]string, 10000)
+	for i := range children {
+		children[i] = "/folder" + strconv.Itoa(i)
+	}
+	d.children[d.currentRoot] = children
+	d.selectedPath = d.currentRoot
+	d.adjacentVisibleNode(1)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		delta := 1
+		if i%2 != 0 {
+			delta = -1
+		}
+		d.selectedPath, _ = d.adjacentVisibleNode(delta)
 	}
 }

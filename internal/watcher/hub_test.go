@@ -155,26 +155,26 @@ func TestWatchHubSlowPathInitializationDoesNotBlockOtherPaths(t *testing.T) {
 	slow.Unsubscribe()
 }
 
-func TestWatchSubscriberRejectsStaleBroadcastAfterUnsubscribe(t *testing.T) {
-	hub := newWatchHub(dummyDebug, nil, nil, nil, time.Millisecond)
-	source := newWatchSource("/tmp/stale", "", time.Second, false, hub)
-	subscriber := newWatchSubscriber(1)
-	source.addSubscriber(1, subscriber)
-
-	// Model broadcast after it has captured a subscriber reference but before
-	// it sends: unsubscribe removes and closes the subscriber first.
-	source.mu.Lock()
-	captured := source.subscribers[1]
-	source.mu.Unlock()
-	if empty := source.removeSubscriber(1); !empty {
-		t.Fatal("source should have no subscribers after removal")
+func TestBroadcastKeepsLatestStateForSlowSubscriber(t *testing.T) {
+	src := newWatchSource("dir", "", time.Second, false, nil)
+	slow := make(chan snapshotUpdate, 1)
+	fast := make(chan snapshotUpdate, 1)
+	src.addSubscriber(1, slow)
+	src.addSubscriber(2, fast)
+	for _, name := range []string{"a", "b", "c"} {
+		snap := Snapshot{name: {Name: name}}
+		src.broadcast(snapshotUpdate{files: snap})
+		if _, ok := (<-fast).files[name]; !ok {
+			t.Fatalf("fast subscriber missed %s", name)
+		}
 	}
-
-	if sent, open := captured.send(Snapshot{"/tmp/stale/file": {Path: "/tmp/stale/file"}}); sent || open {
-		t.Fatalf("stale send = (sent=%t, open=%t), want closed subscriber", sent, open)
+	if _, ok := (<-slow).files["c"]; !ok {
+		t.Fatal("slow subscriber missed final state")
 	}
-	if _, ok := <-subscriber.updates; ok {
-		t.Fatal("subscriber updates channel should be closed")
+	src.removeSubscriber(1)
+	src.broadcast(snapshotUpdate{files: Snapshot{}})
+	if _, open := <-slow; open {
+		t.Fatal("removed subscription remained open")
 	}
 }
 
@@ -265,7 +265,7 @@ func TestWatchHubFallsBackToPollingWhenAddFails(t *testing.T) {
 
 	select {
 	case snapshot := <-sub.Updates:
-		if _, ok := snapshot["/tmp/fallback/file.txt"]; !ok {
+		if _, ok := snapshot.files["/tmp/fallback/file.txt"]; !ok {
 			t.Fatalf("snapshot = %#v, want fallback file", snapshot)
 		}
 	case <-time.After(100 * time.Millisecond):
@@ -310,9 +310,25 @@ func TestWatchHubDebouncesEventSnapshots(t *testing.T) {
 
 	first := hub.Subscribe("/tmp/events", time.Second)
 	defer first.Unsubscribe()
+	select {
+	case <-first.Updates:
+	case <-time.After(time.Second):
+		t.Fatal("first reconciliation timed out")
+	}
 	second := hub.Subscribe("/tmp/events", time.Second)
 	defer second.Unsubscribe()
 
+	// Consume registration reconciliation before measuring this burst.
+	for _, sub := range []*Subscription{first, second} {
+		select {
+		case <-sub.Updates:
+		case <-time.After(time.Second):
+			t.Fatal("initial reconciliation timed out")
+		}
+	}
+	listMu.Lock()
+	readsBefore := listCount
+	listMu.Unlock()
 	backend.events <- fswatcher.Event{Name: "/tmp/events/a", Op: fswatcher.Create}
 	backend.events <- fswatcher.Event{Name: "/tmp/events/b", Op: fswatcher.Write}
 	backend.events <- fswatcher.Event{Name: "/tmp/events/c", Op: fswatcher.Remove}
@@ -320,7 +336,7 @@ func TestWatchHubDebouncesEventSnapshots(t *testing.T) {
 	for i, sub := range []*Subscription{first, second} {
 		select {
 		case snapshot := <-sub.Updates:
-			if _, ok := snapshot["/tmp/events/created.txt"]; !ok {
+			if _, ok := snapshot.files["/tmp/events/created.txt"]; !ok {
 				t.Fatalf("subscriber %d snapshot = %#v, want created file", i, snapshot)
 			}
 		case <-time.After(100 * time.Millisecond):
@@ -332,8 +348,8 @@ func TestWatchHubDebouncesEventSnapshots(t *testing.T) {
 	listMu.Lock()
 	got := listCount
 	listMu.Unlock()
-	if got != 1 {
-		t.Fatalf("snapshot reads = %d, want 1 debounced read", got)
+	if got != readsBefore+1 {
+		t.Fatalf("snapshot reads after events = %d, want 1 debounced read", got-readsBefore)
 	}
 }
 

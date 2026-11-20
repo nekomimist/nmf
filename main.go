@@ -213,8 +213,9 @@ func main() {
 	}
 	resolvedStartPath, _, err := resolveDirectoryPath(startPath)
 	if err != nil {
-		log.Printf("Error accessing path '%s': %v", startPath, err)
-		showStartupErrorAndExit(cfg, "startup error", startupFailureMessage(fmt.Sprintf("Failed to access path '%s'", startPath), err))
+		err = directoryInputError(startPath, err)
+		log.Print(err)
+		showStartupErrorAndExit(cfg, "startup error", startupFailureMessage("Failed to open the startup directory", err))
 		return
 	}
 	startPath = resolvedStartPath
@@ -244,6 +245,18 @@ func main() {
 	fm.window.Show()
 	applyInitialWindowPosition(fm.window, cfg.Window)
 	fyneApp.Run()
+}
+
+func directoryInputError(input string, cause error) error {
+	path := strings.TrimSpace(input)
+	if outer, _, ok := fileinfo.SplitArchivePath(path); ok {
+		path = outer
+	}
+	// A parser or OS error may quote the entire URL, even if it is malformed.
+	if strings.Contains(path, "@") && (fileinfo.IsSMBDisplay(path) || strings.HasPrefix(path, "//")) {
+		return fmt.Errorf("check the SMB address, share name and credentials")
+	}
+	return fmt.Errorf("accessing %q: %w", input, cause)
 }
 
 // resolveDirectoryPath resolves user input into a path suitable for LoadDirectory.

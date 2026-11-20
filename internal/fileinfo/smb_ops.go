@@ -1,6 +1,7 @@
 package fileinfo
 
 import (
+	"context"
 	"io"
 	"os"
 	"time"
@@ -33,5 +34,5 @@ type SMBSession interface {
 
 // SMBSessionOpener opens a reusable SMB session.
 type SMBSessionOpener interface {
-	OpenSession() (SMBSession, error)
+	OpenSession(ctx context.Context) (SMBSession, error)
 }
