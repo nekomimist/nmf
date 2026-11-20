@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.7 - 2026-11-21
+
 - Jobs shows the full paths of successfully deleted or trashed items, even
   when a batch fails or is canceled. Successful renames appear in Jobs history
   with both the original and new full paths.
