@@ -32,6 +32,7 @@ func (fm *FileManager) ShowCompareDialog() {
 
 	dest := fm.buildDestinationCandidates()
 	dlg := ui.NewCompareDialog(sourcePath, fileCount, directoryCount, dest, fm.keyManager, debugPrint, fm.searchMatchers)
+	dlg.SetDestinationWidthCache(&fm.destinationWidths)
 	openDest := destinationCandidateOpenMap(dest)
 	dlg.SetOnSelectedPathChanged(func(path string) {
 		updateOpenPathHighlights(fm, path, openDest, dlg.SetOwnerHighlighted)

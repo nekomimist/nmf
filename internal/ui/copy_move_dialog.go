@@ -238,14 +238,10 @@ func (d *CopyMoveDialog) accept(direct bool) {
 		acceptedPath = d.selectedPath
 	}
 	deferDialogClose(d.keyManager, "copyMove.accept", func() {
-		d.notifyDialogClosed()
-		d.keyManager.RemoveHandler(d.kmToken)
-		if d.dialog != nil {
-			d.dialog.Hide()
-		}
-		unfocusIfDialogOwned(d.parent, d.sink, d.searchEntry)
-		if d.onAccept != nil && acceptedPath != "" {
-			d.onAccept(CopyMoveResult{Destination: acceptedPath, PreserveTimestamps: d.PreserveTimestamps()})
+		onAccept := d.onAccept
+		d.finishClose()
+		if onAccept != nil && acceptedPath != "" {
+			onAccept(CopyMoveResult{Destination: acceptedPath, PreserveTimestamps: d.PreserveTimestamps()})
 		}
 	})
 }
@@ -255,23 +251,37 @@ func (d *CopyMoveDialog) CancelDialog() {
 		return
 	}
 	d.closed = true
-	deferDialogClose(d.keyManager, "copyMove.cancel", func() {
-		d.notifyDialogClosed()
-		d.keyManager.RemoveHandler(d.kmToken)
-		if d.dialog != nil {
-			d.dialog.Hide()
-		}
-		unfocusIfDialogOwned(d.parent, d.sink, d.searchEntry)
-	})
+	deferDialogClose(d.keyManager, "copyMove.cancel", d.finishClose)
 }
 
-func (d *CopyMoveDialog) notifyDialogClosed() {
+func (d *CopyMoveDialog) finishClose() {
 	if d.onPathChanged != nil {
 		d.onPathChanged("")
 	}
 	if d.onClosed != nil {
 		d.onClosed()
 		d.onClosed = nil
+	}
+	d.keyManager.RemoveHandler(d.kmToken)
+	if d.dialog != nil {
+		d.dialog.Hide()
+	}
+	unfocusIfDialogOwned(d.parent, d.sink, d.searchEntry)
+	// Fyne may retain the list renderer after Hide. Its callbacks still
+	// reference the dialog, so release the history and window callbacks here.
+	d.allDest = nil
+	d.filteredDest = nil
+	d.recentDest = nil
+	d.openDest = nil
+	d.onPathChanged = nil
+	d.onOpenDest = nil
+	d.onAccept = nil
+}
+
+// SetDestinations ignores history updates already queued when the dialog closed.
+func (d *CopyMoveDialog) SetDestinations(candidates []DestinationCandidate, preferredPath string) {
+	if !d.closed {
+		d.destinationPicker.SetDestinations(candidates, preferredPath)
 	}
 }
 

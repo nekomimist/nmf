@@ -55,6 +55,7 @@ type FileManager struct {
 	promptUnregister      func()
 	transferDestSubID     uint64
 	transferDestUnsub     func()
+	destinationWidths     ui.DestinationWidthCache
 	lifecycleMu           sync.Mutex
 	closed                bool
 	quitConfirmationOpen  bool

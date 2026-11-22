@@ -171,6 +171,36 @@ func TestCopyDialogPreserveTimestampsDefault(t *testing.T) {
 	}
 }
 
+func TestCopyDialogReleasesDestinationsOnClose(t *testing.T) {
+	for _, accept := range []bool{false, true} {
+		app := fynetest.NewApp()
+		window := app.NewWindow("copy")
+		candidates := []DestinationCandidate{{Path: "/destination", OpenInWindow: true}}
+		km := keymanager.NewKeyManager(nil)
+		d := NewCopyMoveDialog(OpCopy, []string{"source"}, candidates, true, km, func(string, ...interface{}) {})
+		var result CopyMoveResult
+		d.ShowDialog(window, func(r CopyMoveResult) { result = r })
+		d.ToggleHistoryOrder()
+		if accept {
+			d.AcceptSelection()
+		} else {
+			d.CancelDialog()
+		}
+		d.SetDestinations(candidates, "/destination")
+		if d.allDest != nil || d.filteredDest != nil || d.recentDest != nil || d.openDest != nil {
+			t.Fatalf("closed dialog retained destinations (accept=%t)", accept)
+		}
+		want := CopyMoveResult{}
+		if accept {
+			want = CopyMoveResult{Destination: "/destination", PreserveTimestamps: true}
+		}
+		if result != want {
+			t.Fatalf("result = %+v, want %+v", result, want)
+		}
+		app.Quit()
+	}
+}
+
 func TestMoveDialogDoesNotExposePreserveTimestamps(t *testing.T) {
 	dialog := NewCopyMoveDialog(
 		OpMove,

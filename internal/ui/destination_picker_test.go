@@ -8,6 +8,37 @@ import (
 	"fyne.io/fyne/v2/canvas"
 )
 
+func destinationPaths(candidates []DestinationCandidate) []string {
+	paths := make([]string, len(candidates))
+	for i, candidate := range candidates {
+		paths[i] = candidate.Path
+	}
+	return paths
+}
+
+func TestDestinationWidthsFollowCurrentCandidatesAndViewport(t *testing.T) {
+	var cache DestinationWidthCache
+	for _, paths := range [][]string{
+		{"/short", "/長いディレクトリ/long-destination"},
+		{"/長いディレクトリ/long-destination", "/short"},
+		{"/short", "/new"},
+		nil,
+	} {
+		var candidates []DestinationCandidate
+		for _, path := range paths {
+			candidates = append(candidates, DestinationCandidate{Path: path})
+		}
+		for _, minimum := range []float32{0, 40, 800} {
+			if got, want := cache.contentWidth(candidates, minimum), dialogTextWidth(paths, minimum); got != want {
+				t.Fatalf("width for %v with minimum %g = %g, want %g", paths, minimum, got, want)
+			}
+		}
+		if len(cache.widths) != len(paths) {
+			t.Fatalf("retained widths for %d paths, want %d", len(cache.widths), len(paths))
+		}
+	}
+}
+
 func TestDestinationDialogsToggleHistoryOrder(t *testing.T) {
 	now := time.Date(2026, time.November, 15, 12, 0, 0, 0, time.UTC)
 	for _, op := range []Operation{OpCopy, OpMove, OpExtract, "compare"} {

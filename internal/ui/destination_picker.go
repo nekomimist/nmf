@@ -40,11 +40,49 @@ type destinationPicker struct {
 	destEmpty             *widget.Label
 	scrollRight           bool
 	onPathChanged         func(string)
+	widthCache            *DestinationWidthCache
+}
+
+// DestinationWidthCache keeps measurements for one window's most recent
+// destination list. Only the Fyne thread accesses it.
+type DestinationWidthCache struct {
+	font   fyne.Resource
+	size   float32
+	widths map[string]float32
+}
+
+func (c *DestinationWidthCache) contentWidth(candidates []DestinationCandidate, minimum float32) float32 {
+	if c == nil {
+		c = &DestinationWidthCache{}
+	}
+	style := fyne.TextStyle{Monospace: true}
+	font, size := fynetheme.Font(style), fynetheme.TextSize()
+	if c.font != font || c.size != size {
+		c.widths = nil
+	}
+	next := make(map[string]float32, len(candidates))
+	padding := 4 * fynetheme.Padding()
+	widest := minimum
+	for _, candidate := range candidates {
+		width, ok := c.widths[candidate.Path]
+		if !ok {
+			width = fyne.MeasureText(candidate.Path, size, style).Width
+		}
+		next[candidate.Path] = width
+		widest = max(widest, width+padding)
+	}
+	c.font, c.size, c.widths = font, size, next
+	return widest
+}
+
+// SetDestinationWidthCache shares path measurements across dialogs in the same window.
+func (d *destinationPicker) SetDestinationWidthCache(cache *DestinationWidthCache) {
+	d.widthCache = cache
 }
 
 func (d *destinationPicker) destinationArea(width, height float32) fyne.CanvasObject {
 	size := metricsSize(width, height)
-	d.destScroll = newDialogListScroller(d.destList, dialogDestinationTextWidth(d.allDest, width), width, height)
+	d.destScroll = newDialogListScroller(d.destList, d.widthCache.contentWidth(d.allDest, width), width, height)
 	d.destEmpty = widget.NewLabel("No matching destinations")
 	d.destEmpty.Alignment = fyne.TextAlignCenter
 	fixed := container.NewWithoutLayout(d.destScroll, d.destEmpty)
@@ -305,16 +343,4 @@ func destinationOpenMap(candidates []DestinationCandidate) map[string]bool {
 		}
 	}
 	return result
-}
-
-func destinationPaths(candidates []DestinationCandidate) []string {
-	paths := make([]string, len(candidates))
-	for i, candidate := range candidates {
-		paths[i] = candidate.Path
-	}
-	return paths
-}
-
-func dialogDestinationTextWidth(candidates []DestinationCandidate, minimum float32) float32 {
-	return dialogTextWidth(destinationPaths(candidates), minimum)
 }

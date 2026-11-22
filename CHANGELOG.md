@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Repeatedly opening the copy or move dialog uses less memory with a long
+  destination history.
+
 ## 0.1.8 - 2026-11-22
 
 - Cursor memory keeps the position just saved when directories share a
