@@ -30,7 +30,7 @@ func (fm *FileManager) SaveCursorPosition(dirPath string) {
 	// Save the cursor position and update last used time
 	cursorMemory.Entries[dirPath] = fileName
 	cursorMemory.LastUsed[dirPath] = time.Now()
-	fm.cleanupOldCursorEntries()
+	fm.cleanupOldCursorEntries(dirPath)
 
 	// Save state to disk
 	if fm.stateManager != nil {
@@ -55,8 +55,8 @@ func (fm *FileManager) restoreCursorPosition(dirPath string) string {
 	return fileName
 }
 
-// cleanupOldCursorEntries removes the oldest entries when maxEntries is exceeded.
-func (fm *FileManager) cleanupOldCursorEntries() {
+// cleanupOldCursorEntries keeps the just-saved path even when timestamps tie.
+func (fm *FileManager) cleanupOldCursorEntries(savedPath string) {
 	cursorMemory := &fm.state.CursorMemory
 	maxEntries := fm.config.UI.CursorMemory.MaxEntries
 
@@ -67,9 +67,9 @@ func (fm *FileManager) cleanupOldCursorEntries() {
 	// Normally there is just one excess entry. Sort only when a reduced
 	// configuration limit requires evicting several entries at once.
 	if len(cursorMemory.Entries) == maxEntries+1 {
-		var oldest string
+		oldest := savedPath
 		for path := range cursorMemory.Entries {
-			if oldest == "" || cursorMemory.LastUsed[path].Before(cursorMemory.LastUsed[oldest]) {
+			if path != savedPath && (oldest == savedPath || cursorMemory.LastUsed[path].Before(cursorMemory.LastUsed[oldest])) {
 				oldest = path
 			}
 		}
@@ -80,7 +80,13 @@ func (fm *FileManager) cleanupOldCursorEntries() {
 	paths := slices.SortedFunc(maps.Keys(cursorMemory.Entries), func(a, b string) int {
 		return cursorMemory.LastUsed[a].Compare(cursorMemory.LastUsed[b])
 	})
-	for _, path := range paths[:len(paths)-maxEntries] {
+	for _, path := range paths {
+		if len(cursorMemory.Entries) == maxEntries {
+			break
+		}
+		if path == savedPath {
+			continue
+		}
 		delete(cursorMemory.Entries, path)
 		delete(cursorMemory.LastUsed, path)
 	}

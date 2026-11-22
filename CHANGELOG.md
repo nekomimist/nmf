@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Cursor memory keeps the position just saved when directories share a
+  last-used timestamp and the history is full.
+
 - Debug mode saves a baseline Go heap profile at startup. Click the debug
   toolbar action to log memory usage and capture another profile for comparison.
 

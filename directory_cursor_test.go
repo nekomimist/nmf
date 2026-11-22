@@ -3,6 +3,7 @@ package main
 import (
 	"path/filepath"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"nmf/internal/config"
@@ -69,6 +70,11 @@ func TestDirectoryCursorPriorityAndMemoryUsage(t *testing.T) {
 }
 
 func TestSavingExistingCursorAtCapacityAndLoweringLimit(t *testing.T) {
+	// Consecutive saves have the same timestamp until the bubble's clock advances.
+	synctest.Test(t, testSavingCursorsAtCapacity)
+}
+
+func testSavingCursorsAtCapacity(t *testing.T) {
 	state := &config.State{CursorMemory: config.CursorMemoryState{
 		Entries:  map[string]string{"/a": "1", "/b": "2", "/c": "3"},
 		LastUsed: map[string]time.Time{"/b": time.Unix(2, 0), "/c": time.Unix(3, 0)},
@@ -85,5 +91,9 @@ func TestSavingExistingCursorAtCapacityAndLoweringLimit(t *testing.T) {
 	fm.SaveCursorPosition("/d")
 	if len(state.CursorMemory.Entries) != 1 || state.CursorMemory.Entries["/d"] != "new" {
 		t.Fatalf("failed to enforce reduced limit: %v", state.CursorMemory.Entries)
+	}
+	fm.SaveCursorPosition("/e")
+	if len(state.CursorMemory.Entries) != 1 || state.CursorMemory.Entries["/e"] != "new" {
+		t.Fatalf("new entry evicted at fixed limit: %v", state.CursorMemory.Entries)
 	}
 }
