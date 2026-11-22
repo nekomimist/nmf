@@ -482,6 +482,35 @@ func TestFileViewerDialogImageUsesImageAndHexOnly(t *testing.T) {
 	}
 }
 
+func TestFileViewerDialogReleasesReplacedAndClosedImages(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+
+	first := &fileinfo.PreviewFile{Path: "first.png", ImageFormat: "PNG", Image: image.NewRGBA(image.Rect(0, 0, 4, 4))}
+	second := &fileinfo.PreviewFile{Path: "second.png", ImageFormat: "PNG", Image: image.NewRGBA(image.Rect(0, 0, 8, 8))}
+	d := NewFileViewerDialog(first)
+	d.ShowDialog(w)
+	defer d.CloseViewer()
+	oldView := d.imageView // Fyne can retain this widget after replacement.
+	d.ViewerShowHex()
+	d.ViewerShowImage()
+	if oldView.source != first.Image || first.Image == nil {
+		t.Fatal("switching panes lost the current image")
+	}
+
+	d.UpdatePreview(second)
+	if oldView.source != nil || d.imageView.source != second.Image {
+		t.Fatal("replacing the file should retain only the new image")
+	}
+	lastView := d.imageView
+	d.CloseViewer()
+	if d.preview != nil || lastView.source != nil {
+		t.Fatal("closed viewer still references the decoded image")
+	}
+}
+
 func TestFileViewerDialogImageHonorsExplicitHexDefault(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()

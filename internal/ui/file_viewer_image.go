@@ -72,6 +72,13 @@ func (v *fileViewerImageView) CreateRenderer() fyne.WidgetRenderer {
 	return &fileViewerImageRenderer{view: v}
 }
 
+// Fyne can cache the renderer after this view leaves the screen.
+func (v *fileViewerImageView) releaseSource() {
+	v.mu.Lock()
+	v.source = nil
+	v.mu.Unlock()
+}
+
 func (v *fileViewerImageView) Resize(size fyne.Size) {
 	old := v.Size()
 	v.BaseWidget.Resize(size)

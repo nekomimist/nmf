@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The image viewer releases decoded images for garbage collection when you
+  close the viewer or switch files, even if the window stays idle.
+
 ## 0.1.7 - 2026-11-21
 
 - Jobs shows the full paths of successfully deleted or trashed items, even

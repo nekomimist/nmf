@@ -235,7 +235,6 @@ func (d *FileViewerDialog) UpdatePreview(preview *fileinfo.PreviewFile) {
 // ShowLoading replaces the viewer panes with an inline loading state.
 func (d *FileViewerDialog) ShowLoading(path string) {
 	d.captureViewerState()
-	d.preview = nil
 	d.resetViewerContent()
 	d.setViewerMessage(path, "Loading preview...")
 }
@@ -244,7 +243,6 @@ func (d *FileViewerDialog) ShowLoading(path string) {
 // the current directory entry cannot be previewed.
 func (d *FileViewerDialog) ShowUnavailable(path, reason string) {
 	d.captureViewerState()
-	d.preview = nil
 	d.resetViewerContent()
 	d.setViewerMessage(path, reason)
 }
@@ -253,8 +251,8 @@ func (d *FileViewerDialog) setPreview(preview *fileinfo.PreviewFile, preserveSta
 	if preserveState {
 		d.captureViewerState()
 	}
-	d.preview = preview
 	d.resetViewerContent()
+	d.preview = preview
 	if preview == nil {
 		d.setViewerMessage("", "Preview unavailable.")
 		return
@@ -305,10 +303,14 @@ func (d *FileViewerDialog) captureViewerState() {
 }
 
 func (d *FileViewerDialog) resetViewerContent() {
+	d.preview = nil
+	if d.imageView != nil {
+		d.imageView.releaseSource()
+		d.imageView = nil
+	}
 	d.textGrid = nil
 	d.hexGrid = nil
 	d.mdGrid = nil
-	d.imageView = nil
 	d.search = nil
 	d.searchCase = nil
 	d.jump = nil
@@ -1209,6 +1211,7 @@ func (d *FileViewerDialog) CancelDialog() {
 			d.dialog.Hide()
 		}
 		unfocusIfDialogOwned(d.parent, d.inputSink, d.imageView, d.textGrid, d.hexGrid, d.mdGrid, d.search, d.jump)
+		d.resetViewerContent()
 		if d.afterClosed != nil {
 			d.afterClosed()
 		}
