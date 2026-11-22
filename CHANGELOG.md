@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Debug mode saves a baseline Go heap profile at startup. Click the debug
+  toolbar action to log memory usage and capture another profile for comparison.
+
 - The image viewer releases decoded images for garbage collection when you
   close the viewer or switch files, even if the window stays idle.
 

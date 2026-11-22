@@ -210,8 +210,8 @@ with JSON; the overlay only affects the running process.
 
 Configured debug logging creates one `nmf-*.log` file per startup under the
 configured log directory and prunes old matching logs. When enabled, the main
-toolbar exposes a mouse-accessible KeyManager state dump for diagnosing input
-routing failures.
+toolbar can dump KeyManager state and capture process-wide memory statistics
+and a Go heap profile. See [Debug Logging](../configuration.md#debug-logging).
 
 Operational notes:
 

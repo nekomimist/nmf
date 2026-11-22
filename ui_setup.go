@@ -81,9 +81,7 @@ func (fm *FileManager) setupUI() {
 		}),
 	}
 	if debugMode {
-		toolbarItems = append(toolbarItems, toolbarAction(theme.SettingsIcon(), "debug.dump", func() {
-			fm.DumpKeyManagerState()
-		}))
+		toolbarItems = append(toolbarItems, toolbarAction(theme.SettingsIcon(), "debug.dump", fm.dumpDebugState))
 	}
 	toolbarItems = append(toolbarItems,
 		toolbarAction(theme.InfoIcon(), "app.info", func() {

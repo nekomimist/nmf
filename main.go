@@ -233,18 +233,29 @@ func main() {
 	jobs.SetDebug(debugPrint)
 	shellmenu.Debugf = debugPrint
 
+	debugLogDir := resolveDebugLogDirectory(configManager.ConfigPath(), cfg.Debug.LogDirectory)
+	if debugLogFile != nil {
+		debugLogDir = filepath.Dir(debugLogFile.Name())
+	}
 	runtime := newApplicationRuntime(fyneApp, applicationRuntimeOptions{
 		Config:       cfg,
 		State:        state,
 		StateManager: stateManager,
 		CustomTheme:  customTheme,
 		ConfigScript: configScript,
+		DebugLogDir:  debugLogDir,
 	})
 	fm := NewFileManager(runtime, startPath)
 	requestInitialWindowPosition(fm.window, cfg.Window)
 	fm.window.Show()
 	applyInitialWindowPosition(fm.window, cfg.Window)
+	if debugMode {
+		fyneApp.Lifecycle().SetOnStarted(func() {
+			runtime.startHeapProfile("startup", nil)
+		})
+	}
 	fyneApp.Run()
+	runtime.debugDumps.Wait()
 }
 
 func directoryInputError(input string, cause error) error {

@@ -247,10 +247,24 @@ NMF creates a new session log on each startup using names like
 `nmf-20260608-213000-12345.log` and prunes old `nmf-*.log` files in that
 directory according to `maxLogFiles`.
 
-When debug logging is enabled, the main toolbar shows a debug action that dumps
-the current KeyManager stack, modifiers, pressed keys, and pending input
-transitions into the log. It is intended for cases where keyboard input stops
-responding but mouse clicks still work.
+With debug logging enabled, NMF takes one baseline heap profile in the
+background after showing the first window. Click the gear in the main toolbar
+to log the KeyManager stack, modifiers, pressed keys, pending input transitions,
+and cursor state. The same click records process-wide Go memory statistics before
+and after a requested garbage collection, then saves a sampled heap profile.
+The log includes allocated heap bytes, idle heap bytes still held by Go,
+and bytes returned to the OS. On Windows it also includes the working set,
+private commit, and private working set when available.
+
+The baseline is named `nmf-heap-startup-*.pprof` and toolbar captures are
+named `nmf-heap-manual-*.pprof`. Both go beside the active debug log.
+With stderr-only `-d`, profiles go in the configured log directory (by
+default, `logs` beside `config.json`). The debug log reports the path and capture duration.
+To see which call stacks hold the most bytes, run
+`go tool pprof -top -inuse_space path/to/profile.pprof`. To compare two
+captures from the same session, run
+`go tool pprof -top -inuse_space -base before.pprof after.pprof`.
+`maxLogFiles` applies only to session logs. Remove old profiles when finished.
 
 ## Colors
 

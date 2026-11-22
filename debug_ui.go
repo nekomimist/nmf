@@ -1,12 +1,17 @@
 package main
 
-import "fyne.io/fyne/v2"
+import (
+	"path/filepath"
+	"time"
+
+	"fyne.io/fyne/v2"
+)
 
 type canvasObjectLookup interface {
 	CanvasForObject(fyne.CanvasObject) fyne.Canvas
 }
 
-func (fm *FileManager) DumpKeyManagerState() {
+func (fm *FileManager) dumpDebugState() {
 	if fm == nil || fm.keyManager == nil {
 		debugPrint("FileManager: keymanager dump skipped keyManager=nil")
 		return
@@ -30,10 +35,47 @@ func (fm *FileManager) DumpKeyManagerState() {
 		fm.windowActive, focusedObjectLabel(fm.window), canvasWidth, canvasHeight, listWidth, listHeight,
 		fm.GetCurrentPath(), fm.browserModel().CursorPath())
 	fm.dumpCanvasMappings(windowCanvas)
-	if fm.statusLabel != nil {
-		fm.statusLabel.SetText("KeyManager state dumped to debug log")
-	}
 	fm.FocusFileList()
+
+	started := fm.runtime.startHeapProfile("manual", func(path string, err error) {
+		if fm.isWindowClosed() {
+			return
+		}
+		if err != nil {
+			fm.showStatusNotice("Heap profile failed (see debug log)")
+		} else {
+			fm.showStatusNotice("Heap profile saved: " + filepath.Base(path))
+		}
+	})
+	if started {
+		fm.showStatusNotice("Writing heap profile…")
+	} else {
+		fm.showStatusNotice("Heap profile already in progress")
+	}
+}
+
+// startHeapProfile is called on the Fyne thread. Only manual captures update the status bar.
+func (rt *ApplicationRuntime) startHeapProfile(trigger string, onDone func(string, error)) bool {
+	if rt.heapDumpRunning {
+		return false
+	}
+	rt.heapDumpRunning = true
+	rt.debugDumps.Go(func() {
+		started := time.Now()
+		path, err := writeDebugHeapProfile(rt.debugLogDir, trigger)
+		if err != nil {
+			debugPrint("Memory: heap profile failed trigger=%s elapsed=%s err=%v", trigger, time.Since(started), err)
+		} else {
+			debugPrint("Memory: heap profile saved path=%q trigger=%s elapsed=%s", path, trigger, time.Since(started))
+		}
+		fyne.Do(func() {
+			rt.heapDumpRunning = false
+			if onDone != nil {
+				onDone(path, err)
+			}
+		})
+	})
+	return true
 }
 
 func (fm *FileManager) dumpCanvasMappings(windowCanvas fyne.Canvas) {

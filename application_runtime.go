@@ -39,6 +39,9 @@ type ApplicationRuntime struct {
 	searchMatchers          *search.Provider
 	viewerSearchText        string
 	viewerSearchMatchCase   bool
+	debugLogDir             string
+	heapDumpRunning         bool // owned by the Fyne thread, shared across windows
+	debugDumps              sync.WaitGroup
 	closeOnce               sync.Once
 }
 
@@ -48,6 +51,7 @@ type applicationRuntimeOptions struct {
 	StateManager *config.StateManager
 	CustomTheme  *customtheme.CustomTheme
 	ConfigScript *configscript.Runtime
+	DebugLogDir  string
 }
 
 func newApplicationRuntime(app fyne.App, options applicationRuntimeOptions) *ApplicationRuntime {
@@ -59,6 +63,7 @@ func newApplicationRuntime(app fyne.App, options applicationRuntimeOptions) *App
 		stateManager:            options.StateManager,
 		customTheme:             options.CustomTheme,
 		configScript:            options.ConfigScript,
+		debugLogDir:             options.DebugLogDir,
 		watchHub:                watcher.NewWatchHub(debugPrint),
 		jobManager:              jobs.GetManager(),
 		jobsWindowController:    NewJobsWindowController(app, debugPrint),
