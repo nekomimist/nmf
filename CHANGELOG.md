@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.9 - 2026-11-22
+
 - Repeatedly opening the copy or move dialog uses less memory with a long
   destination history.
 
