@@ -103,6 +103,7 @@ func TestKeyCapBadgeHidesFrameWhenEmpty(t *testing.T) {
 	badge := newKeyCapBadge("")
 	w := test.NewWindow(badge)
 	defer w.Close()
+	w.Resize(fyne.NewSize(100, 30))
 
 	renderer := test.WidgetRenderer(badge).(*keyCapBadgeRenderer)
 	renderer.Refresh()
@@ -117,5 +118,33 @@ func TestKeyCapBadgeHidesFrameWhenEmpty(t *testing.T) {
 	}
 	if badge.label.Text != "proj" {
 		t.Fatalf("badge text = %q, want proj", badge.label.Text)
+	}
+}
+
+func TestKeyCapBadgeTruncatesLongTextToAssignedWidth(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	badge := newKeyCapBadge("project-directory")
+	w := test.NewWindow(badge)
+	defer w.Close()
+
+	badge.Resize(fyne.NewSize(92, 24))
+	renderer := test.WidgetRenderer(badge).(*keyCapBadgeRenderer)
+	renderer.Refresh()
+
+	if badge.label.Text == "project-directory" {
+		t.Fatalf("long badge text should truncate within 92px cell, got %q", badge.label.Text)
+	}
+	measured := fyne.MeasureText(badge.label.Text, badge.label.TextSize, badge.label.TextStyle).Width
+	maxTextWidth := 92 - keyCapBadgeHorizPad*2
+	if measured > maxTextWidth+0.5 {
+		t.Fatalf("truncated badge text %q width = %v, want <= %v", badge.label.Text, measured, maxTextWidth)
+	}
+
+	badge.Resize(fyne.NewSize(220, 24))
+	renderer.Refresh()
+	if badge.label.Text != "project-directory" {
+		t.Fatalf("widened badge text = %q, want full project-directory", badge.label.Text)
 	}
 }

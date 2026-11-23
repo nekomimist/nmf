@@ -36,6 +36,7 @@ type modalDialog struct {
 	title       string
 	parent      fyne.Window
 	win         *widget.PopUp
+	themeRoot   *container.ThemeOverride
 	shell       *dialogShellWidget
 	desiredSize fyne.Size
 	onClosed    func()
@@ -55,14 +56,18 @@ func newModalDialogWithOptions(title string, content fyne.CanvasObject, parent f
 
 	shell := newDialogShellWidget(title, content, opts.headerTrailing, accentFrame, opts.compactBody)
 	var popup *widget.PopUp
+	var themeRoot *container.ThemeOverride
 	if parent != nil && parent.Canvas() != nil {
-		popup = widget.NewModalPopUp(dialogThemeOverride(shell), parent.Canvas())
+		themed := dialogThemeOverride(shell)
+		themeRoot, _ = themed.(*container.ThemeOverride)
+		popup = widget.NewModalPopUp(themed, parent.Canvas())
 	}
 	return &modalDialog{
-		title:  title,
-		parent: parent,
-		win:    popup,
-		shell:  shell,
+		title:     title,
+		parent:    parent,
+		win:       popup,
+		themeRoot: themeRoot,
+		shell:     shell,
 	}
 }
 
@@ -110,6 +115,9 @@ func (d *modalDialog) SetOnClosed(closed func()) {
 }
 
 func (d *modalDialog) Refresh() {
+	if d.themeRoot != nil {
+		d.themeRoot.Refresh()
+	}
 	if d.win != nil {
 		d.win.Refresh()
 	}

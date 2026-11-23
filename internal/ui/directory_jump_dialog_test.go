@@ -150,3 +150,40 @@ func TestDirectoryJumpManualAcceptClosesViaTransition(t *testing.T) {
 		t.Fatalf("key manager stack size = %d, want 0", got)
 	}
 }
+
+func TestDirectoryJumpLongShortcutFitsCellWithoutOverflow(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	mediumEntries := []config.DirectoryJumpEntry{
+		{Shortcut: "project-directory", Directory: "/work/project-directory"},
+	}
+	mediumCell := directoryJumpShortcutCellSizeForEntries(mediumEntries)
+	baseCell := directoryJumpShortcutCellSize()
+	if mediumCell.Width <= baseCell.Width {
+		t.Fatalf("medium shortcut cell width = %v, want > base %v", mediumCell.Width, baseCell.Width)
+	}
+
+	badge := newKeyCapBadge("project-directory")
+	w := test.NewWindow(badge)
+	defer w.Close()
+	badge.Resize(mediumCell)
+	renderer := test.WidgetRenderer(badge).(*keyCapBadgeRenderer)
+	renderer.Refresh()
+	if badge.label.Text != "project-directory" {
+		t.Fatalf("medium shortcut badge text = %q, want full project-directory inside %vpx cell", badge.label.Text, mediumCell.Width)
+	}
+
+	veryLong := "very-very-long-directory-shortcut-identifier-exceeding-cap"
+	longCell := directoryJumpShortcutCellSizeForEntries([]config.DirectoryJumpEntry{
+		{Shortcut: veryLong, Directory: "/work/long"},
+	})
+	badge.SetText(veryLong)
+	badge.Resize(longCell)
+	renderer.Refresh()
+
+	measured := fyne.MeasureText(badge.label.Text, badge.label.TextSize, badge.label.TextStyle).Width
+	if measured > longCell.Width-keyCapBadgeHorizPad*2+0.5 {
+		t.Fatalf("capped badge text %q width = %v overflows cell width %v", badge.label.Text, measured, longCell.Width)
+	}
+}

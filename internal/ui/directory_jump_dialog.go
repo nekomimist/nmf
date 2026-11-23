@@ -106,13 +106,14 @@ func (d *DirectoryJumpDialog) createWidgets() {
 		d.updateFilteredEntries(query)
 	}
 
+	shortcutCellSize := directoryJumpShortcutCellSizeForEntries(d.allEntries)
 	d.jumpList = widget.NewList(
 		func() int {
 			return len(d.filteredEntries)
 		},
 		func() fyne.CanvasObject {
 			shortcut := newKeyCapBadge("")
-			shortcutBox := container.NewGridWrap(directoryJumpShortcutCellSize(), shortcut)
+			shortcutBox := container.NewGridWrap(shortcutCellSize, shortcut)
 			path := widget.NewLabel("")
 			path.TextStyle = fyne.TextStyle{Monospace: true}
 			return container.NewHBox(shortcutBox, path)
@@ -154,12 +155,36 @@ func (d *DirectoryJumpDialog) createWidgets() {
 }
 
 func directoryJumpShortcutCellSize() fyne.Size {
+	return directoryJumpShortcutCellSizeForEntries(nil)
+}
+
+func directoryJumpShortcutCellSizeForEntries(entries []config.DirectoryJumpEntry) fyne.Size {
 	appTheme := fyne.CurrentApp().Settings().Theme()
 	textSize := appTheme.Size(theme.SizeNameText)
+	captionSize := appTheme.Size(theme.SizeNameCaptionText)
+	if captionSize <= 0 {
+		captionSize = textSize
+	}
 	padding := appTheme.Size(theme.SizeNamePadding)
 	innerPadding := appTheme.Size(theme.SizeNameInnerPadding)
 
-	return fyne.NewSize(textSize*6+padding*2, textSize+innerPadding*2)
+	minWidth := textSize*6 + padding*2
+	maxWidth := textSize*16 + padding*2
+	width := minWidth
+	style := fyne.TextStyle{Monospace: true}
+	for _, entry := range entries {
+		if entry.Shortcut == "" {
+			continue
+		}
+		needed := fyne.MeasureText(entry.Shortcut, captionSize, style).Width + keyCapBadgeHorizPad*2 + 2
+		if needed > width {
+			width = needed
+		}
+	}
+	if width > maxWidth {
+		width = maxWidth
+	}
+	return fyne.NewSize(width, textSize+innerPadding*2)
 }
 
 func directoryJumpListWidth(entries []config.DirectoryJumpEntry, minimum float32) float32 {
@@ -167,7 +192,7 @@ func directoryJumpListWidth(entries []config.DirectoryJumpEntry, minimum float32
 	for i, entry := range entries {
 		paths[i] = entry.Directory
 	}
-	width := dialogTextWidth(paths, minimum) + directoryJumpShortcutCellSize().Width
+	width := dialogTextWidth(paths, minimum) + directoryJumpShortcutCellSizeForEntries(entries).Width
 	if width < minimum {
 		return minimum
 	}
