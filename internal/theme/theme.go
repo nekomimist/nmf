@@ -51,8 +51,8 @@ var (
 		ColorSelectionBackground:     {70, 120, 170, 100},
 		ColorCursor:                  {0, 0, 0, 255},
 		ColorCopyMoveOpenDestination: {30, 120, 80, 255},
-		ColorSearchOverlayBackground: {40, 40, 40, 240},
-		ColorSearchOverlayForeground: {255, 255, 255, 255},
+		ColorSearchOverlayBackground: {0xfb, 0xfb, 0xfc, 0xff},
+		ColorSearchOverlayForeground: {0x1f, 0x23, 0x28, 0xff},
 		ColorBusyOverlayBackground:   {0, 0, 0, 96},
 	}
 	darkAppColorDefaults = map[string]color.RGBA{
@@ -66,8 +66,8 @@ var (
 		ColorSelectionBackground:     {100, 150, 200, 100},
 		ColorCursor:                  {255, 255, 255, 255},
 		ColorCopyMoveOpenDestination: {120, 220, 170, 255},
-		ColorSearchOverlayBackground: {220, 220, 220, 240},
-		ColorSearchOverlayForeground: {0, 0, 0, 255},
+		ColorSearchOverlayBackground: {0x22, 0x22, 0x26, 0xff},
+		ColorSearchOverlayForeground: {0xec, 0xec, 0xef, 0xff},
 		ColorBusyOverlayBackground:   {0, 0, 0, 96},
 	}
 

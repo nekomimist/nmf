@@ -130,11 +130,10 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveRe
 	targetsScroll.SetMinSize(metricsSize(targetListWidth, copyMoveTargetListHeight))
 
 	// Destination search + list (fixed size like history dialog)
-	searchLabel := widget.NewLabel("Destination:")
 	openButton := widget.NewButtonWithIcon("Open", fynetheme.FolderNewIcon(), func() {
 		d.OpenDestination()
 	})
-	searchSection := container.NewBorder(nil, nil, searchLabel, openButton, d.searchEntry)
+	searchSection := container.NewBorder(nil, nil, nil, openButton, d.searchEntry)
 	fixed := d.destinationArea(listWidth, copyMoveDestListHeight)
 
 	contentObjects := []fyne.CanvasObject{

@@ -224,9 +224,8 @@ func (fd *FilterDialog) previewPattern() string {
 
 // ShowDialog shows the file filter dialog
 func (fd *FilterDialog) ShowDialog(parent fyne.Window, callback func(*config.FilterEntry), deleteCallback func(string)) {
-	// Create search section
-	searchLabel := widget.NewLabel("Pattern:")
-	searchSection := container.NewBorder(nil, nil, searchLabel, nil, fd.searchEntry)
+	// Combine filter input and live match count into one compact bar.
+	topBar := container.NewBorder(nil, nil, nil, container.NewCenter(fd.previewLabel), fd.searchEntry)
 
 	// Create scrollable list container
 	listScroll := container.NewScroll(dialogListThemeOverride(fd.filterList))
@@ -267,7 +266,7 @@ func (fd *FilterDialog) ShowDialog(parent fyne.Window, callback func(*config.Fil
 
 	// Create main content
 	content := container.NewBorder(
-		container.NewVBox(searchSection, fd.previewLabel),                                                             // top
+		topBar, // top
 		dialogButtonBar(dialogCancelButton("Cancel", fd.CancelDialog), dialogConfirmButton("OK", fd.AcceptSelection)), // bottom
 		nil,                                 // left
 		nil,                                 // right

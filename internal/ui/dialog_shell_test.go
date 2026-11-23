@@ -95,3 +95,27 @@ func TestInsetListSurfaceUsesInputSurfaceAndBorderColors(t *testing.T) {
 		t.Fatalf("fill color = %#v, want %#v", got, wantFill)
 	}
 }
+
+func TestKeyCapBadgeHidesFrameWhenEmpty(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	badge := newKeyCapBadge("")
+	w := test.NewWindow(badge)
+	defer w.Close()
+
+	renderer := test.WidgetRenderer(badge).(*keyCapBadgeRenderer)
+	renderer.Refresh()
+	if badge.background.StrokeWidth != 0 {
+		t.Fatalf("empty badge stroke width = %v, want 0", badge.background.StrokeWidth)
+	}
+
+	badge.SetText("proj")
+	renderer.Refresh()
+	if badge.background.StrokeWidth != 1 {
+		t.Fatalf("non-empty badge stroke width = %v, want 1", badge.background.StrokeWidth)
+	}
+	if badge.label.Text != "proj" {
+		t.Fatalf("badge text = %q, want proj", badge.label.Text)
+	}
+}

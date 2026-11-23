@@ -191,7 +191,10 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	}
 
 	d.closeButton = widget.NewButtonWithIcon("", theme.CancelIcon(), d.CancelDialog)
+	d.closeButton.Importance = widget.LowImportance
 	d.nameLabel = widget.NewLabel("")
+	d.nameLabel.TextStyle.Bold = true
+	d.nameLabel.Truncation = fyne.TextTruncateEllipsis
 	d.contentHost = container.NewStack()
 	d.inputSink = NewKeySink(d.contentHost, d.km)
 	d.setPreview(d.preview, false)
@@ -258,9 +261,10 @@ func (d *FileViewerDialog) setPreview(preview *fileinfo.PreviewFile, preserveSta
 		return
 	}
 
-	d.status = widget.NewLabel(d.statusText())
+	d.status = newDialogHintLabel(d.statusText())
+	d.status.Alignment = fyne.TextAlignTrailing
 	d.status.Truncation = fyne.TextTruncateClip
-	d.lineLabel = widget.NewLabel("")
+	d.lineLabel = newDialogHintLabel("")
 	d.lineLabel.TextStyle = fyne.TextStyle{Monospace: true}
 
 	stepStart := time.Now()
@@ -274,13 +278,18 @@ func (d *FileViewerDialog) setPreview(preview *fileinfo.PreviewFile, preserveSta
 	d.debug("FileViewer: tabs elapsed=%s active=%s", time.Since(stepStart), d.activeName)
 
 	toolbar := d.buildViewerToolbar(d.parent)
-	nameRow := d.viewerNameRow(preview.Path)
+	headerRow := d.viewerHeaderRow(preview.Path, d.status)
+	paneFrame := newInsetSurfaceWithPadding(d.paneStack, 4, 4, 6, 6)
 	content := container.NewBorder(
-		container.NewVBox(nameRow, d.status, container.NewBorder(nil, nil, nil, container.NewCenter(d.lineLabel), toolbar)),
+		container.NewVBox(
+			headerRow,
+			widget.NewSeparator(),
+			container.NewBorder(nil, nil, nil, container.NewCenter(d.lineLabel), toolbar),
+		),
 		nil,
 		nil,
 		nil,
-		container.NewBorder(d.tabBar.Container(), nil, nil, nil, d.paneStack),
+		container.NewBorder(d.tabBar.Container(), nil, nil, nil, paneFrame),
 	)
 	d.replaceViewerContent(content)
 	d.updateLineDisplay()
@@ -346,11 +355,21 @@ func (d *FileViewerDialog) setViewerMessage(path, message string) {
 }
 
 func (d *FileViewerDialog) viewerNameRow(path string) fyne.CanvasObject {
+	return d.viewerHeaderRow(path, nil)
+}
+
+func (d *FileViewerDialog) viewerHeaderRow(path string, meta fyne.CanvasObject) fyne.CanvasObject {
 	if d.nameLabel == nil {
 		d.nameLabel = widget.NewLabel("")
+		d.nameLabel.TextStyle.Bold = true
+		d.nameLabel.Truncation = fyne.TextTruncateEllipsis
 	}
 	d.nameLabel.SetText(filepath.Base(path))
-	return container.NewBorder(nil, nil, nil, d.closeButton,
+	trailing := fyne.CanvasObject(d.closeButton)
+	if meta != nil {
+		trailing = container.NewHBox(container.NewCenter(meta), d.closeButton)
+	}
+	return container.NewBorder(nil, nil, nil, trailing,
 		container.NewVBox(layout.NewSpacer(), d.nameLabel, layout.NewSpacer()))
 }
 
@@ -402,12 +421,15 @@ func (d *FileViewerDialog) buildViewerPanes() {
 func (d *FileViewerDialog) buildViewerToolbar(parent fyne.Window) fyne.CanvasObject {
 	d.wrapButton = widget.NewButton("Wrap", d.ViewerToggleWrap)
 	copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), d.copySelection)
+	copyBtn.Importance = widget.LowImportance
 	if d.preview.ImageFormat != "" {
 		d.hexToolbar = container.NewHBox(d.wrapButton, copyBtn)
 		if d.imageView != nil {
 			d.zoomFitButton = widget.NewButtonWithIcon("100% (=)", theme.ZoomFitIcon(), d.ViewerImageToggleFit)
 			d.zoomOutButton = widget.NewButtonWithIcon("", theme.ZoomOutIcon(), d.ViewerImageZoomOut)
+			d.zoomOutButton.Importance = widget.LowImportance
 			d.zoomInButton = widget.NewButtonWithIcon("", theme.ZoomInIcon(), d.ViewerImageZoomIn)
+			d.zoomInButton.Importance = widget.LowImportance
 			d.imageToolbar = container.NewHBox(d.zoomFitButton, d.zoomOutButton, d.zoomInButton)
 		} else {
 			d.imageToolbar = container.NewHBox()
@@ -442,8 +464,11 @@ func (d *FileViewerDialog) buildViewerToolbar(parent fyne.Window) fyne.CanvasObj
 		})
 	}
 	d.prevButton = widget.NewButtonWithIcon("", theme.MoveUpIcon(), d.findPrevious)
+	d.prevButton.Importance = widget.LowImportance
 	d.nextButton = widget.NewButtonWithIcon("", theme.MoveDownIcon(), d.findNext)
+	d.nextButton.Importance = widget.LowImportance
 	confirmBtn := widget.NewButtonWithIcon("", theme.ConfirmIcon(), d.jumpToLine)
+	confirmBtn.Importance = widget.LowImportance
 	return container.NewBorder(nil, nil, nil,
 		container.NewHBox(d.wrapButton, copyBtn),
 		container.NewHBox(

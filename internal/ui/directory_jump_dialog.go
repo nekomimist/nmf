@@ -111,9 +111,7 @@ func (d *DirectoryJumpDialog) createWidgets() {
 			return len(d.filteredEntries)
 		},
 		func() fyne.CanvasObject {
-			shortcut := widget.NewLabel("")
-			shortcut.TextStyle = fyne.TextStyle{Monospace: true}
-			shortcut.Wrapping = fyne.TextTruncate
+			shortcut := newKeyCapBadge("")
 			shortcutBox := container.NewGridWrap(directoryJumpShortcutCellSize(), shortcut)
 			path := widget.NewLabel("")
 			path.TextStyle = fyne.TextStyle{Monospace: true}
@@ -131,8 +129,8 @@ func (d *DirectoryJumpDialog) createWidgets() {
 			shortcutBox, _ := row.Objects[0].(*fyne.Container)
 			pathLabel, _ := row.Objects[1].(*widget.Label)
 			if shortcutBox != nil && len(shortcutBox.Objects) > 0 {
-				if shortcutLabel, ok := shortcutBox.Objects[0].(*widget.Label); ok {
-					shortcutLabel.SetText(entry.Shortcut)
+				if badge, ok := shortcutBox.Objects[0].(*keyCapBadge); ok {
+					badge.SetText(entry.Shortcut)
 				}
 			}
 			if pathLabel != nil {
@@ -207,9 +205,6 @@ func (d *DirectoryJumpDialog) ShowDialog(parent fyne.Window, callback func(strin
 	listSize := metricsSize(listWidth, searchDialogListHeight)
 	contentSize := metricsSize(contentWidth, searchDialogContentHeight)
 
-	searchLabel := widget.NewLabel("Filter:")
-	searchSection := container.NewBorder(nil, nil, searchLabel, nil, d.searchEntry)
-
 	listScroll := newScrollableDialogList(d.jumpList, directoryJumpListWidth(d.allEntries, listWidth), listWidth, searchDialogListHeight)
 
 	emptyLabel := widget.NewLabel("No matching shortcuts found")
@@ -235,7 +230,7 @@ func (d *DirectoryJumpDialog) ShowDialog(parent fyne.Window, callback func(strin
 	}
 
 	content := container.NewBorder(
-		searchSection,
+		d.searchEntry,
 		dialogButtonBar(dialogCancelButton("Cancel", d.CancelDialog), dialogConfirmButton("OK", d.AcceptSelection)),
 		nil,
 		nil,

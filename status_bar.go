@@ -43,6 +43,9 @@ func (t *directoryCacheStatusBadgeTheme) Color(name fyne.ThemeColorName, variant
 
 func newDirectoryCacheStatusBadge(themeProvider *customtheme.CustomTheme) *directoryCacheStatusBadge {
 	background := canvas.NewRectangle(themeProvider.GetCustomColor(customtheme.ColorSearchOverlayBackground))
+	background.CornerRadius = 4
+	background.StrokeWidth = 1
+	background.StrokeColor = themeProvider.Color(fynetheme.ColorNameInputBorder, fynetheme.VariantDark)
 	label := widget.NewLabel("")
 	label.TextStyle = fyne.TextStyle{Monospace: true}
 	badgeTheme := &directoryCacheStatusBadgeTheme{

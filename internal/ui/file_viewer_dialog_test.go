@@ -659,23 +659,32 @@ func TestFileViewerDialogTabBarHighlightsActivePane(t *testing.T) {
 	d.ShowDialog(w)
 	defer d.CancelDialog()
 
-	if got := d.tabBar.buttons[viewerPaneText].Importance; got != widget.HighImportance {
-		t.Fatalf("text tab importance = %v, want HighImportance", got)
+	if got := d.tabBar.buttons[viewerPaneText].Importance; got != widget.MediumImportance {
+		t.Fatalf("text tab importance = %v, want MediumImportance", got)
 	}
-	if got := d.tabBar.buttons[viewerPaneHex].Importance; got != widget.MediumImportance {
-		t.Fatalf("hex tab importance = %v, want MediumImportance", got)
+	if got := color.NRGBAModel.Convert(d.tabBar.indicators[viewerPaneText].FillColor).(color.NRGBA); got.A == 0 {
+		t.Fatal("text tab indicator should be visible when active")
+	}
+	if got := d.tabBar.buttons[viewerPaneHex].Importance; got != widget.LowImportance {
+		t.Fatalf("hex tab importance = %v, want LowImportance", got)
+	}
+	if got := color.NRGBAModel.Convert(d.tabBar.indicators[viewerPaneHex].FillColor).(color.NRGBA); got.A != 0 {
+		t.Fatal("hex tab indicator should be transparent when inactive")
 	}
 
 	d.ViewerShowHex()
 
-	if got := d.tabBar.buttons[viewerPaneHex].Importance; got != widget.HighImportance {
-		t.Fatalf("hex tab importance after switch = %v, want HighImportance", got)
+	if got := d.tabBar.buttons[viewerPaneHex].Importance; got != widget.MediumImportance {
+		t.Fatalf("hex tab importance after switch = %v, want MediumImportance", got)
 	}
-	if got := d.tabBar.buttons[viewerPaneText].Importance; got != widget.MediumImportance {
-		t.Fatalf("text tab importance after switch = %v, want MediumImportance", got)
+	if got := color.NRGBAModel.Convert(d.tabBar.indicators[viewerPaneHex].FillColor).(color.NRGBA); got.A == 0 {
+		t.Fatal("hex tab indicator should be visible after switch")
 	}
-	if got := d.tabBar.buttons[viewerPaneMarkdown].Importance; got != widget.MediumImportance {
-		t.Fatalf("markdown tab importance = %v, want MediumImportance", got)
+	if got := d.tabBar.buttons[viewerPaneText].Importance; got != widget.LowImportance {
+		t.Fatalf("text tab importance after switch = %v, want LowImportance", got)
+	}
+	if got := d.tabBar.buttons[viewerPaneMarkdown].Importance; got != widget.LowImportance {
+		t.Fatalf("markdown tab importance = %v, want LowImportance", got)
 	}
 }
 

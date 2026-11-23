@@ -7,6 +7,8 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
+	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/fileinfo"
@@ -21,6 +23,8 @@ type IncrementalSearchOverlay struct {
 	matches        []int               // Indexes into allFiles when searchTerm is nonempty
 	currentMatch   int                 // Index within the active result set
 	container      *fyne.Container     // Main container for the overlay
+	background     *canvas.Rectangle   // Surface background with active/error accent border
+	searchIcon     *widget.Icon        // Accent search icon
 	searchLabel    *canvas.Text        // Shows current search term and match info
 	searchText     *shrinkingTextLabel // Keeps long match names from expanding the window
 	visible        bool                // Whether the overlay is currently visible
@@ -63,18 +67,23 @@ func NewIncrementalSearchOverlay(
 func (iso *IncrementalSearchOverlay) createWidgets() {
 	backgroundColor := iso.overlayColor(customtheme.ColorSearchOverlayBackground)
 	textColor := iso.overlayColor(customtheme.ColorSearchOverlayForeground)
-	background := canvas.NewRectangle(backgroundColor)
+	iso.background = canvas.NewRectangle(backgroundColor)
+	iso.background.CornerRadius = 6
+	iso.background.StrokeWidth = 2
+	iso.background.StrokeColor = currentAppThemeColor(fynetheme.ColorNamePrimary)
 
 	// Create search text with explicit contrast so theme primary/cursor colors cannot leak in.
 	iso.searchLabel = canvas.NewText("", textColor)
 	iso.searchLabel.TextStyle.Bold = true
 	iso.searchText = newShrinkingTextLabel(iso.searchLabel)
 
-	// Add padding around the label
-	paddedLabel := container.NewPadded(iso.searchText)
+	iso.searchIcon = widget.NewIcon(fynetheme.NewPrimaryThemedResource(fynetheme.SearchIcon()))
+	row := container.NewBorder(nil, nil, iso.searchIcon, nil, iso.searchText)
+	paddedRow := container.New(layout.NewCustomPaddedLayout(6, 6, 10, 10), row)
 
-	// Stack background and label
-	iso.container = container.NewMax(background, paddedLabel)
+	bar := container.NewMax(iso.background, paddedRow)
+	// Slight outer inset so the rounded 2px focus border stays fully visible.
+	iso.container = container.New(layout.NewCustomPaddedLayout(4, 0, 4, 4), bar)
 	iso.container.Hide() // Initially hidden
 }
 
@@ -252,22 +261,42 @@ func (iso *IncrementalSearchOverlay) matchCount() int {
 
 // updateDisplay updates the overlay display with current search state
 func (iso *IncrementalSearchOverlay) updateDisplay() {
+	noMatch := iso.searchTerm != "" && iso.matchCount() == 0
+	iso.updateAccentState(noMatch)
 	if iso.matchCount() == 0 {
 		if iso.searchTerm == "" {
-			iso.setSearchText("🔍 Type to narrow down")
+			iso.setSearchText("Type to narrow down")
 		} else {
-			iso.setSearchText(fmt.Sprintf("🔍 Search: %s (no matches found)", iso.searchTerm))
+			iso.setSearchText(fmt.Sprintf("Search: %s (no matches found)", iso.searchTerm))
 		}
 	} else {
 		matchInfo := fmt.Sprintf("[%d/%d]", iso.currentMatch+1, iso.matchCount())
 		if iso.searchTerm == "" {
-			iso.setSearchText(fmt.Sprintf("🔍 Type to narrow down %s", matchInfo))
+			iso.setSearchText(fmt.Sprintf("Type to narrow down %s", matchInfo))
 		} else {
 			currentFileName := ""
 			if file := iso.GetCurrentMatch(); file != nil {
 				currentFileName = fmt.Sprintf(" → %s", file.Name)
 			}
-			iso.setSearchText(fmt.Sprintf("🔍 Search: %s %s%s", iso.searchTerm, matchInfo, currentFileName))
+			iso.setSearchText(fmt.Sprintf("Search: %s %s%s", iso.searchTerm, matchInfo, currentFileName))
+		}
+	}
+}
+
+func (iso *IncrementalSearchOverlay) updateAccentState(noMatch bool) {
+	if iso.background != nil {
+		if noMatch {
+			iso.background.StrokeColor = currentAppThemeColor(fynetheme.ColorNameError)
+		} else {
+			iso.background.StrokeColor = currentAppThemeColor(fynetheme.ColorNamePrimary)
+		}
+		iso.background.Refresh()
+	}
+	if iso.searchIcon != nil {
+		if noMatch {
+			iso.searchIcon.SetResource(fynetheme.NewErrorThemedResource(fynetheme.SearchIcon()))
+		} else {
+			iso.searchIcon.SetResource(fynetheme.NewPrimaryThemedResource(fynetheme.SearchIcon()))
 		}
 	}
 }

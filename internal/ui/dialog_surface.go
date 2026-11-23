@@ -121,3 +121,111 @@ func newFormRow(labelWidth float32, label string, field fyne.CanvasObject) fyne.
 		field,
 	)
 }
+
+// keyCapBadge renders a compact rounded keycap tag for shortcut columns.
+// When text is empty the badge frame hides itself to keep blank rows clean.
+type keyCapBadge struct {
+	widget.BaseWidget
+
+	text       string
+	background *canvas.Rectangle
+	label      *canvas.Text
+}
+
+func newKeyCapBadge(text string) *keyCapBadge {
+	b := &keyCapBadge{
+		text:       text,
+		background: canvas.NewRectangle(color.Transparent),
+		label:      canvas.NewText(text, color.Transparent),
+	}
+	b.label.Alignment = fyne.TextAlignCenter
+	b.label.TextStyle = fyne.TextStyle{Monospace: true}
+	b.ExtendBaseWidget(b)
+	return b
+}
+
+func (b *keyCapBadge) SetText(text string) {
+	if b.text == text {
+		return
+	}
+	b.text = text
+	b.label.Text = text
+	b.Refresh()
+}
+
+func (b *keyCapBadge) CreateRenderer() fyne.WidgetRenderer {
+	r := &keyCapBadgeRenderer{
+		badge:   b,
+		objects: []fyne.CanvasObject{b.background, b.label},
+	}
+	r.applyTheme()
+	return r
+}
+
+type keyCapBadgeRenderer struct {
+	badge   *keyCapBadge
+	objects []fyne.CanvasObject
+}
+
+func (r *keyCapBadgeRenderer) Destroy() {}
+
+func (r *keyCapBadgeRenderer) Objects() []fyne.CanvasObject {
+	return r.objects
+}
+
+func (r *keyCapBadgeRenderer) MinSize() fyne.Size {
+	th := r.badge.Theme()
+	textSize := th.Size(theme.SizeNameCaptionText)
+	if textSize <= 0 {
+		textSize = th.Size(theme.SizeNameText)
+	}
+	sample := r.badge.text
+	if sample == "" {
+		sample = "M"
+	}
+	measured := fyne.MeasureText(sample, textSize, r.badge.label.TextStyle)
+	return fyne.NewSize(measured.Width+10, measured.Height+4)
+}
+
+func (r *keyCapBadgeRenderer) Layout(size fyne.Size) {
+	const vInset float32 = 1
+	bgHeight := max(0, size.Height-vInset*2)
+	r.badge.background.Move(fyne.NewPos(0, vInset))
+	r.badge.background.Resize(fyne.NewSize(size.Width, bgHeight))
+
+	labelMin := r.badge.label.MinSize()
+	y := (size.Height - labelMin.Height) / 2
+	r.badge.label.Move(fyne.NewPos(0, y))
+	r.badge.label.Resize(fyne.NewSize(size.Width, labelMin.Height))
+}
+
+func (r *keyCapBadgeRenderer) Refresh() {
+	r.applyTheme()
+	r.badge.background.Refresh()
+	r.badge.label.Refresh()
+	r.Layout(r.badge.Size())
+}
+
+func (r *keyCapBadgeRenderer) applyTheme() {
+	th := r.badge.Theme()
+	variant := theme.VariantDark
+	if app := fyne.CurrentApp(); app != nil {
+		variant = app.Settings().ThemeVariant()
+	}
+	textSize := th.Size(theme.SizeNameCaptionText)
+	if textSize <= 0 {
+		textSize = th.Size(theme.SizeNameText)
+	}
+	r.badge.label.TextSize = textSize
+	r.badge.label.Color = th.Color(theme.ColorNameForeground, variant)
+	r.badge.background.CornerRadius = th.Size(theme.SizeNameSelectionRadius)
+	if r.badge.text == "" {
+		r.badge.background.FillColor = color.Transparent
+		r.badge.background.StrokeColor = color.Transparent
+		r.badge.background.StrokeWidth = 0
+		return
+	}
+	r.badge.background.FillColor = th.Color(theme.ColorNameButton, variant)
+	r.badge.background.StrokeColor = th.Color(theme.ColorNameInputBorder, variant)
+	r.badge.background.StrokeWidth = 1
+}

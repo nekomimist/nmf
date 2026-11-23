@@ -29,6 +29,7 @@ type CustomSearchEntry struct {
 // NewCustomSearchEntry creates a new custom search entry
 func NewCustomSearchEntry() *CustomSearchEntry {
 	entry := &CustomSearchEntry{}
+	entry.Icon = fynetheme.SearchIcon()
 	entry.ExtendBaseWidget(entry)
 	return entry
 }
@@ -275,10 +276,8 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 	listSize := metricsSize(listWidth, searchDialogListHeight)
 	contentSize := metricsSize(contentWidth, searchDialogContentHeight)
 
-	// Create search section
-	searchLabel := widget.NewLabel("Filter:")
-	searchSection := container.NewBorder(nil, nil, searchLabel, nil, nhd.searchEntry)
-	orderSection := historyOrderSection(nhd.orderRadio)
+	// Combine search input and order toggle into one compact bar.
+	topBar := container.NewBorder(nil, nil, nil, historyOrderInline(nhd.orderRadio), nhd.searchEntry)
 
 	// Create scrollable list container
 	listScroll := newDialogListScroller(nhd.historyList, dialogTextWidth(nhd.allPaths, listWidth), listWidth, searchDialogListHeight)
@@ -316,7 +315,7 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 
 	// Create main content
 	content := container.NewBorder(
-		container.NewVBox(orderSection, searchSection),                                                                  // top
+		topBar, // top
 		dialogButtonBar(dialogCancelButton("Cancel", nhd.CancelDialog), dialogConfirmButton("OK", nhd.AcceptSelection)), // bottom
 		nil,                                 // left
 		nil,                                 // right
