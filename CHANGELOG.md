@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.0 - 2026-11-24
+
 - Refresh dialog and popup styling across light and dark themes with updated
   surface and separator colors, compact control padding (keeping main file-list
   density unchanged), single-line headers, rounded inset lists, and
