@@ -289,7 +289,10 @@ func (r *commandMenuOverlayRenderer) MinSize() fyne.Size {
 func (r *commandMenuOverlayRenderer) Refresh() {
 	th := r.overlay.Theme()
 	variant := fyne.CurrentApp().Settings().ThemeVariant()
-	r.overlay.background.FillColor = th.Color(theme.ColorNameOverlayBackground, variant)
+	r.overlay.background.FillColor = th.Color(theme.ColorNameMenuBackground, variant)
+	r.overlay.background.StrokeColor = th.Color(theme.ColorNameInputBorder, variant)
+	r.overlay.background.StrokeWidth = 1
+	r.overlay.background.CornerRadius = th.Size(theme.SizeNameMenuRadius)
 	r.Layout(fyne.Size{})
 	r.overlay.background.Refresh()
 	r.overlay.content.Refresh()
@@ -471,6 +474,7 @@ func (r *commandMenuRowRenderer) MinSize() fyne.Size {
 func (r *commandMenuRowRenderer) Refresh() {
 	th := r.row.Theme()
 	variant := fyne.CurrentApp().Settings().ThemeVariant()
+	r.background.CornerRadius = th.Size(theme.SizeNameSelectionRadius)
 	if r.row.menu.selected == r.row.index {
 		r.background.FillColor = th.Color(theme.ColorNameFocus, variant)
 	} else {

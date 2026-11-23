@@ -140,6 +140,7 @@ func (d *DirectoryJumpDialog) createWidgets() {
 			}
 		},
 	)
+	d.jumpList.HideSeparators = true
 
 	d.jumpList.OnSelected = func(id widget.ListItemID) {
 		if id >= 0 && int(id) < len(d.filteredEntries) {
@@ -206,9 +207,6 @@ func (d *DirectoryJumpDialog) ShowDialog(parent fyne.Window, callback func(strin
 	listSize := metricsSize(listWidth, searchDialogListHeight)
 	contentSize := metricsSize(contentWidth, searchDialogContentHeight)
 
-	titleLabel := widget.NewLabel("Directory Jumps")
-	titleLabel.TextStyle.Bold = true
-
 	searchLabel := widget.NewLabel("Filter:")
 	searchSection := container.NewBorder(nil, nil, searchLabel, nil, d.searchEntry)
 
@@ -237,11 +235,11 @@ func (d *DirectoryJumpDialog) ShowDialog(parent fyne.Window, callback func(strin
 	}
 
 	content := container.NewBorder(
-		container.NewVBox(titleLabel, searchSection),
+		searchSection,
 		dialogButtonBar(dialogCancelButton("Cancel", d.CancelDialog), dialogConfirmButton("OK", d.AcceptSelection)),
 		nil,
 		nil,
-		fixedContainer,
+		newInsetListSurface(fixedContainer),
 	)
 	content.Resize(contentSize)
 
@@ -254,7 +252,7 @@ func (d *DirectoryJumpDialog) ShowDialog(parent fyne.Window, callback func(strin
 	d.sink = NewKeySink(content, d.keyManager, WithTabCapture(true))
 	d.searchEntry.SetFocusRedirect(parent, d.sink)
 
-	d.dialog = dialog.NewCustomWithoutButtons("Jump To Directory", dialogThemeOverride(d.sink), parent)
+	d.dialog = newModalDialog("Directory Jumps", d.sink, parent)
 
 	d.dialog.Show()
 	if d.parent != nil && d.sink != nil {

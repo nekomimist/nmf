@@ -91,6 +91,7 @@ func (d *MaintenanceDialog) createWidgets() {
 			}
 		},
 	)
+	d.resultList.HideSeparators = true
 
 	d.scanButton = dialogAuxButton("Scan", theme.SearchIcon(), d.Scan)
 	d.applyButton = dialogConfirmButton("Apply Cleanup", d.Apply)
@@ -109,7 +110,7 @@ func (d *MaintenanceDialog) ShowDialog(parent fyne.Window, onApply func(maintena
 	handler := keymanager.NewMaintenanceDialogKeyHandler(d)
 	d.kmToken = d.keyManager.PushHandler(handler)
 
-	d.dialog = dialog.NewCustomWithoutButtons("Maintenance", dialogThemeOverride(d.sink), parent)
+	d.dialog = newModalDialog("Maintenance", d.sink, parent)
 	d.dialog.SetOnClosed(func() {
 		d.Cancel()
 	})
@@ -121,19 +122,23 @@ func (d *MaintenanceDialog) ShowDialog(parent fyne.Window, onApply func(maintena
 }
 
 func (d *MaintenanceDialog) createContent() fyne.CanvasObject {
+	tasksHeader := widget.NewLabel("Cleanup targets")
+	tasksHeader.TextStyle.Bold = true
 	tasks := container.NewVBox(
-		widget.NewLabel("Cleanup targets"),
+		tasksHeader,
 		d.cursorMemoryCheck,
 		d.navigationHistoryCheck,
 	)
+	optionsHeader := widget.NewLabel("Safety")
+	optionsHeader.TextStyle.Bold = true
 	options := container.NewVBox(
-		widget.NewLabel("Safety"),
+		optionsHeader,
 		d.skipNetworkCheck,
 		d.skipRemovableCheck,
 		d.skipUnavailableCheck,
 	)
 
-	listScroll := container.NewScroll(d.resultList)
+	listScroll := container.NewScroll(dialogListThemeOverride(d.resultList))
 	listScroll.SetMinSize(metricsSize(maintenanceDialogWidth-60, maintenanceListHeight))
 
 	buttons := dialogSplitButtonBar(
@@ -150,7 +155,7 @@ func (d *MaintenanceDialog) createContent() fyne.CanvasObject {
 		buttons,
 		nil,
 		nil,
-		listScroll,
+		newInsetListSurface(listScroll),
 	)
 }
 

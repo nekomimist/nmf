@@ -96,8 +96,7 @@ func (fd *FilterDialog) createWidgets() {
 	}
 
 	// Create preview label
-	fd.previewLabel = widget.NewLabel("")
-	fd.previewLabel.TextStyle.Italic = true
+	fd.previewLabel = newDialogHintLabel("")
 
 	// Create data binding for the list
 	fd.dataBinding = binding.NewStringList()
@@ -122,6 +121,7 @@ func (fd *FilterDialog) createWidgets() {
 			}
 		},
 	)
+	fd.filterList.HideSeparators = true
 
 	// Set selection handler
 	fd.filterList.OnSelected = func(id widget.ListItemID) {
@@ -224,10 +224,6 @@ func (fd *FilterDialog) previewPattern() string {
 
 // ShowDialog shows the file filter dialog
 func (fd *FilterDialog) ShowDialog(parent fyne.Window, callback func(*config.FilterEntry), deleteCallback func(string)) {
-	// Create title label
-	titleLabel := widget.NewLabel("File Filter")
-	titleLabel.TextStyle.Bold = true
-
 	// Create search section
 	searchLabel := widget.NewLabel("Pattern:")
 	searchSection := container.NewBorder(nil, nil, searchLabel, nil, fd.searchEntry)
@@ -271,11 +267,11 @@ func (fd *FilterDialog) ShowDialog(parent fyne.Window, callback func(*config.Fil
 
 	// Create main content
 	content := container.NewBorder(
-		container.NewVBox(titleLabel, searchSection, fd.previewLabel),                                                 // top
+		container.NewVBox(searchSection, fd.previewLabel),                                                             // top
 		dialogButtonBar(dialogCancelButton("Cancel", fd.CancelDialog), dialogConfirmButton("OK", fd.AcceptSelection)), // bottom
-		nil,            // left
-		nil,            // right
-		fixedContainer, // center - fixed size container
+		nil,                                 // left
+		nil,                                 // right
+		newInsetListSurface(fixedContainer), // center
 	)
 
 	// Set minimum size
@@ -296,8 +292,7 @@ func (fd *FilterDialog) ShowDialog(parent fyne.Window, callback func(*config.Fil
 	// Configure search entry to redirect focus to sink
 	fd.searchEntry.SetFocusRedirect(parent, fd.sink)
 
-	// Create custom dialog with proper focus handling (wrapped by sink)
-	fd.dialog = dialog.NewCustomWithoutButtons("Apply Filter", dialogThemeOverride(fd.sink), parent)
+	fd.dialog = newModalDialog("File Filter", fd.sink, parent)
 
 	// Show dialog and ensure focus stays on sink so KeyManager gets keys
 	fd.dialog.Show()

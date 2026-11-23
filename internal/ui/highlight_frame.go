@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	highlightFrameStrokeWidth  float32 = 4
-	highlightFrameContentInset float32 = 4
+	highlightFrameStrokeWidth       float32 = 4
+	highlightFrameContentInset      float32 = 4
+	dialogHighlightFrameStrokeWidth float32 = 2
 )
 
 var defaultHighlightFrameColor = color.RGBA{R: 30, G: 120, B: 80, A: 255}
@@ -38,6 +39,30 @@ func NewHighlightFrame(themeProvider ThemeColorProvider) *HighlightFrame {
 	frame.border.StrokeWidth = highlightFrameStrokeWidth
 	frame.ExtendBaseWidget(frame)
 	return frame
+}
+
+func newDialogHighlightFrame(themeProvider ThemeColorProvider) *HighlightFrame {
+	frame := NewHighlightFrame(themeProvider)
+	frame.SetStrokeWidth(dialogHighlightFrameStrokeWidth)
+	return frame
+}
+
+// SetStrokeWidth configures the border thickness of the highlight frame.
+func (f *HighlightFrame) SetStrokeWidth(width float32) {
+	if f == nil || f.border == nil || width <= 0 {
+		return
+	}
+	f.border.StrokeWidth = width
+	f.border.Refresh()
+}
+
+// SetCornerRadius aligns the highlight border radius with a rounded host frame.
+func (f *HighlightFrame) SetCornerRadius(radius float32) {
+	if f == nil || f.border == nil || radius < 0 {
+		return
+	}
+	f.border.CornerRadius = radius
+	f.border.Refresh()
 }
 
 // WrapContent keeps content clear of the frame's in-content stroke while the

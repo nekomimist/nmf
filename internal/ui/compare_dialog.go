@@ -131,8 +131,9 @@ func (d *CompareDialog) ShowDialog(parent fyne.Window, onAccept func(CompareResu
 	d.sink = NewKeySink(content, d.keyManager, WithTabCapture(true))
 	d.searchEntry.SetFocusRedirect(parent, d.sink)
 
-	framedContent := d.ownerFrame.wrap(d.sink)
-	d.dialog = dialog.NewCustomWithoutButtons("Compare Directories", dialogThemeOverride(framedContent), parent)
+	d.dialog = newModalDialogWithOptions("Compare Directories", d.sink, parent, modalDialogOptions{
+		highlight: &d.ownerFrame,
+	})
 	d.dialog.Show()
 	if d.parent != nil && d.sink != nil {
 		d.parent.Canvas().Focus(d.sink)

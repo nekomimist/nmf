@@ -206,6 +206,13 @@ func TestTreeNavigationReflectsBranchChanges(t *testing.T) {
 	}
 }
 
+func TestDirectoryTreeHidesSeparators(t *testing.T) {
+	d := NewDirectoryTreeDialog("/tmp", nil, func(string, ...interface{}) {})
+	if !d.tree.HideSeparators {
+		t.Fatal("tree widget should hide per-row separators for compact display")
+	}
+}
+
 func BenchmarkDirectoryTreeAdjacentVisibleNode(b *testing.B) {
 	d := NewDirectoryTreeDialog("/tmp", nil, func(string, ...interface{}) {})
 	children := make([]string, 10000)

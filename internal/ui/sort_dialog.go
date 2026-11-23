@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -172,8 +173,7 @@ func (sd *SortDialog) Show(parent fyne.Window, keyManager *keymanager.KeyManager
 	// Wrap content with KeySink to capture Tab and forward keys to KeyManager
 	sd.sink = NewKeySink(content, sd.keyManager, WithTabCapture(true))
 
-	// Create custom dialog without stock buttons (bar lives inside content)
-	sd.dialog = dialog.NewCustomWithoutButtons("Sort Settings", dialogThemeOverride(sd.sink), parent)
+	sd.dialog = newModalDialog("Sort Settings", sd.sink, parent)
 	sd.dialog.Resize(metricsSize(sortDialogWidth, sortDialogHeight))
 
 	// Show dialog and ensure focus stays on sink so KeyManager gets keys
@@ -183,28 +183,29 @@ func (sd *SortDialog) Show(parent fyne.Window, keyManager *keymanager.KeyManager
 	}
 }
 
+func sortFieldSection(bg *canvas.Rectangle, title string, control fyne.CanvasObject) fyne.CanvasObject {
+	bg.CornerRadius = 6
+	label := widget.NewLabel(title)
+	label.TextStyle.Bold = true
+	body := container.New(
+		layout.NewCustomPaddedLayout(4, 4, 8, 8),
+		container.NewVBox(label, control),
+	)
+	return container.NewStack(bg, body)
+}
+
 // createContent creates the dialog content layout
 func (sd *SortDialog) createContent() *fyne.Container {
-	// Sort by section
-	sortByLabel := widget.NewLabel("Sort by: (1-4)")
 	sd.sortByBG = canvas.NewRectangle(color.Transparent)
-	sortByContainer := container.NewStack(sd.sortByBG, container.NewVBox(sortByLabel, sd.sortByRadio))
+	sortByContainer := sortFieldSection(sd.sortByBG, "Sort by (1-4)", sd.sortByRadio)
 
-	// Sort order section
-	sortOrderLabel := widget.NewLabel("")
-	sortOrderLabel2 := widget.NewLabel("Order: (O)")
 	sd.sortOrderBG = canvas.NewRectangle(color.Transparent)
-	sortOrderContainer := container.NewStack(sd.sortOrderBG, container.NewVBox(sortOrderLabel, sortOrderLabel2, sd.sortOrderRadio))
+	sortOrderContainer := sortFieldSection(sd.sortOrderBG, "Order (O)", sd.sortOrderRadio)
 
-	// Options section
-	optionsLabel := widget.NewLabel("")
-	optionsLabel2 := widget.NewLabel("Options: (D)")
 	sd.optionsBG = canvas.NewRectangle(color.Transparent)
-	optionsContainer := container.NewStack(sd.optionsBG, container.NewVBox(optionsLabel, optionsLabel2, sd.directoriesFirstCB))
+	optionsContainer := sortFieldSection(sd.optionsBG, "Options (D)", sd.directoriesFirstCB)
 
-	// Keyboard shortcuts help
-	shortcutsHelp := widget.NewLabel("Shortcuts: Enter=Apply, Esc=Cancel, Tab=Navigate")
-	shortcutsHelp.TextStyle.Italic = true
+	shortcutsHelp := newDialogHintLabel("Shortcuts: Enter=Apply, Esc=Cancel, Tab=Navigate")
 
 	// Main layout
 	content := container.NewVBox(
@@ -213,7 +214,7 @@ func (sd *SortDialog) createContent() *fyne.Container {
 		sortOrderContainer,
 		widget.NewSeparator(),
 		optionsContainer,
-		widget.NewSeparator(),
+		newDialogGap(dialogSectionGap),
 		shortcutsHelp,
 		dialogButtonBar(dialogCancelButton("Cancel", sd.CancelDialog), dialogConfirmButton("Apply", sd.AcceptSettings)),
 	)

@@ -12,9 +12,12 @@ const (
 	// action button so mixed-length labels line up without feeling oversized.
 	dialogButtonMinWidth float32 = 88
 
-	// dialogButtonBarTopInset adds a subtle gap above the action bar so buttons
-	// do not sit flush against the body content or list above them.
-	dialogButtonBarTopInset float32 = 4
+	// dialogButtonBarTopInset adds a subtle gap above the footer divider so
+	// the action bar breathes cleanly below body content or lists.
+	dialogButtonBarTopInset float32 = 6
+
+	// dialogButtonBarDividerGap separates the hairline divider from the buttons.
+	dialogButtonBarDividerGap float32 = 8
 )
 
 // minWidthLayout wraps a single child and raises its reported width to min
@@ -77,7 +80,11 @@ func wrapDialogButtons(buttons []*widget.Button) []fyne.CanvasObject {
 }
 
 func padDialogButtonBar(row fyne.CanvasObject) fyne.CanvasObject {
-	return container.New(layout.NewCustomPaddedLayout(dialogButtonBarTopInset, 0, 0, 0), row)
+	footer := container.NewVBox(
+		widget.NewSeparator(),
+		container.New(layout.NewCustomPaddedLayout(dialogButtonBarDividerGap, 0, 0, 0), row),
+	)
+	return container.New(layout.NewCustomPaddedLayout(dialogButtonBarTopInset, 0, 0, 0), footer)
 }
 
 // dialogButtonBar right-aligns dialog action buttons with a uniform minimum

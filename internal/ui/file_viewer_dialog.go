@@ -208,7 +208,7 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	d.debug("FileViewer: handler elapsed=%s", time.Since(stepStart))
 	stepStart = time.Now()
 
-	d.dialog = dialog.NewCustomWithoutButtons("Viewer", dialogThemeOverride(d.inputSink), parent)
+	d.dialog = newModalDialogWithOptions("", d.inputSink, parent, modalDialogOptions{compactBody: true})
 	d.dialog.SetOnClosed(func() {
 		d.CancelDialog()
 	})

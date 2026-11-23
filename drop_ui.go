@@ -173,7 +173,7 @@ func droppedURIPaths(uris []fyne.URI) ([]string, error) {
 
 func (fm *FileManager) showDropActionDialog(paths []string, dest string) {
 	debugPrint("FileManager: Drop dialog showing sources=%d dest=%s", len(paths), dest)
-	var d *dialog.CustomDialog
+	var d dialog.Dialog
 	var sink *ui.KeySink
 	var kmToken keymanager.HandlerToken
 	closed := false
@@ -223,13 +223,18 @@ func (fm *FileManager) showDropActionDialog(paths []string, dest string) {
 			obj.(*widget.Label).SetText(filepath.Base(paths[i]))
 		},
 	)
-	targetsScroll := container.NewScroll(targets)
+	targets.HideSeparators = true
+	targetsScroll := container.NewScroll(ui.DialogListThemeOverride(targets))
 	targetsScroll.SetMinSize(fyne.NewSize(520, 150))
+
+	hint := widget.NewLabel("Shortcuts: C=Copy, M=Move, Esc=Cancel")
+	hint.SizeName = theme.SizeNameCaptionText
+	hint.Importance = widget.LowImportance
 
 	content := container.NewVBox(
 		summary,
-		targetsScroll,
-		widget.NewLabel("Shortcuts: C=Copy, M=Move, Esc=Cancel"),
+		ui.NewInsetListSurface(targetsScroll),
+		hint,
 		ui.DialogSplitButtonBar(
 			[]*widget.Button{ui.DialogCancelButton("Cancel", closeDialog)},
 			[]*widget.Button{
@@ -247,7 +252,7 @@ func (fm *FileManager) showDropActionDialog(paths []string, dest string) {
 	kmToken = fm.keyManager.PushHandler(keymanager.NewDropActionDialogKeyHandler(actions))
 	sink = ui.NewKeySink(content, fm.keyManager, ui.WithTabCapture(true))
 
-	d = dialog.NewCustomWithoutButtons("Dropped files", ui.DialogThemeOverride(sink), fm.window)
+	d = ui.NewModalDialog("Dropped Files", sink, fm.window)
 	d.SetOnClosed(closeDialog)
 	d.Show()
 	d.Resize(fyne.NewSize(580, 300))

@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -56,6 +57,7 @@ func NewJobsWindow(app fyne.App, debugPrint func(format string, args ...interfac
 			}
 		},
 	)
+	jd.list.HideSeparators = true
 	jd.details = widget.NewLabel("")
 	jd.details.Wrapping = fyne.TextWrapWord
 	jd.list.OnSelected = func(id widget.ListItemID) {
@@ -84,10 +86,16 @@ func NewJobsWindow(app fyne.App, debugPrint func(format string, args ...interfac
 	header.TextStyle.Bold = true
 	detailsScroll := container.NewVScroll(jd.details)
 	detailsScroll.SetMinSize(metricsSize(jobsDetailsWidth, jobsDetailsHeight))
-	split := container.NewVSplit(dialogListThemeOverride(jd.list), detailsScroll)
+	split := container.NewVSplit(
+		newInsetListSurface(dialogListThemeOverride(jd.list)),
+		newInsetListSurface(detailsScroll),
+	)
 	split.Offset = 0.5
 	bottom := dialogSplitButtonBar([]*widget.Button{cancelBtn}, []*widget.Button{closeBtn})
-	content := container.NewBorder(container.NewVBox(header), bottom, nil, nil, split)
+	content := container.New(
+		layout.NewCustomPaddedLayout(8, 10, 12, 12),
+		container.NewBorder(container.NewVBox(header), bottom, nil, nil, split),
+	)
 
 	handler := keymanager.NewJobsDialogKeyHandler(jd, jd.debugPrint)
 	jd.km.PushHandler(handler)

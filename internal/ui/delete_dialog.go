@@ -84,7 +84,7 @@ func (d *DeleteConfirmDialog) ShowDialog(parent fyne.Window, onAccept func()) {
 	handler := keymanager.NewDeleteConfirmDialogKeyHandler(d)
 	d.kmToken = d.keyManager.PushHandler(handler)
 
-	d.dialog = dialog.NewCustomWithoutButtons(title, dialogThemeOverride(content), parent)
+	d.dialog = newModalDialog(title, content, parent)
 	d.dialog.SetOnClosed(func() {
 		d.CancelDelete()
 	})
@@ -108,7 +108,7 @@ func (d *DeleteConfirmDialog) targetList() fyne.CanvasObject {
 	label.Wrapping = fyne.TextWrapOff
 	scroll := container.NewScroll(label)
 	scroll.SetMinSize(metricsSize(deleteDialogWidth-40, deleteTargetListHeight))
-	return scroll
+	return newInsetListSurface(scroll)
 }
 
 func (d *DeleteConfirmDialog) targetSummary() string {

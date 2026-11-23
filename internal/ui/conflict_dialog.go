@@ -115,19 +115,26 @@ func (d *ConflictDialog) ShowDialog(parent fyne.Window, callback func(jobs.Confl
 	d.errorLabel.Hide()
 	d.updateEntryState()
 
+	infoBox := newInsetSurfaceWithPadding(
+		container.NewVBox(
+			newFormRow(dialogConflictLabelWidth, "Source:", source),
+			newFormRow(dialogConflictLabelWidth, "Modified:", sourceModified),
+			widget.NewSeparator(),
+			newFormRow(dialogConflictLabelWidth, "Target:", dest),
+			newFormRow(dialogConflictLabelWidth, "Modified:", destModified),
+		),
+		6, 6, 8, 8,
+	)
+
 	content := container.NewVBox(
 		widget.NewLabel("A destination item with the same name already exists."),
-		container.NewBorder(nil, nil, widget.NewLabel("Source:"), nil, source),
-		container.NewBorder(nil, nil, widget.NewLabel("Modified:"), nil, sourceModified),
-		container.NewBorder(nil, nil, widget.NewLabel("Target:"), nil, dest),
-		container.NewBorder(nil, nil, widget.NewLabel("Modified:"), nil, destModified),
-		widget.NewLabel(""),
-		container.NewPadded(d.choice),
+		infoBox,
+		newDialogGap(dialogSectionGap),
+		d.choice,
 		lineEditThemeOverride(d.nameEntry),
-		widget.NewLabel(""),
+		newDialogGap(dialogSectionGap),
 		d.applyRest,
 		d.errorLabel,
-		widget.NewLabel(""),
 		dialogButtonBar(dialogCancelButton("Cancel Job", d.CancelJob), dialogConfirmButton("Continue", d.Continue)),
 	)
 
@@ -141,7 +148,7 @@ func (d *ConflictDialog) ShowDialog(parent fyne.Window, callback func(jobs.Confl
 		dialogContent = d.sink
 	}
 
-	d.dialog = dialog.NewCustomWithoutButtons("Name conflict", dialogThemeOverride(dialogContent), parent)
+	d.dialog = newModalDialog("Name Conflict", dialogContent, parent)
 	d.dialog.SetOnClosed(func() {
 		d.CancelJob()
 	})

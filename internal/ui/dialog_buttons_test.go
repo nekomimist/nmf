@@ -145,16 +145,30 @@ func TestDialogButtonBarPreservesOrder(t *testing.T) {
 
 func barHBox(t *testing.T, bar fyne.CanvasObject) *fyne.Container {
 	t.Helper()
-	padded, ok := bar.(*fyne.Container)
+	outer, ok := bar.(*fyne.Container)
 	if !ok {
 		t.Fatalf("bar type = %T, want *fyne.Container", bar)
 	}
-	if len(padded.Objects) != 1 {
-		t.Fatalf("padded object count = %d, want 1", len(padded.Objects))
+	if len(outer.Objects) != 1 {
+		t.Fatalf("outer object count = %d, want 1", len(outer.Objects))
 	}
-	hbox, ok := padded.Objects[0].(*fyne.Container)
+	footer, ok := outer.Objects[0].(*fyne.Container)
 	if !ok {
-		t.Fatalf("hbox type = %T, want *fyne.Container", padded.Objects[0])
+		t.Fatalf("footer type = %T, want *fyne.Container", outer.Objects[0])
+	}
+	if len(footer.Objects) != 2 {
+		t.Fatalf("footer object count = %d, want 2 (separator + button row)", len(footer.Objects))
+	}
+	if _, ok := footer.Objects[0].(*widget.Separator); !ok {
+		t.Fatalf("footer[0] type = %T, want *widget.Separator", footer.Objects[0])
+	}
+	rowPad, ok := footer.Objects[1].(*fyne.Container)
+	if !ok || len(rowPad.Objects) != 1 {
+		t.Fatalf("footer[1] = %T, want padded container with 1 child", footer.Objects[1])
+	}
+	hbox, ok := rowPad.Objects[0].(*fyne.Container)
+	if !ok {
+		t.Fatalf("hbox type = %T, want *fyne.Container", rowPad.Objects[0])
 	}
 	return hbox
 }

@@ -16,7 +16,7 @@ type CommandErrorDialog struct {
 	keyManager *keymanager.KeyManager
 	token      keymanager.HandlerToken
 	parent     fyne.Window
-	dialog     *dialog.CustomDialog
+	dialog     dialog.Dialog
 	sink       *KeySink
 	label      *widget.Label
 	scroll     *container.Scroll
@@ -58,11 +58,11 @@ func (d *CommandErrorDialog) Show(parent fyne.Window, onClosed func()) {
 		dialogSplitButtonBar([]*widget.Button{d.copyButton}, []*widget.Button{d.okButton}),
 		nil,
 		nil,
-		d.scroll,
+		newInsetListSurface(d.scroll),
 	)
 	d.sink = NewKeySink(content, d.keyManager, WithTabCapture(true), WithTapFocus(true))
 	d.token = d.keyManager.PushHandler(keymanager.NewCommandErrorDialogHandler(d))
-	d.dialog = dialog.NewCustomWithoutButtons("Starlark command error", dialogThemeOverride(d.sink), parent)
+	d.dialog = newModalDialog("Starlark Command Error", d.sink, parent)
 	d.dialog.SetOnClosed(d.Close)
 	size := metricsSize(760, 480)
 	if parent != nil {

@@ -21,3 +21,9 @@ func (s *dialogHighlightState) wrap(content fyne.CanvasObject) fyne.CanvasObject
 	s.frame.SetHighlighted(s.highlighted)
 	return s.frame.WrapContent(content)
 }
+
+func (s *dialogHighlightState) attachDialogFrame() *HighlightFrame {
+	s.frame = newDialogHighlightFrame(nil)
+	s.frame.SetHighlighted(s.highlighted)
+	return s.frame
+}

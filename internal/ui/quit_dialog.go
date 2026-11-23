@@ -60,7 +60,7 @@ func (qcd *QuitConfirmDialog) ShowDialog(parent fyne.Window, callback func(bool)
 	// Wrap content with KeySink to capture keys and forward to KeyManager
 	qcd.sink = NewKeySink(fixedContent, qcd.keyManager, WithTabCapture(false))
 
-	qcd.dialog = dialog.NewCustomWithoutButtons("Quit Application", dialogThemeOverride(qcd.sink), parent)
+	qcd.dialog = newModalDialog("Quit Application", qcd.sink, parent)
 	qcd.dialog.SetOnClosed(func() {
 		qcd.CancelQuit()
 	})

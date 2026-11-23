@@ -125,12 +125,9 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveRe
 			}
 		},
 	)
-	targetsScroll := container.NewScroll(targetsList)
+	targetsList.HideSeparators = true
+	targetsScroll := container.NewScroll(dialogListThemeOverride(targetsList))
 	targetsScroll.SetMinSize(metricsSize(targetListWidth, copyMoveTargetListHeight))
-	overflowLabel := widget.NewLabel("")
-	if overflow > 0 {
-		overflowLabel.SetText(fmt.Sprintf("... and %d more", overflow))
-	}
 
 	// Destination search + list (fixed size like history dialog)
 	searchLabel := widget.NewLabel("Destination:")
@@ -142,13 +139,17 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveRe
 
 	contentObjects := []fyne.CanvasObject{
 		header,
-		targetsScroll,
-		overflowLabel,
+		newInsetListSurface(targetsScroll),
+	}
+	if overflow > 0 {
+		contentObjects = append(contentObjects, newDialogHintLabel(fmt.Sprintf("... and %d more", overflow)))
+	}
+	contentObjects = append(contentObjects,
 		widget.NewSeparator(),
 		historyOrderSection(d.orderRadio),
 		searchSection,
 		fixed,
-	}
+	)
 	if d.preserveCB != nil {
 		contentObjects = append(contentObjects, d.preserveCB)
 	}
@@ -161,9 +162,9 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveRe
 	d.sink = NewKeySink(content, d.keyManager, WithTabCapture(true))
 	d.searchEntry.SetFocusRedirect(parent, d.sink)
 
-	// Custom dialog without stock buttons (bar lives inside content)
-	framedContent := d.ownerFrame.wrap(d.sink)
-	d.dialog = dialog.NewCustomWithoutButtons(fmt.Sprintf("%s To...", strings.Title(string(d.op))), dialogThemeOverride(framedContent), parent)
+	d.dialog = newModalDialogWithOptions(fmt.Sprintf("%s To...", strings.Title(string(d.op))), d.sink, parent, modalDialogOptions{
+		highlight: &d.ownerFrame,
+	})
 	d.dialog.Show()
 	if d.parent != nil && d.sink != nil {
 		d.parent.Canvas().Focus(d.sink)

@@ -332,13 +332,29 @@ Dialog sizing:
 - The built-in viewer has its own parent-size ratio and
   `viewer.maxWidth`/`viewer.maxHeight` caps.
 
-Dialog button bar and scoped dialog theme:
+Dialog shell, button bar, and scoped dialog theme:
 
+- Every modal dialog uses `newModalDialog` / `newModalDialogWithOptions`
+  (`internal/ui/dialog_shell.go`, exposed as `NewModalDialog` for `drop_ui.go`),
+  an opaque `widget.NewModalPopUp`-backed `dialog.Dialog` implementation with a
+  1px hairline outer border, matching rounded corners, an optional single-line
+  header bar + separator (omitted for full-chrome dialogs such as the built-in
+  file viewer), and `dialogThemeOverride` (`internal/ui/theme_override.go`) so
+  controls inside dialogs have compact inner padding while the main file list
+  and inner `dialogListThemeOverride` / `lineEditThemeOverride` surfaces keep
+  the base theme's tight spacing.
+- Dialogs with an open-directory owner highlight (`NavigationHistoryDialog`,
+  `CopyMoveDialog`, `CompareDialog`) attach a rounded 2px `HighlightFrame` to
+  the outer modal shell instead of nesting a sharp inner rectangle.
+- Scrollable lists, trees, and preview regions inside dialogs hide per-row
+  separators (`HideSeparators = true`) and sit inside `newInsetListSurface`
+  (`internal/ui/dialog_surface.go`) for a 1px rounded inset frame.
 - Every dialog (and the Jobs window) builds its bottom action row via
   `dialogButtonBar` or `dialogSplitButtonBar` (`internal/ui/dialog_buttons.go`):
-  primary/dismiss buttons are right-aligned (with optional auxiliary actions on
-  the leading edge), each with a compact minimum-width floor
-  (`dialogButtonMinWidth`) — longer labels grow naturally and are never clipped.
+  a leading 1px separator introduces a right-aligned action row (with optional
+  auxiliary actions on the leading edge), each button with a compact
+  minimum-width floor (`dialogButtonMinWidth`) — longer labels grow naturally
+  and are never clipped.
 - Order is `[auxiliary (leading or left of cancel)] [Cancel/dismiss] [Affirmative, rightmost]`.
   Standard dismiss/confirm/danger buttons use clean text labels without stock
   check/cross/warning icons. `HighImportance` marks the default action activated
@@ -348,13 +364,9 @@ Dialog button bar and scoped dialog theme:
   default (Quit with active jobs), the cancel button carries `HighImportance`
   instead. A lone dismiss with no separate affirmative (Jobs window "Close") is
   the default and styled accordingly.
-- Dialogs uniformly use `dialog.NewCustomWithoutButtons` wrapped in
-  `dialogThemeOverride` (`internal/ui/theme_override.go`), which restores
-  compact control inner padding inside dialogs while keeping the main file list
-  and inner `dialogListThemeOverride` / `lineEditThemeOverride` surfaces at the
-  base theme's tight spacing. The button bar lives inside the `KeySink`-wrapped
-  content and calls the same methods the keymanager handlers invoke, so keyboard
-  and mouse activation stay in sync.
+- The button bar lives inside the `KeySink`-wrapped content and calls the same
+  methods the keymanager handlers invoke, so keyboard and mouse activation stay
+  in sync.
 
 Built-in file viewer:
 

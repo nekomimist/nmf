@@ -57,3 +57,8 @@ func dialogThemeOverride(obj fyne.CanvasObject) fyne.CanvasObject {
 func DialogThemeOverride(obj fyne.CanvasObject) fyne.CanvasObject {
 	return dialogThemeOverride(obj)
 }
+
+// DialogListThemeOverride exposes dialogListThemeOverride to package main (drop_ui.go).
+func DialogListThemeOverride(obj fyne.CanvasObject) fyne.CanvasObject {
+	return dialogListThemeOverride(obj)
+}

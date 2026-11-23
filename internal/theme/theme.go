@@ -283,10 +283,8 @@ func (t *CustomTheme) Size(name fyne.ThemeSizeName) float32 {
 	switch name {
 	case fynetheme.SizeNameButtonRadius, fynetheme.SizeNameInputRadius, fynetheme.SizeNameMenuRadius:
 		return 6
-	case fynetheme.SizeNamePopupRadius, fynetheme.SizeNameCardRadius:
+	case fynetheme.SizeNamePopupRadius, fynetheme.SizeNameCardRadius, fynetheme.SizeNameDialogRadius:
 		return 8
-	case fynetheme.SizeNameDialogRadius:
-		return 10
 	case fynetheme.SizeNameSelectionRadius, fynetheme.SizeNameScrollBarRadius:
 		return 4
 	}
