@@ -86,14 +86,14 @@ func NewJobsWindow(app fyne.App, debugPrint func(format string, args ...interfac
 	detailsScroll.SetMinSize(metricsSize(jobsDetailsWidth, jobsDetailsHeight))
 	split := container.NewVSplit(dialogListThemeOverride(jd.list), detailsScroll)
 	split.Offset = 0.5
-	bottom := dialogButtonBar(cancelBtn, closeBtn)
+	bottom := dialogSplitButtonBar([]*widget.Button{cancelBtn}, []*widget.Button{closeBtn})
 	content := container.NewBorder(container.NewVBox(header), bottom, nil, nil, split)
 
 	handler := keymanager.NewJobsDialogKeyHandler(jd, jd.debugPrint)
 	jd.km.PushHandler(handler)
 	jd.sink = NewKeySink(content, jd.km, WithTabCapture(true))
 
-	jd.window.SetContent(jd.sink)
+	jd.window.SetContent(dialogThemeOverride(jd.sink))
 	jd.window.Resize(metricsSize(jobsWindowWidth, jobsWindowHeight))
 	jd.window.SetOnClosed(jd.handleClosed)
 	return jd

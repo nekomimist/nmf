@@ -163,7 +163,7 @@ func (d *CopyMoveDialog) ShowDialog(parent fyne.Window, onAccept func(CopyMoveRe
 
 	// Custom dialog without stock buttons (bar lives inside content)
 	framedContent := d.ownerFrame.wrap(d.sink)
-	d.dialog = dialog.NewCustomWithoutButtons(fmt.Sprintf("%s To...", strings.Title(string(d.op))), framedContent, parent)
+	d.dialog = dialog.NewCustomWithoutButtons(fmt.Sprintf("%s To...", strings.Title(string(d.op))), dialogThemeOverride(framedContent), parent)
 	d.dialog.Show()
 	if d.parent != nil && d.sink != nil {
 		d.parent.Canvas().Focus(d.sink)

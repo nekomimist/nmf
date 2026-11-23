@@ -348,7 +348,7 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 
 	// Create custom dialog with proper focus handling (wrapped by sink)
 	framedContent := nhd.ownerFrame.wrap(nhd.sink)
-	nhd.dialog = dialog.NewCustomWithoutButtons("Select Directory", framedContent, parent)
+	nhd.dialog = dialog.NewCustomWithoutButtons("Select Directory", dialogThemeOverride(framedContent), parent)
 
 	// Show dialog and ensure focus stays on sink so KeyManager gets keys
 	nhd.dialog.Show()

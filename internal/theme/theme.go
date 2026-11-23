@@ -71,6 +71,56 @@ var (
 		ColorBusyOverlayBackground:   {0, 0, 0, 96},
 	}
 
+	darkPalette = map[fyne.ThemeColorName]color.Color{
+		fynetheme.ColorNameBackground:          color.NRGBA{R: 0x18, G: 0x18, B: 0x1b, A: 0xff},
+		fynetheme.ColorNameOverlayBackground:   color.NRGBA{R: 0x22, G: 0x22, B: 0x26, A: 0xff},
+		fynetheme.ColorNameMenuBackground:      color.NRGBA{R: 0x26, G: 0x26, B: 0x2b, A: 0xff},
+		fynetheme.ColorNameHeaderBackground:    color.NRGBA{R: 0x1e, G: 0x1e, B: 0x22, A: 0xff},
+		fynetheme.ColorNameInputBackground:     color.NRGBA{R: 0x1b, G: 0x1b, B: 0x1f, A: 0xff},
+		fynetheme.ColorNameInputBorder:         color.NRGBA{R: 0x3a, G: 0x3a, B: 0x42, A: 0xff},
+		fynetheme.ColorNameButton:              color.NRGBA{R: 0x2e, G: 0x2e, B: 0x35, A: 0xff},
+		fynetheme.ColorNameDisabledButton:      color.NRGBA{R: 0x27, G: 0x27, B: 0x2c, A: 0xff},
+		fynetheme.ColorNameDisabled:            color.NRGBA{R: 0x6b, G: 0x6b, B: 0x76, A: 0xff},
+		fynetheme.ColorNameForeground:          color.NRGBA{R: 0xec, G: 0xec, B: 0xef, A: 0xff},
+		fynetheme.ColorNamePlaceHolder:         color.NRGBA{R: 0x8a, G: 0x8a, B: 0x96, A: 0xff},
+		fynetheme.ColorNameSeparator:           color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x1c},
+		fynetheme.ColorNameHover:               color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x10},
+		fynetheme.ColorNameFocus:               color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 0x48},
+		fynetheme.ColorNameSelection:           color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 0x5c},
+		fynetheme.ColorNamePrimary:             color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 0xff},
+		fynetheme.ColorNameForegroundOnPrimary: color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
+		fynetheme.ColorNameError:               color.NRGBA{R: 0xef, G: 0x44, B: 0x44, A: 0xff},
+		fynetheme.ColorNameForegroundOnError:   color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
+		fynetheme.ColorNameShadow:              color.NRGBA{R: 0x00, G: 0x00, B: 0x00, A: 0x73},
+		fynetheme.ColorNameScrollBar:           color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x60},
+		fynetheme.ColorNameScrollBarBackground: color.NRGBA{R: 0x1e, G: 0x1e, B: 0x22, A: 0xff},
+	}
+
+	lightPalette = map[fyne.ThemeColorName]color.Color{
+		fynetheme.ColorNameBackground:          color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
+		fynetheme.ColorNameOverlayBackground:   color.NRGBA{R: 0xfb, G: 0xfb, B: 0xfc, A: 0xff},
+		fynetheme.ColorNameMenuBackground:      color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
+		fynetheme.ColorNameHeaderBackground:    color.NRGBA{R: 0xf4, G: 0xf5, B: 0xf7, A: 0xff},
+		fynetheme.ColorNameInputBackground:     color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
+		fynetheme.ColorNameInputBorder:         color.NRGBA{R: 0xd0, G: 0xd5, B: 0xdd, A: 0xff},
+		fynetheme.ColorNameButton:              color.NRGBA{R: 0xee, G: 0xf0, B: 0xf3, A: 0xff},
+		fynetheme.ColorNameDisabledButton:      color.NRGBA{R: 0xf3, G: 0xf4, B: 0xf6, A: 0xff},
+		fynetheme.ColorNameDisabled:            color.NRGBA{R: 0x98, G: 0xa2, B: 0xb3, A: 0xff},
+		fynetheme.ColorNameForeground:          color.NRGBA{R: 0x1f, G: 0x23, B: 0x28, A: 0xff},
+		fynetheme.ColorNamePlaceHolder:         color.NRGBA{R: 0x6e, G: 0x77, B: 0x81, A: 0xff},
+		fynetheme.ColorNameSeparator:           color.NRGBA{R: 0x00, G: 0x00, B: 0x00, A: 0x1a},
+		fynetheme.ColorNameHover:               color.NRGBA{R: 0x00, G: 0x00, B: 0x00, A: 0x0d},
+		fynetheme.ColorNameFocus:               color.NRGBA{R: 0x25, G: 0x63, B: 0xeb, A: 0x28},
+		fynetheme.ColorNameSelection:           color.NRGBA{R: 0x25, G: 0x63, B: 0xeb, A: 0x38},
+		fynetheme.ColorNamePrimary:             color.NRGBA{R: 0x25, G: 0x63, B: 0xeb, A: 0xff},
+		fynetheme.ColorNameForegroundOnPrimary: color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
+		fynetheme.ColorNameError:               color.NRGBA{R: 0xdc, G: 0x26, B: 0x26, A: 0xff},
+		fynetheme.ColorNameForegroundOnError:   color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
+		fynetheme.ColorNameShadow:              color.NRGBA{R: 0x00, G: 0x00, B: 0x00, A: 0x44},
+		fynetheme.ColorNameScrollBar:           color.NRGBA{R: 0x00, G: 0x00, B: 0x00, A: 0x60},
+		fynetheme.ColorNameScrollBarBackground: color.NRGBA{R: 0xf0, G: 0xf1, B: 0xf4, A: 0xff},
+	}
+
 	fyneColorNames = map[string]fyne.ThemeColorName{
 		"background":          fynetheme.ColorNameBackground,
 		"button":              fynetheme.ColorNameButton,
@@ -158,9 +208,27 @@ func (t *CustomTheme) loadCustomFont() {
 	}
 }
 
-// Color methods from default theme
+// Color resolves the application's surface palette, delegating any
+// uncustomized Fyne color tokens to the matching built-in theme variant.
 func (t *CustomTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
-	return t.fyneTheme().Color(name, variant)
+	dark := variant == fynetheme.VariantDark
+	if t != nil && t.config != nil {
+		dark = t.config.Theme.Dark
+	}
+	return t.colorForVariant(name, dark)
+}
+
+func (t *CustomTheme) colorForVariant(name fyne.ThemeColorName, dark bool) color.Color {
+	palette := lightPalette
+	variant := fynetheme.VariantLight
+	if dark {
+		palette = darkPalette
+		variant = fynetheme.VariantDark
+	}
+	if c, ok := palette[name]; ok {
+		return c
+	}
+	return t.baseTheme(dark).Color(name, variant)
 }
 
 // Icon methods from default theme
@@ -206,10 +274,21 @@ func (t *CustomTheme) Font(style fyne.TextStyle) fyne.Resource {
 	return t.fyneTheme().Font(style)
 }
 
-// Size method with custom font size and spacing support
+// Size method with custom font size, spacing, and corner-radius support.
 func (t *CustomTheme) Size(name fyne.ThemeSizeName) float32 {
 	if name == fynetheme.SizeNameText && t.config.Theme.FontSize > 0 {
 		return float32(t.config.Theme.FontSize)
+	}
+
+	switch name {
+	case fynetheme.SizeNameButtonRadius, fynetheme.SizeNameInputRadius, fynetheme.SizeNameMenuRadius:
+		return 6
+	case fynetheme.SizeNamePopupRadius, fynetheme.SizeNameCardRadius:
+		return 8
+	case fynetheme.SizeNameDialogRadius:
+		return 10
+	case fynetheme.SizeNameSelectionRadius, fynetheme.SizeNameScrollBarRadius:
+		return 4
 	}
 
 	// Custom item spacing support with icon consideration
@@ -244,14 +323,13 @@ func (t *CustomTheme) GetCustomColorForVariant(colorType string, dark bool) colo
 		defaults = darkAppColorDefaults
 		variant = fynetheme.VariantDark
 	}
-	base := t.baseTheme(dark)
 	fallback, ok := defaults[colorType]
 	if !ok {
 		fyneColorName, ok := fyneAppColorDefaults[colorType]
 		if !ok {
 			return color.RGBA{0, 0, 0, 0}
 		}
-		fallback = color.RGBAModel.Convert(base.Color(fyneColorName, variant)).(color.RGBA)
+		fallback = color.RGBAModel.Convert(t.colorForVariant(fyneColorName, dark)).(color.RGBA)
 	}
 	if t == nil || t.config == nil || t.config.Theme.Colors == nil {
 		return fallback
@@ -297,13 +375,56 @@ func (t *CustomTheme) resolveConfiguredColor(value config.ThemeColorValue, varia
 		return color.RGBA{}, false
 	}
 	if colorName, ok := fyneColorNames[name]; ok {
-		base := t.baseTheme(variant == fynetheme.VariantDark)
-		return color.RGBAModel.Convert(base.Color(colorName, variant)).(color.RGBA), true
+		return color.RGBAModel.Convert(t.colorForVariant(colorName, variant == fynetheme.VariantDark)).(color.RGBA), true
 	}
 	if primaryColorNames[name] {
 		return color.RGBAModel.Convert(fynetheme.PrimaryColorNamed(name)).(color.RGBA), true
 	}
 	return color.RGBA{}, false
+}
+
+const (
+	dialogInnerPadding float32 = 5
+	dialogMinPadding   float32 = 6
+)
+
+// NewDialogOverrideTheme returns a scoped theme for dialog surfaces so buttons,
+// entries, and controls keep compact inner padding while the main file list
+// retains its zero-inner-padding density.
+func NewDialogOverrideTheme(base fyne.Theme) fyne.Theme {
+	if base == nil {
+		base = fynetheme.DefaultTheme()
+	}
+	return &dialogOverrideTheme{base: base}
+}
+
+type dialogOverrideTheme struct {
+	base fyne.Theme
+}
+
+func (t *dialogOverrideTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
+	return t.base.Color(name, variant)
+}
+
+func (t *dialogOverrideTheme) Font(style fyne.TextStyle) fyne.Resource {
+	return t.base.Font(style)
+}
+
+func (t *dialogOverrideTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
+	return t.base.Icon(name)
+}
+
+func (t *dialogOverrideTheme) Size(name fyne.ThemeSizeName) float32 {
+	switch name {
+	case fynetheme.SizeNameInnerPadding:
+		return dialogInnerPadding
+	case fynetheme.SizeNamePadding:
+		if basePad := t.base.Size(name); basePad > dialogMinPadding {
+			return basePad
+		}
+		return dialogMinPadding
+	}
+	return t.base.Size(name)
 }
 
 // NewLineEditOverrideTheme returns a scoped theme for line edit dialogs.

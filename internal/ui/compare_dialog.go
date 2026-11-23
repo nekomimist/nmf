@@ -132,7 +132,7 @@ func (d *CompareDialog) ShowDialog(parent fyne.Window, onAccept func(CompareResu
 	d.searchEntry.SetFocusRedirect(parent, d.sink)
 
 	framedContent := d.ownerFrame.wrap(d.sink)
-	d.dialog = dialog.NewCustomWithoutButtons("Compare Directories", framedContent, parent)
+	d.dialog = dialog.NewCustomWithoutButtons("Compare Directories", dialogThemeOverride(framedContent), parent)
 	d.dialog.Show()
 	if d.parent != nil && d.sink != nil {
 		d.parent.Canvas().Focus(d.sink)

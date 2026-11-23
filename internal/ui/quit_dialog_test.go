@@ -3,7 +3,6 @@ package ui
 import (
 	"testing"
 
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/keymanager"
@@ -61,8 +60,8 @@ func TestQuitConfirmDialogButtonOrderWithActiveJobs(t *testing.T) {
 	if right.Importance != widget.DangerImportance {
 		t.Fatalf("Quit Anyway importance = %v, want danger", right.Importance)
 	}
-	if right.Icon == nil || right.Icon.Name() != theme.WarningIcon().Name() {
-		t.Fatalf("Quit Anyway icon = %v, want warning icon", right.Icon)
+	if right.Icon != nil {
+		t.Fatalf("Quit Anyway icon = %v, want nil", right.Icon)
 	}
 }
 

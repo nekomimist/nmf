@@ -332,23 +332,29 @@ Dialog sizing:
 - The built-in viewer has its own parent-size ratio and
   `viewer.maxWidth`/`viewer.maxHeight` caps.
 
-Dialog button bar:
+Dialog button bar and scoped dialog theme:
 
 - Every dialog (and the Jobs window) builds its bottom action row via
-  `dialogButtonBar` (`internal/ui/dialog_buttons.go`): buttons are centered as
-  a group, each with a minimum-width floor (`dialogButtonMinWidth`) — longer
-  labels grow naturally and are never clipped.
-- Order is `[auxiliary...] [Cancel/dismiss] [Affirmative, rightmost]`.
-  `HighImportance` (blue) marks the default action activated by Enter —
-  normally the rightmost affirmative (`ConfirmIcon`); cancel =
-  `CancelIcon`+default importance. When the safe action is the Enter default
-  (Quit with active jobs), the cancel button carries `HighImportance` instead
-  and the destructive affirmative uses `WarningIcon`+`DangerImportance`,
-  still rightmost. A lone dismiss with no separate affirmative (Jobs window
-  "Close") is the default and styled accordingly.
-- Dialogs now uniformly use `dialog.NewCustomWithoutButtons`; the button bar
-  lives inside the `KeySink`-wrapped content and calls the same methods the
-  keymanager handlers invoke, so keyboard and mouse activation stay in sync.
+  `dialogButtonBar` or `dialogSplitButtonBar` (`internal/ui/dialog_buttons.go`):
+  primary/dismiss buttons are right-aligned (with optional auxiliary actions on
+  the leading edge), each with a compact minimum-width floor
+  (`dialogButtonMinWidth`) — longer labels grow naturally and are never clipped.
+- Order is `[auxiliary (leading or left of cancel)] [Cancel/dismiss] [Affirmative, rightmost]`.
+  Standard dismiss/confirm/danger buttons use clean text labels without stock
+  check/cross/warning icons. `HighImportance` marks the default action activated
+  by Enter — normally the rightmost affirmative; cancel uses standard
+  importance. Destructive actions (Quit with active jobs, Permanent Delete) use
+  `DangerImportance` in the rightmost slot; when the safe action is the Enter
+  default (Quit with active jobs), the cancel button carries `HighImportance`
+  instead. A lone dismiss with no separate affirmative (Jobs window "Close") is
+  the default and styled accordingly.
+- Dialogs uniformly use `dialog.NewCustomWithoutButtons` wrapped in
+  `dialogThemeOverride` (`internal/ui/theme_override.go`), which restores
+  compact control inner padding inside dialogs while keeping the main file list
+  and inner `dialogListThemeOverride` / `lineEditThemeOverride` surfaces at the
+  base theme's tight spacing. The button bar lives inside the `KeySink`-wrapped
+  content and calls the same methods the keymanager handlers invoke, so keyboard
+  and mouse activation stay in sync.
 
 Built-in file viewer:
 

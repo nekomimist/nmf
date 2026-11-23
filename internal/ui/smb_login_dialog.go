@@ -134,7 +134,7 @@ func (d *smbLoginDialog) show() {
 		d.kmToken = d.km.PushSensitiveHandler(handler)
 	}
 
-	d.dialog = dialog.NewCustomWithoutButtons("SMB Login: "+d.host+"/"+d.share, content, d.parent)
+	d.dialog = dialog.NewCustomWithoutButtons("SMB Login: "+d.host+"/"+d.share, dialogThemeOverride(content), d.parent)
 	d.dialog.SetOnClosed(func() {
 		d.CancelDialog()
 	})

@@ -141,7 +141,7 @@ func (d *ConflictDialog) ShowDialog(parent fyne.Window, callback func(jobs.Confl
 		dialogContent = d.sink
 	}
 
-	d.dialog = dialog.NewCustomWithoutButtons("Name conflict", dialogContent, parent)
+	d.dialog = dialog.NewCustomWithoutButtons("Name conflict", dialogThemeOverride(dialogContent), parent)
 	d.dialog.SetOnClosed(func() {
 		d.CancelJob()
 	})

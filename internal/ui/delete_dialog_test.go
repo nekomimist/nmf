@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/widget"
 
 	"nmf/internal/keymanager"
 )
@@ -90,9 +91,38 @@ func TestTrashDeleteDoesNotRequireConfirmWord(t *testing.T) {
 	accepted := false
 	d.onAccept = func() { accepted = true }
 
+	if d.confirmButton.Importance != widget.HighImportance {
+		t.Fatalf("trash confirm importance = %v, want high", d.confirmButton.Importance)
+	}
+	if d.confirmButton.Disabled() {
+		t.Fatal("trash confirm button should be enabled initially")
+	}
+
 	d.ConfirmDelete()
 
 	if !accepted {
 		t.Fatal("trash delete should accept without confirm word")
+	}
+}
+
+func TestPermanentDeleteButtonUsesDangerImportanceAndTracksConfirmWord(t *testing.T) {
+	km := keymanager.NewKeyManager(func(string, ...interface{}) {})
+	d := NewDeleteConfirmDialog([]string{"file.txt"}, true, km)
+
+	if d.confirmButton.Importance != widget.DangerImportance {
+		t.Fatalf("permanent delete importance = %v, want danger", d.confirmButton.Importance)
+	}
+	if !d.confirmButton.Disabled() {
+		t.Fatal("permanent delete button should start disabled")
+	}
+
+	d.entry.SetText("DELETE")
+	if d.confirmButton.Disabled() {
+		t.Fatal("permanent delete button should enable once DELETE is typed")
+	}
+
+	d.entry.SetText("DEL")
+	if !d.confirmButton.Disabled() {
+		t.Fatal("permanent delete button should disable again when text no longer matches")
 	}
 }

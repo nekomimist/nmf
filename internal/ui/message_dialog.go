@@ -49,7 +49,7 @@ func ShowCompactMessageDialogWithOnClose(parent fyne.Window, title, message stri
 		)
 		sink := newCompactMessageSink(content, closeDialog)
 
-		d = dialog.NewCustomWithoutButtons(title, sink, parent)
+		d = dialog.NewCustomWithoutButtons(title, dialogThemeOverride(sink), parent)
 		d.Show()
 		d.Resize(dialogSize)
 		if parent != nil {
@@ -82,7 +82,7 @@ func ShowCompactVersionDialog(parent fyne.Window, software, repository, version 
 		)
 		sink := newCompactMessageSink(content, closeDialog)
 
-		d = dialog.NewCustomWithoutButtons("Version", sink, parent)
+		d = dialog.NewCustomWithoutButtons("Version", dialogThemeOverride(sink), parent)
 		d.Show()
 		d.Resize(dialogSize)
 		if parent != nil {

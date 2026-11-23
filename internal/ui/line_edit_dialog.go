@@ -134,7 +134,7 @@ func (d *LineEditDialog) ShowDialog(parent fyne.Window, onAccept func(string) bo
 	if title == "" {
 		title = "Edit"
 	}
-	d.dialog = dialog.NewCustomWithoutButtons(title, content, parent)
+	d.dialog = dialog.NewCustomWithoutButtons(title, dialogThemeOverride(content), parent)
 	d.dialog.SetOnClosed(func() {
 		d.CancelDialog()
 	})

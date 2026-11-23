@@ -11,16 +11,17 @@ import (
 	"nmf/internal/config"
 )
 
-func TestCustomThemeDelegatesFyneThemeColors(t *testing.T) {
+func TestCustomThemeAppliesSurfacePaletteAndDelegatesUnsetColors(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
 	tests := []struct {
-		name string
-		dark bool
+		name    string
+		dark    bool
+		palette map[fyne.ThemeColorName]color.Color
 	}{
-		{name: "dark", dark: true},
-		{name: "light", dark: false},
+		{name: "dark", dark: true, palette: darkPalette},
+		{name: "light", dark: false, palette: lightPalette},
 	}
 
 	for _, tt := range tests {
@@ -34,16 +35,23 @@ func TestCustomThemeDelegatesFyneThemeColors(t *testing.T) {
 				base = theme.DarkTheme()
 			}
 
-			got := color.NRGBAModel.Convert(customTheme.Color(theme.ColorNamePrimary, variant))
-			want := color.NRGBAModel.Convert(base.Color(theme.ColorNamePrimary, variant))
-			if got != want {
-				t.Fatalf("primary color = %#v, want base primary %#v", got, want)
+			for _, name := range []fyne.ThemeColorName{
+				theme.ColorNameOverlayBackground,
+				theme.ColorNameSeparator,
+				theme.ColorNamePrimary,
+				theme.ColorNameForegroundOnError,
+			} {
+				got := color.NRGBAModel.Convert(customTheme.Color(name, variant))
+				want := color.NRGBAModel.Convert(tt.palette[name])
+				if got != want {
+					t.Fatalf("%s = %#v, want palette %#v", name, got, want)
+				}
 			}
 
-			got = color.NRGBAModel.Convert(customTheme.Color(theme.ColorNameFocus, variant))
-			want = color.NRGBAModel.Convert(base.Color(theme.ColorNameFocus, variant))
+			got := color.NRGBAModel.Convert(customTheme.Color(theme.ColorNameWarning, variant))
+			want := color.NRGBAModel.Convert(base.Color(theme.ColorNameWarning, variant))
 			if got != want {
-				t.Fatalf("focus color = %#v, want base focus %#v", got, want)
+				t.Fatalf("warning color = %#v, want base warning %#v", got, want)
 			}
 		})
 	}
@@ -69,9 +77,9 @@ func TestCustomThemeAppColorOverrides(t *testing.T) {
 	}
 
 	got := color.NRGBAModel.Convert(customTheme.GetCustomColorForVariant(ColorCursor, false))
-	want := color.NRGBAModel.Convert(theme.LightTheme().Color(theme.ColorNameForeground, theme.VariantLight))
+	want := color.NRGBAModel.Convert(lightPalette[theme.ColorNameForeground])
 	if got != want {
-		t.Fatalf("light cursor = %#v, want foreground %#v", got, want)
+		t.Fatalf("light cursor = %#v, want light foreground %#v", got, want)
 	}
 }
 
@@ -84,10 +92,10 @@ func TestCustomThemeFyneBackedAppColorDefaults(t *testing.T) {
 		color string
 		want  color.Color
 	}{
-		{name: "line edit cursor", color: ColorLineEditCursor, want: theme.LightTheme().Color(theme.ColorNamePrimary, theme.VariantLight)},
-		{name: "line edit selection", color: ColorLineEditSelection, want: theme.LightTheme().Color(theme.ColorNameSelection, theme.VariantLight)},
-		{name: "dialog list cursor", color: ColorDialogListCursor, want: theme.LightTheme().Color(theme.ColorNameSelection, theme.VariantLight)},
-		{name: "menu cursor", color: ColorMenuCursor, want: theme.LightTheme().Color(theme.ColorNameFocus, theme.VariantLight)},
+		{name: "line edit cursor", color: ColorLineEditCursor, want: customTheme.Color(theme.ColorNamePrimary, theme.VariantLight)},
+		{name: "line edit selection", color: ColorLineEditSelection, want: customTheme.Color(theme.ColorNameSelection, theme.VariantLight)},
+		{name: "dialog list cursor", color: ColorDialogListCursor, want: customTheme.Color(theme.ColorNameSelection, theme.VariantLight)},
+		{name: "menu cursor", color: ColorMenuCursor, want: customTheme.Color(theme.ColorNameFocus, theme.VariantLight)},
 	}
 
 	for _, tt := range tests {
@@ -101,6 +109,38 @@ func TestCustomThemeFyneBackedAppColorDefaults(t *testing.T) {
 				t.Fatalf("%s should be an app color name", tt.color)
 			}
 		})
+	}
+}
+
+func TestDialogOverrideThemeRestoresCompactInnerPaddingWithoutChangingBase(t *testing.T) {
+	cfg := &config.Config{
+		Theme: config.ThemeConfig{Dark: true, FontSize: 14},
+		UI:    config.UIConfig{ItemSpacing: 4},
+	}
+	base := &CustomTheme{config: cfg}
+
+	if got := base.Size(theme.SizeNameInnerPadding); got != 0 {
+		t.Fatalf("base inner padding = %v, want 0 for compact main list", got)
+	}
+	if got := base.Size(theme.SizeNameButtonRadius); got != 6 {
+		t.Fatalf("base button radius = %v, want 6", got)
+	}
+
+	dialogTheme := NewDialogOverrideTheme(base)
+	if got := dialogTheme.Size(theme.SizeNameInnerPadding); got != dialogInnerPadding {
+		t.Fatalf("dialog inner padding = %v, want %v", got, dialogInnerPadding)
+	}
+	if got := dialogTheme.Size(theme.SizeNamePadding); got != dialogMinPadding {
+		t.Fatalf("dialog padding = %v, want %v", got, dialogMinPadding)
+	}
+	if got := dialogTheme.Size(theme.SizeNameText); got != 14 {
+		t.Fatalf("dialog text size = %v, want 14", got)
+	}
+
+	wideCfg := &config.Config{UI: config.UIConfig{ItemSpacing: 10}}
+	wideDialogTheme := NewDialogOverrideTheme(&CustomTheme{config: wideCfg})
+	if got := wideDialogTheme.Size(theme.SizeNamePadding); got != 10 {
+		t.Fatalf("wide dialog padding = %v, want base padding 10", got)
 	}
 }
 

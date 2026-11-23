@@ -109,7 +109,7 @@ func (d *MaintenanceDialog) ShowDialog(parent fyne.Window, onApply func(maintena
 	handler := keymanager.NewMaintenanceDialogKeyHandler(d)
 	d.kmToken = d.keyManager.PushHandler(handler)
 
-	d.dialog = dialog.NewCustomWithoutButtons("Maintenance", d.sink, parent)
+	d.dialog = dialog.NewCustomWithoutButtons("Maintenance", dialogThemeOverride(d.sink), parent)
 	d.dialog.SetOnClosed(func() {
 		d.Cancel()
 	})
@@ -136,10 +136,9 @@ func (d *MaintenanceDialog) createContent() fyne.CanvasObject {
 	listScroll := container.NewScroll(d.resultList)
 	listScroll.SetMinSize(metricsSize(maintenanceDialogWidth-60, maintenanceListHeight))
 
-	buttons := dialogButtonBar(
-		d.scanButton,
-		dialogCancelButton("Close", d.Cancel),
-		d.applyButton,
+	buttons := dialogSplitButtonBar(
+		[]*widget.Button{d.scanButton},
+		[]*widget.Button{dialogCancelButton("Close", d.Cancel), d.applyButton},
 	)
 
 	return container.NewBorder(

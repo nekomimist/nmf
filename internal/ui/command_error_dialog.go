@@ -53,10 +53,16 @@ func (d *CommandErrorDialog) Append(action, details string) {
 func (d *CommandErrorDialog) Show(parent fyne.Window, onClosed func()) {
 	d.parent = parent
 	d.onClosed = onClosed
-	content := container.NewBorder(nil, dialogButtonBar(d.copyButton, d.okButton), nil, nil, d.scroll)
+	content := container.NewBorder(
+		nil,
+		dialogSplitButtonBar([]*widget.Button{d.copyButton}, []*widget.Button{d.okButton}),
+		nil,
+		nil,
+		d.scroll,
+	)
 	d.sink = NewKeySink(content, d.keyManager, WithTabCapture(true), WithTapFocus(true))
 	d.token = d.keyManager.PushHandler(keymanager.NewCommandErrorDialogHandler(d))
-	d.dialog = dialog.NewCustomWithoutButtons("Starlark command error", d.sink, parent)
+	d.dialog = dialog.NewCustomWithoutButtons("Starlark command error", dialogThemeOverride(d.sink), parent)
 	d.dialog.SetOnClosed(d.Close)
 	size := metricsSize(760, 480)
 	if parent != nil {

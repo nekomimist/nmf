@@ -173,7 +173,7 @@ func (sd *SortDialog) Show(parent fyne.Window, keyManager *keymanager.KeyManager
 	sd.sink = NewKeySink(content, sd.keyManager, WithTabCapture(true))
 
 	// Create custom dialog without stock buttons (bar lives inside content)
-	sd.dialog = dialog.NewCustomWithoutButtons("Sort Settings", sd.sink, parent)
+	sd.dialog = dialog.NewCustomWithoutButtons("Sort Settings", dialogThemeOverride(sd.sink), parent)
 	sd.dialog.Resize(metricsSize(sortDialogWidth, sortDialogHeight))
 
 	// Show dialog and ensure focus stays on sink so KeyManager gets keys

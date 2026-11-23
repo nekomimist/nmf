@@ -254,7 +254,7 @@ func (d *DirectoryJumpDialog) ShowDialog(parent fyne.Window, callback func(strin
 	d.sink = NewKeySink(content, d.keyManager, WithTabCapture(true))
 	d.searchEntry.SetFocusRedirect(parent, d.sink)
 
-	d.dialog = dialog.NewCustomWithoutButtons("Jump To Directory", d.sink, parent)
+	d.dialog = dialog.NewCustomWithoutButtons("Jump To Directory", dialogThemeOverride(d.sink), parent)
 
 	d.dialog.Show()
 	if d.parent != nil && d.sink != nil {

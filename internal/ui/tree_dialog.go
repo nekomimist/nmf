@@ -374,7 +374,7 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 	dtd.sink = NewKeySink(content, dtd.keyManager, WithTabCapture(true))
 
 	// Create dialog with custom content (wrapped by sink)
-	dtd.dialog = dialog.NewCustomWithoutButtons("Select Directory", dtd.sink, parent)
+	dtd.dialog = dialog.NewCustomWithoutButtons("Select Directory", dialogThemeOverride(dtd.sink), parent)
 
 	// Show the dialog
 	dtd.dialog.Show()

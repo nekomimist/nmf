@@ -230,10 +230,12 @@ func (fm *FileManager) showDropActionDialog(paths []string, dest string) {
 		summary,
 		targetsScroll,
 		widget.NewLabel("Shortcuts: C=Copy, M=Move, Esc=Cancel"),
-		ui.DialogButtonBar(
-			ui.DialogAuxButton("Copy", theme.ContentCopyIcon(), func() { queue(ui.OpCopy) }),
-			ui.DialogAuxButton("Move", theme.ContentCutIcon(), func() { queue(ui.OpMove) }),
-			ui.DialogCancelButton("Cancel", closeDialog),
+		ui.DialogSplitButtonBar(
+			[]*widget.Button{ui.DialogCancelButton("Cancel", closeDialog)},
+			[]*widget.Button{
+				ui.DialogAuxButton("Copy", theme.ContentCopyIcon(), func() { queue(ui.OpCopy) }),
+				ui.DialogAuxButton("Move", theme.ContentCutIcon(), func() { queue(ui.OpMove) }),
+			},
 		),
 	)
 
@@ -245,7 +247,7 @@ func (fm *FileManager) showDropActionDialog(paths []string, dest string) {
 	kmToken = fm.keyManager.PushHandler(keymanager.NewDropActionDialogKeyHandler(actions))
 	sink = ui.NewKeySink(content, fm.keyManager, ui.WithTabCapture(true))
 
-	d = dialog.NewCustomWithoutButtons("Dropped files", sink, fm.window)
+	d = dialog.NewCustomWithoutButtons("Dropped files", ui.DialogThemeOverride(sink), fm.window)
 	d.SetOnClosed(closeDialog)
 	d.Show()
 	d.Resize(fyne.NewSize(580, 300))

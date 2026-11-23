@@ -297,7 +297,7 @@ func (fd *FilterDialog) ShowDialog(parent fyne.Window, callback func(*config.Fil
 	fd.searchEntry.SetFocusRedirect(parent, fd.sink)
 
 	// Create custom dialog with proper focus handling (wrapped by sink)
-	fd.dialog = dialog.NewCustomWithoutButtons("Apply Filter", fd.sink, parent)
+	fd.dialog = dialog.NewCustomWithoutButtons("Apply Filter", dialogThemeOverride(fd.sink), parent)
 
 	// Show dialog and ensure focus stays on sink so KeyManager gets keys
 	fd.dialog.Show()
