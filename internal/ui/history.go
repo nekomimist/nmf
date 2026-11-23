@@ -29,6 +29,7 @@ type CustomSearchEntry struct {
 // NewCustomSearchEntry creates a new custom search entry
 func NewCustomSearchEntry() *CustomSearchEntry {
 	entry := &CustomSearchEntry{}
+	entry.Icon = fynetheme.SearchIcon()
 	entry.ExtendBaseWidget(entry)
 	return entry
 }
@@ -160,6 +161,7 @@ func (nhd *NavigationHistoryDialog) createWidgets() {
 			}
 		},
 	)
+	nhd.historyList.HideSeparators = true
 
 	// Set selection handler
 	nhd.historyList.OnSelected = func(id widget.ListItemID) {
@@ -274,14 +276,8 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 	listSize := metricsSize(listWidth, searchDialogListHeight)
 	contentSize := metricsSize(contentWidth, searchDialogContentHeight)
 
-	// Create title label
-	titleLabel := widget.NewLabel("Navigation History")
-	titleLabel.TextStyle.Bold = true
-
-	// Create search section
-	searchLabel := widget.NewLabel("Filter:")
-	searchSection := container.NewBorder(nil, nil, searchLabel, nil, nhd.searchEntry)
-	orderSection := historyOrderSection(nhd.orderRadio)
+	// Combine search input and order toggle into one compact bar.
+	topBar := container.NewBorder(nil, nil, nil, historyOrderInline(nhd.orderRadio), nhd.searchEntry)
 
 	// Create scrollable list container
 	listScroll := newDialogListScroller(nhd.historyList, dialogTextWidth(nhd.allPaths, listWidth), listWidth, searchDialogListHeight)
@@ -319,11 +315,11 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 
 	// Create main content
 	content := container.NewBorder(
-		container.NewVBox(titleLabel, orderSection, searchSection),                                                      // top
+		topBar, // top
 		dialogButtonBar(dialogCancelButton("Cancel", nhd.CancelDialog), dialogConfirmButton("OK", nhd.AcceptSelection)), // bottom
-		nil,            // left
-		nil,            // right
-		fixedContainer, // center - fixed size container
+		nil,                                 // left
+		nil,                                 // right
+		newInsetListSurface(fixedContainer), // center
 	)
 
 	// Set minimum size
@@ -346,9 +342,9 @@ func (nhd *NavigationHistoryDialog) ShowDialog(parent fyne.Window, callback func
 	// Configure search entry to redirect focus to sink
 	nhd.searchEntry.SetFocusRedirect(parent, nhd.sink)
 
-	// Create custom dialog with proper focus handling (wrapped by sink)
-	framedContent := nhd.ownerFrame.wrap(nhd.sink)
-	nhd.dialog = dialog.NewCustomWithoutButtons("Select Directory", framedContent, parent)
+	nhd.dialog = newModalDialogWithOptions("Navigation History", nhd.sink, parent, modalDialogOptions{
+		highlight: &nhd.ownerFrame,
+	})
 
 	// Show dialog and ensure focus stays on sink so KeyManager gets keys
 	nhd.dialog.Show()

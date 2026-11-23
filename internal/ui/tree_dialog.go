@@ -108,6 +108,7 @@ func (dtd *DirectoryTreeDialog) createTree() {
 	dtd.tree.OnBranchClosed = func(widget.TreeNodeID) { dtd.invalidateVisibleNodes() }
 
 	// Set initial root node
+	dtd.tree.HideSeparators = true
 	dtd.tree.Root = widget.TreeNodeID(dtd.currentRoot)
 }
 
@@ -344,16 +345,16 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 	dtd.tree.Resize(metricsSize(treeWidth, treeDialogTreeHeight))
 
 	// Create scrollable container for the tree
-	treeScroll := container.NewScroll(dtd.tree)
+	treeScroll := container.NewScroll(dialogListThemeOverride(dtd.tree))
 	treeScroll.SetMinSize(metricsSize(treeWidth, treeDialogTreeHeight))
 
 	// Create main content
 	content := container.NewBorder(
 		buttonPanel, // top
 		dialogButtonBar(dialogCancelButton("Cancel", dtd.CancelDialog), dialogConfirmButton("OK", dtd.AcceptSelection)), // bottom
-		nil,        // left
-		nil,        // right
-		treeScroll, // center
+		nil,                             // left
+		nil,                             // right
+		newInsetListSurface(treeScroll), // center
 	)
 
 	// Set minimum size for the entire content
@@ -373,8 +374,7 @@ func (dtd *DirectoryTreeDialog) ShowDialog(parent fyne.Window, callback func(str
 	// Wrap content with KeySink to capture Tab and forward keys
 	dtd.sink = NewKeySink(content, dtd.keyManager, WithTabCapture(true))
 
-	// Create dialog with custom content (wrapped by sink)
-	dtd.dialog = dialog.NewCustomWithoutButtons("Select Directory", dtd.sink, parent)
+	dtd.dialog = newModalDialog("Select Directory", dtd.sink, parent)
 
 	// Show the dialog
 	dtd.dialog.Show()

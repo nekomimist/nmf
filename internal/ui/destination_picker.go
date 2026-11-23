@@ -90,7 +90,7 @@ func (d *destinationPicker) destinationArea(width, height float32) fyne.CanvasOb
 	d.destScroll.Resize(size)
 	d.destEmpty.Resize(size)
 	d.updateDestinationEmptyState()
-	return fixed
+	return newInsetListSurface(fixed)
 }
 
 func (d *destinationPicker) createWidgets(focus func()) {
@@ -118,6 +118,7 @@ func (d *destinationPicker) createWidgets(focus func()) {
 			}
 		},
 	)
+	d.destList.HideSeparators = true
 	d.destList.OnSelected = func(id widget.ListItemID) {
 		if id >= 0 && int(id) < len(d.filteredDest) {
 			d.selectedIdx = int(id)

@@ -129,7 +129,7 @@ func (d *archivePasswordDialog) show() {
 		d.kmToken = d.km.PushSensitiveHandler(handler)
 	}
 
-	d.dialog = dialog.NewCustomWithoutButtons(title, content, d.parent)
+	d.dialog = newModalDialog(title, content, d.parent)
 	d.dialog.SetOnClosed(func() {
 		d.CancelDialog()
 	})

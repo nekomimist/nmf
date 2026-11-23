@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Refresh dialog and popup styling across light and dark themes with updated
+  surface and separator colors, compact control padding (keeping main file-list
+  density unchanged), single-line headers, rounded inset lists, and
+  right-aligned action buttons.
+- Style the permanent-delete confirmation button as a destructive action that
+  stays disabled until `DELETE` is entered.
+- Streamline the built-in file viewer header, underline tabs, and flat toolbar
+  controls; combine search and sort/preview bars in history, compare, and
+  filter dialogs; render Directory Jump shortcuts as keycap badges; and replace
+  the inverted incremental-search bar with a focused accent-bordered bar that
+  highlights zero-match queries.
+
 ## 0.1.9 - 2026-11-22
 
 - Repeatedly opening the copy or move dialog uses less memory with a long

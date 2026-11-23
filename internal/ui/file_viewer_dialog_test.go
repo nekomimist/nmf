@@ -659,23 +659,32 @@ func TestFileViewerDialogTabBarHighlightsActivePane(t *testing.T) {
 	d.ShowDialog(w)
 	defer d.CancelDialog()
 
-	if got := d.tabBar.buttons[viewerPaneText].Importance; got != widget.HighImportance {
-		t.Fatalf("text tab importance = %v, want HighImportance", got)
+	if got := d.tabBar.buttons[viewerPaneText].Importance; got != widget.MediumImportance {
+		t.Fatalf("text tab importance = %v, want MediumImportance", got)
 	}
-	if got := d.tabBar.buttons[viewerPaneHex].Importance; got != widget.MediumImportance {
-		t.Fatalf("hex tab importance = %v, want MediumImportance", got)
+	if got := color.NRGBAModel.Convert(d.tabBar.indicators[viewerPaneText].FillColor).(color.NRGBA); got.A == 0 {
+		t.Fatal("text tab indicator should be visible when active")
+	}
+	if got := d.tabBar.buttons[viewerPaneHex].Importance; got != widget.LowImportance {
+		t.Fatalf("hex tab importance = %v, want LowImportance", got)
+	}
+	if got := color.NRGBAModel.Convert(d.tabBar.indicators[viewerPaneHex].FillColor).(color.NRGBA); got.A != 0 {
+		t.Fatal("hex tab indicator should be transparent when inactive")
 	}
 
 	d.ViewerShowHex()
 
-	if got := d.tabBar.buttons[viewerPaneHex].Importance; got != widget.HighImportance {
-		t.Fatalf("hex tab importance after switch = %v, want HighImportance", got)
+	if got := d.tabBar.buttons[viewerPaneHex].Importance; got != widget.MediumImportance {
+		t.Fatalf("hex tab importance after switch = %v, want MediumImportance", got)
 	}
-	if got := d.tabBar.buttons[viewerPaneText].Importance; got != widget.MediumImportance {
-		t.Fatalf("text tab importance after switch = %v, want MediumImportance", got)
+	if got := color.NRGBAModel.Convert(d.tabBar.indicators[viewerPaneHex].FillColor).(color.NRGBA); got.A == 0 {
+		t.Fatal("hex tab indicator should be visible after switch")
 	}
-	if got := d.tabBar.buttons[viewerPaneMarkdown].Importance; got != widget.MediumImportance {
-		t.Fatalf("markdown tab importance = %v, want MediumImportance", got)
+	if got := d.tabBar.buttons[viewerPaneText].Importance; got != widget.LowImportance {
+		t.Fatalf("text tab importance after switch = %v, want LowImportance", got)
+	}
+	if got := d.tabBar.buttons[viewerPaneMarkdown].Importance; got != widget.LowImportance {
+		t.Fatalf("markdown tab importance = %v, want LowImportance", got)
 	}
 }
 
@@ -1841,6 +1850,118 @@ func TestViewerLocaleFallsBackToEnvironment(t *testing.T) {
 
 	if !viewerLocaleUsesWideAmbiguous() {
 		t.Fatal("viewerLocaleUsesWideAmbiguous() = false, want environment fallback")
+	}
+}
+
+func TestFileViewerHeaderAllocatesMetadataWidth(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	w.Resize(fyne.NewSize(1200, 800))
+
+	preview := &fileinfo.PreviewFile{
+		Path: "/tmp/example.txt",
+		Size: 1234,
+		Data: []byte("hello\nworld\n"),
+		Text: "hello\nworld\n",
+	}
+	d := NewFileViewerDialog(preview)
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	wantWidth := viewerLabelNaturalWidth(d.status)
+	if got := d.status.Size().Width; got < wantWidth-1 {
+		t.Fatalf("status width = %v, want >= %v for %q", got, wantWidth, d.status.Text)
+	}
+	if d.nameLabel.Position().X+d.nameLabel.Size().Width > d.status.Position().X {
+		t.Fatalf("nameLabel right edge (%v) overlaps status (%v)",
+			d.nameLabel.Position().X+d.nameLabel.Size().Width, d.status.Position().X)
+	}
+	if d.status.Position().X+d.status.Size().Width > d.closeButton.Position().X {
+		t.Fatalf("status right edge (%v) overlaps closeButton (%v)",
+			d.status.Position().X+d.status.Size().Width, d.closeButton.Position().X)
+	}
+
+	d.setStatusSuffix("match line=1 col=1 wrapped")
+	wantExpanded := viewerLabelNaturalWidth(d.status)
+	if got := d.status.Size().Width; got < wantExpanded-1 {
+		t.Fatalf("expanded status width = %v, want >= %v for %q", got, wantExpanded, d.status.Text)
+	}
+
+	// Verify tight widths keep both name and metadata readable without overlapping.
+	d.nameLabel.SetText("very-long-file-name-for-narrow-header-layout-check.txt")
+	d.headerRow.Resize(fyne.NewSize(320, d.headerRow.MinSize().Height))
+	if d.nameLabel.Size().Width < 80 {
+		t.Fatalf("narrow nameLabel width = %v, want >= 80", d.nameLabel.Size().Width)
+	}
+	if d.status.Size().Width < 100 {
+		t.Fatalf("narrow status width = %v, want >= 100", d.status.Size().Width)
+	}
+	if d.nameLabel.Position().X+d.nameLabel.Size().Width > d.status.Position().X {
+		t.Fatalf("narrow nameLabel (%v) overlaps status (%v)",
+			d.nameLabel.Position().X+d.nameLabel.Size().Width, d.status.Position().X)
+	}
+	if d.status.Position().X+d.status.Size().Width > d.closeButton.Position().X {
+		t.Fatalf("narrow status (%v) overlaps closeButton (%v)",
+			d.status.Position().X+d.status.Size().Width, d.closeButton.Position().X)
+	}
+}
+
+func TestFileViewerRetainsDialogAndLineEditThemesAfterUpdatePreview(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	cfg := &config.Config{
+		Theme: config.ThemeConfig{
+			Colors: map[string]config.ThemeColorConfig{
+				customtheme.ColorLineEditSelection: {
+					Value: &config.ThemeColorValue{RGBA: [4]uint8{5, 6, 7, 255}, IsRGBA: true},
+				},
+			},
+		},
+	}
+	baseTheme := customtheme.NewCustomTheme(cfg, func(string, ...interface{}) {})
+	app.Settings().SetTheme(baseTheme)
+
+	w := test.NewWindow(widget.NewLabel("parent"))
+	defer w.Close()
+	w.Resize(fyne.NewSize(1000, 700))
+
+	d := NewFileViewerDialog(&fileinfo.PreviewFile{
+		Path: "/tmp/first.txt",
+		Size: 5,
+		Data: []byte("first"),
+		Text: "first",
+	})
+	d.ShowDialog(w)
+	defer d.CancelDialog()
+
+	wantInnerPad := customtheme.NewDialogOverrideTheme(baseTheme).Size(fynetheme.SizeNameInnerPadding)
+	if baseInnerPad := baseTheme.Size(fynetheme.SizeNameInnerPadding); baseInnerPad == wantInnerPad {
+		t.Fatalf("expected dialog inner padding (%v) to differ from base (%v)", wantInnerPad, baseInnerPad)
+	}
+	if got := d.wrapButton.Theme().Size(fynetheme.SizeNameInnerPadding); got != wantInnerPad {
+		t.Fatalf("initial wrapButton inner padding = %v, want %v", got, wantInnerPad)
+	}
+
+	d.UpdatePreview(&fileinfo.PreviewFile{
+		Path: "/tmp/second.txt",
+		Size: 6,
+		Data: []byte("second"),
+		Text: "second",
+	})
+
+	if got := d.wrapButton.Theme().Size(fynetheme.SizeNameInnerPadding); got != wantInnerPad {
+		t.Fatalf("post-UpdatePreview wrapButton inner padding = %v, want %v", got, wantInnerPad)
+	}
+
+	variant := app.Settings().ThemeVariant()
+	wantSearchSel := color.NRGBAModel.Convert(baseTheme.GetCustomColor(customtheme.ColorLineEditSelection))
+	gotSearchSel := color.NRGBAModel.Convert(d.search.Theme().Color(fynetheme.ColorNameSelection, variant))
+	if gotSearchSel != wantSearchSel {
+		t.Fatalf("post-UpdatePreview search selection color = %#v, want %#v", gotSearchSel, wantSearchSel)
 	}
 }
 

@@ -102,7 +102,7 @@ func newSMBLoginDialog(host, share string, parent fyne.Window, km *keymanager.Ke
 	d.domain = d.newEntry("domain (optional)", false)
 	d.username = d.newEntry("username", false)
 	d.password = d.newEntry("password", true)
-	d.saveCheck = widget.NewCheck("この端末に保存 (keyring)", nil)
+	d.saveCheck = widget.NewCheck("Save in system keyring", nil)
 	return d
 }
 
@@ -122,9 +122,9 @@ func (d *smbLoginDialog) newEntry(placeholder string, password bool) *LineEditEn
 
 func (d *smbLoginDialog) show() {
 	content := container.NewVBox(
-		container.NewBorder(nil, nil, widget.NewLabel("Domain"), nil, lineEditThemeOverride(d.domain)),
-		container.NewBorder(nil, nil, widget.NewLabel("Username"), nil, lineEditThemeOverride(d.username)),
-		container.NewBorder(nil, nil, widget.NewLabel("Password"), nil, lineEditThemeOverride(d.password)),
+		newFormRow(dialogFormLabelWidth, "Domain", lineEditThemeOverride(d.domain)),
+		newFormRow(dialogFormLabelWidth, "Username", lineEditThemeOverride(d.username)),
+		newFormRow(dialogFormLabelWidth, "Password", lineEditThemeOverride(d.password)),
 		d.saveCheck,
 		dialogButtonRow("Cancel", d.CancelDialog, "Login", d.AcceptLogin),
 	)
@@ -134,7 +134,7 @@ func (d *smbLoginDialog) show() {
 		d.kmToken = d.km.PushSensitiveHandler(handler)
 	}
 
-	d.dialog = dialog.NewCustomWithoutButtons("SMB Login: "+d.host+"/"+d.share, content, d.parent)
+	d.dialog = newModalDialog("SMB Login: "+d.host+"/"+d.share, content, d.parent)
 	d.dialog.SetOnClosed(func() {
 		d.CancelDialog()
 	})

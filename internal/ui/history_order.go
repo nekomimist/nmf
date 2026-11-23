@@ -23,7 +23,14 @@ func newHistoryOrderRadio(onChanged func(string)) *widget.RadioGroup {
 }
 
 func historyOrderSection(radio *widget.RadioGroup) fyne.CanvasObject {
-	return container.NewBorder(nil, nil, widget.NewLabel("Order (Ctrl+R):"), nil, radio)
+	return container.NewBorder(nil, nil, container.NewCenter(newDialogHintLabel("Order (Ctrl+R):")), nil, radio)
+}
+
+func historyOrderInline(radio *widget.RadioGroup) fyne.CanvasObject {
+	return container.NewHBox(
+		container.NewCenter(newDialogHintLabel("Ctrl+R:")),
+		radio,
+	)
 }
 
 func toggleHistoryOrder(radio *widget.RadioGroup) {

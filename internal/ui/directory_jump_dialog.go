@@ -106,15 +106,14 @@ func (d *DirectoryJumpDialog) createWidgets() {
 		d.updateFilteredEntries(query)
 	}
 
+	shortcutCellSize := directoryJumpShortcutCellSizeForEntries(d.allEntries)
 	d.jumpList = widget.NewList(
 		func() int {
 			return len(d.filteredEntries)
 		},
 		func() fyne.CanvasObject {
-			shortcut := widget.NewLabel("")
-			shortcut.TextStyle = fyne.TextStyle{Monospace: true}
-			shortcut.Wrapping = fyne.TextTruncate
-			shortcutBox := container.NewGridWrap(directoryJumpShortcutCellSize(), shortcut)
+			shortcut := newKeyCapBadge("")
+			shortcutBox := container.NewGridWrap(shortcutCellSize, shortcut)
 			path := widget.NewLabel("")
 			path.TextStyle = fyne.TextStyle{Monospace: true}
 			return container.NewHBox(shortcutBox, path)
@@ -131,8 +130,8 @@ func (d *DirectoryJumpDialog) createWidgets() {
 			shortcutBox, _ := row.Objects[0].(*fyne.Container)
 			pathLabel, _ := row.Objects[1].(*widget.Label)
 			if shortcutBox != nil && len(shortcutBox.Objects) > 0 {
-				if shortcutLabel, ok := shortcutBox.Objects[0].(*widget.Label); ok {
-					shortcutLabel.SetText(entry.Shortcut)
+				if badge, ok := shortcutBox.Objects[0].(*keyCapBadge); ok {
+					badge.SetText(entry.Shortcut)
 				}
 			}
 			if pathLabel != nil {
@@ -140,6 +139,7 @@ func (d *DirectoryJumpDialog) createWidgets() {
 			}
 		},
 	)
+	d.jumpList.HideSeparators = true
 
 	d.jumpList.OnSelected = func(id widget.ListItemID) {
 		if id >= 0 && int(id) < len(d.filteredEntries) {
@@ -155,12 +155,36 @@ func (d *DirectoryJumpDialog) createWidgets() {
 }
 
 func directoryJumpShortcutCellSize() fyne.Size {
+	return directoryJumpShortcutCellSizeForEntries(nil)
+}
+
+func directoryJumpShortcutCellSizeForEntries(entries []config.DirectoryJumpEntry) fyne.Size {
 	appTheme := fyne.CurrentApp().Settings().Theme()
 	textSize := appTheme.Size(theme.SizeNameText)
+	captionSize := appTheme.Size(theme.SizeNameCaptionText)
+	if captionSize <= 0 {
+		captionSize = textSize
+	}
 	padding := appTheme.Size(theme.SizeNamePadding)
 	innerPadding := appTheme.Size(theme.SizeNameInnerPadding)
 
-	return fyne.NewSize(textSize*6+padding*2, textSize+innerPadding*2)
+	minWidth := textSize*6 + padding*2
+	maxWidth := textSize*16 + padding*2
+	width := minWidth
+	style := fyne.TextStyle{Monospace: true}
+	for _, entry := range entries {
+		if entry.Shortcut == "" {
+			continue
+		}
+		needed := fyne.MeasureText(entry.Shortcut, captionSize, style).Width + keyCapBadgeHorizPad*2 + 2
+		if needed > width {
+			width = needed
+		}
+	}
+	if width > maxWidth {
+		width = maxWidth
+	}
+	return fyne.NewSize(width, textSize+innerPadding*2)
 }
 
 func directoryJumpListWidth(entries []config.DirectoryJumpEntry, minimum float32) float32 {
@@ -168,7 +192,7 @@ func directoryJumpListWidth(entries []config.DirectoryJumpEntry, minimum float32
 	for i, entry := range entries {
 		paths[i] = entry.Directory
 	}
-	width := dialogTextWidth(paths, minimum) + directoryJumpShortcutCellSize().Width
+	width := dialogTextWidth(paths, minimum) + directoryJumpShortcutCellSizeForEntries(entries).Width
 	if width < minimum {
 		return minimum
 	}
@@ -206,12 +230,6 @@ func (d *DirectoryJumpDialog) ShowDialog(parent fyne.Window, callback func(strin
 	listSize := metricsSize(listWidth, searchDialogListHeight)
 	contentSize := metricsSize(contentWidth, searchDialogContentHeight)
 
-	titleLabel := widget.NewLabel("Directory Jumps")
-	titleLabel.TextStyle.Bold = true
-
-	searchLabel := widget.NewLabel("Filter:")
-	searchSection := container.NewBorder(nil, nil, searchLabel, nil, d.searchEntry)
-
 	listScroll := newScrollableDialogList(d.jumpList, directoryJumpListWidth(d.allEntries, listWidth), listWidth, searchDialogListHeight)
 
 	emptyLabel := widget.NewLabel("No matching shortcuts found")
@@ -237,11 +255,11 @@ func (d *DirectoryJumpDialog) ShowDialog(parent fyne.Window, callback func(strin
 	}
 
 	content := container.NewBorder(
-		container.NewVBox(titleLabel, searchSection),
+		d.searchEntry,
 		dialogButtonBar(dialogCancelButton("Cancel", d.CancelDialog), dialogConfirmButton("OK", d.AcceptSelection)),
 		nil,
 		nil,
-		fixedContainer,
+		newInsetListSurface(fixedContainer),
 	)
 	content.Resize(contentSize)
 
@@ -254,7 +272,7 @@ func (d *DirectoryJumpDialog) ShowDialog(parent fyne.Window, callback func(strin
 	d.sink = NewKeySink(content, d.keyManager, WithTabCapture(true))
 	d.searchEntry.SetFocusRedirect(parent, d.sink)
 
-	d.dialog = dialog.NewCustomWithoutButtons("Jump To Directory", d.sink, parent)
+	d.dialog = newModalDialog("Directory Jumps", d.sink, parent)
 
 	d.dialog.Show()
 	if d.parent != nil && d.sink != nil {

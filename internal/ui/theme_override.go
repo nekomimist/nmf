@@ -44,3 +44,21 @@ func menuThemeOverride(obj fyne.CanvasObject) fyne.CanvasObject {
 	base := fyne.CurrentApp().Settings().Theme()
 	return container.NewThemeOverride(obj, customtheme.NewMenuOverrideTheme(base, themeProvider))
 }
+
+func dialogThemeOverride(obj fyne.CanvasObject) fyne.CanvasObject {
+	if obj == nil || fyne.CurrentApp() == nil {
+		return obj
+	}
+	base := fyne.CurrentApp().Settings().Theme()
+	return container.NewThemeOverride(obj, customtheme.NewDialogOverrideTheme(base))
+}
+
+// DialogThemeOverride exposes dialogThemeOverride to package main (drop_ui.go).
+func DialogThemeOverride(obj fyne.CanvasObject) fyne.CanvasObject {
+	return dialogThemeOverride(obj)
+}
+
+// DialogListThemeOverride exposes dialogListThemeOverride to package main (drop_ui.go).
+func DialogListThemeOverride(obj fyne.CanvasObject) fyne.CanvasObject {
+	return dialogListThemeOverride(obj)
+}

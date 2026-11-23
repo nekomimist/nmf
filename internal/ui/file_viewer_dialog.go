@@ -13,7 +13,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/yuin/goldmark"
@@ -47,9 +46,11 @@ type FileViewerDialog struct {
 	parent  fyne.Window
 	dialog  dialog.Dialog
 
-	inputSink   *KeySink
-	contentHost *fyne.Container
-	nameLabel   *widget.Label
+	inputSink    *KeySink
+	contentHost  *fyne.Container
+	contentTheme *container.ThemeOverride
+	headerRow    *fyne.Container
+	nameLabel    *widget.Label
 
 	textGrid      *fileViewerTextGrid
 	hexGrid       *fileViewerTextGrid
@@ -191,7 +192,10 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	}
 
 	d.closeButton = widget.NewButtonWithIcon("", theme.CancelIcon(), d.CancelDialog)
+	d.closeButton.Importance = widget.LowImportance
 	d.nameLabel = widget.NewLabel("")
+	d.nameLabel.TextStyle.Bold = true
+	d.nameLabel.Truncation = fyne.TextTruncateEllipsis
 	d.contentHost = container.NewStack()
 	d.inputSink = NewKeySink(d.contentHost, d.km)
 	d.setPreview(d.preview, false)
@@ -208,7 +212,7 @@ func (d *FileViewerDialog) ShowDialog(parent fyne.Window) {
 	d.debug("FileViewer: handler elapsed=%s", time.Since(stepStart))
 	stepStart = time.Now()
 
-	d.dialog = dialog.NewCustomWithoutButtons("Viewer", d.inputSink, parent)
+	d.dialog = newModalDialogWithOptions("", d.inputSink, parent, modalDialogOptions{compactBody: true})
 	d.dialog.SetOnClosed(func() {
 		d.CancelDialog()
 	})
@@ -258,9 +262,10 @@ func (d *FileViewerDialog) setPreview(preview *fileinfo.PreviewFile, preserveSta
 		return
 	}
 
-	d.status = widget.NewLabel(d.statusText())
-	d.status.Truncation = fyne.TextTruncateClip
-	d.lineLabel = widget.NewLabel("")
+	d.status = newDialogHintLabel(d.statusText())
+	d.status.Alignment = fyne.TextAlignTrailing
+	d.status.Truncation = fyne.TextTruncateEllipsis
+	d.lineLabel = newDialogHintLabel("")
 	d.lineLabel.TextStyle = fyne.TextStyle{Monospace: true}
 
 	stepStart := time.Now()
@@ -274,13 +279,18 @@ func (d *FileViewerDialog) setPreview(preview *fileinfo.PreviewFile, preserveSta
 	d.debug("FileViewer: tabs elapsed=%s active=%s", time.Since(stepStart), d.activeName)
 
 	toolbar := d.buildViewerToolbar(d.parent)
-	nameRow := d.viewerNameRow(preview.Path)
+	headerRow := d.viewerHeaderRow(preview.Path, d.status)
+	paneFrame := newInsetSurfaceWithPadding(d.paneStack, 4, 4, 6, 6)
 	content := container.NewBorder(
-		container.NewVBox(nameRow, d.status, container.NewBorder(nil, nil, nil, container.NewCenter(d.lineLabel), toolbar)),
+		container.NewVBox(
+			headerRow,
+			widget.NewSeparator(),
+			container.NewBorder(nil, nil, nil, container.NewCenter(d.lineLabel), toolbar),
+		),
 		nil,
 		nil,
 		nil,
-		container.NewBorder(d.tabBar.Container(), nil, nil, nil, d.paneStack),
+		container.NewBorder(d.tabBar.Container(), nil, nil, nil, paneFrame),
 	)
 	d.replaceViewerContent(content)
 	d.updateLineDisplay()
@@ -325,6 +335,8 @@ func (d *FileViewerDialog) resetViewerContent() {
 	d.imageToolbar = nil
 	d.hexToolbar = nil
 	d.toolbarStack = nil
+	d.contentTheme = nil
+	d.headerRow = nil
 	d.tabBar = nil
 	d.paneStack = nil
 	d.paneObjects = nil
@@ -346,19 +358,129 @@ func (d *FileViewerDialog) setViewerMessage(path, message string) {
 }
 
 func (d *FileViewerDialog) viewerNameRow(path string) fyne.CanvasObject {
+	return d.viewerHeaderRow(path, nil)
+}
+
+func (d *FileViewerDialog) viewerHeaderRow(path string, meta *widget.Label) fyne.CanvasObject {
 	if d.nameLabel == nil {
 		d.nameLabel = widget.NewLabel("")
+		d.nameLabel.TextStyle.Bold = true
+		d.nameLabel.Truncation = fyne.TextTruncateEllipsis
 	}
 	d.nameLabel.SetText(filepath.Base(path))
-	return container.NewBorder(nil, nil, nil, d.closeButton,
-		container.NewVBox(layout.NewSpacer(), d.nameLabel, layout.NewSpacer()))
+	objs := []fyne.CanvasObject{d.nameLabel}
+	if meta != nil {
+		objs = append(objs, meta)
+	}
+	objs = append(objs, d.closeButton)
+	d.headerRow = container.New(&viewerHeaderLayout{
+		name:  d.nameLabel,
+		meta:  meta,
+		close: d.closeButton,
+	}, objs...)
+	return d.headerRow
+}
+
+type viewerHeaderLayout struct {
+	name  *widget.Label
+	meta  *widget.Label
+	close fyne.CanvasObject
+}
+
+func (l *viewerHeaderLayout) gap() float32 {
+	if l.name != nil {
+		if pad := l.name.Theme().Size(theme.SizeNamePadding); pad > 0 {
+			return pad
+		}
+	}
+	return theme.Padding()
+}
+
+func (l *viewerHeaderLayout) MinSize(_ []fyne.CanvasObject) fyne.Size {
+	gap := l.gap()
+	nameMin := l.name.MinSize()
+	closeMin := l.close.MinSize()
+	width := nameMin.Width + gap + closeMin.Width
+	height := max(nameMin.Height, closeMin.Height)
+	if l.meta != nil {
+		metaMin := l.meta.MinSize()
+		width += metaMin.Width + gap
+		height = max(height, metaMin.Height)
+	}
+	return fyne.NewSize(width, height)
+}
+
+func (l *viewerHeaderLayout) Layout(_ []fyne.CanvasObject, size fyne.Size) {
+	gap := l.gap()
+	closeSize := l.close.MinSize()
+	closeX := max(0, size.Width-closeSize.Width)
+	l.close.Move(fyne.NewPos(closeX, (size.Height-closeSize.Height)/2))
+	l.close.Resize(closeSize)
+
+	avail := max(0, closeX-gap)
+	nameH := l.name.MinSize().Height
+	nameY := (size.Height - nameH) / 2
+
+	if l.meta == nil {
+		l.name.Move(fyne.NewPos(0, nameY))
+		l.name.Resize(fyne.NewSize(avail, nameH))
+		return
+	}
+
+	metaH := l.meta.MinSize().Height
+	metaY := (size.Height - metaH) / 2
+	nameNatural := viewerLabelNaturalWidth(l.name)
+	metaNatural := viewerLabelNaturalWidth(l.meta)
+	bothAvail := max(0, avail-gap)
+
+	var nameW, metaW float32
+	switch {
+	case metaNatural <= 0:
+		nameW = avail
+	case nameNatural+metaNatural <= bothAvail:
+		metaW = metaNatural
+		nameW = bothAvail - metaW
+	default:
+		maxMetaW := bothAvail * 0.6
+		if nameNatural < bothAvail-maxMetaW {
+			nameW = nameNatural
+			metaW = min(metaNatural, bothAvail-nameW)
+		} else {
+			metaW = min(metaNatural, maxMetaW)
+			nameW = max(0, bothAvail-metaW)
+		}
+	}
+
+	l.name.Move(fyne.NewPos(0, nameY))
+	l.name.Resize(fyne.NewSize(nameW, nameH))
+	l.meta.Move(fyne.NewPos(max(0, avail-metaW), metaY))
+	l.meta.Resize(fyne.NewSize(metaW, metaH))
+}
+
+func viewerLabelNaturalWidth(label *widget.Label) float32 {
+	if label == nil || label.Text == "" {
+		return 0
+	}
+	th := label.Theme()
+	sizeName := label.SizeName
+	if sizeName == "" {
+		sizeName = theme.SizeNameText
+	}
+	textSize := th.Size(sizeName)
+	if textSize <= 0 {
+		textSize = th.Size(theme.SizeNameText)
+	}
+	innerPad := th.Size(theme.SizeNameInnerPadding)
+	return fyne.MeasureText(label.Text, textSize, label.TextStyle).Width + innerPad*2 + 4
 }
 
 func (d *FileViewerDialog) replaceViewerContent(content fyne.CanvasObject) {
 	if d.contentHost == nil {
 		return
 	}
-	d.contentHost.Objects = []fyne.CanvasObject{content}
+	themed := dialogThemeOverride(content)
+	d.contentTheme, _ = themed.(*container.ThemeOverride)
+	d.contentHost.Objects = []fyne.CanvasObject{themed}
 	d.contentHost.Refresh()
 }
 
@@ -402,12 +524,15 @@ func (d *FileViewerDialog) buildViewerPanes() {
 func (d *FileViewerDialog) buildViewerToolbar(parent fyne.Window) fyne.CanvasObject {
 	d.wrapButton = widget.NewButton("Wrap", d.ViewerToggleWrap)
 	copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), d.copySelection)
+	copyBtn.Importance = widget.LowImportance
 	if d.preview.ImageFormat != "" {
 		d.hexToolbar = container.NewHBox(d.wrapButton, copyBtn)
 		if d.imageView != nil {
 			d.zoomFitButton = widget.NewButtonWithIcon("100% (=)", theme.ZoomFitIcon(), d.ViewerImageToggleFit)
 			d.zoomOutButton = widget.NewButtonWithIcon("", theme.ZoomOutIcon(), d.ViewerImageZoomOut)
+			d.zoomOutButton.Importance = widget.LowImportance
 			d.zoomInButton = widget.NewButtonWithIcon("", theme.ZoomInIcon(), d.ViewerImageZoomIn)
+			d.zoomInButton.Importance = widget.LowImportance
 			d.imageToolbar = container.NewHBox(d.zoomFitButton, d.zoomOutButton, d.zoomInButton)
 		} else {
 			d.imageToolbar = container.NewHBox()
@@ -442,8 +567,11 @@ func (d *FileViewerDialog) buildViewerToolbar(parent fyne.Window) fyne.CanvasObj
 		})
 	}
 	d.prevButton = widget.NewButtonWithIcon("", theme.MoveUpIcon(), d.findPrevious)
+	d.prevButton.Importance = widget.LowImportance
 	d.nextButton = widget.NewButtonWithIcon("", theme.MoveDownIcon(), d.findNext)
+	d.nextButton.Importance = widget.LowImportance
 	confirmBtn := widget.NewButtonWithIcon("", theme.ConfirmIcon(), d.jumpToLine)
+	confirmBtn.Importance = widget.LowImportance
 	return container.NewBorder(nil, nil, nil,
 		container.NewHBox(d.wrapButton, copyBtn),
 		container.NewHBox(
@@ -522,6 +650,9 @@ func (d *FileViewerDialog) replacePaneObject(pane string, obj fyne.CanvasObject)
 	}
 	d.paneStack.Objects = objects
 	d.paneStack.Refresh()
+	if d.contentTheme != nil {
+		d.contentTheme.Refresh()
+	}
 }
 
 func (d *FileViewerDialog) createHexGrid() *fileViewerTextGrid {
@@ -1682,4 +1813,7 @@ func (d *FileViewerDialog) setStatusSuffix(suffix string) {
 		return
 	}
 	d.status.SetText(d.statusText() + "  " + suffix)
+	if d.headerRow != nil {
+		d.headerRow.Refresh()
+	}
 }

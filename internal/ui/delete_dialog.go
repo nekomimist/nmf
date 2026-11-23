@@ -16,15 +16,16 @@ const deleteConfirmWord = "DELETE"
 
 // DeleteConfirmDialog confirms trash or permanent deletion for one or more items.
 type DeleteConfirmDialog struct {
-	targets    []string
-	permanent  bool
-	entry      *deleteConfirmEntry
-	keyManager *keymanager.KeyManager
-	kmToken    keymanager.HandlerToken
-	parent     fyne.Window
-	dialog     dialog.Dialog
-	closed     bool
-	onAccept   func()
+	targets       []string
+	permanent     bool
+	entry         *deleteConfirmEntry
+	confirmButton *widget.Button
+	keyManager    *keymanager.KeyManager
+	kmToken       keymanager.HandlerToken
+	parent        fyne.Window
+	dialog        dialog.Dialog
+	closed        bool
+	onAccept      func()
 }
 
 func NewDeleteConfirmDialog(targets []string, permanent bool, km *keymanager.KeyManager) *DeleteConfirmDialog {
@@ -34,12 +35,30 @@ func NewDeleteConfirmDialog(targets []string, permanent bool, km *keymanager.Key
 		keyManager: km,
 	}
 	if permanent {
+		d.confirmButton = dialogDangerButton("Delete", d.ConfirmDelete)
+		d.confirmButton.Disable()
 		d.entry = newDeleteConfirmEntry(d.CancelDelete)
+		d.entry.OnChanged = func(_ string) {
+			d.syncConfirmButtonState()
+		}
 		d.entry.OnSubmitted = func(_ string) {
 			d.ConfirmDelete()
 		}
+	} else {
+		d.confirmButton = dialogConfirmButton("Trash", d.ConfirmDelete)
 	}
 	return d
+}
+
+func (d *DeleteConfirmDialog) syncConfirmButtonState() {
+	if !d.permanent || d.confirmButton == nil {
+		return
+	}
+	if d.entry != nil && strings.TrimSpace(d.entry.Text) == deleteConfirmWord {
+		d.confirmButton.Enable()
+	} else {
+		d.confirmButton.Disable()
+	}
 }
 
 func (d *DeleteConfirmDialog) ShowDialog(parent fyne.Window, onAccept func()) {
@@ -47,10 +66,8 @@ func (d *DeleteConfirmDialog) ShowDialog(parent fyne.Window, onAccept func()) {
 	d.onAccept = onAccept
 
 	title := "Move to Trash"
-	action := "Trash"
 	if d.permanent {
 		title = "Permanently Delete"
-		action = "Delete"
 	}
 
 	content := container.NewVBox(
@@ -60,13 +77,14 @@ func (d *DeleteConfirmDialog) ShowDialog(parent fyne.Window, onAccept func()) {
 	if d.permanent {
 		content.Add(widget.NewLabel(fmt.Sprintf("Type %s to confirm:", deleteConfirmWord)))
 		content.Add(d.entry)
+		d.syncConfirmButtonState()
 	}
-	content.Add(dialogButtonRow("Cancel", d.CancelDelete, action, d.ConfirmDelete))
+	content.Add(dialogButtonBar(dialogCancelButton("Cancel", d.CancelDelete), d.confirmButton))
 
 	handler := keymanager.NewDeleteConfirmDialogKeyHandler(d)
 	d.kmToken = d.keyManager.PushHandler(handler)
 
-	d.dialog = dialog.NewCustomWithoutButtons(title, content, parent)
+	d.dialog = newModalDialog(title, content, parent)
 	d.dialog.SetOnClosed(func() {
 		d.CancelDelete()
 	})
@@ -90,7 +108,7 @@ func (d *DeleteConfirmDialog) targetList() fyne.CanvasObject {
 	label.Wrapping = fyne.TextWrapOff
 	scroll := container.NewScroll(label)
 	scroll.SetMinSize(metricsSize(deleteDialogWidth-40, deleteTargetListHeight))
-	return scroll
+	return newInsetListSurface(scroll)
 }
 
 func (d *DeleteConfirmDialog) targetSummary() string {

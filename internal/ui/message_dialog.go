@@ -23,7 +23,7 @@ func ShowCompactMessageDialog(parent fyne.Window, title, message string) {
 // and runs onClose after the user dismisses it.
 func ShowCompactMessageDialogWithOnClose(parent fyne.Window, title, message string, onClose func()) {
 	fyne.Do(func() {
-		var d *dialog.CustomDialog
+		var d dialog.Dialog
 		closed := false
 		closeDialog := func() {
 			if closed {
@@ -49,7 +49,7 @@ func ShowCompactMessageDialogWithOnClose(parent fyne.Window, title, message stri
 		)
 		sink := newCompactMessageSink(content, closeDialog)
 
-		d = dialog.NewCustomWithoutButtons(title, sink, parent)
+		d = newModalDialog(title, sink, parent)
 		d.Show()
 		d.Resize(dialogSize)
 		if parent != nil {
@@ -61,7 +61,7 @@ func ShowCompactMessageDialogWithOnClose(parent fyne.Window, title, message stri
 // ShowCompactVersionDialog displays app metadata with a clickable repository URL.
 func ShowCompactVersionDialog(parent fyne.Window, software, repository, version string) {
 	fyne.Do(func() {
-		var d *dialog.CustomDialog
+		var d dialog.Dialog
 		closed := false
 		closeDialog := func() {
 			if closed {
@@ -82,7 +82,7 @@ func ShowCompactVersionDialog(parent fyne.Window, software, repository, version 
 		)
 		sink := newCompactMessageSink(content, closeDialog)
 
-		d = dialog.NewCustomWithoutButtons("Version", sink, parent)
+		d = newModalDialog("Version", sink, parent)
 		d.Show()
 		d.Resize(dialogSize)
 		if parent != nil {

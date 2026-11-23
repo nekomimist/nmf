@@ -111,8 +111,7 @@ func (d *CompareDialog) ShowDialog(parent fyne.Window, onAccept func(CompareResu
 	methodLabel := widget.NewLabel("Mark entries where:")
 	methodBox := container.NewVBox(methodLabel, d.methodRadio)
 
-	searchLabel := widget.NewLabel("Destination:")
-	searchSection := container.NewBorder(nil, nil, searchLabel, nil, d.searchEntry)
+	searchSection := container.NewBorder(nil, nil, nil, historyOrderInline(d.orderRadio), d.searchEntry)
 	fixed := d.destinationArea(dialogWidth, compareDialogListHeight)
 
 	content := container.NewVBox(
@@ -120,7 +119,6 @@ func (d *CompareDialog) ShowDialog(parent fyne.Window, onAccept func(CompareResu
 		widget.NewSeparator(),
 		methodBox,
 		widget.NewSeparator(),
-		historyOrderSection(d.orderRadio),
 		searchSection,
 		fixed,
 		dialogButtonBar(dialogCancelButton("Cancel", d.CancelDialog), d.compareButton),
@@ -131,8 +129,9 @@ func (d *CompareDialog) ShowDialog(parent fyne.Window, onAccept func(CompareResu
 	d.sink = NewKeySink(content, d.keyManager, WithTabCapture(true))
 	d.searchEntry.SetFocusRedirect(parent, d.sink)
 
-	framedContent := d.ownerFrame.wrap(d.sink)
-	d.dialog = dialog.NewCustomWithoutButtons("Compare Directories", framedContent, parent)
+	d.dialog = newModalDialogWithOptions("Compare Directories", d.sink, parent, modalDialogOptions{
+		highlight: &d.ownerFrame,
+	})
 	d.dialog.Show()
 	if d.parent != nil && d.sink != nil {
 		d.parent.Canvas().Focus(d.sink)

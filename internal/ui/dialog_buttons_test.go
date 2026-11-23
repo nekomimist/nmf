@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/test"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -16,8 +16,8 @@ func TestDialogButtonRowUsesCancelAndPrimaryConfirmButtons(t *testing.T) {
 	if cancel.Text != "Cancel" {
 		t.Fatalf("cancel text = %q, want Cancel", cancel.Text)
 	}
-	if cancel.Icon == nil || cancel.Icon.Name() != theme.CancelIcon().Name() {
-		t.Fatalf("cancel icon = %v, want cancel icon", cancel.Icon)
+	if cancel.Icon != nil {
+		t.Fatalf("cancel icon = %v, want nil", cancel.Icon)
 	}
 	if cancel.Importance == widget.HighImportance {
 		t.Fatal("cancel button should not be high importance")
@@ -26,8 +26,8 @@ func TestDialogButtonRowUsesCancelAndPrimaryConfirmButtons(t *testing.T) {
 	if confirm.Text != "OK" {
 		t.Fatalf("confirm text = %q, want OK", confirm.Text)
 	}
-	if confirm.Icon == nil || confirm.Icon.Name() != theme.ConfirmIcon().Name() {
-		t.Fatalf("confirm icon = %v, want confirm icon", confirm.Icon)
+	if confirm.Icon != nil {
+		t.Fatalf("confirm icon = %v, want nil", confirm.Icon)
 	}
 	if confirm.Importance != widget.HighImportance {
 		t.Fatalf("confirm importance = %v, want high", confirm.Importance)
@@ -44,11 +44,43 @@ func TestDialogOKButtonRowUsesPrimaryConfirmButton(t *testing.T) {
 	if button.Text != "OK" {
 		t.Fatalf("button text = %q, want OK", button.Text)
 	}
-	if button.Icon == nil || button.Icon.Name() != theme.ConfirmIcon().Name() {
-		t.Fatalf("button icon = %v, want confirm icon", button.Icon)
+	if button.Icon != nil {
+		t.Fatalf("button icon = %v, want nil", button.Icon)
 	}
 	if button.Importance != widget.HighImportance {
 		t.Fatalf("button importance = %v, want high", button.Importance)
+	}
+}
+
+func TestDialogButtonBarRightAlignsWithLeadingSpacer(t *testing.T) {
+	bar := dialogButtonBar(dialogCancelButton("Cancel", func() {}), dialogConfirmButton("OK", func() {}))
+	hbox := barHBox(t, bar)
+	if len(hbox.Objects) != 3 {
+		t.Fatalf("hbox object count = %d, want 3 (spacer + 2 buttons)", len(hbox.Objects))
+	}
+	if _, ok := hbox.Objects[0].(*layout.Spacer); !ok {
+		t.Fatalf("first object type = %T, want *layout.Spacer for right alignment", hbox.Objects[0])
+	}
+}
+
+func TestDialogSplitButtonBarPlacesSpacerBetweenLeadingAndTrailing(t *testing.T) {
+	bar := dialogSplitButtonBar(
+		[]*widget.Button{dialogAuxButton("Scan", nil, func() {})},
+		[]*widget.Button{dialogCancelButton("Close", func() {}), dialogConfirmButton("Apply", func() {})},
+	)
+	hbox := barHBox(t, bar)
+	if len(hbox.Objects) != 4 {
+		t.Fatalf("hbox object count = %d, want 4 (1 leading + spacer + 2 trailing)", len(hbox.Objects))
+	}
+	if _, ok := hbox.Objects[1].(*layout.Spacer); !ok {
+		t.Fatalf("middle object type = %T, want *layout.Spacer", hbox.Objects[1])
+	}
+	buttons := barButtons(t, bar)
+	want := []string{"Scan", "Close", "Apply"}
+	for i, b := range buttons {
+		if b.Text != want[i] {
+			t.Fatalf("button[%d] text = %q, want %q", i, b.Text, want[i])
+		}
 	}
 }
 
@@ -56,7 +88,7 @@ func TestDialogButtonBarAppliesMinWidthFloor(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
-	button := widget.NewButtonWithIcon("OK", theme.ConfirmIcon(), func() {})
+	button := widget.NewButton("OK", func() {})
 	bar := dialogButtonBar(button)
 	wrappers := barWrappers(t, bar)
 	if len(wrappers) != 1 {
@@ -77,7 +109,7 @@ func TestDialogButtonBarDoesNotCapLongLabels(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
-	button := widget.NewButtonWithIcon("This Is A Deliberately Long Label", theme.ConfirmIcon(), func() {})
+	button := widget.NewButton("This Is A Deliberately Long Label", func() {})
 	bar := dialogButtonBar(button)
 	wrappers := barWrappers(t, bar)
 	if len(wrappers) != 1 {
@@ -111,28 +143,51 @@ func TestDialogButtonBarPreservesOrder(t *testing.T) {
 	}
 }
 
-// barWrappers peels a dialogButtonBar's Center -> HBox nesting and returns
-// the per-button minWidth wrapper containers, in bar order.
-func barWrappers(t *testing.T, bar fyne.CanvasObject) []*fyne.Container {
+func barHBox(t *testing.T, bar fyne.CanvasObject) *fyne.Container {
 	t.Helper()
-	center, ok := bar.(*fyne.Container)
+	outer, ok := bar.(*fyne.Container)
 	if !ok {
 		t.Fatalf("bar type = %T, want *fyne.Container", bar)
 	}
-	if len(center.Objects) != 1 {
-		t.Fatalf("center object count = %d, want 1", len(center.Objects))
+	if len(outer.Objects) != 1 {
+		t.Fatalf("outer object count = %d, want 1", len(outer.Objects))
 	}
-	hbox, ok := center.Objects[0].(*fyne.Container)
+	footer, ok := outer.Objects[0].(*fyne.Container)
 	if !ok {
-		t.Fatalf("hbox type = %T, want *fyne.Container", center.Objects[0])
+		t.Fatalf("footer type = %T, want *fyne.Container", outer.Objects[0])
 	}
-	wrappers := make([]*fyne.Container, len(hbox.Objects))
-	for i, obj := range hbox.Objects {
+	if len(footer.Objects) != 2 {
+		t.Fatalf("footer object count = %d, want 2 (separator + button row)", len(footer.Objects))
+	}
+	if _, ok := footer.Objects[0].(*widget.Separator); !ok {
+		t.Fatalf("footer[0] type = %T, want *widget.Separator", footer.Objects[0])
+	}
+	rowPad, ok := footer.Objects[1].(*fyne.Container)
+	if !ok || len(rowPad.Objects) != 1 {
+		t.Fatalf("footer[1] = %T, want padded container with 1 child", footer.Objects[1])
+	}
+	hbox, ok := rowPad.Objects[0].(*fyne.Container)
+	if !ok {
+		t.Fatalf("hbox type = %T, want *fyne.Container", rowPad.Objects[0])
+	}
+	return hbox
+}
+
+// barWrappers peels a dialogButtonBar's padded HBox nesting and returns
+// the per-button minWidth wrapper containers, in bar order.
+func barWrappers(t *testing.T, bar fyne.CanvasObject) []*fyne.Container {
+	t.Helper()
+	hbox := barHBox(t, bar)
+	var wrappers []*fyne.Container
+	for _, obj := range hbox.Objects {
+		if _, isSpacer := obj.(*layout.Spacer); isSpacer {
+			continue
+		}
 		wrapper, ok := obj.(*fyne.Container)
 		if !ok {
-			t.Fatalf("wrapper %d type = %T, want *fyne.Container", i, obj)
+			t.Fatalf("wrapper type = %T, want *fyne.Container", obj)
 		}
-		wrappers[i] = wrapper
+		wrappers = append(wrappers, wrapper)
 	}
 	return wrappers
 }

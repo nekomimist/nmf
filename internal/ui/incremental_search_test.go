@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	fynetheme "fyne.io/fyne/v2/theme"
+
 	"nmf/internal/fileinfo"
 	"nmf/internal/search"
 	customtheme "nmf/internal/theme"
@@ -131,5 +133,28 @@ func TestIncrementalSearchReleasesListingWhenHidden(t *testing.T) {
 	overlay.Show(nil)
 	if got := overlay.GetCurrentMatch(); got == nil || got.Name != "new" {
 		t.Fatalf("reopened match = %v", got)
+	}
+}
+
+func TestIncrementalSearchUsesPrimaryAccentAndErrorBorderOnNoMatch(t *testing.T) {
+	overlay := NewIncrementalSearchOverlay([]fileinfo.FileInfo{
+		{Name: "alpha.txt"},
+	}, nil, incrementalSearchTheme{}, func(string, ...interface{}) {})
+
+	overlay.Show(nil)
+	wantPrimary := color.NRGBAModel.Convert(currentAppThemeColor(fynetheme.ColorNamePrimary))
+	if got := color.NRGBAModel.Convert(overlay.background.StrokeColor); got != wantPrimary {
+		t.Fatalf("border color with matches = %#v, want primary %#v", got, wantPrimary)
+	}
+
+	overlay.AddCharacter('z')
+	wantError := color.NRGBAModel.Convert(currentAppThemeColor(fynetheme.ColorNameError))
+	if got := color.NRGBAModel.Convert(overlay.background.StrokeColor); got != wantError {
+		t.Fatalf("border color with no matches = %#v, want error %#v", got, wantError)
+	}
+
+	overlay.RemoveLastCharacter()
+	if got := color.NRGBAModel.Convert(overlay.background.StrokeColor); got != wantPrimary {
+		t.Fatalf("border color after clearing no-match = %#v, want primary %#v", got, wantPrimary)
 	}
 }

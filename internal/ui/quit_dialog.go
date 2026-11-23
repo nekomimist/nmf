@@ -54,17 +54,13 @@ func (qcd *QuitConfirmDialog) ShowDialog(parent fyne.Window, callback func(bool)
 		message,
 		quitDialogSpacer(quitDialogGap),
 		qcd.buttonRow(),
-		quitDialogSpacer(quitDialogBottom),
 	)
-	fixedContent := container.NewGridWrap(metricsSize(quitDialogWidth, quitDialogHeight), content)
+	fixedContent := container.New(minWidthLayout{min: quitDialogWidth}, content)
 
 	// Wrap content with KeySink to capture keys and forward to KeyManager
 	qcd.sink = NewKeySink(fixedContent, qcd.keyManager, WithTabCapture(false))
 
-	// Set appropriate content size
-	qcd.sink.Resize(metricsSize(quitDialogWidth, quitDialogHeight))
-
-	qcd.dialog = dialog.NewCustomWithoutButtons("Quit Application", qcd.sink, parent)
+	qcd.dialog = newModalDialog("Quit Application", qcd.sink, parent)
 	qcd.dialog.SetOnClosed(func() {
 		qcd.CancelQuit()
 	})
