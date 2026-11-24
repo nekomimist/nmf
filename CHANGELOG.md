@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.1 - 2026-11-25
+
 - Fix memory growth from font caching when dialogs are opened repeatedly.
 - Return unused Go heap memory to the operating system after NMF has been in
   the background for a minute without active file jobs and memory use is high.
