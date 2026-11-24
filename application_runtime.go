@@ -33,6 +33,7 @@ type ApplicationRuntime struct {
 	watchHub                *watcher.WatchHub
 	jobManager              *jobs.Manager
 	jobsWindowController    *JobsWindowController
+	idleMemory              *idleMemoryRelease
 	promptBroker            *applicationPromptBroker
 	windows                 *fileManagerWindowRegistry
 	navigationHistoryEvents *navigationHistoryEventHub
@@ -72,10 +73,16 @@ func newApplicationRuntime(app fyne.App, options applicationRuntimeOptions) *App
 		navigationHistoryEvents: newNavigationHistoryEventHub(),
 		searchMatchers:          search.NewProvider(debugPrint),
 	}
-	app.Lifecycle().SetOnExitedForeground(func() {
-		deactivateFileManagerWindows(runtime)
+	runtime.idleMemory = newIdleMemoryRelease(runtime.jobManager)
+	lifecycle := app.Lifecycle()
+	lifecycle.SetOnEnteredForeground(func() {
+		runtime.idleMemory.setBackground(false)
+		bringFileManagerWindowsToFront(runtime)
 	})
-	installWindowActivationHandler(runtime)
+	lifecycle.SetOnExitedForeground(func() {
+		deactivateFileManagerWindows(runtime)
+		runtime.idleMemory.setBackground(true)
+	})
 
 	// These package-level hooks bridge VFS code to the one application-scoped
 	// cache and broker. New windows register prompt targets with the broker;
@@ -100,6 +107,9 @@ func (r *ApplicationRuntime) Close() {
 		return
 	}
 	r.closeOnce.Do(func() {
+		if r.idleMemory != nil {
+			r.idleMemory.close()
+		}
 		if r.jobsWindowController != nil {
 			r.jobsWindowController.Close()
 		}

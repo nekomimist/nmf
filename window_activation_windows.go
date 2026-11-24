@@ -18,15 +18,6 @@ var (
 	procEndDeferWindowPos   = winUser32.NewProc("EndDeferWindowPos")
 )
 
-func installWindowActivationHandler(runtime *ApplicationRuntime) {
-	if runtime == nil || runtime.app == nil || runtime.config == nil || !runtime.config.Window.BringAllToFront {
-		return
-	}
-	runtime.app.Lifecycle().SetOnEnteredForeground(func() {
-		bringFileManagerWindowsToFront(runtime)
-	})
-}
-
 func bringFileManagerWindowsToFront(runtime *ApplicationRuntime) {
 	if runtime == nil || runtime.config == nil || !runtime.config.Window.BringAllToFront || runtime.windows == nil {
 		return

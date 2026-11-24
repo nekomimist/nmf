@@ -6,6 +6,25 @@ import (
 	"testing"
 )
 
+func TestHasActiveJobsDistinguishesFinishingJob(t *testing.T) {
+	m := &Manager{current: &Job{Status: StatusPending}}
+	if !m.HasActiveJobs() {
+		t.Fatal("job assigned to the worker is active before it starts")
+	}
+	m.current.Status = StatusRunning
+	if !m.HasActiveJobs() {
+		t.Fatal("running job is active")
+	}
+	m.current.Status = StatusCompleted
+	if m.HasActiveJobs() {
+		t.Fatal("completed job is idle even before the worker clears current")
+	}
+	m.queue = []*Job{{Status: StatusPending}}
+	if !m.HasActiveJobs() {
+		t.Fatal("queued job is active")
+	}
+}
+
 func TestSummaryTracksActiveJobsAndFailureAcknowledgment(t *testing.T) {
 	m := &Manager{
 		current: &Job{ID: 1, Status: StatusRunning},

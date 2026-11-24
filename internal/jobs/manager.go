@@ -251,6 +251,22 @@ type Summary struct {
 	HasUnacknowledgedFailure bool
 }
 
+// HasActiveJobs reports whether any jobs are pending or running.
+func (m *Manager) HasActiveJobs() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.queue) > 0 {
+		return true
+	}
+	if m.current == nil {
+		return false
+	}
+	// Completion notifications are sent before the worker clears current.
+	m.current.mu.RLock()
+	defer m.current.mu.RUnlock()
+	return m.current.Status == StatusPending || m.current.Status == StatusRunning
+}
+
 // Summary avoids copying sources, results, and failures on every progress update.
 func (m *Manager) Summary() Summary {
 	m.mu.Lock()

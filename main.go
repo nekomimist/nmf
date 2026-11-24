@@ -255,6 +255,7 @@ func main() {
 		})
 	}
 	fyneApp.Run()
+	runtime.idleMemory.close()
 	runtime.debugDumps.Wait()
 }
 
